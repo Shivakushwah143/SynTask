@@ -107,3 +107,17 @@ export function buildTaskGraphSummary(tasks) {
     return summary
   }, { total: 0, active: 0, completed: 0 })
 }
+
+// Counts standalone tasks per status so the Tasks page can render a
+// per-stage statistical overview. Follow-up tasks are excluded, matching
+// the Task Overview graph behavior.
+export function buildTaskStatusBreakdown(tasks) {
+  const counts = tasks.reduce((acc, task) => {
+    if (isFollowUpTask(task)) return acc
+    const status = normalizeStatus(task.status)
+    acc[status] = (acc[status] || 0) + 1
+    return acc
+  }, {})
+  const total = Object.values(counts).reduce((sum, count) => sum + count, 0)
+  return { counts, total }
+}

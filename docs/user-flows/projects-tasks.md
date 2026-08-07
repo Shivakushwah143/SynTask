@@ -16,6 +16,7 @@ flowchart TD
 ## Tasks List
 - How the user reaches it: main navigation `/tasks` (list or kanban toggle).
 - What they can do: browse tasks, search, filter by status/priority/assignee/department/due date, create tasks (now or scheduled), edit, and delete.
+- Stage overview: the page shows a "Tasks by Stage" card that breaks down the current result set by workflow stage (Scheduled, To Do, In Progress, Review, Completed) with per-stage counts, share-of-total percentages, and progress bars. Clicking a stage applies that status filter to the list (clicking again clears it). The breakdown excludes Sales follow-up items, matching the Task Overview graph.
 - Follow-up behavior: Sales follow-up items (source_type `sales_follow_up`), including scheduled follow-up placeholders, are excluded from the Tasks page because they are not standalone tasks; they surface in the Calendar and CRM follow-up views instead.
 
 ## Projects List and Board

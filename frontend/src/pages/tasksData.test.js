@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { buildTaskGraphRows, buildTaskGraphSummary, isFollowUpTask } from './tasksData'
+import { buildTaskGraphRows, buildTaskGraphSummary, buildTaskStatusBreakdown, isFollowUpTask } from './tasksData'
 
 describe('tasks graph data helpers', () => {
   test('maps task status to progress and priority to color', () => {
@@ -81,5 +81,36 @@ describe('tasks graph data helpers', () => {
 
     expect(rows.map((r) => r.id)).toEqual(['s1', 't1'])
     expect(rows[0].isScheduled).toBe(true)
+  })
+
+  test('counts tasks per status in the stage breakdown', () => {
+    const breakdown = buildTaskStatusBreakdown([
+      { status: 'todo' },
+      { status: 'in_progress' },
+      { status: 'in_progress' },
+      { status: 'in_review' },
+      { status: 'completed' },
+      { status: 'completed' },
+      { status: 'completed' },
+    ])
+
+    expect(breakdown).toEqual({
+      counts: { todo: 1, in_progress: 2, in_review: 1, completed: 3 },
+      total: 7,
+    })
+  })
+
+  test('stage breakdown excludes follow-up tasks', () => {
+    const breakdown = buildTaskStatusBreakdown([
+      { status: 'todo' },
+      { status: 'in_progress', source_type: 'sales_follow_up' },
+    ])
+
+    expect(breakdown).toEqual({ counts: { todo: 1 }, total: 1 })
+  })
+
+  test('stage breakdown handles scheduled status and empty input', () => {
+    expect(buildTaskStatusBreakdown([{ status: 'scheduled' }]).counts).toEqual({ scheduled: 1 })
+    expect(buildTaskStatusBreakdown([])).toEqual({ counts: {}, total: 0 })
   })
 })

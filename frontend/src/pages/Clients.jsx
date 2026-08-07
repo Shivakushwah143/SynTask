@@ -994,10 +994,10 @@ const Clients = () => {
                   {formErrors.email ? <p className="mt-1 text-xs text-red-600" role="alert">{formErrors.email}</p> : null}
                 </FormField>
                 <FormField label="Primary phone">
-                  <PhoneInput value={formData.contact} onChange={(e) => updateClientField('contact', e.target.value)} className="input min-h-11" />
+                  <PhoneInput value={formData.contact} onChange={(e) => updateClientField('contact', e.target.value)} className="input min-h-11" placeholder="Enter number" />
                 </FormField>
                 <FormField label="Alternate phone">
-                  <PhoneInput value={formData.alternate_contact} onChange={(e) => updateClientField('alternate_contact', e.target.value)} className="input min-h-11" />
+                  <PhoneInput value={formData.alternate_contact} onChange={(e) => updateClientField('alternate_contact', e.target.value)} className="input min-h-11" placeholder="Enter number" />
                 </FormField>
                 <FormField label="Industry">
                   <input type="text" value={formData.industry} onChange={(e) => updateClientField('industry', e.target.value)} className="input min-h-11" placeholder="SaaS, Retail, Healthcare" />

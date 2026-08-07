@@ -17,7 +17,7 @@ import NaturalDateInput from '../components/tasks/NaturalDateInput'
 import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
 import { useViewStore } from '../store/viewStore'
 import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
-import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary, isFollowUpTask } from './tasksData'
+import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary, buildTaskStatusBreakdown, isFollowUpTask } from './tasksData'
 import { readTaskRouteState, writeTaskRouteState } from './tasksRouteState'
 import { timeService } from '@/services/timeService';
 import { excludeCurrentUser } from '../utils/userFilters';
@@ -48,6 +48,15 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
       </div>
     </div>
   )
+}
+
+// Visual styles for each workflow stage in the Tasks by Stage overview card.
+const TASK_STAGE_STYLES = {
+  scheduled: { bar: 'bg-amber-500', text: 'text-amber-700 dark:text-amber-300' },
+  todo: { bar: 'bg-gray-500', text: 'text-gray-700 dark:text-gray-300' },
+  in_progress: { bar: 'bg-blue-500', text: 'text-blue-700 dark:text-blue-300' },
+  in_review: { bar: 'bg-yellow-500', text: 'text-yellow-700 dark:text-yellow-300' },
+  completed: { bar: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300' },
 }
 
 const isScheduledTask = (task) => Boolean(task?.is_scheduled_placeholder)
@@ -421,6 +430,10 @@ useEffect(() => {
   const taskGraphUsers = useMemo(() => [user, ...assignableUsers].filter(Boolean), [assignableUsers, user])
   const taskGraphRows = useMemo(() => buildTaskGraphRows(tasks, taskGraphUsers), [taskGraphUsers, tasks])
   const taskGraphSummary = useMemo(() => buildTaskGraphSummary(tasks), [tasks])
+  const taskStatusBreakdown = useMemo(() => buildTaskStatusBreakdown(tasks), [tasks])
+  // Sum only the rendered stage tiles so the badge and percentages stay
+  // consistent with what is shown, even if an unexpected status appears.
+  const stageTotal = statuses.reduce((sum, status) => sum + (taskStatusBreakdown.counts[status.id] || 0), 0)
 
   // Calculate stats
   const totalTasks = tasks.length
@@ -442,6 +455,12 @@ useEffect(() => {
     setCustomMeasurementLabel('')
     setTargetQuantity('')
     setTargetUnit('')
+  }
+
+  const handleStageClick = (statusId) => {
+    // Toggle: clicking the active stage clears the filter, clicking another applies it.
+    setFilters((current) => ({ ...current, status: current.status === statusId ? '' : statusId }))
+    setPage(1)
   }
 
   const resetFilters = () => {
@@ -782,6 +801,64 @@ useEffect(() => {
           color="rose"
           subtitle={`${criticalTasks} critical`}
         />
+      </div>
+
+      {/* Tasks by Stage - per-stage statistical overview */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 p-2 text-white shadow-lg">
+              <BarChart3 className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Tasks by Stage</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Click a stage to filter the list below</p>
+            </div>
+          </div>
+          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+            {stageTotal} total
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {statuses.map((status) => {
+            const count = taskStatusBreakdown.counts[status.id] || 0
+            const pct = stageTotal ? Math.round((count / stageTotal) * 100) : 0
+            const isActive = filters.status === status.id
+            const stageStyle = TASK_STAGE_STYLES[status.id] || TASK_STAGE_STYLES.todo
+            return (
+              <button
+                key={status.id}
+                type="button"
+                onClick={() => handleStageClick(status.id)}
+                title={isActive ? `Clear "${status.label}" filter` : `Show ${status.label} tasks`}
+                className={`group relative overflow-hidden rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                  isActive
+                    ? 'border-indigo-400 bg-indigo-50/70 ring-2 ring-indigo-200 dark:border-indigo-500 dark:bg-indigo-900/20 dark:ring-indigo-900/50'
+                    : 'border-gray-200 bg-white hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-xs font-medium ${stageStyle.text}`}>{status.label}</span>
+                  {isActive && (
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-[9px] font-bold text-white">
+                      ✓
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">{count}</p>
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
+                  <div
+                    className={`h-full rounded-full ${stageStyle.bar} transition-all duration-500`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <p className="mt-1.5 text-[11px] font-medium text-gray-400 dark:text-gray-500">
+                  {pct}% of tasks
+                </p>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Search and Filters */}
