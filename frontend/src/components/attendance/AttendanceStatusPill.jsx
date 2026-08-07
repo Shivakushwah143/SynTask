@@ -30,7 +30,7 @@ export default function AttendanceStatusPill() {
         to="/attendance"
         aria-label="Attendance status loading"
         title="Loading attendance status"
-        className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 ${SKELETON_CLASSES}`}
+        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 ${SKELETON_CLASSES}`}
       >
         <span className="h-2 w-2 animate-pulse rounded-full bg-gray-300 dark:bg-gray-600" aria-hidden="true" />
         <span className="hidden h-3 w-16 animate-pulse rounded bg-gray-200 sm:block dark:bg-gray-700" aria-hidden="true" />
@@ -47,7 +47,7 @@ export default function AttendanceStatusPill() {
         aria-current={isAttendancePage ? 'page' : undefined}
         aria-label="Attendance unavailable"
         title="Attendance unavailable — open attendance to retry"
-        className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-sm font-medium transition-colors sm:px-3 ${UNAVAILABLE_CLASSES}`}
+        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2 text-xs font-medium transition-colors sm:px-2.5 ${UNAVAILABLE_CLASSES}`}
       >
         <span className="h-2 w-2 rounded-full bg-gray-400 dark:bg-gray-500" aria-hidden="true" />
         <span className="hidden sm:inline">Attendance</span>
@@ -64,7 +64,7 @@ export default function AttendanceStatusPill() {
       aria-current={isAttendancePage ? 'page' : undefined}
       aria-label={`Attendance status: ${meta.label}`}
       title={`Attendance: ${meta.label}`}
-      className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-sm font-medium transition-colors sm:px-3 ${meta.pill}`}
+      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2 text-xs font-medium transition-colors sm:px-2.5 ${meta.pill}`}
     >
       <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" />
       <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />

@@ -53,7 +53,7 @@ export default function GlobalClock() {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex h-9 items-center gap-2 rounded-full border border-surface-border bg-surface/95 px-3 text-sm font-medium text-text-primary hover:bg-surface-muted dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text)]"
+        className="inline-flex h-8 items-center gap-1 rounded-full border border-surface-border bg-surface/95 px-2 text-xs font-medium text-text-primary hover:bg-surface-muted dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text)]"
         title="Time settings"
       >
         <Clock className="h-4 w-4" />
