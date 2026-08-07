@@ -21,6 +21,7 @@ flowchart TD
 ## Projects List and Board
 - How the user reaches it: main navigation or workspace links.
 - What they can do: browse projects, open a board, inspect board summaries, create tasks, assign tasks to active employees in the company, and quick-create an employee from the task assignment flow.
+- Create project form: the New project modal includes a Client selector listing all registered clients in the company, with a built-in search bar inside the dropdown and a Clear button to reset the selection. If the client is not in the list, a "Create client" option opens the shared quick-create client form (the same one used on the Clients dashboard / Invoices); the newly created client is then selected automatically. The chosen `client_id` is stored on the project and returned by the project list/detail APIs.
 - What happens after every action: selecting a project opens board/detail routes and refetches project data.
 - Backend APIs called: project list/detail/board APIs, task create/update APIs, and tenant-scoped active staff lookup through `/api/v1/users/assignable`.
 - Timeline events created: project changes should appear in timeline/activity where the backend emits events.
