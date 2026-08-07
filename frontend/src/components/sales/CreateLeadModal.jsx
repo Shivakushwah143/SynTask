@@ -218,7 +218,14 @@ export default function CreateLeadModal({ isOpen, onClose, onCreated }) {
         handleClose()
       },
       onError: (error) => {
-        toast.error(error?.response?.data?.detail || 'Unable to create lead')
+        const detail = error?.response?.data?.detail
+        const message =
+          typeof detail === 'string'
+            ? detail
+            : Array.isArray(detail)
+              ? detail.map((item) => item?.msg || '').filter(Boolean).join(', ')
+              : 'Unable to create lead'
+        toast.error(message || 'Unable to create lead')
       },
     }
   )
@@ -423,6 +430,7 @@ export default function CreateLeadModal({ isOpen, onClose, onCreated }) {
         isOpen={createCategoryOpen}
         onClose={() => setCreateCategoryOpen(false)}
         title="Create category"
+        zIndexClass="z-[70]"
         description="Add a new lead category and keep the lead form open."
         size="md"
         footer={(

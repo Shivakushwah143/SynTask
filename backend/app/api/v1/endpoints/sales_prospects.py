@@ -546,7 +546,7 @@ async def create_prospect(
     first_name: Optional[str] = Form(None),
     last_name: Optional[str] = Form(None),
     country_code: Optional[str] = Form("+91"),
-    phone: str = Form(...),
+    phone: Optional[str] = Form(None),  # Phone is optional - a lead may be captured with only a name
     category_id: Optional[str] = Form(None),
     product_ids: Optional[str] = Form(None),  # Comma-separated or pipe-separated
     interest_level: Optional[str] = Form(None),
