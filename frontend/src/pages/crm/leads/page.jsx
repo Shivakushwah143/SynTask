@@ -103,7 +103,7 @@ export default function CRMLeadsPage() {
   })
   const categoriesQuery = useQuery('crm-lead-categories', salesApi.getCategories, { staleTime: 5 * 60 * 1000 })
   const stagesQuery = useQuery('crm-lead-stages', salesApi.getStages, { staleTime: 5 * 60 * 1000 })
-  const usersQuery = useQuery('crm-lead-users', () => usersAPI.getAssignableUsers(), { staleTime: 5 * 60 * 1000 })
+  const usersQuery = useQuery('crm-lead-users', () => usersAPI.getAssignableUsers(false, null, 'sales_lead'), { staleTime: 5 * 60 * 1000 })
   const productsQuery = useQuery('crm-lead-products', salesApi.getProducts, { staleTime: 5 * 60 * 1000 })
 
   const board = useMemo(() => buildPipelineBoard(pipelineQuery.data || {}), [pipelineQuery.data])

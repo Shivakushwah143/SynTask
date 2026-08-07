@@ -23,7 +23,10 @@ from app.api.dependencies import (
 )
 from app.services.user_service import UserService
 from app.api.deps import Pagination20, PaginationParams
-from app.core.assignable_users import load_assignable_users_for_company
+from app.core.assignable_users import (
+    load_assignable_users_for_company,
+    resolve_sales_assignment_department,
+)
 from app.core.clock import utc_now
 from app.schemas.admin_permissions import normalize_modules
 
@@ -267,13 +270,30 @@ async def get_assignable_users(
     current_user: User = Depends(get_current_user),
     for_tickets: bool = Query(False, description="If True, include broader ticket assignment options"),
     project_id: Optional[str] = Query(None, description="Filter assignable users by project"),
+    context: Optional[str] = Query(None, description="Assignment context, e.g. 'sales_lead' for Sales lead ownership"),
+    department_id: Optional[str] = Query(None, description="Optional department scope for the assignment context"),
 ):
-    """Get users that can be assigned work. Project lead is assignment-level, not a user role."""
+    """Get users that can be assigned work. Project lead is assignment-level, not a user role.
+
+    For ``context=sales_lead`` the list is scoped exactly like the Sales lead
+    engine's ``validate_target_user`` (company-wide for Admin/Sub Admin/Super
+    Admin, otherwise the actor's department or the explicit ``department_id``),
+    so the owner dropdown always matches what lead creation will accept.
+    """
     # Valid owner roles remain: UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE.
     users: list[User] = []
 
     if current_user.company_id:
-        users = await load_assignable_users_for_company(current_user.company_id)
+        if context == "sales_lead":
+            users = await load_assignable_users_for_company(
+                current_user.company_id,
+                department_id=resolve_sales_assignment_department(
+                    current_user,
+                    department_id=department_id,
+                ),
+            )
+        else:
+            users = await load_assignable_users_for_company(current_user.company_id)
 
     if project_id:
         project = await Project.get(project_id)

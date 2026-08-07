@@ -6,7 +6,12 @@ import pytest
 from fastapi import HTTPException
 
 from app.crm.lead_engine import AssignmentEngine, LeadEngine
-from app.models.user import UserRole
+from app.models.user import UserRole, UserStatus
+
+
+async def _raise_user_get(user_id):
+    """Simulate a DB lookup that cannot find anything (no DB in unit tests)."""
+    raise RuntimeError("no database in unit test")
 
 
 class FakeProspect:
@@ -887,10 +892,13 @@ async def test_load_assignable_users_includes_managers(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_validate_target_user_rejects_non_assignable_owner(monkeypatch):
+    """A target that cannot be found at all is reported as inactive/gone, never
+    with the old generic message."""
     async def fake_load_assignable_users(current_user, *, department_id=None):
         return [SimpleNamespace(id="user-1"), SimpleNamespace(id="user-2")]
 
     monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.User.get", _raise_user_get)
 
     with pytest.raises(HTTPException) as exc_info:
         await AssignmentEngine.validate_target_user(
@@ -899,4 +907,110 @@ async def test_validate_target_user_rejects_non_assignable_owner(monkeypatch):
         )
 
     assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == "Target user must be an active user in your company"
+    assert exc_info.value.detail == "Selected owner is inactive or no longer exists."
+
+
+@pytest.mark.asyncio
+async def test_validate_target_user_reports_outside_department(monkeypatch):
+    """An active, assignable same-company user outside the permitted department
+    gets a precise department message (not the generic one)."""
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        return [SimpleNamespace(id="user-1")]
+
+    async def fake_user_get(user_id):
+        return SimpleNamespace(
+            id="user-2",
+            company_id="company-1",
+            status=UserStatus.ACTIVE,
+            role=UserRole.EMPLOYEE,
+        )
+
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.User.get", fake_user_get)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await AssignmentEngine.validate_target_user(
+            SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER),
+            "user-2",
+            department_id="dept-1",
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Selected owner is outside your permitted department."
+
+
+@pytest.mark.asyncio
+async def test_validate_target_user_hides_cross_company_user(monkeypatch):
+    """A user from another company is reported with generic wording so no
+    cross-company user information leaks."""
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        return [SimpleNamespace(id="user-1")]
+
+    async def fake_user_get(user_id):
+        return SimpleNamespace(
+            id="user-9",
+            company_id="company-2",
+            status=UserStatus.ACTIVE,
+            role=UserRole.EMPLOYEE,
+        )
+
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.User.get", fake_user_get)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await AssignmentEngine.validate_target_user(
+            SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER),
+            "user-9",
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Selected owner is no longer available. Please choose another owner."
+
+
+@pytest.mark.asyncio
+async def test_validate_target_user_reports_inactive_user(monkeypatch):
+    """An inactive same-company user is reported as inactive/gone."""
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        return [SimpleNamespace(id="user-1")]
+
+    async def fake_user_get(user_id):
+        return SimpleNamespace(
+            id="user-9",
+            company_id="company-1",
+            status=UserStatus.INACTIVE,
+            role=UserRole.EMPLOYEE,
+        )
+
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.User.get", fake_user_get)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await AssignmentEngine.validate_target_user(
+            SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER),
+            "user-9",
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Selected owner is inactive or no longer exists."
+
+
+@pytest.mark.asyncio
+async def test_resolve_sales_assignment_department_scopes_by_role():
+    from app.core.assignable_users import resolve_sales_assignment_department
+
+    # Company-wide roles are never department-scoped.
+    assert resolve_sales_assignment_department(SimpleNamespace(role=UserRole.ADMIN, department_id="sales")) is None
+    assert resolve_sales_assignment_department(SimpleNamespace(role=UserRole.SUB_ADMIN, department_id="sales")) is None
+    assert resolve_sales_assignment_department(SimpleNamespace(role=UserRole.SUPER_ADMIN, department_id="sales")) is None
+
+    # Other roles are scoped to their own department.
+    assert resolve_sales_assignment_department(SimpleNamespace(role=UserRole.MANAGER, department_id="sales")) == "sales"
+    assert resolve_sales_assignment_department(SimpleNamespace(role=UserRole.LEAD, department_id="ops")) == "ops"
+    assert resolve_sales_assignment_department(SimpleNamespace(role=UserRole.EMPLOYEE, department_id="delivery")) == "delivery"
+    assert resolve_sales_assignment_department(SimpleNamespace(role=UserRole.MANAGER, department_id=None)) is None
+
+    # An explicit department_id always wins.
+    assert resolve_sales_assignment_department(
+        SimpleNamespace(role=UserRole.MANAGER, department_id="sales"),
+        department_id="delivery",
+    ) == "delivery"

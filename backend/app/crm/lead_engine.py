@@ -23,9 +23,13 @@ from app.models.sales_import_job import SalesImportJob
 from app.models.ownership_transfer import OwnershipTransfer
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.crm.models import InterestLevel, ProspectStatus, SalesProspect
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, UserStatus
 from app.core.rbac_visibility import require_owned_record_access
-from app.core.assignable_users import ASSIGNABLE_USER_ROLE_VALUES, load_assignable_users_for_company
+from app.core.assignable_users import (
+    ASSIGNABLE_USER_ROLE_VALUES,
+    load_assignable_users_for_company,
+    resolve_sales_assignment_department,
+)
 from app.core.clock import utc_now
 
 
@@ -67,9 +71,6 @@ DEFAULT_STAGE_LOOKUP = {
     "lost": "Lost",
     "closed lost": "Lost",
 }
-
-COMPANY_WIDE_ASSIGNMENT_ROLES = {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}
-
 
 def _now() -> datetime:
     return utc_now()
@@ -132,6 +133,48 @@ def _display_name(user: Optional[User], fallback: str = "System") -> str:
 
 def _normalize_text(value: Optional[str]) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())
+
+
+def _role_value(role: Any) -> Any:
+    return role.value if hasattr(role, "value") else role
+
+
+async def _owner_rejection_detail(
+    current_user: User,
+    target_user_id: str,
+    *,
+    department_id: Optional[str],
+) -> str:
+    """Safe frontend-facing reason a target owner is not assignable.
+
+    The message never leaks cross-company user information: a user from another
+    company is reported with the same generic wording as a missing user.
+    """
+    if not target_user_id:
+        return "Selected owner is no longer available. Please choose another owner."
+    try:
+        target = await User.get(target_user_id)
+    except Exception:
+        target = None
+    if target is None:
+        return "Selected owner is inactive or no longer exists."
+    if str(getattr(target, "company_id", "")) != str(getattr(current_user, "company_id", "")):
+        return "Selected owner is no longer available. Please choose another owner."
+    is_active = _role_value(getattr(target, "status", None)) == UserStatus.ACTIVE.value
+    is_assignable_role = _role_value(getattr(target, "role", None)) in ASSIGNABLE_USER_ROLE_VALUES
+    legacy_active = (
+        getattr(target, "isActive", True) is not False
+        and getattr(target, "is_active", True) is not False
+    )
+    not_deleted = (
+        getattr(target, "deleted", False) in (False, None)
+        and getattr(target, "deleted_at", None) is None
+    )
+    if not (is_active and is_assignable_role and legacy_active and not_deleted):
+        return "Selected owner is inactive or no longer exists."
+    if department_id:
+        return "Selected owner is outside your permitted department."
+    return "Selected owner is no longer available. Please choose another owner."
 
 
 def _normalize_lead_csv_header(header: str) -> str:
@@ -624,7 +667,11 @@ class AssignmentEngine:
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Target user must be an active user in your company",
+            detail=await _owner_rejection_detail(
+                current_user,
+                normalized_target_user_id,
+                department_id=department_id,
+            ),
         )
 
     @staticmethod
@@ -651,7 +698,7 @@ class AssignmentEngine:
                     getattr(current_user, "id", None) if current_user else None,
                     user_ids,
                 )
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target user must be an active user in your company")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected owner is no longer available. Please choose another owner.")
             return target_user_id
         if strategy == "round-robin":
             return user_ids[index % len(user_ids)]
@@ -756,9 +803,10 @@ class LeadEngine:
         if contact_id:
             normalized["contact_id"] = contact_id
         assigned_to = normalized.get("assigned_to")
-        department_id = normalized.get("department_id")
-        if not department_id and current_user.role not in COMPANY_WIDE_ASSIGNMENT_ROLES:
-            department_id = getattr(current_user, "department_id", None)
+        department_id = resolve_sales_assignment_department(
+            current_user,
+            department_id=normalized.get("department_id"),
+        )
         # Owner resolution must never block lead creation. When no valid
         # assignable user can be found (e.g. an employee whose department has no
         # other assignable members, or a fresh company with a single user), the
@@ -770,11 +818,13 @@ class LeadEngine:
             else ""
         )
         if assigned_to:
+            # Explicit owner selection is company-wide — department scoping
+            # only applies to automatic assignment strategies.
             try:
                 _, assignable_users = await AssignmentEngine.validate_target_user(
                     current_user,
                     assigned_to,
-                    department_id=department_id,
+                    department_id=None,
                 )
                 normalized["assigned_to"] = AssignmentEngine.choose_assignee(
                     "manual",
