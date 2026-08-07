@@ -135,6 +135,22 @@ const EMPTY_LEAD_FORM = {
 
 const EMPTY_PRODUCT_FORM = { name: '', category_id: '', rate: '', unit: '', state: '', city: '' }
 
+// FastAPI validation errors carry `detail` as an array of {type, loc, msg, input, url}
+// objects. Stringify it so toast.error never tries to render objects as React children
+// (reported crash: "Objects are not valid as a React child (found: object with keys {type, loc, msg, input, url})").
+const toErrorMessage = (error, fallback) => {
+  const detail = error?.response?.data?.detail
+  if (typeof detail === 'string') return detail || fallback
+  if (Array.isArray(detail)) {
+    const message = detail
+      .map((item) => item?.msg || (typeof item === 'string' ? item : ''))
+      .filter(Boolean)
+      .join(', ')
+    return message || fallback
+  }
+  return fallback
+}
+
 // ============================================================
 // SHARED "ADD NEW LEAD" MODAL
 // ============================================================
@@ -218,14 +234,7 @@ export default function CreateLeadModal({ isOpen, onClose, onCreated }) {
         handleClose()
       },
       onError: (error) => {
-        const detail = error?.response?.data?.detail
-        const message =
-          typeof detail === 'string'
-            ? detail
-            : Array.isArray(detail)
-              ? detail.map((item) => item?.msg || '').filter(Boolean).join(', ')
-              : 'Unable to create lead'
-        toast.error(message || 'Unable to create lead')
+        toast.error(toErrorMessage(error, 'Unable to create lead'))
       },
     }
   )
@@ -250,11 +259,11 @@ export default function CreateLeadModal({ isOpen, onClose, onCreated }) {
       },
       onError: (error) => {
         if (error?.response?.status === 403) {
-          toast.error(error?.response?.data?.detail || 'You do not have permission to create categories')
+          toast.error(toErrorMessage(error, 'You do not have permission to create categories'))
         } else if (error?.response?.status === 400) {
-          toast.error(error?.response?.data?.detail || 'Category already exists or invalid input')
+          toast.error(toErrorMessage(error, 'Category already exists or invalid input'))
         } else {
-          toast.error(error?.response?.data?.detail || 'Unable to create category')
+          toast.error(toErrorMessage(error, 'Unable to create category'))
         }
       },
     }
@@ -278,7 +287,7 @@ export default function CreateLeadModal({ isOpen, onClose, onCreated }) {
         setProductForm(EMPTY_PRODUCT_FORM)
       },
       onError: (error) => {
-        toast.error(error?.response?.data?.detail || 'Unable to create product')
+        toast.error(toErrorMessage(error, 'Unable to create product'))
       },
     }
   )
