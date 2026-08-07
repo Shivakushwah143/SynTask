@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from 'react-query'
-import { AlertTriangle, Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo, RefreshCcw, LayoutGrid, Clock, Zap, Target, Award, TrendingUp, Activity, BarChart3, X, Pencil, Trash2, Timer } from 'lucide-react'
+import { AlertTriangle, Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo, RefreshCcw, LayoutGrid, Clock, Zap, Target, Award, TrendingUp, Activity, BarChart3, X, Pencil, Trash2, Timer, ChevronRight } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { scheduledJobsAPI } from '../api/scheduledJobs'
 import { invalidateWorkspaceCalendar } from '../api/calendar'
@@ -17,7 +17,7 @@ import NaturalDateInput from '../components/tasks/NaturalDateInput'
 import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
 import { useViewStore } from '../store/viewStore'
 import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
-import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
+import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary, buildTaskStatusBreakdown, isFollowUpTask } from './tasksData'
 import { readTaskRouteState, writeTaskRouteState } from './tasksRouteState'
 import { timeService } from '@/services/timeService';
 import { excludeCurrentUser } from '../utils/userFilters';
@@ -48,6 +48,15 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
       </div>
     </div>
   )
+}
+
+// Visual styles for each workflow stage in the Tasks by Stage overview card.
+const TASK_STAGE_STYLES = {
+  scheduled: { bar: 'bg-amber-500', text: 'text-amber-700 dark:text-amber-300' },
+  todo: { bar: 'bg-gray-500', text: 'text-gray-700 dark:text-gray-300' },
+  in_progress: { bar: 'bg-blue-500', text: 'text-blue-700 dark:text-blue-300' },
+  in_review: { bar: 'bg-yellow-500', text: 'text-yellow-700 dark:text-yellow-300' },
+  completed: { bar: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300' },
 }
 
 const isScheduledTask = (task) => Boolean(task?.is_scheduled_placeholder)
@@ -311,7 +320,10 @@ useEffect(() => {
         limit: pageSize,
       })
       let filteredTasks = Array.isArray(data.tasks) ? data.tasks : []
-      
+      // Follow-up items (e.g. scheduled from a Sales lead) are not standalone
+      // tasks and must not appear on the Tasks page.
+      filteredTasks = filteredTasks.filter((task) => !isFollowUpTask(task))
+
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase()
         filteredTasks = filteredTasks.filter(task =>
@@ -418,6 +430,10 @@ useEffect(() => {
   const taskGraphUsers = useMemo(() => [user, ...assignableUsers].filter(Boolean), [assignableUsers, user])
   const taskGraphRows = useMemo(() => buildTaskGraphRows(tasks, taskGraphUsers), [taskGraphUsers, tasks])
   const taskGraphSummary = useMemo(() => buildTaskGraphSummary(tasks), [tasks])
+  const taskStatusBreakdown = useMemo(() => buildTaskStatusBreakdown(tasks), [tasks])
+  // Sum only the rendered stage tiles so the badge and percentages stay
+  // consistent with what is shown, even if an unexpected status appears.
+  const stageTotal = statuses.reduce((sum, status) => sum + (taskStatusBreakdown.counts[status.id] || 0), 0)
 
   // Calculate stats
   const totalTasks = tasks.length
@@ -439,6 +455,12 @@ useEffect(() => {
     setCustomMeasurementLabel('')
     setTargetQuantity('')
     setTargetUnit('')
+  }
+
+  const handleStageClick = (statusId) => {
+    // Toggle: clicking the active stage clears the filter, clicking another applies it.
+    setFilters((current) => ({ ...current, status: current.status === statusId ? '' : statusId }))
+    setPage(1)
   }
 
   const resetFilters = () => {
@@ -749,36 +771,63 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Total Tasks"
-          value={totalTasks}
-          icon={ListTodo}
-          color="indigo"
-          subtitle="All tasks"
-        />
-        <StatCard
-          label="Active"
-          value={activeTasks}
-          icon={Activity}
-          color="emerald"
-          subtitle="In progress"
-        />
-        <StatCard
-          label="Completed"
-          value={completedTasks}
-          icon={CheckCircle2}
-          color="blue"
-          subtitle="Done"
-        />
-        <StatCard
-          label="High Priority"
-          value={highPriorityTasks}
-          icon={Zap}
-          color="rose"
-          subtitle={`${criticalTasks} critical`}
-        />
+      {/* Tasks by Stage - pipeline flow of stage cards */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="mb-2.5 flex items-center gap-1.5">
+          <BarChart3 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+          <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Tasks by Stage</span>
+          <span className="ml-auto text-xs font-semibold text-gray-500 dark:text-gray-400">{stageTotal} total</span>
+        </div>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
+          <div className="flex flex-wrap items-stretch gap-1.5 lg:flex-1">
+            {statuses.map((status, index) => {
+              const count = taskStatusBreakdown.counts[status.id] || 0
+              const isActive = filters.status === status.id
+              return (
+                <div key={status.id} className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleStageClick(status.id)}
+                    title={isActive ? `Clear "${status.label}" filter` : `Show ${status.label} tasks`}
+                    className={`flex min-w-[92px] flex-col items-center rounded-xl border px-3 py-2 text-center transition ${
+                      isActive
+                        ? 'border-indigo-500 bg-indigo-600 text-white shadow-md'
+                        : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-indigo-900/30'
+                    }`}
+                  >
+                    <span className="text-[11px] font-medium leading-tight">{status.label}</span>
+                    <span className={`mt-0.5 text-lg font-bold tabular-nums leading-none ${
+                      isActive ? 'text-white' : 'text-gray-900 dark:text-white'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                  {index < statuses.length - 1 && (
+                    <ChevronRight className={`h-4 w-4 shrink-0 ${isActive ? 'text-indigo-500' : 'text-gray-300 dark:text-gray-600'}`} />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={() => handleStageClick('')}
+            title="Show high priority tasks"
+            className={`flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 transition ${
+              filters.priority === 'high' || filters.priority === 'critical'
+                ? 'border-rose-500 bg-rose-600 text-white shadow-md'
+                : 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/40'
+            }`}
+          >
+            <Zap className="h-4 w-4" />
+            <span className="text-left">
+              <span className="block text-[11px] font-medium leading-tight">High Priority</span>
+              <span className={`block text-lg font-bold tabular-nums leading-none ${filters.priority === 'high' || filters.priority === 'critical' ? 'text-white' : 'text-rose-600 dark:text-rose-300'}`}>
+                {highPriorityTasks}
+              </span>
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* Search and Filters */}

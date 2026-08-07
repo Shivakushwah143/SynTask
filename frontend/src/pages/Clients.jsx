@@ -23,6 +23,61 @@ const getTotalBudget = (client) => {
   return 0
 }
 
+// Draft persistence: keep partially-filled client form values when the modal
+// closes (cross button, Escape, backdrop, or cancel) so the user does not have
+// to re-enter them when reopening. Cleared only after a successful create.
+const CLIENT_FORM_DRAFT_KEY = 'syntask_client_form_draft'
+
+const EMPTY_CLIENT_FORM = {
+  name: '',
+  email: '',
+  contact: '',
+  alternate_contact: '',
+  address: '',
+  city: '',
+  state: '',
+  country: '',
+  zip_code: '',
+  company_name: '',
+  industry: '',
+  assigned_to: '',
+  notes: '',
+  tags: '',
+  client_type: '',
+  budget: '',
+  start_date: '',
+  delivery_date: '',
+}
+
+const loadClientFormDraft = () => {
+  try {
+    const raw = sessionStorage.getItem(CLIENT_FORM_DRAFT_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? { ...EMPTY_CLIENT_FORM, ...parsed }
+      : null
+  } catch {
+    return null
+  }
+}
+
+const saveClientFormDraft = (data) => {
+  try {
+    sessionStorage.setItem(CLIENT_FORM_DRAFT_KEY, JSON.stringify(data))
+  } catch {
+    // Ignore storage failures; the form still works without persistence.
+  }
+}
+
+const clearClientFormDraft = () => {
+  try {
+    sessionStorage.removeItem(CLIENT_FORM_DRAFT_KEY)
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   const colors = {
     indigo: 'from-indigo-500 to-purple-500',
@@ -60,26 +115,7 @@ const Clients = () => {
   const [leads, setLeads] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    contact: '',
-    alternate_contact: '',
-    address: '',
-    city: '',
-    state: '',
-    country: '',
-    zip_code: '',
-    company_name: '',
-    industry: '',
-    assigned_to: '',
-    notes: '',
-    tags: '',
-    client_type: '',
-    budget: '',
-    start_date: '',
-    delivery_date: '',
-  })
+  const [formData, setFormData] = useState({ ...EMPTY_CLIENT_FORM })
   const [formErrors, setFormErrors] = useState({})
   const [editingClient, setEditingClient] = useState(null)
   const [submitting, setSubmitting] = useState(false)
@@ -191,6 +227,7 @@ const Clients = () => {
 
       await clientsAPI.createClient(formDataObj)
       toast.success('Client created successfully')
+      clearClientFormDraft()
       setShowCreateModal(false)
       resetForm()
       loadClients()
@@ -491,29 +528,29 @@ const Clients = () => {
   }
 
   const resetForm = () => {
-    setFormData({
-      name: '',
-      email: '',
-      contact: '',
-      alternate_contact: '',
-      address: '',
-      city: '',
-      state: '',
-      country: '',
-      zip_code: '',
-      company_name: '',
-      industry: '',
-      assigned_to: '',
-      notes: '',
-      tags: '',
-      client_type: '',
-      budget: '',
-      start_date: '',
-      delivery_date: '',
-    })
+    setFormData({ ...EMPTY_CLIENT_FORM })
     setEditingClient(null)
     setFormErrors({})
     setClientFormStep(1)
+  }
+
+  // Opening the create modal restores any previously entered (unsaved) draft.
+  const openCreateModal = () => {
+    setEditingClient(null)
+    setClientFormStep(1)
+    setFormErrors({})
+    setFormData(loadClientFormDraft() || { ...EMPTY_CLIENT_FORM })
+    setShowCreateModal(true)
+  }
+
+  // Closing the modal (cross button, Escape, backdrop, or cancel) keeps the
+  // partially filled values as a draft so they survive reopening. Only a
+  // successful create clears the draft; edit-mode closes do not touch it.
+  const closeCreateModal = () => {
+    if (!editingClient) {
+      saveClientFormDraft(formData)
+    }
+    setShowCreateModal(false)
   }
 
   const updateClientField = (field, value) => {
@@ -625,10 +662,7 @@ const Clients = () => {
           {(isCompanyAdmin || isLead) && (
             <button
               type="button"
-              onClick={() => {
-                resetForm()
-                setShowCreateModal(true)
-              }}
+              onClick={openCreateModal}
               className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3.5 py-1.5 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 border border-white/20"
             >
               <Plus className="h-4 w-4" />
@@ -699,10 +733,7 @@ const Clients = () => {
           action={(isCompanyAdmin || isLead) ? (
             <button
               type="button"
-              onClick={() => {
-                resetForm()
-                setShowCreateModal(true)
-              }}
+              onClick={openCreateModal}
               className="btn btn-primary"
             >
               Add Your First Client
@@ -879,10 +910,7 @@ const Clients = () => {
       {showCreateModal && (
         <Modal
           isOpen={showCreateModal}
-          onClose={() => {
-            setShowCreateModal(false)
-            resetForm()
-          }}
+          onClose={closeCreateModal}
           title={editingClient ? 'Edit client' : 'Create client'}
           description={clientFormStep === 1 ? 'Step 1 of 2: identify the client and how to contact them.' : 'Step 2 of 2: add ownership, billing, address, and handoff details.'}
           size="lg"
@@ -903,8 +931,7 @@ const Clients = () => {
                       setClientFormStep(1)
                       return
                     }
-                    setShowCreateModal(false)
-                    resetForm()
+                    closeCreateModal()
                   }}
                 >
                   {clientFormStep === 2 ? 'Back' : 'Cancel'}
@@ -967,10 +994,10 @@ const Clients = () => {
                   {formErrors.email ? <p className="mt-1 text-xs text-red-600" role="alert">{formErrors.email}</p> : null}
                 </FormField>
                 <FormField label="Primary phone">
-                  <PhoneInput value={formData.contact} onChange={(e) => updateClientField('contact', e.target.value)} className="input min-h-11" />
+                  <PhoneInput value={formData.contact} onChange={(e) => updateClientField('contact', e.target.value)} className="input min-h-11" placeholder="Enter number" />
                 </FormField>
                 <FormField label="Alternate phone">
-                  <PhoneInput value={formData.alternate_contact} onChange={(e) => updateClientField('alternate_contact', e.target.value)} className="input min-h-11" />
+                  <PhoneInput value={formData.alternate_contact} onChange={(e) => updateClientField('alternate_contact', e.target.value)} className="input min-h-11" placeholder="Enter number" />
                 </FormField>
                 <FormField label="Industry">
                   <input type="text" value={formData.industry} onChange={(e) => updateClientField('industry', e.target.value)} className="input min-h-11" placeholder="SaaS, Retail, Healthcare" />
@@ -985,6 +1012,11 @@ const Clients = () => {
                       {leads.map(lead => (
                         <option key={lead.id} value={lead.id}>{lead.first_name} {lead.last_name}</option>
                       ))}
+                      {assignableUsers
+                        .filter(u => u.role === 'manager')
+                        .map(manager => (
+                          <option key={manager.id} value={manager.id}>{manager.first_name} {manager.last_name}</option>
+                        ))}
                     </CreatableSelectField>
                   </FormField>
                   <FormField label="Client type">

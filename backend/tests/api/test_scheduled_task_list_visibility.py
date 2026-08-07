@@ -63,6 +63,21 @@ class FakeScheduledJobModel:
                     "due_date": "2026-08-10T10:00:00Z",
                 },
             ))
+        elif creator == "follow-up-creator":
+            jobs.append(SimpleNamespace(
+                id="job-2",
+                action_type=ScheduledJobActionType.CREATE_TASK,
+                status=ScheduledJobStatus.PENDING,
+                company_id="company-1",
+                created_by="follow-up-creator",
+                run_at=datetime(2026, 8, 6, 11, 0),
+                created_at=datetime(2026, 8, 4, 10, 0),
+                payload={
+                    "title": "Follow up call with Acme",
+                    "priority": "medium",
+                    "source_type": "sales_follow_up",
+                },
+            ))
         return FakeQuery(jobs)
 
 
@@ -83,3 +98,23 @@ async def test_task_list_includes_pending_scheduled_task_only_for_creator(monkey
 
     assert response["total"] == 0
     assert response["tasks"] == []
+
+
+@pytest.mark.asyncio
+async def test_scheduled_placeholder_carries_source_type_from_payload(monkeypatch):
+    monkeypatch.setattr(tasks_endpoint, "Task", FakeTaskModel)
+    monkeypatch.setattr(tasks_endpoint, "ScheduledJob", FakeScheduledJobModel)
+
+    pagination = PaginationParams(skip=0, limit=20)
+    response = await tasks_endpoint.list_tasks(
+        pagination=pagination,
+        current_user=user("follow-up-creator"),
+    )
+
+    assert response["total"] == 1
+    placeholder = response["tasks"][0]
+    assert placeholder["is_scheduled_placeholder"] is True
+    assert placeholder["source_type"] == "sales_follow_up"
+
+    response = await tasks_endpoint.list_tasks(pagination=pagination, current_user=user("creator-1"))
+    assert response["tasks"][0]["source_type"] is None

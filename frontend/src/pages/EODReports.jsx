@@ -14,7 +14,7 @@ export const canReviewEODReports = (role) => [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE
 
 export const canSubmitOwnEODReport = (role) => ![ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN].includes(normalizeRole(role))
 
-// Stat Card Component
+// Stat Card Component (compact)
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   const colors = {
     indigo: 'from-indigo-500 to-purple-500',
@@ -26,15 +26,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
-          <Icon className="h-4 w-4" />
-        </div>
+    <div className="group flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-2.5 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+      <div className={`shrink-0 rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-sm`}>
+        <Icon className="h-4 w-4" />
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      <div className="min-w-0">
+        <p className="truncate text-[11px] font-medium leading-none text-gray-500 dark:text-gray-400">{label}</p>
+        <p className="mt-1 truncate text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+      </div>
+      {subtitle && (
+        <p className="ml-auto hidden shrink-0 text-[11px] text-gray-400 dark:text-gray-500 lg:block">{subtitle}</p>
+      )}
     </div>
   )
 }
@@ -153,32 +155,32 @@ export default function EODReports() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-sky-600 via-indigo-600 to-violet-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-sky-600 via-indigo-600 to-violet-600 p-3 text-white shadow-xl md:p-4">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-              <ClipboardCheck className="h-6 w-6" />
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-white/20 p-1.5 backdrop-blur-sm">
+              <ClipboardCheck className="h-4 w-4" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold md:text-3xl">Daily Work Report</h1>
-              <p className="mt-1 text-indigo-100">
+              <h1 className="text-lg font-bold md:text-xl">Daily Work Report</h1>
+              <p className="mt-0.5 text-xs text-indigo-100">
                 {canSubmitOwnReport ? 'Submit one simple end-of-day summary for today.' : 'Review submitted and pending end-of-day reports for your company.'}
               </p>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="mt-2.5 flex flex-wrap gap-2">
             {canSubmitOwnReport && (
-              <span className={`inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium backdrop-blur-sm ${
+              <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-medium backdrop-blur-sm ${
                 status === 'submitted' 
                   ? 'bg-emerald-500/30 text-emerald-100' 
                   : status === 'leave'
                   ? 'bg-amber-500/30 text-amber-100'
                   : 'bg-gray-500/30 text-gray-100'
               }`}>
-                {status === 'submitted' && <CheckCircle2 className="h-4 w-4 mr-2" />}
-                {status === 'leave' && <AlertCircle className="h-4 w-4 mr-2" />}
+                {status === 'submitted' && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                {status === 'leave' && <AlertCircle className="h-3 w-3 mr-1" />}
                 {statusLabel}
               </span>
             )}
@@ -189,7 +191,7 @@ export default function EODReports() {
       {canSubmitOwnReport ? (
         <>
           {/* Stats for employee view */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               label="Working Hours"
               value={formatSeconds(autoSummary.total_working_seconds)}
@@ -332,7 +334,7 @@ export default function EODReports() {
       {canReview ? (
         <>
           {/* Stats for review section */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               label="Submitted"
               value={totalSubmitted}
@@ -363,33 +365,31 @@ export default function EODReports() {
             />
           </div>
 
-          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-                    <Users className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-gray-900 dark:text-white">Manager Review</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Submitted and pending EODs for your visible team</p>
-                  </div>
+          <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white px-4 py-2.5 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+              <div className="flex items-center gap-2.5">
+                <div className="rounded-md bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+                  <Users className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900 dark:text-white">Manager Review</h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Submitted and pending EODs for your visible team</p>
                 </div>
               </div>
             </div>
 
-            <div className="p-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <div className="p-3">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center">
                 <input 
-                  className={`${inputClassName} md:w-48 bg-gray-50 dark:bg-gray-900/50`} 
+                  className={`${inputClassName} md:w-44 bg-gray-50 dark:bg-gray-900/50`} 
                   type="date" 
                   value={filters.report_date} 
                   onChange={(event) => setFilters({ ...filters, report_date: event.target.value })} 
                 />
                 <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
                   <input 
-                    className={`${inputClassName} pl-9 bg-gray-50 dark:bg-gray-900/50`} 
+                    className={`${inputClassName} pl-8 bg-gray-50 dark:bg-gray-900/50`} 
                     placeholder="Search employees..." 
                     value={filters.search} 
                     onChange={(event) => setFilters({ ...filters, search: event.target.value })} 
@@ -397,7 +397,7 @@ export default function EODReports() {
                   />
                 </div>
                 <input 
-                  className={`${inputClassName} md:w-40 bg-gray-50 dark:bg-gray-900/50`} 
+                  className={`${inputClassName} md:w-36 bg-gray-50 dark:bg-gray-900/50`} 
                   placeholder="Team" 
                   value={filters.team} 
                   onChange={(event) => setFilters({ ...filters, team: event.target.value })} 
@@ -405,42 +405,40 @@ export default function EODReports() {
                 />
               </div>
 
-              <div className="mt-5 grid gap-4 xl:grid-cols-2">
+              <div className="mt-3 grid gap-3 xl:grid-cols-2">
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  <h3 className="flex items-center gap-1.5 text-xs font-semibold text-gray-900 dark:text-white">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
                     Submitted
                   </h3>
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-2 space-y-1.5">
                     {reports.length ? reports.map((item) => (
-                      <div key={item.id} className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 transition hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-900/30 dark:hover:border-indigo-700">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">{item.employee_name || 'Employee'}</p>
-                            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{item.worked_on}</p>
-                          </div>
-                          <Badge label="Submitted" colorKey="submitted" />
+                      <div key={item.id} className="flex items-start justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50/50 px-2.5 py-2 transition hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-900/30 dark:hover:border-indigo-700">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-gray-900 dark:text-white" title={item.employee_name || 'Employee'}>{item.employee_name || 'Employee'}</p>
+                          <p className="mt-0.5 truncate text-xs text-gray-600 dark:text-gray-400" title={item.worked_on}>{item.worked_on}</p>
                         </div>
+                        <Badge label="Submitted" colorKey="submitted" />
                       </div>
-                    )) : <div className="py-8 text-center text-gray-500 dark:text-gray-400">No submitted EODs found.</div>}
+                    )) : <div className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">No submitted EODs found.</div>}
                   </div>
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                  <h3 className="flex items-center gap-1.5 text-xs font-semibold text-gray-900 dark:text-white">
+                    <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
                     Pending
                   </h3>
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-2 space-y-1.5">
                     {pending.length ? pending.map((item) => (
-                      <div key={item.employee_id} className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-900/30">
-                        <div>
-                          <p className="font-medium text-gray-900 dark:text-white">{item.employee_name}</p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">{item.email}</p>
+                      <div key={item.employee_id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50/50 px-2.5 py-2 dark:border-gray-700 dark:bg-gray-900/30">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-gray-900 dark:text-white" title={item.employee_name}>{item.employee_name}</p>
+                          <p className="truncate text-xs text-gray-500 dark:text-gray-400" title={item.email}>{item.email}</p>
                         </div>
                         <Badge label={item.status === 'leave' ? 'Leave' : 'Pending'} colorKey={item.status === 'leave' ? 'pending' : 'draft'} />
                       </div>
-                    )) : <div className="py-8 text-center text-gray-500 dark:text-gray-400">No pending EODs. Everyone has submitted or is on leave.</div>}
+                    )) : <div className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">No pending EODs. Everyone has submitted or is on leave.</div>}
                   </div>
                 </div>
               </div>

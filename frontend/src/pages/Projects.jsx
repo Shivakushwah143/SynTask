@@ -5,12 +5,14 @@ import {
   FolderKanban, LayoutGrid, BarChart3,
   Calendar, Users, Target, Award, TrendingUp,
   CheckCircle2, AlertCircle, Clock, ChevronRight,
-  Briefcase, Layers, GitBranch, Sparkles, Activity, Timer
+  Briefcase, Layers, GitBranch, Sparkles, Activity, Timer,
+  X
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useQueryClient } from 'react-query'
 import { useAuthStore } from '../store/authStore'
 import { projectsApi } from '../api/projects'
+import { clientsAPI } from '../api/clients'
 import { scheduledJobsAPI } from '../api/scheduledJobs'
 import { invalidateWorkspaceCalendar } from '../api/calendar'
 import { usersAPI } from '../api/users'
@@ -19,7 +21,7 @@ import { versionsApi } from '../api/versions'
 import { canCreateProject, canManageProject, normalizeRole } from '../utils/roles'
 import { Badge, Button, ConfirmDialog, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, inputClassName } from '../components/ui'
 import { excludeCurrentUser } from '../utils/userFilters'
-import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
+import { QuickCreateClientModal, QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import { timeService } from '@/services/timeService'
 import {
   buildProjectGraphRows,
@@ -176,6 +178,7 @@ export default function Projects() {
   const [createMode, setCreateMode] = useState('now')
   const [scheduleRunAt, setScheduleRunAt] = useState('')
   const [assignableUsers, setAssignableUsers] = useState([])
+  const [clients, setClients] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
   const [showDetails, setShowDetails] = useState(false)
   const [projectDetails, setProjectDetails] = useState(null)
@@ -188,6 +191,7 @@ export default function Projects() {
   const [assignmentUserId, setAssignmentUserId] = useState('')
   const [assigningProject, setAssigningProject] = useState(false)
   const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
+  const [showQuickClientModal, setShowQuickClientModal] = useState(false)
   const [showProjectTypeModal, setShowProjectTypeModal] = useState(false)
   const [projectTypeName, setProjectTypeName] = useState('')
   const [projectTypeError, setProjectTypeError] = useState('')
@@ -196,7 +200,7 @@ export default function Projects() {
     loadStoredProjectTypes().forEach((item) => merged.set(item.value, item))
     return Array.from(merged.values())
   })
-  const [formData, setFormData] = useState({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', start_date: '', delivery_date: '' })
+  const [formData, setFormData] = useState({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', client_id: '', start_date: '', delivery_date: '' })
   const [formErrors, setFormErrors] = useState({})
 
   const [showEditModal, setShowEditModal] = useState(false)
@@ -302,6 +306,16 @@ export default function Projects() {
     }
   }, [])
 
+  const loadClients = useCallback(async () => {
+    try {
+      const data = await clientsAPI.listClients({})
+      setClients(data.clients || [])
+    } catch (error) {
+      console.error('Error loading clients:', error)
+      setClients([])
+    }
+  }, [])
+
   useEffect(() => {
     loadProjects()
 
@@ -320,6 +334,10 @@ export default function Projects() {
   useEffect(() => {
     loadAssignableUsers()
   }, [loadAssignableUsers])
+
+  useEffect(() => {
+    loadClients()
+  }, [loadClients])
 
   useEffect(() => {
     const merged = new Map(projectTypeOptions.map((item) => [item.value, item]))
@@ -497,7 +515,7 @@ export default function Projects() {
         })
         toast.success('Project scheduled successfully')
         invalidateWorkspaceCalendar(queryClient)
-        setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', start_date: '', delivery_date: '' })
+        setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', client_id: '', start_date: '', delivery_date: '' })
         setCreateMode('now')
         setScheduleRunAt('')
         setShowCreateModal(false)
@@ -508,7 +526,7 @@ export default function Projects() {
       const response = await projectsApi.createProject(payload)
       toast.success('Project created successfully')
 
-      setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', start_date: '', delivery_date: '' })
+      setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', client_id: '', start_date: '', delivery_date: '' })
       setCreateMode('now')
       setScheduleRunAt('')
       setShowCreateModal(false)
@@ -731,6 +749,37 @@ export default function Projects() {
           <FormField label="Details">
             <textarea className={inputClassName} rows={4} value={formData.description} onChange={(event) => setFormData((state) => ({ ...state, description: event.target.value }))} />
           </FormField>
+          <FormField label="Client">
+            <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <CreatableSelectField
+                  value={formData.client_id}
+                  onChange={(value) => setFormData((state) => ({ ...state, client_id: value }))}
+                  className={inputClassName}
+                  createLabel="Create client"
+                  onCreate={() => setShowQuickClientModal(true)}
+                  canCreate={canCreateProjects}
+                >
+                  <option value="">Select a client</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name}{client.company_name ? ` (${client.company_name})` : ''}
+                    </option>
+                  ))}
+                </CreatableSelectField>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFormData((state) => ({ ...state, client_id: '' }))}
+                disabled={!formData.client_id}
+                className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-600 transition hover:bg-gray-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-rose-400"
+                title="Clear selected client"
+              >
+                <X className="h-4 w-4" />
+                Clear
+              </button>
+            </div>
+          </FormField>
           <div className="grid gap-4 lg:grid-cols-2">
             <FormField label="Type">
               <CreatableSelectField
@@ -847,6 +896,16 @@ export default function Projects() {
           await loadAssignableUsers()
           setAssignmentUserId(created.id)
           setFormData((state) => ({ ...state, lead_id: created.id }))
+        }}
+      />
+
+      <QuickCreateClientModal
+        isOpen={showQuickClientModal}
+        onClose={() => setShowQuickClientModal(false)}
+        existing={clients}
+        onCreated={async (created) => {
+          await loadClients()
+          setFormData((state) => ({ ...state, client_id: created.id }))
         }}
       />
 

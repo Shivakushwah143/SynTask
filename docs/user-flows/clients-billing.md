@@ -19,6 +19,7 @@ flowchart TD
   - Create/edit opens a guided modal sequence with two steps: Contact setup for required identity fields, then Client details for ownership, budget, schedule, address, tags, and notes.
   - Required name and email format validation run before the user can continue to Details or submit.
   - Create/update operations refresh the list/detail.
+  - Draft preservation: partially filled values in the create form are kept as a draft when the modal is closed by the cross button, Escape, backdrop, or Cancel, and are restored the next time the form opens, so the user does not need to re-enter them. The draft is cleared only after a successful client creation.
 - Backend APIs called: clients APIs and linked document/project endpoints.
 - Timeline events created: client lifecycle should be reflected where backend events exist.
 - Notifications sent: none explicitly in the frontend.

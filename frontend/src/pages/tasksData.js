@@ -28,6 +28,10 @@ export const TASK_GRAPH_PRIORITY_COLORS = {
   low: '#2FB47C',
 }
 
+// Follow-up tasks (e.g. scheduled from a Sales lead) are not standalone tasks
+// and should be excluded from the Task Overview graph.
+export const isFollowUpTask = (task) => String(task?.source_type || '').toLowerCase() === 'sales_follow_up'
+
 const normalizeStatus = (status) => String(status || 'todo').toLowerCase()
 
 const normalizePriority = (priority) => {
@@ -63,8 +67,10 @@ export function buildTaskGraphRows(tasks, usersOrLimit = [], maybeLimit = 8) {
   const users = Array.isArray(usersOrLimit) ? usersOrLimit : []
   const limit = Array.isArray(usersOrLimit) ? maybeLimit : usersOrLimit
   const userNameById = buildUserNameLookup(users)
+  // Exclude follow-up tasks so only standalone tasks appear in the overview
+  const standalone = tasks.filter((task) => !isFollowUpTask(task))
   // Sort by created_at descending (newest first) so the most recent tasks appear at the top
-  const sorted = [...tasks].sort((a, b) => {
+  const sorted = [...standalone].sort((a, b) => {
     const aTime = timeService.instantTime(a.created_at || 0)
     const bTime = timeService.instantTime(b.created_at || 0)
     return bTime - aTime
@@ -93,10 +99,25 @@ export function buildTaskGraphRows(tasks, usersOrLimit = [], maybeLimit = 8) {
 
 export function buildTaskGraphSummary(tasks) {
   return tasks.reduce((summary, task) => {
+    if (isFollowUpTask(task)) return summary
     const status = normalizeStatus(task.status)
     summary.total += 1
     if (['completed', 'done'].includes(status)) summary.completed += 1
     else summary.active += 1
     return summary
   }, { total: 0, active: 0, completed: 0 })
+}
+
+// Counts standalone tasks per status so the Tasks page can render a
+// per-stage statistical overview. Follow-up tasks are excluded, matching
+// the Task Overview graph behavior.
+export function buildTaskStatusBreakdown(tasks) {
+  const counts = tasks.reduce((acc, task) => {
+    if (isFollowUpTask(task)) return acc
+    const status = normalizeStatus(task.status)
+    acc[status] = (acc[status] || 0) + 1
+    return acc
+  }, {})
+  const total = Object.values(counts).reduce((sum, count) => sum + count, 0)
+  return { counts, total }
 }

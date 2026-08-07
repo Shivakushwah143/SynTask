@@ -139,9 +139,9 @@ export const SECTIONS = [
   { key: "work", label: "Work", items: ["Projects", "Tasks", "Requests", "Scheduled Work", "Time Tracking"] },
   { key: "content", label: "Content", items: ["Content Calendar", "Content Studio"] },
   { key: "publishing", label: "Publishing", items: ["Publishing Centre", "Social Accounts", "Publishing Analytics", "Integrations"] },
-  { key: "inbox", label: "Inbox", items: ["WhatsApp", "Instagram", "Messenger", "Meta Messages", "Notifications", "Activity Feed", "Daily Updates", "AI Replies", "Approval Queue"] },
+  { key: "inbox", label: "Inbox", items: ["WhatsApp", "Instagram", "Messenger", "Meta Messages", "Notifications", "Activity Feed", "AI Replies", "Approval Queue"] },
   { key: "ai", label: "AI Workspace", items: ["AI Assistant", "AI Content Assistant"] },
-  { key: "people", label: "People", items: ["Employees", "My People", "Attendance", "Live Attendance", "Attendance Reports", "Leave Management", "Departments", "Company Directory"] },
+  { key: "people", label: "People", items: ["Employees", "My People", "Attendance", "Live Attendance", "Attendance Reports", "Leave Management", "Departments", "Company Directory", "Daily Updates"] },
   { key: "finance", label: "Finance", items: ["Invoices", "Transactions", "Subscriptions"] },
   { key: "insights", label: "Insights", items: ["Workspace Reports", "Sales Reports"] },
   { key: "settings", label: "Settings", items: ["System Settings", "Roles & Permissions", "Automation Rules", "Connected Accounts", "Google Workspace", "Activity Logs", "Client Settings"] },
@@ -179,7 +179,6 @@ export const navigation = [
   { name: "Notifications", href: "/notifications", icon: BellRing, roles: STANDARD_ROLES },
   // /timeline has no backend module gate → roles only.
   { name: "Activity Feed", href: "/timeline", icon: CalendarClock, roles: STANDARD_ROLES },
-  { name: "Daily Updates", href: "/eod", icon: ClipboardCheck, roles: STANDARD_ROLES },
 
   // AI Workspace — /ai-hub and /marketing-support are gated by ai_agents on the backend.
   { name: "AI Assistant", href: "/ai-hub", icon: Bot, roles: STANDARD_ROLES, module: "ai_agents" },
@@ -196,6 +195,7 @@ export const navigation = [
   // Backend _can_read_departments: admin, sub_admin, manager, lead, super_admin.
   { name: "Departments", href: "/departments", icon: Network, roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD] },
   { name: "Company Directory", href: "/companies", icon: Landmark, roles: [ROLE.SUPER_ADMIN] },
+  { name: "Daily Updates", href: "/eod", icon: ClipboardCheck, roles: STANDARD_ROLES },
 
   // Finance — /invoices and /ledger are gated by invoicing_ledger on the backend.
   { name: "Invoices", href: "/invoices", icon: Receipt, roles: ADMIN_ROLES, module: "invoicing_ledger" },

@@ -136,14 +136,15 @@ export function TopNavigation({
 
           {/* AI Assistant Button */}
           {canUseAssistant && (
-            <Button
-              variant="ghost"
-              size="sm"
+            <button
+              type="button"
               onClick={onAssistantOpen}
-              className="hidden sm:inline-flex h-8 items-center justify-center rounded-full border border-gray-200 bg-white px-2 text-sm font-medium text-gray-600 transition-all hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-indigo-950/30 dark:hover:text-indigo-400"
+              className="hidden sm:inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-all hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-indigo-950/30 dark:hover:text-indigo-400"
+              aria-label="Open AI assistant"
+              title="Open AI assistant"
             >
-              <SynzinAvatar size="xs"/>
-            </Button>
+              <SynzinAvatar size="xs" />
+            </button>
           )}
 
           {/* Quick Search */}
