@@ -985,6 +985,11 @@ const Clients = () => {
                       {leads.map(lead => (
                         <option key={lead.id} value={lead.id}>{lead.first_name} {lead.last_name}</option>
                       ))}
+                      {assignableUsers
+                        .filter(u => u.role === 'manager')
+                        .map(manager => (
+                          <option key={manager.id} value={manager.id}>{manager.first_name} {manager.last_name}</option>
+                        ))}
                     </CreatableSelectField>
                   </FormField>
                   <FormField label="Client type">
