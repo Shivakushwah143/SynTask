@@ -97,12 +97,10 @@ const Users = () => {
     if (isLead) return ['employee']
     return []
   }, [isFullCompanyAdmin, isLead, isManager, isSubAdmin])
-  const managerOptions = useMemo(
+  // All active company members (Admin/Sub Admin/Manager/Lead/Employee) can be
+  // chosen as an employee's reporting manager.
+  const reportingManagerOptions = useMemo(
     () => users.filter((item) => item.status === 'active'),
-    [users],
-  )
-  const leadOptions = useMemo(
-    () => users.filter((item) => normalizeRole(item.role) === 'lead' && item.status === 'active'),
     [users],
   )
   const designationOptions = useMemo(() => {
@@ -220,9 +218,9 @@ const Users = () => {
       if (phoneError) errors.phone = phoneError
     }
 
-    const leadId = formData.get('lead_id')?.trim()
-    if (leadId && !/^[0-9a-fA-F]{24}$/.test(leadId)) {
-      errors.lead_id = 'Please enter a valid Lead ID'
+    const reportsTo = formData.get('reports_to')?.trim()
+    if (reportsTo && !/^[0-9a-fA-F]{24}$/.test(reportsTo)) {
+      errors.reports_to = 'Please select a valid reporting manager'
     }
 
     return errors
@@ -275,7 +273,7 @@ const Users = () => {
         await usersAPI.createLead(userData)
       } else {
         if (isCompanyAdmin || isManager) {
-          userData.lead_id = formData.get('lead_id') || ''
+          userData.reports_to = formData.get('reports_to') || ''
         }
         userData.designation = formData.get('designation') || ''
         await usersAPI.createEmployee(userData)
@@ -439,6 +437,10 @@ const Users = () => {
     } else if (normalizeRole(editingUser.role) === 'employee') {
       if (formData.get('designation')) {
         updateData.designation = formData.get('designation')
+      }
+      const reportsTo = formData.get('reports_to')
+      if (reportsTo !== null && reportsTo !== undefined) {
+        updateData.reports_to = reportsTo
       }
     }
 
@@ -630,7 +632,7 @@ const Users = () => {
           await usersAPI.createEmployee({
             ...userData,
             designation: row.data.designation,
-            lead_id: isCompanyAdmin ? lead?.id || '' : '',
+            reports_to: isCompanyAdmin ? lead?.id || '' : '',
           })
         }
       }
@@ -1230,7 +1232,7 @@ const Users = () => {
                     name="phone"
                     defaultValue={editingUser?.phone || ''}
                     className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${formErrors.phone ? 'border-red-500' : ''}`}
-                    placeholder="+919876543210"
+                    placeholder="Enter Number"
                     onChange={() => {
                       if (formErrors.phone) {
                         setFormErrors({ ...formErrors, phone: '' })
@@ -1324,21 +1326,21 @@ const Users = () => {
                   <>
                     {(isCompanyAdmin || isManager) && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Lead</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Reporting Manager</label>
                         <select
-                          name="lead_id"
-                          defaultValue={editingUser?.lead_id || ''}
-                          className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${formErrors.lead_id ? 'border-red-500' : ''}`}
+                          name="reports_to"
+                          defaultValue={editingUser?.reports_to || ''}
+                          className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${formErrors.reports_to ? 'border-red-500' : ''}`}
                         >
-                          <option value="">No lead</option>
-                          {leadOptions.map((lead) => (
-                            <option key={lead.id || lead._id} value={lead.id || lead._id}>
-                              {lead.first_name} {lead.last_name} ({lead.email})
+                          <option value="">No reporting manager</option>
+                          {reportingManagerOptions.map((member) => (
+                            <option key={member.id || member._id} value={member.id || member._id}>
+                              {member.first_name} {member.last_name} ({member.email})
                             </option>
                           ))}
                         </select>
-                        {formErrors.lead_id && (
-                          <p className="text-red-500 text-xs mt-1">{formErrors.lead_id}</p>
+                        {formErrors.reports_to && (
+                          <p className="text-red-500 text-xs mt-1">{formErrors.reports_to}</p>
                         )}
                       </div>
                     )}
