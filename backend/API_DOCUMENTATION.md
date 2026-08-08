@@ -608,12 +608,12 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | GET | `/api/v1/users/` | `list_users` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/assignable` | `get_assignable_users` | Returns active company users eligible for assignment, including admins, managers, leads, and employees; `project_id` still narrows the list to project members. |
 | GET | `/api/v1/users/creatable-roles` | `get_creatable_roles` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/users/create-employee` | `create_employee` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/users/create-employee` | `create_employee` | Accepts an optional `modules` form param (comma-separated catalog ids, e.g. `tasks_projects,chat,attendance_leaves`) that sets the member's sidebar-module permissions. Omitted → legacy defaults (`task,attendance_leaves`). Creators can only grant modules they themselves can access (privilege-escalation guard). |
 | POST | `/api/v1/users/create-lead` | `create_lead` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/users/create-user` | `create_user_hierarchical` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/users/create-user` | `create_user_hierarchical` | Accepts an optional `modules` form param. Non-admin creators can only grant modules they can access; admins are unrestricted. |
 | DELETE | `/api/v1/users/detail/{user_id}` | `delete_user` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/detail/{user_id}` | `get_user` | Uses router/endpoint dependencies where configured. |
-| PUT | `/api/v1/users/detail/{user_id}` | `update_user` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/users/detail/{user_id}` | `update_user` | Accepts an optional `modules` form param to update a member's sidebar-module permissions. The same creator-privilege guard applies (non-admin creators can only grant modules they can access). |
 | PATCH | `/api/v1/users/detail/{user_id}/status` | `update_user_status` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/my-team` | `get_my_team` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/reporting-options` | `get_reporting_options` | Uses router/endpoint dependencies where configured. |

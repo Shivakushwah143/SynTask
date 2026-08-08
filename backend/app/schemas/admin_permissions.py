@@ -19,6 +19,31 @@ class ModuleUpdateRequest(BaseModel):
     modules: List[str] = Field(default_factory=list)
 
 
+# Role-level default module selections, used by the member creation forms to
+# pre-populate the Permissions selector (frontend mirrors this in
+# src/config/modulePermissions.js - keep both in sync).
+#
+# NOTE: the backend `require_module` gate auto-grants tasks/sales/tickets/
+# recruitment to Manager/Lead/Employee regardless of the stored list, so these
+# defaults focus on the modules that actually vary per role. Admin / Sub Admin /
+# Super Admin have full access to every module in `require_module`.
+ROLE_MODULE_DEFAULTS = {
+    "super_admin": [entry["id"] for entry in MODULE_CATALOG],
+    "admin": [entry["id"] for entry in MODULE_CATALOG],
+    "sub_admin": [entry["id"] for entry in MODULE_CATALOG],
+    "manager": ["tasks_projects", "chat", "meetings_calendar", "attendance_leaves", "reports", "ai_agents"],
+    "lead": ["tasks_projects", "chat", "meetings_calendar", "attendance_leaves"],
+    "employee": ["tasks_projects", "chat", "meetings_calendar", "attendance_leaves"],
+}
+
+
+def role_module_defaults(role: str) -> List[str]:
+    """Return the default module selection for a role (unknown roles fall back
+    to the employee default so legacy/unknown roles never get locked out)."""
+    normalized = str(role or "").lower().strip()
+    return list(ROLE_MODULE_DEFAULTS.get(normalized, ROLE_MODULE_DEFAULTS["employee"]))
+
+
 def normalize_modules(modules: Optional[List[str] | str], *, require_tasks_projects: bool = True) -> List[str]:
     catalog_ids = {entry["id"] for entry in MODULE_CATALOG}
     raw_values: List[str] = []
