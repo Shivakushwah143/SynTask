@@ -131,6 +131,11 @@ async def nurture_lost_lead(lead_id: str, payload: LostNurtureRequest, current_u
     return await CRMPipelineService.nurture_lost_lead(current_user, lead_id, note=payload.note)
 
 
+@router.delete("/{lead_id}")
+async def delete_lead(lead_id: str, current_user: User = Depends(get_current_user)):
+    return await CRMPipelineService.delete_lead(current_user, lead_id)
+
+
 @router.get("/lost/analytics")
 async def lost_analytics(current_user: User = Depends(get_current_user)):
     return await CRMPipelineService.lost_analytics(current_user)

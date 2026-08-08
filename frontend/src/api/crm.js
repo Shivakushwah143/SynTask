@@ -12,6 +12,7 @@ export const crmApi = {
   updatePipelineStage: (leadId, payload) => api.patch(`/crm/pipeline/${leadId}/stage`, payload),
   updateStageStatus: (leadId, stageStatus) => api.patch(`/crm/pipeline/${leadId}/status`, { stage_status: stageStatus }),
   bulkAssignLeads: (payload) => api.post('/crm/pipeline/bulk-assign', payload),
+  deleteLead: (leadId) => api.delete(`/crm/pipeline/${leadId}`),
   updateLeadConversion: (leadId, payload) => api.patch(`/crm/pipeline/${leadId}/conversion`, payload),
   transferLeadToClients: (leadId) => api.post(`/crm/pipeline/${leadId}/transfer`),
   getPipelineHistory: (leadId) => api.get(`/crm/pipeline/history/${leadId}`),

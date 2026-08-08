@@ -2,7 +2,7 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, BadgeInfo, Bell, CalendarClock, CheckCircle2, Clock3, FileText, History, Layers3, Lock, Mail, MessageSquare, Pencil, Plus, Route, Save, Sparkles, StickyNote, Users, Video, Wand2, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BadgeInfo, Bell, CalendarClock, CheckCircle2, Clock3, FileText, History, Layers3, Lock, Mail, MessageSquare, Pencil, Plus, Route, Save, Sparkles, StickyNote, Trash2, Users, Video, Wand2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
@@ -260,6 +260,8 @@ export const LeadWorkspace = memo(function LeadWorkspace({
   onRefresh,
   onSendEmail,
   onScheduleFollowUp,
+  onDeleteLead,
+  deletingLead = false,
   onSaveLead,
   isSaving = false,
   users = [],
@@ -282,6 +284,19 @@ export const LeadWorkspace = memo(function LeadWorkspace({
               <Button type="button" variant="secondary" size="sm" onClick={onScheduleFollowUp}>
                 <CalendarClock className="h-4 w-4" />
                 Schedule Follow-up
+              </Button>
+            ) : null}
+            {onDeleteLead ? (
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                loading={deletingLead}
+                loadingText="Deleting"
+                onClick={onDeleteLead}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
               </Button>
             ) : null}
             <Button type="button" variant="secondary" size="sm" onClick={onBack}>

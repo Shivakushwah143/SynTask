@@ -18,6 +18,9 @@ from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivit
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.crm_deal import CRMDeal
 from app.models.crm_proposal import CRMProposal
+from app.models.crm_document import CRMDocument
+from app.models.sales_lead_note import SalesLeadNote
+from app.models.sales_lead_file import SalesLeadFile
 from app.crm.models import ProspectStatus, SalesProspect
 from app.models.crm_company import CRMCompany
 from app.models.user import User, UserRole
@@ -1744,4 +1747,91 @@ class CRMPipelineService:
                 }
                 for item in history_items
             ],
+        }
+
+    @staticmethod
+    async def delete_lead(current_user: User, lead_id: str) -> Dict[str, Any]:
+        """Permanently delete a lead and cascade-clean every lead-scoped record.
+
+        The lead itself is soft-deleted (deleted=True) following the codebase
+        convention used by merge and file/note deletion, so every UI surface
+        (pipeline board, lead list, reports) stops showing it immediately. All
+        lead-scoped child records — pipeline history, deals, proposals,
+        documents, notes, files, activities and linked tasks — are removed so no
+        orphan references remain anywhere in the system.
+        """
+        company_id = _user_company_id(current_user)
+        prospect = await SalesProspect.get(lead_id)
+        if not prospect or prospect.deleted:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+        if prospect.company_id != company_id and current_user.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this company")
+        if not _can_write_pipeline(current_user, prospect):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to delete this lead")
+
+        lead_key = str(prospect.id)
+        deleted: Dict[str, int] = {}
+
+        deleted["history"] = await SalesPipelineHistory.find(
+            {"company_id": company_id, "lead_id": lead_key}
+        ).delete()
+        deleted["deals"] = await CRMDeal.find(
+            {"company_id": company_id, "lead_id": lead_key}
+        ).delete()
+        deleted["proposals"] = await CRMProposal.find(
+            {"company_id": company_id, "lead_id": lead_key}
+        ).delete()
+        deleted["documents"] = await CRMDocument.find(
+            {"company_id": company_id, "lead_id": lead_key}
+        ).delete()
+        deleted["notes"] = await SalesLeadNote.find(
+            {"company_id": company_id, "lead_id": lead_key}
+        ).delete()
+        deleted["files"] = await SalesLeadFile.find(
+            {"company_id": company_id, "lead_id": lead_key}
+        ).delete()
+        deleted["activities"] = await CRMActivity.find(
+            {
+                "company_id": company_id,
+                "entity_type": "lead",
+                "entity_id": lead_key,
+            }
+        ).delete()
+        # Lazy import keeps the module import graph acyclic (bulk_assign uses the
+        # same pattern). Calendar events for leads are derived from Tasks, so
+        # deleting the tasks also clears the calendar — no separate pass needed.
+        from app.models.task import Task
+
+        deleted["tasks"] = await Task.find(
+            {
+                "company_id": company_id,
+                "related_entity_type": "sales_lead",
+                "related_entity_id": lead_key,
+            }
+        ).delete()
+        # Ownership-transfer audit rows written by bulk/single assignment.
+        from app.models.ownership_transfer import OwnershipTransfer
+
+        deleted["ownership_transfers"] = await OwnershipTransfer.find(
+            {
+                "company_id": company_id,
+                "entity_type": "lead",
+                "entity_id": lead_key,
+            }
+        ).delete()
+
+        prospect.deleted = True
+        prospect.updated_at = utc_now()
+        await prospect.save()
+
+        logger.info(
+            "LEAD_DELETE_COMPLETED lead_id=%s company_id=%s deleted=%s",
+            lead_key,
+            company_id,
+            deleted,
+        )
+        return {
+            "message": "Lead deleted permanently",
+            "deleted_lead_id": lead_key,
+            "deleted": deleted,
         }

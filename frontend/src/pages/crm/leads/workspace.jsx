@@ -29,6 +29,7 @@ export default function CRMLeadWorkspacePage() {
   const [composerOpen, setComposerOpen] = useState(false)
   const [pendingLeadUpdate, setPendingLeadUpdate] = useState(null)
   const [followUpOpen, setFollowUpOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [proposalForm, setProposalForm] = useState({
     title: '',
     summary: '',
@@ -157,6 +158,24 @@ export default function CRMLeadWorkspacePage() {
       },
       onError: (error) => {
         toast.error(error?.response?.data?.detail || 'Lead update failed')
+      },
+    },
+  )
+  const deleteLeadMutation = useMutation(
+    () => crmApi.deleteLead(leadId),
+    {
+      onSuccess: () => {
+        toast.success('Lead deleted permanently')
+        queryClient.invalidateQueries('crm-pipeline-board')
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('sales-prospects')
+        navigate('/crm/pipeline')
+      },
+      onError: (error) => {
+        const status = error?.response?.status
+        if (status === 403) toast.error('You do not have permission to delete this lead')
+        else if (status === 404) toast.error('Lead not found — it may have already been deleted')
+        else toast.error(error?.response?.data?.detail || 'Failed to delete lead')
       },
     },
   )
@@ -342,6 +361,8 @@ export default function CRMLeadWorkspacePage() {
         onRefresh={handleRefresh}
         onSendEmail={openComposer}
         onScheduleFollowUp={openFollowUp}
+        onDeleteLead={() => setDeleteOpen(true)}
+        deletingLead={deleteLeadMutation.isLoading}
         onSaveLead={handleHeaderSave}
         isSaving={leadUpdateMutation.isLoading}
         users={users}
@@ -376,6 +397,19 @@ export default function CRMLeadWorkspacePage() {
         onConfirm={handleConfirmLeadUpdate}
         onClose={() => {
           if (!leadUpdateMutation.isLoading) setPendingLeadUpdate(null)
+        }}
+      />
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        title="Delete lead permanently?"
+        message={`This will permanently delete "${leadLabel}" and all of its history, deals, proposals, documents, notes, files, activities and tasks. This action cannot be undone.`}
+        confirmLabel="Delete lead"
+        loading={deleteLeadMutation.isLoading}
+        onConfirm={() => {
+          if (!deleteLeadMutation.isLoading) deleteLeadMutation.mutate(leadId)
+        }}
+        onClose={() => {
+          if (!deleteLeadMutation.isLoading) setDeleteOpen(false)
         }}
       />
     </>

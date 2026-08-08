@@ -45,6 +45,7 @@ import {
   parsePipelineFilters,
   stageOptionsFromBoard,
 } from './utils'
+import { ConfirmDialog } from '../../../components/ui'
 import { StageRequirementsDialog } from '../../../components/sales/StageRequirementsDialog'
 import { ContactAttemptDialog } from '../../../components/sales/ContactAttemptDialog'
 import SalesFollowUpDialog from '../../../components/sales/SalesFollowUpDialog'
@@ -114,6 +115,7 @@ export default function CRMPipelinePage() {
   const [requirementsDialog, setRequirementsDialog] = useState(null)
   const [contactAttemptLead, setContactAttemptLead] = useState(null)
   const [followUpLead, setFollowUpLead] = useState(null)
+  const [deleteLeadTarget, setDeleteLeadTarget] = useState(null)
   // Lead id whose stage move is in flight through the required-details dialog
   // ("Save and Move Forward"). Kept separate from the mutation so the row keeps
   // its loading state while that dialog-driven move runs, giving one consistent
@@ -494,6 +496,38 @@ export default function CRMPipelinePage() {
       },
     }
   )
+
+  // ── Delete lead (permanent, cascades through backend) ─────────────────────
+  const deleteLeadMutation = useMutation(
+    (leadId) => crmApi.deleteLead(leadId),
+    {
+      onSuccess: () => {
+        toast.success('Lead deleted permanently')
+        setDeleteLeadTarget(null)
+        queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('sales-prospects')
+      },
+      onError: (error) => {
+        const status = error?.response?.status
+        if (status === 403) toast.error('You do not have permission to delete this lead')
+        else if (status === 404) toast.error('Lead not found — it may have already been deleted')
+        else toast.error(error?.response?.data?.detail || 'Failed to delete lead')
+      },
+    }
+  )
+
+  const handleDeleteLead = useCallback((lead) => {
+    const leadId = lead?.id || lead?._id
+    if (!leadId) return
+    setDeleteLeadTarget(lead)
+  }, [])
+
+  const confirmDeleteLead = useCallback(() => {
+    const leadId = deleteLeadTarget?.id || deleteLeadTarget?._id
+    if (!leadId || deleteLeadMutation.isLoading) return
+    deleteLeadMutation.mutate(leadId)
+  }, [deleteLeadTarget, deleteLeadMutation])
 
   // Returns a promise so the stage list can clear its selection only on success.
   const handleBulkAssign = useCallback((leadIds, userId) => {
@@ -877,6 +911,7 @@ export default function CRMPipelinePage() {
               onUpdateStageStatus={handleStageStatusChange}
               onRecordContact={handleRecordContact}
               onScheduleFollowUp={handleScheduleFollowUp}
+              onDeleteLead={handleDeleteLead}
               onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
               onResetFilters={clearFilters}
               onBulkAssign={handleBulkAssign}
@@ -1003,6 +1038,21 @@ export default function CRMPipelinePage() {
       <CreateLeadModal
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
+      />
+
+      {/* ============================================================ */}
+      {/* DELETE LEAD CONFIRMATION - permanent, cascades to all lead data */}
+      {/* ============================================================ */}
+      <ConfirmDialog
+        isOpen={Boolean(deleteLeadTarget)}
+        title="Delete lead permanently?"
+        message={`This will permanently delete "${deleteLeadTarget?.company_name || deleteLeadTarget?.prospect_name || 'this lead'}" and all of its history, deals, proposals, documents, notes, files, activities and tasks. This action cannot be undone.`}
+        confirmLabel="Delete lead"
+        loading={deleteLeadMutation.isLoading}
+        onConfirm={confirmDeleteLead}
+        onClose={() => {
+          if (!deleteLeadMutation.isLoading) setDeleteLeadTarget(null)
+        }}
       />
     </div>
   )

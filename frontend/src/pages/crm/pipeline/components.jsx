@@ -1,8 +1,8 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertCircle, CalendarClock, ChevronDown, Filter, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles, X } from 'lucide-react'
+import { AlertCircle, CalendarClock, ChevronDown, Filter, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
@@ -409,6 +409,7 @@ export const PipelineStageListView = memo(function PipelineStageListView({
   onUpdateStageStatus,
   onRecordContact,
   onScheduleFollowUp,
+  onDeleteLead,
   onLeadSelect,
   onResetFilters,
   onBulkAssign,
@@ -428,6 +429,39 @@ export const PipelineStageListView = memo(function PipelineStageListView({
     })
     return values
   }, [users])
+
+  // ── Sync a scrollbar on top of the table with the table's own scroll ───────
+  // The table can overflow horizontally (Company/Mobile/Email/... columns), but
+  // its native scrollbar sits at the bottom, out of sight. A thin bar mirrored
+  // at the top lets the user scroll the columns without reaching down. The top
+  // bar's inner spacer is sized imperatively (ref, not state) so no React state
+  // updates happen during layout — keeping tests warning-free and cheap.
+  const tableScrollRef = useRef(null)
+  const topScrollRef = useRef(null)
+
+  useLayoutEffect(() => {
+    const node = tableScrollRef.current
+    const bar = topScrollRef.current
+    if (!node || !bar || !bar.firstElementChild) return
+    const update = () => {
+      if (bar.firstElementChild) bar.firstElementChild.style.width = `${node.scrollWidth}px`
+    }
+    update()
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
+    if (observer) observer.observe(node)
+    return () => observer?.disconnect()
+  }, [leads.length])
+
+  const syncTopFromTable = () => {
+    if (topScrollRef.current && tableScrollRef.current) {
+      topScrollRef.current.scrollLeft = tableScrollRef.current.scrollLeft
+    }
+  }
+  const syncTableFromTop = () => {
+    if (tableScrollRef.current && topScrollRef.current) {
+      tableScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft
+    }
+  }
 
   // ── Bulk multi-select (e.g. assign many Acquire leads at once) ─────────────
   const leadIdOf = (lead) => lead.id || lead._id || ''
@@ -541,7 +575,14 @@ export const PipelineStageListView = memo(function PipelineStageListView({
           </button>
         </div>
       ) : null}
-      <div className="overflow-x-auto">
+      <div
+        ref={topScrollRef}
+        onScroll={syncTableFromTop}
+        className="overflow-x-auto overscroll-x-contain border-b border-surface-border/60 bg-surface-muted/40"
+      >
+        <div className="h-2" aria-hidden="true" />
+      </div>
+      <div ref={tableScrollRef} onScroll={syncTopFromTable} className="overflow-x-auto">
         <table className="min-w-full divide-y divide-surface-border/80 text-sm">
           <thead className="bg-surface-muted/80 text-text-secondary dark:bg-gray-950/50 dark:text-gray-300">
             <tr>
@@ -674,6 +715,17 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                      {onDeleteLead ? (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteLead(lead)}
+                          title="Delete lead permanently"
+                          aria-label={`Delete ${leadTitle}`}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
                       {getStageKey(stage) === 'acquire' && !lead.phone && !lead.first_contact_at && !lead.last_contacted_at ? (
                         <Button
                           type="button"
