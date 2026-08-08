@@ -57,6 +57,11 @@ const Users = () => {
   const currentUser = user
   const { confirm } = useConfirmation()
   const [users, setUsers] = useState([])
+  // Full company roster (Admin/Sub Admin/Manager/Lead/Employee, any department)
+  // for the Reporting Manager dropdown. The main `users` list is paginated to
+  // 20 rows and hierarchy-scoped (managers only see subordinates + their
+  // department), so it cannot feed that dropdown.
+  const [companyRoster, setCompanyRoster] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -97,11 +102,11 @@ const Users = () => {
     if (isLead) return ['employee']
     return []
   }, [isFullCompanyAdmin, isLead, isManager, isSubAdmin])
-  // All active company members (Admin/Sub Admin/Manager/Lead/Employee) can be
-  // chosen as an employee's reporting manager.
+  // All active company members (Admin/Sub Admin/Manager/Lead/Employee), any
+  // department or seniority, can be chosen as an employee's reporting manager.
   const reportingManagerOptions = useMemo(
-    () => users.filter((item) => item.status === 'active'),
-    [users],
+    () => (companyRoster.length ? companyRoster : users.filter((item) => item.status === 'active')),
+    [companyRoster, users],
   )
   const designationOptions = useMemo(() => {
     return getDesignationOptions(customDesignations, editingUser?.designation || '')
@@ -144,6 +149,21 @@ const Users = () => {
     }
   }, [])
 
+  // The Reporting Manager dropdown needs every company member regardless of
+  // department/seniority (admins included). /users/assignable returns the full
+  // active roster for the current user's company.
+  const fetchCompanyRoster = useCallback(async () => {
+    try {
+      const data = await usersAPI.getAssignableUsers()
+      if (data && Array.isArray(data.users)) {
+        setCompanyRoster(data.users)
+      }
+    } catch (error) {
+      console.error('Error loading company roster:', error)
+      setCompanyRoster([])
+    }
+  }, [])
+
   const fetchDepartments = useCallback(async () => {
     if (!canReadDepartments) return
     try {
@@ -158,10 +178,11 @@ const Users = () => {
 
   useEffect(() => {
     fetchUsers()
+    fetchCompanyRoster()
     if (canReadDepartments) {
       fetchDepartments()
     }
-  }, [fetchUsers, fetchDepartments, canReadDepartments])
+  }, [fetchUsers, fetchCompanyRoster, fetchDepartments, canReadDepartments])
 
   if (isEmployee) {
     return (
@@ -283,6 +304,7 @@ const Users = () => {
 
       closeUserModal()
       await fetchUsers()
+      fetchCompanyRoster()
 
       e.target.reset()
     } catch (error) {
@@ -455,6 +477,7 @@ const Users = () => {
       toast.success('User updated successfully')
       closeUserModal()
       await fetchUsers()
+      fetchCompanyRoster()
       const form = document.querySelector('form')
       if (form) form.reset()
     } catch (error) {
@@ -479,6 +502,7 @@ const Users = () => {
       await usersAPI.deleteUser(userId)
       toast.success('User deleted successfully')
       await fetchUsers()
+      fetchCompanyRoster()
     } catch (error) {
       const errorMessage = error.response?.data?.detail || 'Failed to delete user'
       toast.error(errorMessage)
@@ -641,6 +665,7 @@ const Users = () => {
       setBulkRows([])
       setBulkErrors([])
       await fetchUsers()
+      fetchCompanyRoster()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Bulk import failed')
     } finally {
@@ -670,7 +695,7 @@ const Users = () => {
           </div>
           <p className="font-semibold text-rose-800 dark:text-rose-400">Failed to load users</p>
           <p className="mt-1 text-sm text-rose-600 dark:text-rose-500">{error}</p>
-          <button onClick={fetchUsers} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700">
+          <button onClick={() => { fetchUsers(); fetchCompanyRoster() }} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700">
             <RefreshCw className="h-4 w-4" />
             Try Again
           </button>
@@ -791,7 +816,7 @@ const Users = () => {
               </div>
             </div>
             <button
-              onClick={fetchUsers}
+              onClick={() => { fetchUsers(); fetchCompanyRoster() }}
               className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
             >
               <RefreshCw className="h-3.5 w-3.5" />

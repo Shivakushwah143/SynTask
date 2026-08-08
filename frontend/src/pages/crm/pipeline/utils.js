@@ -134,10 +134,22 @@ export const getLeadOwnerValue = (lead) => {
   return normalizeText(getLeadOwnerLabel(lead))
 }
 
+// Single source of truth for the lead's person name: returns the first non-empty
+// contact field as-is (no fallback label), shared by the label helper and the
+// pipeline table so every view shows the same person.
+export const getLeadRawContactName = (lead) => {
+  const contact =
+    lead?.crm_contact_name ||
+    lead?.primary_contact_name ||
+    lead?.contact_name ||
+    lead?.prospect_name ||
+    lead?.primary_contact ||
+    lead?.contact
+  return getDisplayName(contact)
+}
+
 export const getLeadContactLabel = (lead) => {
-  const contact = lead?.crm_contact_name || lead?.primary_contact_name || lead?.contact_name || lead?.prospect_name || lead?.primary_contact || lead?.contact
-  const label = getDisplayName(contact)
-  return label || 'Unassigned contact'
+  return getLeadRawContactName(lead) || 'Unassigned contact'
 }
 
 export const getLeadStageKey = (lead) => normalizeText(lead?.current_stage || lead?.stage || lead?.stage_key)

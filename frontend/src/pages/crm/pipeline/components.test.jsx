@@ -52,8 +52,20 @@ describe('pipeline stage list view', () => {
     )
 
     expect(screen.getByRole('columnheader', { name: /^Lead$/i })).toBeTruthy()
-    expect(screen.getByText('Acme Pvt Ltd')).toBeTruthy()
-    expect(screen.getByText('Beta Labs')).toBeTruthy()
+    // The new separate columns: company, mobile and email each get their own header.
+    expect(screen.getByRole('columnheader', { name: /^Company$/i })).toBeTruthy()
+    expect(screen.getByRole('columnheader', { name: /^Mobile$/i })).toBeTruthy()
+    expect(screen.getByRole('columnheader', { name: /^Email$/i })).toBeTruthy()
+
+    // Company appears in its own column (and as the fallback lead title here,
+    // since these fixtures have no contact name), so it may match twice.
+    expect(screen.getAllByText('Acme Pvt Ltd').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Beta Labs').length).toBeGreaterThan(0)
+    // Mobile and email render in their dedicated columns.
+    expect(screen.getByText('9876543210')).toBeTruthy()
+    expect(screen.getByText('9123456780')).toBeTruthy()
+    expect(screen.getByText('acme@example.com')).toBeTruthy()
+    expect(screen.getByText('beta@example.com')).toBeTruthy()
 
     // Compact redesign: the lead title itself opens the lead, and the only
     // redundant helper buttons (Open lead / Copy ID) are gone.
@@ -171,7 +183,8 @@ describe('pipeline stage list view', () => {
     )
 
     // The lead stays visible in the current stage while the request runs.
-    expect(screen.getByText('Acme Pvt Ltd')).toBeTruthy()
+    // (Company renders as the lead title and in the Company column.)
+    expect(screen.getAllByText('Acme Pvt Ltd').length).toBeGreaterThan(0)
     // The Move button is disabled and shows the in-flight label + spinner.
     const moveButton = screen.getByRole('button', { name: /Updating stage/i })
     expect(moveButton).toBeTruthy()

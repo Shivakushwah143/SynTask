@@ -6,7 +6,7 @@ import { AlertCircle, CalendarClock, ChevronDown, Filter, MoreHorizontal, MoveRi
 import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
-import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageStatus, getLeadTags, getStageDealValue, getStageKey, getStageStatusOptions } from './utils'
+import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadRawContactName, getLeadStageStatus, getLeadTags, getStageDealValue, getStageKey, getStageStatusOptions } from './utils'
 
 const leadColumnStyle = 'w-[300px] flex-none snap-start'
 export const pipelineLeadCardClassNames = {
@@ -555,6 +555,9 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                 />
               </th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Lead</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Company</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Mobile</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Email</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Owner</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Priority</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Status</th>
@@ -567,9 +570,12 @@ export const PipelineStageListView = memo(function PipelineStageListView({
           <tbody className="divide-y divide-surface-border/80 dark:divide-gray-800">
             {leads.map((lead, index) => {
               const leadId = lead.id || lead._id || `${stage.key}-${index}`
-              const leadTitle = lead.company_name || lead.prospect_name || getLeadContactLabel(lead) || 'Lead'
-              const phoneLabel = [lead.country_code, lead.phone].filter(Boolean).join(' ')
-              const leadSubtitle = [phoneLabel, lead.email].filter(Boolean).join(' · ') || 'No contact info'
+              // Lead column shows the person (if any), otherwise the company.
+              const contactName = getLeadRawContactName(lead)
+              const leadTitle = String(contactName || '').trim() || lead.company_name || getLeadContactLabel(lead) || 'Lead'
+              const companyLabel = lead.company_name || lead.crm_company_name || ''
+              const phoneLabel = [lead.country_code, lead.phone].filter(Boolean).join(' ') || ''
+              const emailLabel = lead.email || ''
               const ownerLabel = ownerLookup.get(String(lead.assigned_to || lead.owner_id || lead.ownerId || '').trim()) || getLeadOwnerLabel(lead)
               const priority = getLeadPriority(lead)
               const tags = getLeadTags(lead)
@@ -594,13 +600,12 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                     <button
                       type="button"
                       onClick={() => onLeadSelect?.(lead)}
-                      className="block max-w-[280px] text-left focus-visible:outline-none"
+                      className="block max-w-[240px] text-left focus-visible:outline-none"
                       aria-label={`Open ${leadTitle}`}
                     >
                       <div className="truncate text-sm font-semibold text-text-primary transition-colors group-hover:text-primary-700 dark:text-gray-100 dark:group-hover:text-primary-300">
                         {leadTitle}
                       </div>
-                      <div className="mt-0.5 truncate text-xs text-text-secondary dark:text-gray-400">{leadSubtitle}</div>
                     </button>
                     {tags.length ? (
                       <div className="mt-1 flex flex-wrap gap-1">
@@ -614,6 +619,19 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                         ) : null}
                       </div>
                     ) : null}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="block max-w-[180px] truncate text-xs text-text-secondary dark:text-gray-400">
+                      {companyLabel || '—'}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-xs text-text-secondary dark:text-gray-300">
+                    {phoneLabel || '—'}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="block max-w-[220px] truncate text-xs text-text-secondary dark:text-gray-300">
+                      {emailLabel || '—'}
+                    </span>
                   </td>
                   <td className="px-3 py-2.5">
                     <span className="block max-w-[140px] truncate text-xs font-medium text-text-primary dark:text-gray-100">
