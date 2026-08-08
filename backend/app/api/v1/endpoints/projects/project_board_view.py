@@ -21,17 +21,35 @@ async def get_project_board(
     # Use centralized hierarchical access check
     await ensure_project_access_for_user(project, current_user)
     
-    # Get all tasks for this project. Match by: path param (e.g. ak-001), project.project_id, or MongoDB _id
+    # Get all tasks for this project. Match by: path param (e.g. ak-001), project.project_id,
+    # MongoDB _id, or project_object_id (normalized Mongo-id link used by some integrations).
     project_id_for_query = project.project_id if project.project_id else str(project.id)
     or_conditions = [
         {"project_id": project_id_for_query},
         {"project_id": str(project.id)},
+        {"project_object_id": str(project.id)},
     ]
     if project_id and project_id != str(project.id) and project_id != project_id_for_query:
         or_conditions.append({"project_id": project_id})  # path param (custom id)
     task_query = {"$or": or_conditions, "company_id": project.company_id}
     if current_user.role == UserRole.EMPLOYEE and not has_project_permission(current_user, project, ProjectPermission.MANAGE_TASK):
-        task_query["assigned_to"] = str(current_user.id)
+        # Employees who are involved in this project (a project member, or assigned to any
+        # task in it) see the full project board so they can track the whole project. Only
+        # unrelated employees keep the own-tasks-only view. The Tasks list page is NOT
+        # affected - its visibility query (build_task_list_query) is unchanged.
+        employee_id = str(current_user.id)
+        involved_in_project = (
+            employee_id in project_assignee_ids(project)
+            or employee_id in (getattr(project, "team_member_ids", None) or [])
+        )
+        if not involved_in_project:
+            assigned_task = await Task.find_one({
+                "company_id": project.company_id,
+                "$or": or_conditions,
+                "assigned_to": employee_id,
+            })
+            if assigned_task is None:
+                task_query["assigned_to"] = employee_id
     all_tasks = await Task.find(task_query).to_list()
     
     # Get board columns to determine which statuses to include

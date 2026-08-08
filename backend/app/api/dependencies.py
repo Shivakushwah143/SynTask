@@ -267,8 +267,10 @@ async def get_project_by_id(project_identifier: str, company_id: Optional[str] =
             ObjectId(project_identifier)
             project = await Project.get(project_identifier)
             if project:
-                # Check company access if provided
-                if company_id and project.company_id != company_id:
+                # Check company access if provided (compare normalized strings so
+                # ObjectId-vs-str company_id representations never cause a false
+                # "Project not found" for a project the user can actually see).
+                if company_id and str(project.company_id) != str(company_id):
                     project = None
                 else:
                     # Use user-provided project_id if available, otherwise use MongoDB _id

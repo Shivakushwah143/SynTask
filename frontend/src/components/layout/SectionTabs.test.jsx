@@ -241,6 +241,22 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(screen.getByRole('tab', { name: /^Employees$/i })).toBeTruthy()
   })
 
+  it('does not render company department quick links as tabs on /departments', async () => {
+    const { departmentsAPI } = await import('../../api/departments')
+    departmentsAPI.listDepartments.mockResolvedValue([
+      { id: 'd1', name: 'Internal Ops' },
+      { id: 'd2', name: 'IT Support' },
+    ])
+
+    renderTabs('/departments')
+
+    // The Departments page tab itself remains...
+    expect(screen.getByRole('tab', { name: /^Departments$/i })).toBeTruthy()
+    // ...but the internal department quick links never appear as tabs.
+    expect(screen.queryByRole('tab', { name: /^Internal Ops$/i })).toBeNull()
+    expect(screen.queryByRole('tab', { name: /^IT Support$/i })).toBeNull()
+  })
+
   it('renders nothing on HR screens without a tab (interview screen)', () => {
     renderTabs('/hr/recruitment/interview-screen')
     expect(screen.queryByRole('tablist')).toBeNull()

@@ -312,14 +312,14 @@ const Users = () => {
   }
 
   const handleEdit = (userToEdit) => {
-    // Permission: allow editing if self or company admin, or manager/lead over the user
+    // Company-scoped roles (Admin/Sub Admin/Manager/Lead) may edit any user in
+    // the company - no creator or department restriction. Employees may only
+    // edit themselves (handled by their profile view).
     const isSelf = String(userToEdit.id || userToEdit._id) === String(user.id || user._id)
     const isAdmin = hasCompanyAdminAccess(user?.role)
     const isManagerRole = normalizeRole(user?.role) === 'manager'
     const isLeadRoleLocal = isLeadRole(user?.role)
-    const managerCanEdit = isManagerRole && userToEdit.department_id && userToEdit.department_id === user.department_id
-    const leadCanEdit = isLeadRoleLocal && userToEdit.lead_id && String(userToEdit.lead_id) === String(user.id || user._id)
-    if (!(isSelf || isAdmin || managerCanEdit || leadCanEdit)) {
+    if (!(isSelf || isAdmin || isManagerRole || isLeadRoleLocal)) {
       toast.error('You do not have permission to edit this user')
       return
     }

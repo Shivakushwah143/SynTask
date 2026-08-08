@@ -754,15 +754,11 @@ async def update_user(
             detail="User not found"
         )
 
-    # Access control
+    # Access control: company-scoped roles (Admin/Sub Admin/Manager/Lead per
+    # get_current_company_admin_or_lead) may update any user in their company.
+    # No creator/department/team restriction - a manager (or lead) can edit an
+    # employee regardless of who created them or which department they belong to.
     check_company_access(current_user, user.company_id)
-    if current_user.role == UserRole.LEAD:
-        # Leads can only update their own team employees
-        if user.role != UserRole.EMPLOYEE or user.lead_id != str(current_user.id):
-            raise HTTPException(
-                status_code=http_status.HTTP_403_FORBIDDEN,
-                detail="Leads can only edit their own team members"
-            )
 
     # Update fields if provided
     if first_name:

@@ -26,30 +26,6 @@ const normalizeCompanyPayload = (payload) =>
       .filter(([, value]) => value !== '' && value !== undefined && value !== null)
   )
 
-// Stat Card Component
-const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
-  const colors = {
-    indigo: 'from-indigo-500 to-purple-500',
-    emerald: 'from-emerald-500 to-teal-500',
-    amber: 'from-amber-500 to-orange-500',
-    rose: 'from-rose-500 to-pink-500',
-    blue: 'from-blue-500 to-cyan-500',
-    teal: 'from-teal-500 to-cyan-500',
-  }
-
-  return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
-          <Icon className="h-4 w-4" />
-        </div>
-      </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
-    </div>
-  )
-}
 
 function CompanyModal({ isOpen, onClose, onSave, company = null }) {
   const [form, setForm] = useState(COMPANY_TEMPLATE)
@@ -231,29 +207,29 @@ export default function CRMCompaniesPage() {
 
   return (
     <CRMPage>
-      <section className="mb-6 overflow-hidden rounded-[28px] border border-primary-200/70 bg-gradient-to-br from-slate-700 via-violet-600 to-purple-500 p-6 text-white shadow-[0_18px_60px_rgba(15,23,42,0.06)] md:p-8">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-white/20 p-2.5 backdrop-blur-sm">
-              <Building2 className="h-6 w-6" />
+      <section className="mb-5 overflow-hidden rounded-2xl border border-primary-200/70 bg-gradient-to-br from-slate-700 via-violet-600 to-purple-500 px-4 py-3.5 text-white shadow-[0_18px_60px_rgba(15,23,42,0.06)] md:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+              <Building2 className="h-5 w-5" />
             </div>
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-indigo-100">CRM</p>
-              <h1 className="text-2xl font-semibold md:text-3xl">Companies</h1>
-              <p className="mt-1 text-sm leading-6 text-indigo-100">Accounts and their related contacts, leads, and activity.</p>
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-indigo-100">CRM</p>
+              <h1 className="text-lg font-semibold md:text-xl">Companies</h1>
+              <p className="truncate text-xs text-indigo-100 md:text-sm">Accounts and their related contacts, leads, and activity.</p>
             </div>
           </div>
           <Button 
             onClick={() => { setEditingCompany(null); setCompanyModalOpen(true) }} 
-            className="border-0 bg-white/20 text-white backdrop-blur-sm hover:bg-white/30"
+            className="border-0 bg-white/20 px-3 py-1.5 text-xs text-white backdrop-blur-sm hover:bg-white/30"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
             New Company
           </Button>
         </div>
       </section>
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <CRMStatCard icon={Building2} label="Companies" value={String(stats.total)} helper="Total accounts" tone="blue" />
         <CRMStatCard icon={Users} label="Contacts" value={String(stats.contacts)} helper="Associated contacts" tone="slate" />
         <CRMStatCard icon={CircleDot} label="Leads" value={String(stats.leads)} helper="Active leads" tone="emerald" />
