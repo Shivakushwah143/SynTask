@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -8,6 +8,7 @@ import { usersAPI } from '../../../api/users'
 import { CRMEmptyState, CRMPage, CRMSection } from '../../../components/crm'
 import { EmailComposer } from '../../../components/EmailComposer'
 import { Button, ConfirmDialog } from '../../../components/ui'
+import { useConfirmation } from '../../../hooks/useConfirmation'
 import SalesFollowUpDialog from '../../../components/sales/SalesFollowUpDialog'
 import { LeadAccessDeniedState, LeadAttachmentsTab, LeadCallLogsTab, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadTasksTab, LeadWorkspace } from './components'
 import { LEAD_FILES_QUERY_KEY, LeadFilesTab } from './files'
@@ -24,11 +25,16 @@ export default function CRMLeadWorkspacePage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { leadId } = useParams()
+  const { showUndoNotification } = useConfirmation()
   const [searchParams, setSearchParams] = useSearchParams()
   const [timelineSearch, setTimelineSearch] = useState('')
   const [composerOpen, setComposerOpen] = useState(false)
   const [pendingLeadUpdate, setPendingLeadUpdate] = useState(null)
   const [followUpOpen, setFollowUpOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  // Synchronous guard so a rapid double-click on the confirm button cannot fire
+  // two DELETE calls before React flips the mutation loading state.
+  const deleteInFlightRef = useRef(false)
   const [proposalForm, setProposalForm] = useState({
     title: '',
     summary: '',
@@ -157,6 +163,58 @@ export default function CRMLeadWorkspacePage() {
       },
       onError: (error) => {
         toast.error(error?.response?.data?.detail || 'Lead update failed')
+      },
+    },
+  )
+  const restoreLeadMutation = useMutation(
+    ({ restoreToken }) => crmApi.restoreLead(leadId, restoreToken),
+    {
+      onSuccess: () => {
+        toast.success('Lead restored')
+        queryClient.invalidateQueries(WORKSPACE_QUERY_KEY)
+        queryClient.invalidateQueries('crm-pipeline-board')
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('sales-prospects')
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Failed to restore lead')
+      },
+    },
+  )
+  const handleDeleteSettled = useCallback(() => {
+    queryClient.invalidateQueries('crm-pipeline-board')
+    queryClient.invalidateQueries('crm-leads-entry')
+    queryClient.invalidateQueries('sales-prospects')
+    navigate('/crm/pipeline')
+  }, [queryClient, navigate])
+
+  const deleteLeadMutation = useMutation(
+    () => crmApi.deleteLead(leadId),
+    {
+      onSuccess: (data) => {
+        handleDeleteSettled()
+        const restoreToken = data?.restore_token
+        if (restoreToken) {
+          showUndoNotification({
+            message: 'Lead deleted permanently',
+            duration: 6000,
+            onUndo: () => restoreLeadMutation.mutate({ restoreToken }),
+          })
+        } else {
+          toast.success('Lead deleted permanently')
+        }
+      },
+      onError: (error) => {
+        const status = error?.response?.status
+        if (status === 403) {
+          toast.error('You do not have permission to delete this lead')
+        } else if (status === 404) {
+          // Already deleted (e.g. duplicate request) — treat as success.
+          handleDeleteSettled()
+          toast.success('Lead deleted')
+        } else {
+          toast.error(error?.response?.data?.detail || 'Failed to delete lead')
+        }
       },
     },
   )
@@ -342,6 +400,8 @@ export default function CRMLeadWorkspacePage() {
         onRefresh={handleRefresh}
         onSendEmail={openComposer}
         onScheduleFollowUp={openFollowUp}
+        onDeleteLead={() => setDeleteOpen(true)}
+        deletingLead={deleteLeadMutation.isLoading}
         onSaveLead={handleHeaderSave}
         isSaving={leadUpdateMutation.isLoading}
         users={users}
@@ -376,6 +436,28 @@ export default function CRMLeadWorkspacePage() {
         onConfirm={handleConfirmLeadUpdate}
         onClose={() => {
           if (!leadUpdateMutation.isLoading) setPendingLeadUpdate(null)
+        }}
+      />
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        title="Delete lead permanently?"
+        message={`This will permanently delete "${leadLabel}" and all of its history, deals, proposals, documents, notes, files, activities and tasks. This action cannot be undone.`}
+        confirmLabel="Delete lead"
+        loading={deleteLeadMutation.isLoading}
+        onConfirm={() => {
+          if (!deleteLeadMutation.isLoading && !deleteInFlightRef.current) {
+            deleteInFlightRef.current = true
+            // Return the promise so the shared <Button> locks against repeat
+            // clicks while the DELETE is in flight (its pendingRef only engages
+            // when the handler returns a promise).
+            return deleteLeadMutation.mutateAsync(leadId).finally(() => {
+              deleteInFlightRef.current = false
+            })
+          }
+          return undefined
+        }}
+        onClose={() => {
+          if (!deleteLeadMutation.isLoading) setDeleteOpen(false)
         }}
       />
     </>

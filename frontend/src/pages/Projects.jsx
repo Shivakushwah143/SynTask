@@ -972,7 +972,9 @@ export default function Projects() {
       <ConfirmDialog
         isOpen={showDeleteConfirm}
         title="Delete project"
-        message={`Are you sure you want to delete "${deletingProject?.name}"? This action cannot be undone. You can only delete projects that have no existing tasks.`}
+        message={deletingProject
+          ? `This will permanently delete "${deletingProject.name}"${deletingProject.task_count ? ` and all ${deletingProject.task_count} task(s) in it` : ''}. This action cannot be undone.`
+          : ''}
         confirmLabel="Delete"
         loading={deleting}
         onConfirm={handleDeleteProject}

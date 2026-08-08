@@ -160,7 +160,10 @@ async def check_project_access(project: Project, current_user: User) -> bool:
 
         assigned_task = await Task.find_one({
             "company_id": project.company_id,
-            "project_id": {"$in": list(project_ids)},
+            "$or": [
+                {"project_id": {"$in": list(project_ids)}},
+                {"project_object_id": str(project.id)},
+            ],
             "assigned_to": user_id,
         })
 

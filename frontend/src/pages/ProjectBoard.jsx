@@ -35,16 +35,9 @@ import { useProjectPermissions } from '../hooks/useProjectPermissions'
 import { Badge, Button, ConfirmDialog, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
-import { getProjectRoleAssignmentIds, getProjectRoleNames, getTaskAssigneeUsers, getUserDisplayName, normalizeEstimatedHours } from './ProjectBoard.helpers'
+import { DEFAULT_STATUSES, getProjectRoleAssignmentIds, getProjectRoleNames, getTaskAssigneeUsers, getUserDisplayName, normalizeBoardPayload, normalizeEstimatedHours, normalizeStatusId } from './ProjectBoard.helpers'
 import { timeService } from '../services/timeService'
 import { excludeCurrentUser } from '../utils/userFilters'
-
-const DEFAULT_STATUSES = [
-  { id: 'todo', label: 'To Do' },
-  { id: 'in_progress', label: 'In Progress' },
-  { id: 'in_review', label: 'In Review' },
-  { id: 'completed', label: 'Completed' },
-]
 
 const STATUS_COLORS = {
   todo: '#7C6FE0',
@@ -84,48 +77,6 @@ const PROJECT_AGENT_OPERATIONS = [
   { value: 'estimate_work', label: 'Estimate work' },
   { value: 'comprehensive_project_review', label: 'Full review' },
 ]
-
-const normalizeStatusId = (value) => String(value || '').trim().toLowerCase()
-
-const normalizeBoardColumns = (columns) => {
-  const source = Array.isArray(columns) && columns.length ? columns : DEFAULT_STATUSES
-  return source.map((column) => ({
-    ...column,
-    id: normalizeStatusId(column.id || column.status || column.key),
-    label: column.label || column.name || String(column.id || column.status || column.key || '').replace(/_/g, ' '),
-  })).filter((column) => column.id)
-}
-
-const normalizeBoardPayload = (payload) => {
-  const data = payload?.data?.data || payload?.data || payload || {}
-  const boardColumns = normalizeBoardColumns(data.board_columns || data.columns || data.statuses)
-  const sourceTasksByStatus = data.tasks_by_status || data.tasksByStatus || data.board || {}
-  const tasksByStatus = Object.fromEntries(boardColumns.map((column) => [column.id, []]))
-
-  if (Array.isArray(data.tasks)) {
-    data.tasks.forEach((task) => {
-      const status = normalizeStatusId(task.status || task.status_id)
-      if (!tasksByStatus[status]) tasksByStatus[status] = []
-      tasksByStatus[status].push({ ...task, status })
-    })
-  } else {
-    Object.entries(sourceTasksByStatus).forEach(([status, tasks]) => {
-      const normalizedStatus = normalizeStatusId(status)
-      if (!tasksByStatus[normalizedStatus]) tasksByStatus[normalizedStatus] = []
-      tasksByStatus[normalizedStatus].push(...(Array.isArray(tasks) ? tasks : []).map((task) => ({
-        ...task,
-        id: task.id || task._id,
-        status: normalizeStatusId(task.status || normalizedStatus),
-      })))
-    })
-  }
-
-  return {
-    ...data,
-    board_columns: boardColumns,
-    tasks_by_status: tasksByStatus,
-  }
-}
 
 export default function ProjectBoard() {
   const { projectId } = useParams()
@@ -794,6 +745,7 @@ export default function ProjectBoard() {
       {/* Quick Assign Panel */}
       <QuickAssignPanel
         users={projectAssignableUsers}
+        projectId={projectId}
         onTaskCreated={() => { loadBoardData(); loadProjectInfo(); }}
       />
 
@@ -1243,7 +1195,7 @@ export default function ProjectBoard() {
       <ConfirmDialog
         isOpen={showDeleteConfirm}
         title="Delete project"
-        message="Are you sure you want to delete this project? This action cannot be undone. You can only delete projects that have no existing tasks."
+        message="This will permanently delete this project and all of its tasks. This action cannot be undone."
         confirmLabel="Delete"
         loading={deleting}
         onConfirm={handleDeleteProject}

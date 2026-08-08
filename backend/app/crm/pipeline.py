@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import uuid
 from collections import defaultdict
 from datetime import datetime
 from enum import Enum
@@ -18,10 +19,14 @@ from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivit
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.crm_deal import CRMDeal
 from app.models.crm_proposal import CRMProposal
+from app.models.crm_document import CRMDocument
+from app.models.sales_lead_note import SalesLeadNote
+from app.models.sales_lead_file import SalesLeadFile
 from app.crm.models import ProspectStatus, SalesProspect
 from app.models.crm_company import CRMCompany
 from app.models.user import User, UserRole
 from beanie.exceptions import CollectionWasNotInitialized
+from pymongo.errors import DuplicateKeyError
 from app.core.clock import utc_now
 
 
@@ -894,6 +899,78 @@ def _build_pipeline_summary(prospects: List[SalesProspect]) -> Dict[str, Any]:
     }
 
 
+DELETE_LEAD_ARCHIVE_COLLECTION = "sales_prospect_delete_archives"
+
+
+async def _archive_lead_snapshot(prospect: SalesProspect, company_id: str, current_user: User) -> str:
+    """Snapshot a lead plus every child record and return a restore token.
+
+    Used by delete_lead for the Undo feature. The snapshot is stored in a raw
+    archive collection so the lead and all of its children can be re-inserted
+    with their original _ids by restore_lead. Every child query is best-effort:
+    a missing collection must never block the archive.
+    """
+    from app.core.database import get_database
+
+    db = get_database()
+    lead_key = str(prospect.id)
+    children: Dict[str, List[Dict[str, Any]]] = {}
+
+    child_queries = [
+        (SalesPipelineHistory.Settings.name, {"company_id": company_id, "lead_id": lead_key}),
+        (CRMDeal.Settings.name, {"company_id": company_id, "lead_id": lead_key}),
+        (CRMProposal.Settings.name, {"company_id": company_id, "lead_id": lead_key}),
+        (CRMDocument.Settings.name, {"company_id": company_id, "lead_id": lead_key}),
+        (SalesLeadNote.Settings.name, {"company_id": company_id, "lead_id": lead_key}),
+        (SalesLeadFile.Settings.name, {"company_id": company_id, "lead_id": lead_key}),
+        (CRMActivity.Settings.name, {"company_id": company_id, "entity_type": "lead", "entity_id": lead_key}),
+    ]
+    try:
+        from app.models.task import Task
+        from app.models.ownership_transfer import OwnershipTransfer
+
+        child_queries.append(
+            (
+                Task.Settings.name,
+                {
+                    "company_id": company_id,
+                    "related_entity_type": "sales_lead",
+                    "related_entity_id": lead_key,
+                },
+            )
+        )
+        child_queries.append(
+            (
+                OwnershipTransfer.Settings.name,
+                {"company_id": company_id, "entity_type": "lead", "entity_id": lead_key},
+            )
+        )
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+    for collection_name, filt in child_queries:
+        try:
+            children[collection_name] = await db[collection_name].find(filt).to_list(length=None)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("LEAD_DELETE_SNAPSHOT_CHILD_FAILED collection=%s error=%s", collection_name, exc)
+            children[collection_name] = []
+
+    lead_raw = await db[SalesProspect.Settings.name].find_one({"_id": prospect.id})
+    restore_token = str(uuid.uuid4())
+    await db[DELETE_LEAD_ARCHIVE_COLLECTION].insert_one(
+        {
+            "_id": restore_token,
+            "company_id": company_id,
+            "lead_id": lead_key,
+            "deleted_by": str(getattr(current_user, "id", "")),
+            "deleted_at": utc_now(),
+            "lead": lead_raw,
+            "children": children,
+        }
+    )
+    return restore_token
+
+
 async def _fetch_prospects_resilient(query: Dict[str, Any], limit: int) -> List[SalesProspect]:
     """Fetch lead documents, skipping legacy records that fail model validation.
 
@@ -1744,4 +1821,197 @@ class CRMPipelineService:
                 }
                 for item in history_items
             ],
+        }
+
+    @staticmethod
+    async def delete_lead(current_user: User, lead_id: str) -> Dict[str, Any]:
+        """Permanently delete a lead (hard delete) and cascade-clean its records.
+
+        The lead document itself is removed from ``sales_prospects`` (a hard
+        delete) so its unique email / meta-lead keys are freed and the same lead
+        can be re-created afterwards. Before the delete, a full snapshot (lead +
+        every child record) is archived under a restore token so the UI can offer
+        an Undo that restores everything.
+
+        Ordering matters: the lead is deleted FIRST (the critical operation) and
+        the child cleanup runs best-effort afterwards, so a hiccup on one child
+        collection can never turn a successful deletion into a 500 that the
+        frontend misreads as "failed" while the lead is actually gone.
+        """
+        company_id = _user_company_id(current_user)
+        prospect = await SalesProspect.get(lead_id)
+        if not prospect or prospect.deleted:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+        if prospect.company_id != company_id and current_user.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this company")
+        if not _can_write_pipeline(current_user, prospect):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to delete this lead")
+
+        lead_key = str(prospect.id)
+        restore_token: Optional[str] = None
+
+        # 1. Snapshot lead + children for the Undo feature. Best-effort: a
+        #    snapshot failure must never block the deletion itself.
+        try:
+            restore_token = await _archive_lead_snapshot(prospect, company_id, current_user)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("LEAD_DELETE_SNAPSHOT_FAILED lead_id=%s error=%s", lead_key, exc)
+
+        # 2. Hard-delete the lead itself FIRST — the guaranteed operation.
+        await prospect.delete()
+
+        # 3. Cascade child cleanup, best-effort per collection.
+        # NOTE: Beanie's find().delete() returns a pymongo DeleteResult, which is
+        # NOT JSON-serializable. Normalizing to .deleted_count here is what keeps
+        # the endpoint from 500ing while serializing the response (the delete
+        # itself succeeded, which is exactly the confusing case the user saw:
+        # lead gone from the UI but the request failed).
+        deleted: Dict[str, int] = {}
+        cascade_targets = [
+            (SalesPipelineHistory, {"company_id": company_id, "lead_id": lead_key}, "history"),
+            (CRMDeal, {"company_id": company_id, "lead_id": lead_key}, "deals"),
+            (CRMProposal, {"company_id": company_id, "lead_id": lead_key}, "proposals"),
+            (CRMDocument, {"company_id": company_id, "lead_id": lead_key}, "documents"),
+            (SalesLeadNote, {"company_id": company_id, "lead_id": lead_key}, "notes"),
+            (SalesLeadFile, {"company_id": company_id, "lead_id": lead_key}, "files"),
+            (
+                CRMActivity,
+                {"company_id": company_id, "entity_type": "lead", "entity_id": lead_key},
+                "activities",
+            ),
+        ]
+        for model, filt, key in cascade_targets:
+            try:
+                result = await model.find(filt).delete()
+                deleted[key] = result if isinstance(result, int) else getattr(result, "deleted_count", 0)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("LEAD_DELETE_CASCADE_FAILED collection=%s lead_id=%s error=%s", key, lead_key, exc)
+                deleted[key] = 0
+
+        # Lazy imports keep the module import graph acyclic (same pattern as
+        # bulk_assign). Calendar events for leads are derived from Tasks, so
+        # deleting the tasks also clears the calendar — no separate pass needed.
+        try:
+            from app.models.task import Task
+
+            result = await Task.find(
+                {
+                    "company_id": company_id,
+                    "related_entity_type": "sales_lead",
+                    "related_entity_id": lead_key,
+                }
+            ).delete()
+            deleted["tasks"] = result if isinstance(result, int) else getattr(result, "deleted_count", 0)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("LEAD_DELETE_TASKS_FAILED lead_id=%s error=%s", lead_key, exc)
+            deleted["tasks"] = 0
+        try:
+            from app.models.ownership_transfer import OwnershipTransfer
+
+            result = await OwnershipTransfer.find(
+                {
+                    "company_id": company_id,
+                    "entity_type": "lead",
+                    "entity_id": lead_key,
+                }
+            ).delete()
+            deleted["ownership_transfers"] = result if isinstance(result, int) else getattr(result, "deleted_count", 0)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("LEAD_DELETE_OWNERSHIP_TRANSFERS_FAILED lead_id=%s error=%s", lead_key, exc)
+            deleted["ownership_transfers"] = 0
+
+        logger.info(
+            "LEAD_DELETE_COMPLETED lead_id=%s company_id=%s deleted=%s",
+            lead_key,
+            company_id,
+            deleted,
+        )
+        return {
+            "message": "Lead deleted permanently",
+            "deleted_lead_id": lead_key,
+            "deleted": deleted,
+            "restore_token": restore_token,
+        }
+
+    @staticmethod
+    async def restore_lead(current_user: User, restore_token: str) -> Dict[str, Any]:
+        """Restore a hard-deleted lead and all of its archived records (Undo).
+
+        Reads the snapshot written by delete_lead, re-inserts the lead document
+        (original _id preserved) plus every child record, then removes the
+        archive entry. Company isolation is enforced on the archive lookup.
+        """
+        from app.core.database import get_database
+
+        company_id = _user_company_id(current_user)
+        db = get_database()
+        archive_col = db[DELETE_LEAD_ARCHIVE_COLLECTION]
+        archive = await archive_col.find_one({"_id": restore_token, "company_id": company_id})
+        if not archive:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Restore record not found or expired")
+
+        # Re-insert the lead itself (original _id preserved). If a new lead was
+        # created with the same email / meta-lead key after the delete, the
+        # unique index rejects this — report a clear 409 instead of a raw 500.
+        try:
+            await db[SalesProspect.Settings.name].insert_one(archive["lead"])
+        except DuplicateKeyError:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot restore: a lead with the same email or identifier was already re-created",
+            )
+        # Re-insert every archived child record.
+        for collection_name, docs in (archive.get("children") or {}).items():
+            if not docs:
+                continue
+            try:
+                await db[collection_name].insert_many(docs)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("LEAD_RESTORE_CHILD_FAILED collection=%s error=%s", collection_name, exc)
+        await archive_col.delete_one({"_id": restore_token})
+
+        logger.info(
+            "LEAD_RESTORE_COMPLETED lead_id=%s company_id=%s restore_token=%s",
+            archive["lead_id"],
+            company_id,
+            restore_token,
+        )
+        return {
+            "message": "Lead restored",
+            "lead_id": archive["lead_id"],
+            "restore_token": restore_token,
+        }
+
+    @staticmethod
+    async def bulk_delete_leads(current_user: User, lead_ids: List[str]) -> Dict[str, Any]:
+        """Delete many leads at once, reusing the single-lead cascade delete.
+
+        Each lead is handled independently (permission / ownership / company
+        checks are per lead), so one blocked lead never fails the whole batch.
+        """
+        results: List[Dict[str, Any]] = []
+        for lead_id in lead_ids or []:
+            try:
+                res = await CRMPipelineService.delete_lead(current_user, lead_id)
+                results.append(
+                    {
+                        "lead_id": lead_id,
+                        "status": "deleted",
+                        "restore_token": res.get("restore_token"),
+                    }
+                )
+            except HTTPException as exc:
+                results.append(
+                    {
+                        "lead_id": lead_id,
+                        "status": "error",
+                        "status_code": exc.status_code,
+                        "reason": exc.detail,
+                    }
+                )
+        deleted_count = sum(1 for item in results if item["status"] == "deleted")
+        return {
+            "results": results,
+            "deleted_count": deleted_count,
+            "skipped_count": len(results) - deleted_count,
         }

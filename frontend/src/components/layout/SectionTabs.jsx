@@ -132,7 +132,10 @@ function SectionTabsInner({ location, context }) {
   // ── All hooks above; early returns only after every hook has run. ──────────
   const tabs = useMemo(() => {
     if (!section) return [];
-    let list = items.filter((item) => !TAB_HIDDEN_ITEM_NAMES.has(item.name));
+    // TAB_HIDDEN_ITEM_NAMES removes sidebar items by name; departmentItem filters
+    // the dynamic "Your Departments" quick links so internal company departments
+    // never appear as tabs in the in-page bar (they stay in the sidebar).
+    let list = items.filter((item) => !TAB_HIDDEN_ITEM_NAMES.has(item.name) && !item.departmentItem);
     // Phase 6: per-channel unread counts on the Inbox tabs.
     if (section.key === "inbox") {
       list = list.map((item) => {

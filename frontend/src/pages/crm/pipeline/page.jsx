@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCorners, useSensor, useSensors } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
@@ -26,6 +26,7 @@ import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
 import { isAssignableActiveUser } from '../../../utils/userFilters'
 import { useDebounce } from '../../../hooks/useDebounce'
+import { useConfirmation } from '../../../hooks/useConfirmation'
 import {
   PipelineBoard,
   PipelineFiltersBar,
@@ -45,6 +46,7 @@ import {
   parsePipelineFilters,
   stageOptionsFromBoard,
 } from './utils'
+import { ConfirmDialog } from '../../../components/ui'
 import { StageRequirementsDialog } from '../../../components/sales/StageRequirementsDialog'
 import { ContactAttemptDialog } from '../../../components/sales/ContactAttemptDialog'
 import SalesFollowUpDialog from '../../../components/sales/SalesFollowUpDialog'
@@ -95,6 +97,7 @@ const getResponseItems = (data, key) => {
 export default function CRMPipelinePage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { showUndoNotification } = useConfirmation()
   const { stageKey: stageRouteKey = '' } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const [localSearchValue, setLocalSearchValue] = useState('')
@@ -114,6 +117,12 @@ export default function CRMPipelinePage() {
   const [requirementsDialog, setRequirementsDialog] = useState(null)
   const [contactAttemptLead, setContactAttemptLead] = useState(null)
   const [followUpLead, setFollowUpLead] = useState(null)
+  const [deleteLeadTarget, setDeleteLeadTarget] = useState(null)
+  const [bulkDeleteTarget, setBulkDeleteTarget] = useState(null)
+  // Synchronous in-flight guards so a rapid double-click on the confirm button
+  // (before React re-renders the loading state) cannot fire two DELETE calls.
+  const deleteLeadInFlightRef = useRef(false)
+  const bulkDeleteInFlightRef = useRef(false)
   // Lead id whose stage move is in flight through the required-details dialog
   // ("Save and Move Forward"). Kept separate from the mutation so the row keeps
   // its loading state while that dialog-driven move runs, giving one consistent
@@ -494,6 +503,130 @@ export default function CRMPipelinePage() {
       },
     }
   )
+
+  // ── Delete lead (permanent, cascades through backend) ─────────────────────
+  const handleDeleteSettled = useCallback(() => {
+    setDeleteLeadTarget(null)
+    queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+    queryClient.invalidateQueries('crm-leads-entry')
+    queryClient.invalidateQueries('sales-prospects')
+  }, [queryClient])
+
+  const deleteLeadMutation = useMutation(
+    (leadId) => crmApi.deleteLead(leadId),
+    {
+      onSuccess: (data, leadId) => {
+        handleDeleteSettled()
+        const restoreToken = data?.restore_token
+        if (restoreToken) {
+          showUndoNotification({
+            message: 'Lead deleted permanently',
+            duration: 6000,
+            onUndo: () => restoreLeadMutation.mutate({ leadId, restoreToken }),
+          })
+        } else {
+          toast.success('Lead deleted permanently')
+        }
+      },
+      onError: (error) => {
+        const status = error?.response?.status
+        if (status === 403) {
+          toast.error('You do not have permission to delete this lead')
+        } else if (status === 404) {
+          // The lead is already gone — the end state is identical to a
+          // successful delete (this happens when a stray duplicate DELETE
+          // lands after the first one already removed the lead). Treat it as
+          // success instead of showing a misleading failure toast.
+          handleDeleteSettled()
+          toast.success('Lead deleted')
+        } else {
+          toast.error(error?.response?.data?.detail || 'Failed to delete lead')
+        }
+      },
+    }
+  )
+
+  // Restore a just-deleted lead (Undo from the global UndoBar).
+  const restoreLeadMutation = useMutation(
+    ({ leadId, restoreToken }) => crmApi.restoreLead(leadId, restoreToken),
+    {
+      onSuccess: () => {
+        toast.success('Lead restored')
+        queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('sales-prospects')
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Failed to restore lead')
+      },
+    }
+  )
+
+  // ── Bulk delete (per-lead permissions enforced on the backend) ────────────
+  const bulkDeleteLeadsMutation = useMutation(
+    (leadIds) => crmApi.bulkDeleteLeads(leadIds),
+    {
+      onSuccess: (data) => {
+        setBulkDeleteTarget(null)
+        const deletedCount = data?.deleted_count ?? 0
+        const skippedCount = data?.skipped_count ?? 0
+        queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('sales-prospects')
+        if (deletedCount > 0) {
+          toast.success(`Deleted ${deletedCount} lead${deletedCount === 1 ? '' : 's'} permanently`)
+        }
+        if (skippedCount > 0) {
+          toast.error(`${skippedCount} lead${skippedCount === 1 ? '' : 's'} skipped (no permission or not found)`)
+        }
+        if (deletedCount === 0 && skippedCount === 0) {
+          toast.error('No leads were deleted')
+        }
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Failed to delete selected leads')
+      },
+    }
+  )
+
+  const handleDeleteLead = useCallback((lead) => {
+    const leadId = lead?.id || lead?._id
+    if (!leadId) return
+    setDeleteLeadTarget(lead)
+  }, [])
+
+  // Returns the mutation promise so the shared <Button> can engage its own
+  // synchronous pendingRef lock — closing the double-click window that a bare
+  // fire-and-forget mutate() leaves open (react-query's isLoading only flips on
+  // the next render). The in-flight ref is a second, coarser backstop.
+  const confirmDeleteLead = useCallback(() => {
+    const leadId = deleteLeadTarget?.id || deleteLeadTarget?._id
+    if (!leadId || deleteLeadMutation.isLoading || deleteLeadInFlightRef.current) return undefined
+    deleteLeadInFlightRef.current = true
+    const promise = deleteLeadMutation.mutateAsync(leadId).finally(() => {
+      deleteLeadInFlightRef.current = false
+    })
+    // Returning the promise makes the confirm Button show its own loading state
+    // and ignore repeat clicks until this settles.
+    return promise
+  }, [deleteLeadTarget, deleteLeadMutation])
+
+  // Opens the bulk-delete confirmation dialog. Selection cleanup in the stage
+  // list happens via its existing stale-id drop effect once the list refetches.
+  const handleBulkDeleteLeads = useCallback((leadIds) => {
+    if (!leadIds?.length || bulkDeleteLeadsMutation.isLoading) return Promise.resolve()
+    setBulkDeleteTarget(leadIds)
+    return Promise.resolve()
+  }, [bulkDeleteLeadsMutation])
+
+  const confirmBulkDeleteLeads = useCallback(() => {
+    if (!bulkDeleteTarget?.length || bulkDeleteLeadsMutation.isLoading || bulkDeleteInFlightRef.current) return undefined
+    bulkDeleteInFlightRef.current = true
+    const promise = bulkDeleteLeadsMutation.mutateAsync(bulkDeleteTarget).finally(() => {
+      bulkDeleteInFlightRef.current = false
+    })
+    return promise
+  }, [bulkDeleteTarget, bulkDeleteLeadsMutation])
 
   // Returns a promise so the stage list can clear its selection only on success.
   const handleBulkAssign = useCallback((leadIds, userId) => {
@@ -877,10 +1010,13 @@ export default function CRMPipelinePage() {
               onUpdateStageStatus={handleStageStatusChange}
               onRecordContact={handleRecordContact}
               onScheduleFollowUp={handleScheduleFollowUp}
+              onDeleteLead={handleDeleteLead}
               onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
               onResetFilters={clearFilters}
               onBulkAssign={handleBulkAssign}
               bulkAssigning={bulkAssignMutation.isLoading}
+              onBulkDelete={handleBulkDeleteLeads}
+              bulkDeleting={bulkDeleteLeadsMutation.isLoading}
               leads={visibleLeads}
               hasActiveFilters={hasActiveFilters}
             />
@@ -1003,6 +1139,33 @@ export default function CRMPipelinePage() {
       <CreateLeadModal
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
+      />
+
+      {/* ============================================================ */}
+      {/* DELETE LEAD CONFIRMATION - permanent, cascades to all lead data */}
+      {/* ============================================================ */}
+      <ConfirmDialog
+        isOpen={Boolean(deleteLeadTarget)}
+        title="Delete lead permanently?"
+        message={`This will permanently delete "${deleteLeadTarget?.company_name || deleteLeadTarget?.prospect_name || 'this lead'}" and all of its history, deals, proposals, documents, notes, files, activities and tasks. This action cannot be undone.`}
+        confirmLabel="Delete lead"
+        loading={deleteLeadMutation.isLoading}
+        onConfirm={confirmDeleteLead}
+        onClose={() => {
+          if (!deleteLeadMutation.isLoading) setDeleteLeadTarget(null)
+        }}
+      />
+
+      <ConfirmDialog
+        isOpen={Boolean(bulkDeleteTarget?.length)}
+        title={`Delete ${bulkDeleteTarget?.length || 0} leads permanently?`}
+        message={`This will permanently delete ${bulkDeleteTarget?.length || 0} selected leads and all of their history, deals, proposals, documents, notes, files, activities and tasks. This action cannot be undone.`}
+        confirmLabel="Delete leads"
+        loading={bulkDeleteLeadsMutation.isLoading}
+        onConfirm={confirmBulkDeleteLeads}
+        onClose={() => {
+          if (!bulkDeleteLeadsMutation.isLoading) setBulkDeleteTarget(null)
+        }}
       />
     </div>
   )

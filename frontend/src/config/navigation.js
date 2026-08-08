@@ -490,10 +490,14 @@ export const getSectionItems = (sectionKey, user, orgDepartments = []) => {
     .filter((item) => item && gateNavItem(user, item));
   if (sectionKey === "people") {
     const deptIndex = items.findIndex((item) => item.name === "Departments");
+    // Marked departmentItem: these are quick links to each department's
+    // permission view. They stay in the sidebar, but the in-page SectionTabs
+    // bar filters them out so company departments don't appear as tabs.
     const departmentItems = orgDepartments.map((department) => ({
       name: department.name,
       href: `/admin-permissions?department=${encodeURIComponent(department.id)}`,
       icon: Network,
+      departmentItem: true,
     }));
     if (deptIndex !== -1) items.splice(deptIndex + 1, 0, ...departmentItems);
     items.push(...getHrNavItems(user));

@@ -536,6 +536,7 @@ async def create_employee(
     first_name: str = Form(...),
     last_name: str = Form(...),
     lead_id: Optional[str] = Form(None),
+    reports_to: Optional[str] = Form(None),
     department_id: Optional[str] = Form(None),
     designation: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
@@ -565,10 +566,22 @@ async def create_employee(
         )
 
     department_doc = await _resolve_department(current_user.company_id, department_id)
-    
+
+    # Reporting manager: explicit selection wins, otherwise default to the
+    # creator for Manager/Lead. Legacy lead_id stays in sync when the chosen
+    # reporting manager is a Lead.
     final_lead_id = None
-    reports_to_id = str(current_user.id) if current_user.role in [UserRole.MANAGER, UserRole.LEAD] else None
-    
+    reports_to_id = reports_to or (str(current_user.id) if current_user.role in [UserRole.MANAGER, UserRole.LEAD] else None)
+    if reports_to:
+        reports_to_user = await User.get(reports_to)
+        if not reports_to_user or reports_to_user.company_id != current_user.company_id:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Invalid reporting manager",
+            )
+        if reports_to_user.role == UserRole.LEAD:
+            final_lead_id = reports_to
+
     # Create Employee
     employee = Employee(
         email=email,
@@ -743,6 +756,7 @@ async def update_user(
     phone: Optional[str] = Form(None),
     department_id: Optional[str] = Form(None),
     designation: Optional[str] = Form(None),
+    reports_to: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
     """Update basic user profile fields"""
@@ -754,15 +768,11 @@ async def update_user(
             detail="User not found"
         )
 
-    # Access control
+    # Access control: company-scoped roles (Admin/Sub Admin/Manager/Lead per
+    # get_current_company_admin_or_lead) may update any user in their company.
+    # No creator/department/team restriction - a manager (or lead) can edit an
+    # employee regardless of who created them or which department they belong to.
     check_company_access(current_user, user.company_id)
-    if current_user.role == UserRole.LEAD:
-        # Leads can only update their own team employees
-        if user.role != UserRole.EMPLOYEE or user.lead_id != str(current_user.id):
-            raise HTTPException(
-                status_code=http_status.HTTP_403_FORBIDDEN,
-                detail="Leads can only edit their own team members"
-            )
 
     # Update fields if provided
     if first_name:
@@ -797,6 +807,25 @@ async def update_user(
                 assigned_by=current_user,
                 previous_department_name=previous_department_name,
             )
+    if reports_to is not None:
+        reports_to_value = reports_to or None
+        if reports_to_value:
+            reports_to_user = await User.get(reports_to_value)
+            if not reports_to_user or reports_to_user.company_id != current_user.company_id:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid reporting manager",
+                )
+            user.reports_to = reports_to_value
+            # Legacy: keep lead_id in sync when the reporting manager is a Lead.
+            # lead_id only exists on the Employee subclass, so guard for it.
+            if hasattr(user, "lead_id"):
+                user.lead_id = reports_to_value if reports_to_user.role == UserRole.LEAD else None
+        else:
+            user.reports_to = None
+            if hasattr(user, "lead_id"):
+                user.lead_id = None
+        await UserService.update_hierarchy_ancestors(user)
     user.updated_at = utc_now()
     await user.save()
 

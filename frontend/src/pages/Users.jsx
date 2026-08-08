@@ -57,6 +57,11 @@ const Users = () => {
   const currentUser = user
   const { confirm } = useConfirmation()
   const [users, setUsers] = useState([])
+  // Full company roster (Admin/Sub Admin/Manager/Lead/Employee, any department)
+  // for the Reporting Manager dropdown. The main `users` list is paginated to
+  // 20 rows and hierarchy-scoped (managers only see subordinates + their
+  // department), so it cannot feed that dropdown.
+  const [companyRoster, setCompanyRoster] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -97,13 +102,11 @@ const Users = () => {
     if (isLead) return ['employee']
     return []
   }, [isFullCompanyAdmin, isLead, isManager, isSubAdmin])
-  const managerOptions = useMemo(
-    () => users.filter((item) => item.status === 'active'),
-    [users],
-  )
-  const leadOptions = useMemo(
-    () => users.filter((item) => normalizeRole(item.role) === 'lead' && item.status === 'active'),
-    [users],
+  // All active company members (Admin/Sub Admin/Manager/Lead/Employee), any
+  // department or seniority, can be chosen as an employee's reporting manager.
+  const reportingManagerOptions = useMemo(
+    () => (companyRoster.length ? companyRoster : users.filter((item) => item.status === 'active')),
+    [companyRoster, users],
   )
   const designationOptions = useMemo(() => {
     return getDesignationOptions(customDesignations, editingUser?.designation || '')
@@ -146,6 +149,21 @@ const Users = () => {
     }
   }, [])
 
+  // The Reporting Manager dropdown needs every company member regardless of
+  // department/seniority (admins included). /users/assignable returns the full
+  // active roster for the current user's company.
+  const fetchCompanyRoster = useCallback(async () => {
+    try {
+      const data = await usersAPI.getAssignableUsers()
+      if (data && Array.isArray(data.users)) {
+        setCompanyRoster(data.users)
+      }
+    } catch (error) {
+      console.error('Error loading company roster:', error)
+      setCompanyRoster([])
+    }
+  }, [])
+
   const fetchDepartments = useCallback(async () => {
     if (!canReadDepartments) return
     try {
@@ -160,10 +178,11 @@ const Users = () => {
 
   useEffect(() => {
     fetchUsers()
+    fetchCompanyRoster()
     if (canReadDepartments) {
       fetchDepartments()
     }
-  }, [fetchUsers, fetchDepartments, canReadDepartments])
+  }, [fetchUsers, fetchCompanyRoster, fetchDepartments, canReadDepartments])
 
   if (isEmployee) {
     return (
@@ -220,9 +239,9 @@ const Users = () => {
       if (phoneError) errors.phone = phoneError
     }
 
-    const leadId = formData.get('lead_id')?.trim()
-    if (leadId && !/^[0-9a-fA-F]{24}$/.test(leadId)) {
-      errors.lead_id = 'Please enter a valid Lead ID'
+    const reportsTo = formData.get('reports_to')?.trim()
+    if (reportsTo && !/^[0-9a-fA-F]{24}$/.test(reportsTo)) {
+      errors.reports_to = 'Please select a valid reporting manager'
     }
 
     return errors
@@ -275,7 +294,7 @@ const Users = () => {
         await usersAPI.createLead(userData)
       } else {
         if (isCompanyAdmin || isManager) {
-          userData.lead_id = formData.get('lead_id') || ''
+          userData.reports_to = formData.get('reports_to') || ''
         }
         userData.designation = formData.get('designation') || ''
         await usersAPI.createEmployee(userData)
@@ -285,6 +304,7 @@ const Users = () => {
 
       closeUserModal()
       await fetchUsers()
+      fetchCompanyRoster()
 
       e.target.reset()
     } catch (error) {
@@ -312,14 +332,14 @@ const Users = () => {
   }
 
   const handleEdit = (userToEdit) => {
-    // Permission: allow editing if self or company admin, or manager/lead over the user
+    // Company-scoped roles (Admin/Sub Admin/Manager/Lead) may edit any user in
+    // the company - no creator or department restriction. Employees may only
+    // edit themselves (handled by their profile view).
     const isSelf = String(userToEdit.id || userToEdit._id) === String(user.id || user._id)
     const isAdmin = hasCompanyAdminAccess(user?.role)
     const isManagerRole = normalizeRole(user?.role) === 'manager'
     const isLeadRoleLocal = isLeadRole(user?.role)
-    const managerCanEdit = isManagerRole && userToEdit.department_id && userToEdit.department_id === user.department_id
-    const leadCanEdit = isLeadRoleLocal && userToEdit.lead_id && String(userToEdit.lead_id) === String(user.id || user._id)
-    if (!(isSelf || isAdmin || managerCanEdit || leadCanEdit)) {
+    if (!(isSelf || isAdmin || isManagerRole || isLeadRoleLocal)) {
       toast.error('You do not have permission to edit this user')
       return
     }
@@ -440,6 +460,10 @@ const Users = () => {
       if (formData.get('designation')) {
         updateData.designation = formData.get('designation')
       }
+      const reportsTo = formData.get('reports_to')
+      if (reportsTo !== null && reportsTo !== undefined) {
+        updateData.reports_to = reportsTo
+      }
     }
 
     const password = formData.get('password')
@@ -453,6 +477,7 @@ const Users = () => {
       toast.success('User updated successfully')
       closeUserModal()
       await fetchUsers()
+      fetchCompanyRoster()
       const form = document.querySelector('form')
       if (form) form.reset()
     } catch (error) {
@@ -477,6 +502,7 @@ const Users = () => {
       await usersAPI.deleteUser(userId)
       toast.success('User deleted successfully')
       await fetchUsers()
+      fetchCompanyRoster()
     } catch (error) {
       const errorMessage = error.response?.data?.detail || 'Failed to delete user'
       toast.error(errorMessage)
@@ -630,7 +656,7 @@ const Users = () => {
           await usersAPI.createEmployee({
             ...userData,
             designation: row.data.designation,
-            lead_id: isCompanyAdmin ? lead?.id || '' : '',
+            reports_to: isCompanyAdmin ? lead?.id || '' : '',
           })
         }
       }
@@ -639,6 +665,7 @@ const Users = () => {
       setBulkRows([])
       setBulkErrors([])
       await fetchUsers()
+      fetchCompanyRoster()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Bulk import failed')
     } finally {
@@ -668,7 +695,7 @@ const Users = () => {
           </div>
           <p className="font-semibold text-rose-800 dark:text-rose-400">Failed to load users</p>
           <p className="mt-1 text-sm text-rose-600 dark:text-rose-500">{error}</p>
-          <button onClick={fetchUsers} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700">
+          <button onClick={() => { fetchUsers(); fetchCompanyRoster() }} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700">
             <RefreshCw className="h-4 w-4" />
             Try Again
           </button>
@@ -789,7 +816,7 @@ const Users = () => {
               </div>
             </div>
             <button
-              onClick={fetchUsers}
+              onClick={() => { fetchUsers(); fetchCompanyRoster() }}
               className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
             >
               <RefreshCw className="h-3.5 w-3.5" />
@@ -1230,7 +1257,7 @@ const Users = () => {
                     name="phone"
                     defaultValue={editingUser?.phone || ''}
                     className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${formErrors.phone ? 'border-red-500' : ''}`}
-                    placeholder="+919876543210"
+                    placeholder="Enter Number"
                     onChange={() => {
                       if (formErrors.phone) {
                         setFormErrors({ ...formErrors, phone: '' })
@@ -1324,21 +1351,21 @@ const Users = () => {
                   <>
                     {(isCompanyAdmin || isManager) && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Lead</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Reporting Manager</label>
                         <select
-                          name="lead_id"
-                          defaultValue={editingUser?.lead_id || ''}
-                          className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${formErrors.lead_id ? 'border-red-500' : ''}`}
+                          name="reports_to"
+                          defaultValue={editingUser?.reports_to || ''}
+                          className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${formErrors.reports_to ? 'border-red-500' : ''}`}
                         >
-                          <option value="">No lead</option>
-                          {leadOptions.map((lead) => (
-                            <option key={lead.id || lead._id} value={lead.id || lead._id}>
-                              {lead.first_name} {lead.last_name} ({lead.email})
+                          <option value="">No reporting manager</option>
+                          {reportingManagerOptions.map((member) => (
+                            <option key={member.id || member._id} value={member.id || member._id}>
+                              {member.first_name} {member.last_name} ({member.email})
                             </option>
                           ))}
                         </select>
-                        {formErrors.lead_id && (
-                          <p className="text-red-500 text-xs mt-1">{formErrors.lead_id}</p>
+                        {formErrors.reports_to && (
+                          <p className="text-red-500 text-xs mt-1">{formErrors.reports_to}</p>
                         )}
                       </div>
                     )}
