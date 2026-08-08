@@ -227,12 +227,18 @@ async def get_avatar_file(
 # ============================================================
 # General file upload endpoint
 # ============================================================
+# General-purpose uploads (task/project attachments, etc.) accept any file
+# type — including videos, PDFs, and spreadsheets — up to 200 MB. Security
+# here comes from the authenticated endpoint + auth-gated serving.
+GENERAL_UPLOAD_MAX_SIZE = 200 * 1024 * 1024  # 200 MB
+
+
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user)
 ):
-    """Upload a general file"""
+    """Upload a general file (any type, up to 200 MB)."""
     try:
         stored = await FileService.store_uploaded_file(
             file, 
@@ -240,6 +246,8 @@ async def upload_file(
             url_prefix="/uploads",
             scope="files",
             sensitive=True,
+            allow_any_type=True,
+            max_size=GENERAL_UPLOAD_MAX_SIZE,
         )
         logger.info(f"📤 File uploaded: {stored['filename']}, user: {current_user.email}")
         return {

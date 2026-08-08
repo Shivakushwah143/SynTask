@@ -98,3 +98,19 @@ export const getTaskStatusTone = (status) => {
     dotClass: 'bg-gray-500',
   }
 }
+
+const VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v', 'ogv', 'wmv', 'flv', '3gp', 'mpg', 'mpeg']
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif']
+
+/**
+ * Classify an attachment URL for preview rendering: 'image' | 'video' | 'document' | 'file'.
+ */
+export const getAttachmentKind = (url) => {
+  const clean = String(url || '').split('?')[0]
+  const ext = clean.split('.').pop()?.toLowerCase() || ''
+  if (IMAGE_EXTENSIONS.includes(ext)) return 'image'
+  if (VIDEO_EXTENSIONS.includes(ext)) return 'video'
+  if (ext && ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv', 'txt', 'md'].includes(ext)) return 'document'
+  return 'file'
+}
+

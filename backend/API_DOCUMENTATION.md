@@ -254,7 +254,7 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 | GET | `/api/v1/files/clients/{filename}` | `get_client_file` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/files/msa/{filename}` | `get_msa_file` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/files/projects/{filename}` | `get_project_file` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/files/upload` | `upload_file` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/files/upload` | `upload_file` | General-purpose upload used by task/project attachments. Accepts **any file type** (images, videos, PDF, Excel, etc.) up to **200 MB** (`GENERAL_UPLOAD_MAX_SIZE`). Oversized files return `413` with a clear detail stating the actual size and the limit (e.g. `File is too large: 312.0 MB exceeds the maximum allowed size of 200 MB`). Avatar and other security-sensitive uploads keep their stricter type/size whitelists. |
 | GET | `/api/v1/files/{filename}` | `get_file` | Uses router/endpoint dependencies where configured. |
 
 ### Health
