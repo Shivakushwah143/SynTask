@@ -37,9 +37,12 @@ class FakeQuery:
 
 
 def _install_team_timesheet_mocks(monkeypatch, users):
+    async def fake_get(uid):
+        return users[0] if users else None
+
     monkeypatch.setattr(timesheet_endpoints.User, "find", staticmethod(lambda *a, **k: FakeQuery(users)))
     monkeypatch.setattr(timesheet_endpoints.TimesheetEntry, "find", staticmethod(lambda *a, **k: FakeQuery([])))
-    monkeypatch.setattr(timesheet_endpoints.User, "get", staticmethod(lambda uid: users[0] if users else None))
+    monkeypatch.setattr(timesheet_endpoints.User, "get", staticmethod(fake_get))
 
 
 @pytest.mark.asyncio
@@ -50,7 +53,7 @@ async def test_sub_admin_can_view_team_timesheet(monkeypatch):
 
     result = await timesheet_endpoints.get_team_timesheet(current_user=sub_admin, start_date=None, end_date=None, employee_id=None)
     assert result["timesheet_data"] == {}
-    assert result["user_data"] == {}
+    assert result["user_data"]["employee-1"]["name"] == "Test User"
 
 
 @pytest.mark.asyncio
@@ -77,11 +80,21 @@ async def test_sub_admin_can_view_timesheet_list(monkeypatch):
 
     monkeypatch.setattr(timesheet_endpoints.User, "find", staticmethod(lambda *a, **k: FakeQuery([employee])))
     monkeypatch.setattr(timesheet_endpoints.TimesheetSummary, "find", staticmethod(lambda *a, **k: FakeQuery([])))
-    monkeypatch.setattr(timesheet_endpoints.TimesheetEntry, "find_one", staticmethod(lambda *a, **k: None))
-    monkeypatch.setattr(timesheet_endpoints.User, "get", staticmethod(lambda uid: employee))
+
+    async def fake_find_one(*a, **k):
+        return None
+
+    monkeypatch.setattr(timesheet_endpoints.TimesheetEntry, "find_one", staticmethod(fake_find_one))
+
+    async def fake_get(uid):
+        return employee
+
+    monkeypatch.setattr(timesheet_endpoints.User, "get", staticmethod(fake_get))
 
     result = await timesheet_endpoints.get_timesheet_list(current_user=sub_admin)
-    assert result["timesheet_list"] == []
+    assert len(result["timesheet_list"]) == 1
+    assert result["timesheet_list"][0]["user_id"] == "employee-1"
+    assert result["timesheet_list"][0]["name"] == "Test User"
 
 
 @pytest.mark.asyncio

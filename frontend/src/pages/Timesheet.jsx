@@ -80,7 +80,33 @@ const WorkTypeBadge = ({ workType }) => {
   )
 }
 
-const AttendanceSummaryBlock = ({ summary }) => {
+const AttendanceSummaryBlock = ({ summary, loading }) => {
+  if (loading) {
+    return (
+      <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="rounded-lg bg-indigo-50 p-2.5 dark:bg-indigo-950/30">
+              <BarChart2 className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Today's Attendance</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Real-time tracking</p>
+            </div>
+          </div>
+          <div className="mb-4">
+            <div className="h-3 animate-pulse rounded-full bg-gray-100 dark:bg-gray-800" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {[...Array(6)].map((_, index) => (
+              <div key={index} className="h-16 animate-pulse rounded-xl bg-gray-50 dark:bg-gray-900/50" />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
   if (!summary) return null
 
   const progressPct = Math.min(100, ((summary.total_working_seconds || 0) / STANDARD_WORK_SECONDS) * 100)
@@ -272,6 +298,7 @@ export default function Timesheet() {
   })
   const [errors, setErrors] = useState({})
   const [attendanceSummary, setAttendanceSummary] = useState(null)
+  const [attendanceLoading, setAttendanceLoading] = useState(true)
   const [weekOffset, setWeekOffset] = useState(0)
   const [weeklyDraft, setWeeklyDraft] = useState({})
   const [savingWeek, setSavingWeek] = useState(false)
@@ -301,15 +328,21 @@ export default function Timesheet() {
   }, [entries])
 
   const teamRows = useMemo(() => {
-    if (!team.data) return []
-    const { timesheet_data = {}, user_data = {} } = team.data
-    return Object.entries(timesheet_data)
-      .map(([userId, days]) => ({
-        id: userId,
-        name: user_data[userId]?.name || 'Unknown',
-        email: user_data[userId]?.email || '',
-        totalHours: Object.values(days).reduce((sum, day) => sum + Number(day.total_hours || 0), 0),
-      }))
+    const payload = team.data?.data ?? team.data
+    if (!payload) return []
+    const { timesheet_data = {}, user_data = {} } = payload
+    const userIds = new Set([...Object.keys(user_data), ...Object.keys(timesheet_data)])
+    return Array.from(userIds)
+      .map((userId) => {
+        const info = user_data[userId] || {}
+        const days = timesheet_data[userId] || {}
+        return {
+          id: userId,
+          name: info.name || 'Unknown',
+          email: info.email || '',
+          totalHours: Object.values(days).reduce((sum, day) => sum + Number(day.total_hours || 0), 0),
+        }
+      })
       .sort((a, b) => b.totalHours - a.totalHours)
   }, [team.data])
 
@@ -335,11 +368,13 @@ export default function Timesheet() {
   )
 
   useEffect(() => {
+    setAttendanceLoading(true)
     attendanceAPI.getTimesheetSummary()
       .then(res => {
         if (res?.data) setAttendanceSummary(res.data)
       })
       .catch(() => {})
+      .finally(() => setAttendanceLoading(false))
   }, [])
 
   const update = (key, value) => setForm(state => ({ ...state, [key]: value }))
@@ -470,12 +505,7 @@ export default function Timesheet() {
       </div>
 
       {/* Attendance Summary Block */}
-      <AttendanceSummaryBlock summary={attendanceSummary} />
-
-      {/* Team Time Tracking */}
-      {canViewTeam && (
-        <TeamTimeTrackingBlock rows={teamRows} loading={team.isLoading} />
-      )}
+      <AttendanceSummaryBlock summary={attendanceSummary} loading={attendanceLoading} />
 
       {/* Weekly Grid */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
@@ -663,6 +693,11 @@ export default function Timesheet() {
           }
         </div>
       </div>
+
+      {/* Team Time Tracking */}
+      {canViewTeam && (
+        <TeamTimeTrackingBlock rows={teamRows} loading={team.isLoading} />
+      )}
     </div>
   )
 }

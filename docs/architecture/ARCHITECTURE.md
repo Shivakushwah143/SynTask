@@ -53,6 +53,8 @@ Project/task delivery access is company-scoped before role rules apply. Company 
 
 Ticket creation and assignment are company-scoped. Only Employees and Leads create tickets. An Employee may assign a ticket only to a Lead, Sub Admin, or Admin; Leads, Sub Admins, and Admins may assign to any same-company user. Sub Admins can view and update all company tickets, so they are valid ticket assignees alongside Admins. Cross-company assignment is rejected (tenant isolation).
 
+EOD reports and time tracking are company-scoped. Super Admin, Admin, and Sub Admin can view all active employees' EOD reports and team timesheets in their company; Managers and Leads view their own reports plus their subordinates' (hierarchy-scoped). Employees see only their own EOD and time-tracking entries. Cross-company access is rejected (tenant isolation). The Timesheet page renders a Team Time Tracking bar section for Admin, Sub Admin, Manager, and Lead users.
+
 ## Authentication Flow
 ```mermaid
 sequenceDiagram
