@@ -189,6 +189,7 @@ export default function Leaves() {
       }
     } catch (error) {
       console.error('Error loading leaves:', error)
+      toast.error(error.response?.data?.detail || 'Unable to load leave requests. Please try again.')
       setLeaves([])
     } finally {
       setLoading(false)
