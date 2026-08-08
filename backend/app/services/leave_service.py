@@ -327,6 +327,7 @@ def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dic
         "forwarded_to_user_ids": [str(item) for item in (getattr(leave, "forwarded_to_user_ids", []) or [])],
         "forwarded_at": leave.forwarded_at,
         "forwarded_to_admin": leave.forwarded_to_admin,
+        "forward_comment": getattr(leave, "forward_comment", None),
         "approval_history": getattr(leave, "approval_history", []) or [],
         "cancelled_at": leave.cancelled_at,
         "created_at": leave.created_at,

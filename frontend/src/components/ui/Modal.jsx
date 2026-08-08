@@ -72,7 +72,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', descripti
             <h2 id={titleId} className="min-w-0 break-words text-xl font-bold tracking-tight text-gray-900 dark:text-white">{title}</h2>
             {description ? <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{description}</p> : null}
           </div>
-          <button type="button" onClick={onClose} className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white" aria-label="Close modal">
+          <button type="button" onClick={onClose} className="shrink-0 rounded-full border border-gray-200 bg-white/90 p-2 text-gray-500 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-500 dark:hover:bg-gray-700 dark:hover:text-white" aria-label="Close modal">
             <X className="h-5 w-5" />
           </button>
         </div>

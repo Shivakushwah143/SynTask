@@ -62,6 +62,8 @@ For Super Admin functionality, verify ordinary company users cannot call `/api/v
 - Meta unified inbox: tenant-scoped conversation/message API filters, channel badges, provider traceability, and read-only UI with no send action.
 - Invoice/ledger/MSA states, rounding, signing, payment callbacks.
 - Attendance duplicate sessions, timezone, corrections, leave, reports.
+- EOD visibility: Sub Admin mirrors Admin and sees all company employees' EOD reports; Manager and Lead see their own plus subordinates; Employee sees only self; cross-company access denied.
+- Timesheet team view: Admin/Sub Admin can view team timesheet and timesheet list; Manager/Lead see their team; Employee denied; Timesheet page Team Time Tracking bar section renders for Admin/Sub Admin/Manager/Lead.
 - Recruitment public fields, files/privacy, transitions.
 - Chat/ticket/notification participant scope and retry.
 - Meeting creation/lifecycle: searchable junior-only participant selection by creator role, same-tenant rejection, host/participant visibility, host URL redaction, 1-60 minute duration boundaries, update/reschedule, start, complete, cancel, delete, and Zoom failure/retry paths.
