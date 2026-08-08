@@ -162,9 +162,9 @@ async def _visible_employees(current_user: User) -> list[User]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User must belong to a company")
     if current_user.role == UserRole.EMPLOYEE:
         return [current_user]
-    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER}:
         return await User.find(User.company_id == current_user.company_id, User.status == UserStatus.ACTIVE).to_list()
-    if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
+    if current_user.role == UserRole.LEAD:
         subordinates = await current_user.get_all_subordinates()
         return [current_user, *subordinates]
     return [current_user]

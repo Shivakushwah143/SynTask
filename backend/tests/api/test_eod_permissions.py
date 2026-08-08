@@ -13,6 +13,7 @@ from fastapi import HTTPException
 
 from app.models.user import UserRole, UserStatus
 from app.api.v1.endpoints import eod as eod_endpoints
+from app.services import eod_service
 
 
 def user(user_id, role, *, company_id="company-1", reports_to=None, ancestors=None, status=UserStatus.ACTIVE):
@@ -85,13 +86,36 @@ async def test_employee_sees_only_self():
 
 
 @pytest.mark.asyncio
-async def test_manager_sees_self_and_subordinates():
-    manager = user("manager-1", UserRole.MANAGER)
-    subordinate = user("employee-1", UserRole.EMPLOYEE, reports_to="manager-1", ancestors=["manager-1"])
-    manager.get_all_subordinates = lambda: _awaitable([subordinate])
+async def test_manager_sees_all_company_employees(monkeypatch):
+    company_users = [
+        user("admin-1", UserRole.ADMIN),
+        user("manager-1", UserRole.MANAGER),
+        user("lead-1", UserRole.LEAD),
+        user("employee-1", UserRole.EMPLOYEE),
+    ]
+    _install_user_find(monkeypatch, company_users)
 
-    visible = await eod_endpoints._visible_employees(manager)
-    assert {str(u.id) for u in visible} == {"manager-1", "employee-1"}
+    manager_visible = await eod_endpoints._visible_employees(user("manager-1", UserRole.MANAGER))
+    assert {str(u.id) for u in manager_visible} == {u.id for u in company_users}
+
+
+@pytest.mark.asyncio
+async def test_manager_can_view_any_same_company_employee_eod():
+    manager = user("manager-1", UserRole.MANAGER)
+    other = user("employee-2", UserRole.EMPLOYEE, company_id="company-1")
+
+    # Should not raise: manager can view any same-company employee's EOD
+    await eod_service.assert_eod_view_access(manager, other)
+
+
+@pytest.mark.asyncio
+async def test_manager_cannot_view_cross_company_employee_eod():
+    manager = user("manager-1", UserRole.MANAGER, company_id="company-1")
+    other = user("employee-2", UserRole.EMPLOYEE, company_id="company-2")
+
+    with pytest.raises(HTTPException) as exc:
+        await eod_service.assert_eod_view_access(manager, other)
+    assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio
