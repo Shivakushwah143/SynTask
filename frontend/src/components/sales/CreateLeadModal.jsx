@@ -398,7 +398,7 @@ export default function CreateLeadModal({ isOpen, onClose, onCreated }) {
               </select>
             </label>
             <label className="space-y-1">
-              <span className="text-xs font-medium text-text-muted">Owner</span>
+              <span className="text-xs font-medium text-text-muted">Assigned To</span>
               <select className={inputClassName} value={createForm.assigned_to || defaultOwnerId} onChange={(e) => setCreateForm((state) => ({ ...state, assigned_to: e.target.value }))}>
                 <option value="">Select owner</option>
                 {leadOwnerOptions.map((userOption) => (

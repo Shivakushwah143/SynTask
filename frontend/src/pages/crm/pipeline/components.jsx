@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'rea
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertCircle, CalendarClock, ChevronDown, Filter, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
+import { AlertCircle, CalendarClock, ChevronDown, Filter, Loader2, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
@@ -345,6 +345,7 @@ export const PipelineBoard = memo(function PipelineBoard({
   onUpdateStageStatus,
   onRecordContact,
   onScheduleFollowUp,
+  onDeleteLead,
   getAllowedStageKeys,
   onCopyLeadId,
   onLeadSelect,
@@ -386,6 +387,7 @@ export const PipelineBoard = memo(function PipelineBoard({
               onUpdateStageStatus={onUpdateStageStatus}
               onRecordContact={onRecordContact}
               onScheduleFollowUp={onScheduleFollowUp}
+              onDeleteLead={onDeleteLead}
               getAllowedStageKeys={getAllowedStageKeys}
               onCopyLeadId={onCopyLeadId}
               onLeadSelect={onLeadSelect}
@@ -414,6 +416,8 @@ export const PipelineStageListView = memo(function PipelineStageListView({
   onResetFilters,
   onBulkAssign,
   bulkAssigning = false,
+  onBulkDelete,
+  bulkDeleting = false,
   hasActiveFilters = false,
 }) {
   // ── Hooks first: they must run unconditionally, before the early returns ───
@@ -527,6 +531,11 @@ export const PipelineStageListView = memo(function PipelineStageListView({
     }
   }
 
+  const handleBulkDelete = () => {
+    if (bulkDeleting || selectedIds.size === 0) return
+    onBulkDelete?.(Array.from(selectedIds))
+  }
+
   return (
     <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-surface/95 shadow-sm dark:border-gray-800 dark:bg-gray-900">
       {selectedIds.size > 0 ? (
@@ -567,11 +576,21 @@ export const PipelineStageListView = memo(function PipelineStageListView({
           <button
             type="button"
             onClick={clearSelection}
-            disabled={bulkAssigning}
+            disabled={bulkAssigning || bulkDeleting}
             className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-text-secondary transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800"
           >
             <X className="h-3.5 w-3.5" />
             Clear
+          </button>
+          <span className="ml-auto" />
+          <button
+            type="button"
+            onClick={handleBulkDelete}
+            disabled={bulkDeleting}
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 text-[11px] font-semibold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50"
+          >
+            {bulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            {bulkDeleting ? 'Deleting...' : 'Delete'}
           </button>
         </div>
       ) : null}
@@ -599,7 +618,7 @@ export const PipelineStageListView = memo(function PipelineStageListView({
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Company</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Mobile</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Email</th>
-              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Owner</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Assigned To</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Priority</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Status</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Value</th>
@@ -715,7 +734,7 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-                      {onDeleteLead ? (
+                      {/* {onDeleteLead ? (
                         <button
                           type="button"
                           onClick={() => onDeleteLead(lead)}
@@ -725,7 +744,7 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
-                      ) : null}
+                      ) : null} */}
                       {getStageKey(stage) === 'acquire' && !lead.phone && !lead.first_contact_at && !lead.last_contacted_at ? (
                         <Button
                           type="button"
@@ -761,6 +780,17 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                         <MoveRight className="h-3.5 w-3.5" />
                         {nextStage ? `Move to ${nextStage.name}` : 'Final stage'}
                       </Button>
+                       {onDeleteLead ? (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteLead(lead)}
+                          title="Delete lead permanently"
+                          aria-label={`Delete ${leadTitle}`}
+                          className="inline-flex h-7 w-7  items-center justify-center rounded-lg text-red-800 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -786,6 +816,7 @@ export const PipelineColumn = memo(function PipelineColumn({
   onScheduleFollowUp,
   onMoveLeadToStage,
   onUpdateStageStatus,
+  onDeleteLead,
   getAllowedStageKeys,
   onCopyLeadId,
   onLeadSelect,
@@ -840,6 +871,7 @@ export const PipelineColumn = memo(function PipelineColumn({
                 onUpdateStageStatus={onUpdateStageStatus}
                 onRecordContact={onRecordContact}
                 onScheduleFollowUp={onScheduleFollowUp}
+                onDeleteLead={onDeleteLead}
                 allowedStageKeys={allowedStageKeys}
                 onCopyLeadId={onCopyLeadId}
                 onLeadSelect={onLeadSelect}
@@ -880,6 +912,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   onUpdateStageStatus,
   onRecordContact,
   onScheduleFollowUp,
+  onDeleteLead,
   allowedStageKeys = new Set(),
   onCopyLeadId,
   onLeadSelect,
@@ -1032,6 +1065,16 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           label="Schedule Follow-up"
           onClick={() => {
             onScheduleFollowUp?.(lead)
+            setMenuOpen(false)
+          }}
+        />
+      ) : null}
+      {onDeleteLead ? (
+        <ActionItem
+          label="Delete lead permanently"
+          destructive
+          onClick={() => {
+            onDeleteLead(lead)
             setMenuOpen(false)
           }}
         />
@@ -1344,7 +1387,7 @@ export const PipelineInsightRail = memo(function PipelineInsightRail({ visibleLe
   )
 })
 
-function ActionItem({ label, onClick, disabled = false }) {
+function ActionItem({ label, onClick, disabled = false, destructive = false }) {
   return (
     <button
       type="button"
@@ -1354,7 +1397,11 @@ function ActionItem({ label, onClick, disabled = false }) {
         event.stopPropagation()
         onClick?.()
       }}
-      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-text-secondary transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-200 dark:hover:bg-gray-800"
+      className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        destructive
+          ? 'text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40'
+          : 'text-text-secondary hover:bg-surface-muted dark:text-gray-200 dark:hover:bg-gray-800'
+      }`}
     >
       <span className="min-w-0 truncate">{label}</span>
     </button>

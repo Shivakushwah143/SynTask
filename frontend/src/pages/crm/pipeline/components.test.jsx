@@ -214,4 +214,36 @@ describe('pipeline stage list view', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Clear$/i }))
     expect(screen.queryByText(/selected/)).toBeNull()
   })
+
+  it('offers a bulk Delete action for selected leads', () => {
+    const onBulkDelete = vi.fn()
+    render(
+      <PipelineStageListView
+        stage={{ key: 'acquire', name: 'Acquire', nextStageKey: 'qualify' }}
+        stages={[
+          { key: 'acquire', name: 'Acquire', nextStageKey: 'qualify' },
+          { key: 'qualify', name: 'Qualify' },
+        ]}
+        users={[{ id: 'user-9', first_name: 'Riya', last_name: 'Shah' }]}
+        leads={[
+          { id: 'lead-1', company_name: 'Acme Pvt Ltd' },
+          { id: 'lead-2', company_name: 'Beta Corp' },
+        ]}
+        onLeadSelect={vi.fn()}
+        onMoveLeadToStage={vi.fn()}
+        onResetFilters={vi.fn()}
+        onBulkAssign={vi.fn()}
+        onBulkDelete={onBulkDelete}
+      />,
+    )
+
+    // No Delete button until leads are selected.
+    expect(screen.queryByRole('button', { name: /^Delete$/i })).toBeNull()
+
+    fireEvent.click(screen.getByLabelText('Select all leads'))
+    expect(screen.getByText('2 selected')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/i }))
+    expect(onBulkDelete).toHaveBeenCalledWith(['lead-1', 'lead-2'])
+  })
 })

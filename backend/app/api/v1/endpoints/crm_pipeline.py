@@ -40,6 +40,16 @@ class BulkAssignRequest(BaseModel):
     target_user_id: str = Field(..., min_length=1)
 
 
+class BulkDeleteRequest(BaseModel):
+    """Permanently delete many leads at once (bulk action)."""
+    lead_ids: List[str] = Field(..., min_length=1)
+
+
+class LeadRestoreRequest(BaseModel):
+    """Undo payload: the restore token returned by the original delete."""
+    restore_token: str = Field(..., min_length=1)
+
+
 class PipelineReopenRequest(BaseModel):
     reason: Optional[str] = None
 
@@ -65,6 +75,11 @@ async def get_pipeline(
 @router.post("/bulk-assign")
 async def bulk_assign(payload: BulkAssignRequest, current_user: User = Depends(get_current_user)):
     return await CRMPipelineService.bulk_assign(current_user, payload.lead_ids, payload.target_user_id)
+
+
+@router.post("/bulk-delete")
+async def bulk_delete(payload: BulkDeleteRequest, current_user: User = Depends(get_current_user)):
+    return await CRMPipelineService.bulk_delete_leads(current_user, payload.lead_ids)
 
 
 @router.patch("/{lead_id}/stage")
@@ -134,6 +149,11 @@ async def nurture_lost_lead(lead_id: str, payload: LostNurtureRequest, current_u
 @router.delete("/{lead_id}")
 async def delete_lead(lead_id: str, current_user: User = Depends(get_current_user)):
     return await CRMPipelineService.delete_lead(current_user, lead_id)
+
+
+@router.post("/{lead_id}/restore")
+async def restore_lead(lead_id: str, payload: LeadRestoreRequest, current_user: User = Depends(get_current_user)):
+    return await CRMPipelineService.restore_lead(current_user, payload.restore_token)
 
 
 @router.get("/lost/analytics")
