@@ -436,3 +436,84 @@ async def test_restore_lead_conflict_when_recreated(monkeypatch):
         await CRMPipelineService.restore_lead(_user(UserRole.ADMIN), "token-1")
     assert excinfo.value.status_code == 409
     assert "already re-created" in excinfo.value.detail
+
+
+@pytest.mark.asyncio
+async def test_delete_lead_response_is_json_serializable(monkeypatch):
+    """The delete response must survive FastAPI serialization.
+
+    Regression for the reported bug: the lead WAS deleted but the request came
+    back 500 with an empty body. Beanie's find().delete() returns a pymongo
+    DeleteResult, which is not JSON-serializable — the endpoint crashed while
+    encoding the `deleted` map, AFTER the delete had already succeeded.
+    delete_lead must normalize every result to an int count first.
+    """
+    from fastapi.encoders import jsonable_encoder
+
+    prospect = _prospect()
+
+    class FakeProspectModel:
+        @staticmethod
+        async def get(lead_id):
+            return prospect
+
+    class FakeDeleteResult:
+        def __init__(self, n):
+            self.deleted_count = n
+
+    def _find(count):
+        class Q:
+            async def delete(self):
+                return FakeDeleteResult(count)
+        return Q()
+
+    class FakeModel:
+        def __init__(self, count):
+            self._count = count
+
+        def find(self, *args, **kwargs):
+            return _find(self._count)
+
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.get", FakeProspectModel.get)
+    # SalesPipelineHistory, CRMDeal, CRMProposal, CRMDocument, SalesLeadNote,
+    # SalesLeadFile, CRMActivity each return a DeleteResult-like object.
+    for model_path in [
+        "app.crm.pipeline.SalesPipelineHistory",
+        "app.crm.pipeline.CRMDeal",
+        "app.crm.pipeline.CRMProposal",
+        "app.crm.pipeline.CRMDocument",
+        "app.crm.pipeline.SalesLeadNote",
+        "app.crm.pipeline.SalesLeadFile",
+        "app.crm.pipeline.CRMActivity",
+    ]:
+        monkeypatch.setattr(model_path, FakeModel(2))
+    monkeypatch.setattr(
+        "app.models.task.Task",
+        SimpleNamespace(find=lambda *a, **k: _find(3)),
+    )
+    monkeypatch.setattr(
+        "app.models.ownership_transfer.OwnershipTransfer",
+        SimpleNamespace(find=lambda *a, **k: _find(4)),
+    )
+    monkeypatch.setattr("app.crm.pipeline._archive_lead_snapshot", _fake_archive_snapshot)
+
+    result = await CRMPipelineService.delete_lead(_user(UserRole.ADMIN), "lead-1")
+
+    # The deleted map must be plain ints so FastAPI can encode the response.
+    assert all(isinstance(v, int) for v in result["deleted"].values())
+    encoded = jsonable_encoder(result)
+    assert encoded["deleted"] == {
+        "history": 2,
+        "deals": 2,
+        "proposals": 2,
+        "documents": 2,
+        "notes": 2,
+        "files": 2,
+        "activities": 2,
+        "tasks": 3,
+        "ownership_transfers": 4,
+    }
+
+
+async def _fake_archive_snapshot(*args, **kwargs):
+    return "token-serializable"

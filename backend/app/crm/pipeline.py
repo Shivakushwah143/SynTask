@@ -1861,6 +1861,11 @@ class CRMPipelineService:
         await prospect.delete()
 
         # 3. Cascade child cleanup, best-effort per collection.
+        # NOTE: Beanie's find().delete() returns a pymongo DeleteResult, which is
+        # NOT JSON-serializable. Normalizing to .deleted_count here is what keeps
+        # the endpoint from 500ing while serializing the response (the delete
+        # itself succeeded, which is exactly the confusing case the user saw:
+        # lead gone from the UI but the request failed).
         deleted: Dict[str, int] = {}
         cascade_targets = [
             (SalesPipelineHistory, {"company_id": company_id, "lead_id": lead_key}, "history"),
@@ -1877,7 +1882,8 @@ class CRMPipelineService:
         ]
         for model, filt, key in cascade_targets:
             try:
-                deleted[key] = await model.find(filt).delete()
+                result = await model.find(filt).delete()
+                deleted[key] = result if isinstance(result, int) else getattr(result, "deleted_count", 0)
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning("LEAD_DELETE_CASCADE_FAILED collection=%s lead_id=%s error=%s", key, lead_key, exc)
                 deleted[key] = 0
@@ -1888,26 +1894,28 @@ class CRMPipelineService:
         try:
             from app.models.task import Task
 
-            deleted["tasks"] = await Task.find(
+            result = await Task.find(
                 {
                     "company_id": company_id,
                     "related_entity_type": "sales_lead",
                     "related_entity_id": lead_key,
                 }
             ).delete()
+            deleted["tasks"] = result if isinstance(result, int) else getattr(result, "deleted_count", 0)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("LEAD_DELETE_TASKS_FAILED lead_id=%s error=%s", lead_key, exc)
             deleted["tasks"] = 0
         try:
             from app.models.ownership_transfer import OwnershipTransfer
 
-            deleted["ownership_transfers"] = await OwnershipTransfer.find(
+            result = await OwnershipTransfer.find(
                 {
                     "company_id": company_id,
                     "entity_type": "lead",
                     "entity_id": lead_key,
                 }
             ).delete()
+            deleted["ownership_transfers"] = result if isinstance(result, int) else getattr(result, "deleted_count", 0)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("LEAD_DELETE_OWNERSHIP_TRANSFERS_FAILED lead_id=%s error=%s", lead_key, exc)
             deleted["ownership_transfers"] = 0

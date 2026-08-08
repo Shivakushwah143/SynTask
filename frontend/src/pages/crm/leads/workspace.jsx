@@ -181,13 +181,18 @@ export default function CRMLeadWorkspacePage() {
       },
     },
   )
+  const handleDeleteSettled = useCallback(() => {
+    queryClient.invalidateQueries('crm-pipeline-board')
+    queryClient.invalidateQueries('crm-leads-entry')
+    queryClient.invalidateQueries('sales-prospects')
+    navigate('/crm/pipeline')
+  }, [queryClient, navigate])
+
   const deleteLeadMutation = useMutation(
     () => crmApi.deleteLead(leadId),
     {
       onSuccess: (data) => {
-        queryClient.invalidateQueries('crm-pipeline-board')
-        queryClient.invalidateQueries('crm-leads-entry')
-        queryClient.invalidateQueries('sales-prospects')
+        handleDeleteSettled()
         const restoreToken = data?.restore_token
         if (restoreToken) {
           showUndoNotification({
@@ -198,13 +203,18 @@ export default function CRMLeadWorkspacePage() {
         } else {
           toast.success('Lead deleted permanently')
         }
-        navigate('/crm/pipeline')
       },
       onError: (error) => {
         const status = error?.response?.status
-        if (status === 403) toast.error('You do not have permission to delete this lead')
-        else if (status === 404) toast.error('Lead not found — it may have already been deleted')
-        else toast.error(error?.response?.data?.detail || 'Failed to delete lead')
+        if (status === 403) {
+          toast.error('You do not have permission to delete this lead')
+        } else if (status === 404) {
+          // Already deleted (e.g. duplicate request) — treat as success.
+          handleDeleteSettled()
+          toast.success('Lead deleted')
+        } else {
+          toast.error(error?.response?.data?.detail || 'Failed to delete lead')
+        }
       },
     },
   )
@@ -437,12 +447,14 @@ export default function CRMLeadWorkspacePage() {
         onConfirm={() => {
           if (!deleteLeadMutation.isLoading && !deleteInFlightRef.current) {
             deleteInFlightRef.current = true
-            deleteLeadMutation.mutate(leadId, {
-              onSettled: () => {
-                deleteInFlightRef.current = false
-              },
+            // Return the promise so the shared <Button> locks against repeat
+            // clicks while the DELETE is in flight (its pendingRef only engages
+            // when the handler returns a promise).
+            return deleteLeadMutation.mutateAsync(leadId).finally(() => {
+              deleteInFlightRef.current = false
             })
           }
+          return undefined
         }}
         onClose={() => {
           if (!deleteLeadMutation.isLoading) setDeleteOpen(false)

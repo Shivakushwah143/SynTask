@@ -505,14 +505,18 @@ export default function CRMPipelinePage() {
   )
 
   // ── Delete lead (permanent, cascades through backend) ─────────────────────
+  const handleDeleteSettled = useCallback(() => {
+    setDeleteLeadTarget(null)
+    queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+    queryClient.invalidateQueries('crm-leads-entry')
+    queryClient.invalidateQueries('sales-prospects')
+  }, [queryClient])
+
   const deleteLeadMutation = useMutation(
     (leadId) => crmApi.deleteLead(leadId),
     {
       onSuccess: (data, leadId) => {
-        setDeleteLeadTarget(null)
-        queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
-        queryClient.invalidateQueries('crm-leads-entry')
-        queryClient.invalidateQueries('sales-prospects')
+        handleDeleteSettled()
         const restoreToken = data?.restore_token
         if (restoreToken) {
           showUndoNotification({
@@ -526,9 +530,18 @@ export default function CRMPipelinePage() {
       },
       onError: (error) => {
         const status = error?.response?.status
-        if (status === 403) toast.error('You do not have permission to delete this lead')
-        else if (status === 404) toast.error('Lead not found — it may have already been deleted')
-        else toast.error(error?.response?.data?.detail || 'Failed to delete lead')
+        if (status === 403) {
+          toast.error('You do not have permission to delete this lead')
+        } else if (status === 404) {
+          // The lead is already gone — the end state is identical to a
+          // successful delete (this happens when a stray duplicate DELETE
+          // lands after the first one already removed the lead). Treat it as
+          // success instead of showing a misleading failure toast.
+          handleDeleteSettled()
+          toast.success('Lead deleted')
+        } else {
+          toast.error(error?.response?.data?.detail || 'Failed to delete lead')
+        }
       },
     }
   )
@@ -582,15 +595,20 @@ export default function CRMPipelinePage() {
     setDeleteLeadTarget(lead)
   }, [])
 
+  // Returns the mutation promise so the shared <Button> can engage its own
+  // synchronous pendingRef lock — closing the double-click window that a bare
+  // fire-and-forget mutate() leaves open (react-query's isLoading only flips on
+  // the next render). The in-flight ref is a second, coarser backstop.
   const confirmDeleteLead = useCallback(() => {
     const leadId = deleteLeadTarget?.id || deleteLeadTarget?._id
-    if (!leadId || deleteLeadMutation.isLoading || deleteLeadInFlightRef.current) return
+    if (!leadId || deleteLeadMutation.isLoading || deleteLeadInFlightRef.current) return undefined
     deleteLeadInFlightRef.current = true
-    deleteLeadMutation.mutate(leadId, {
-      onSettled: () => {
-        deleteLeadInFlightRef.current = false
-      },
+    const promise = deleteLeadMutation.mutateAsync(leadId).finally(() => {
+      deleteLeadInFlightRef.current = false
     })
+    // Returning the promise makes the confirm Button show its own loading state
+    // and ignore repeat clicks until this settles.
+    return promise
   }, [deleteLeadTarget, deleteLeadMutation])
 
   // Opens the bulk-delete confirmation dialog. Selection cleanup in the stage
@@ -602,13 +620,12 @@ export default function CRMPipelinePage() {
   }, [bulkDeleteLeadsMutation])
 
   const confirmBulkDeleteLeads = useCallback(() => {
-    if (!bulkDeleteTarget?.length || bulkDeleteLeadsMutation.isLoading || bulkDeleteInFlightRef.current) return
+    if (!bulkDeleteTarget?.length || bulkDeleteLeadsMutation.isLoading || bulkDeleteInFlightRef.current) return undefined
     bulkDeleteInFlightRef.current = true
-    bulkDeleteLeadsMutation.mutate(bulkDeleteTarget, {
-      onSettled: () => {
-        bulkDeleteInFlightRef.current = false
-      },
+    const promise = bulkDeleteLeadsMutation.mutateAsync(bulkDeleteTarget).finally(() => {
+      bulkDeleteInFlightRef.current = false
     })
+    return promise
   }, [bulkDeleteTarget, bulkDeleteLeadsMutation])
 
   // Returns a promise so the stage list can clear its selection only on success.
