@@ -86,15 +86,14 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
-          <Icon className="h-4 w-4" />
-        </div>
+    <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800" title={subtitle}>
+      <div className={`shrink-0 rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow`}>
+        <Icon className="h-4 w-4" />
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
+        <p className="text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+      </div>
     </div>
   )
 }
@@ -104,6 +103,9 @@ export default function Leaves() {
   const canManage = hasCompanyAdminAccess(user?.role) || isManagerRole(user?.role) || isLeadRole(user?.role)
   const canRequestLeave = canSubmitLeaveRequest(user?.role)
   const contentGridClassName = 'grid gap-6'
+  // Compact input style shared by the filter row and the New Leave Request
+  // modal so the form fits within the modal's viewport height without being cut off.
+  const compactInputClassName = 'w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
   const [form, setForm] = useState(defaultForm)
   const [showNewRequest, setShowNewRequest] = useState(false)
   const [leaves, setLeaves] = useState([])
@@ -323,39 +325,38 @@ export default function Leaves() {
     : null
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-lime-600 via-green-600 to-emerald-600 p-6 text-white shadow-xl md:p-8">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-              <CalendarDays className="h-6 w-6" />
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-lime-600 via-green-600 to-emerald-600 px-4 py-3.5 text-white shadow-lg md:px-5">
+        <div className="absolute right-0 top-0 -mr-10 -mt-10 h-40 w-40 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+              <CalendarDays className="h-5 w-5" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold md:text-3xl">Leave Management</h1>
-              <p className="mt-1 text-indigo-100">
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold md:text-xl">Leave Management</h1>
+              <p className="truncate text-xs text-indigo-100 md:text-sm">
                 {canRequestLeave ? 'Request leave, review approvals, and see current availability.' : 'Review leave requests, approve or reject pending items, and see current availability.'}
               </p>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2">
             {canRequestLeave ? (
               <button
                 onClick={() => setShowNewRequest(true)}
-                className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition hover:bg-white/90"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm transition hover:bg-white/90"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3.5 w-3.5" />
                 New Request
               </button>
             ) : null}
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {refreshing ? <LoadingSpinner size="sm" /> : <RefreshCw className="h-4 w-4" />}
+              {refreshing ? <LoadingSpinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
               Refresh
             </button>
           </div>
@@ -363,7 +364,7 @@ export default function Leaves() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Total Requests"
           value={totalLeaves}
@@ -395,7 +396,7 @@ export default function Leaves() {
       </div>
 
       {/* Quick Status Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-3">
         <StatusCard 
           icon={Clock} 
           label="Availability" 
@@ -455,7 +456,7 @@ export default function Leaves() {
               {!myLeavesTab && (
               <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5 mb-4">
                 <select 
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                  className={compactInputClassName} 
                   value={filters.status} 
                   onChange={(event) => setFilters({ ...filters, status: event.target.value })}
                 >
@@ -463,7 +464,7 @@ export default function Leaves() {
                   {STATUS_OPTIONS.map((status) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status} value={status}>{status}</option>)}
                 </select>
                 <select 
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                  className={compactInputClassName} 
                   value={filters.leave_type} 
                   onChange={(event) => setFilters({ ...filters, leave_type: event.target.value })}
                 >
@@ -472,7 +473,7 @@ export default function Leaves() {
                 </select>
                 {canManage ? (
                   <select 
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                    className={compactInputClassName} 
                     value={filters.employee_id} 
                     onChange={(event) => setFilters({ ...filters, employee_id: event.target.value })}
                   >
@@ -481,13 +482,13 @@ export default function Leaves() {
                   </select>
                 ) : null}
                 <input 
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                  className={compactInputClassName} 
                   type="date" 
                   value={filters.start_date} 
                   onChange={(event) => setFilters({ ...filters, start_date: event.target.value })} 
                 />
                 <input 
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                  className={compactInputClassName} 
                   type="date" 
                   value={filters.end_date} 
                   onChange={(event) => setFilters({ ...filters, end_date: event.target.value })} 
@@ -576,31 +577,32 @@ export default function Leaves() {
         isOpen={showNewRequest}
         onClose={() => setShowNewRequest(false)}
         title="New Leave Request"
-        description="Submit a new leave request. Fill in the details below and click Submit Request."
-        size="full"
+        description="Fill in the details below and click Submit Request."
+        size="xl"
+        bodyClassName="p-3 sm:p-4"
       >
-        <div className="grid gap-6 lg:grid-cols-[minmax(320px,420px)_1fr]">
-          <form onSubmit={submitLeave} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <div className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-3 dark:border-gray-700">
-              <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-                <Plus className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        <div className="grid gap-4 lg:grid-cols-[minmax(300px,340px)_1fr]">
+          <form onSubmit={submitLeave} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="mb-2.5 flex items-center gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
+              <div className="rounded-md bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+                <Plus className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
               </div>
-              <h2 className="font-bold text-gray-900 dark:text-white">New Request</h2>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">New Request</h2>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-2.5">
               <FormField label="Leave type" required>
                 <select 
-                  className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+                  className={compactInputClassName} 
                   value={form.leave_type} 
                   onChange={(event) => setForm({ ...form, leave_type: event.target.value })}
                 >
                   {LEAVE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
               </FormField>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-2.5 sm:grid-cols-2">
                 <FormField label="Start date" required>
                   <input 
-                    className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+                    className={compactInputClassName} 
                     type="date" 
                     required 
                     value={form.start_date} 
@@ -609,7 +611,7 @@ export default function Leaves() {
                 </FormField>
                 <FormField label="End date" required>
                   <input 
-                    className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+                    className={compactInputClassName} 
                     type="date" 
                     required 
                     value={form.end_date} 
@@ -619,7 +621,7 @@ export default function Leaves() {
               </div>
               <FormField label="Reason" required>
                 <textarea 
-                  className={`${inputClassName} min-h-28 resize-y bg-gray-50 dark:bg-gray-900/50`} 
+                  className={`${compactInputClassName} min-h-14 resize-y`} 
                   required 
                   value={form.reason} 
                   onChange={(event) => setForm({ ...form, reason: event.target.value })} 
@@ -628,7 +630,7 @@ export default function Leaves() {
               </FormField>
               <FormField label="Attachment">
                 <input 
-                  className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+                  className={`${compactInputClassName} file:mr-2 file:rounded-md file:border-0 file:bg-gray-100 file:px-2.5 file:py-1 file:text-xs file:font-medium file:text-gray-600 hover:file:bg-gray-200 dark:file:bg-gray-700 dark:file:text-gray-300`} 
                   type="file" 
                   onChange={(event) => setForm({ ...form, attachment: event.target.files?.[0] || null })} 
                 />
@@ -640,31 +642,31 @@ export default function Leaves() {
             </div>
           </form>
 
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-indigo-50/60 to-white p-5 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+          <div className="flex flex-col gap-3">
+            <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-indigo-50/60 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
               <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-                  <TrendingUp className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                <div className="rounded-md bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+                  <TrendingUp className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
                 </div>
-                <h3 className="font-bold text-gray-900 dark:text-white">Leave Types</h3>
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white">Leave Types</h3>
               </div>
-              <div className="mt-3 space-y-2">
+              <div className="mt-2.5 grid grid-cols-2 gap-1.5">
                 {LEAVE_TYPES.map(([value, label]) => (
-                  <div key={value} className="flex items-center justify-between rounded-lg bg-white/70 px-3 py-2 text-sm dark:bg-gray-900/40">
+                  <div key={value} className="flex items-center justify-between gap-1 rounded-lg bg-white/70 px-2 py-1.5 text-xs dark:bg-gray-900/40">
                     <span className="font-medium text-gray-800 dark:text-gray-200">{label}</span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">{value.replace(/_/g, ' ')}</span>
+                    <span className="truncate text-[10px] text-gray-400 dark:text-gray-500">{value.replace(/_/g, ' ')}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
               <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
-                  <Home className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                <div className="rounded-md bg-emerald-100 p-1.5 dark:bg-emerald-900/30">
+                  <Home className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                 </div>
-                <h3 className="font-bold text-gray-900 dark:text-white">Current Availability</h3>
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white">Current Availability</h3>
               </div>
-              <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+              <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
                 Your current status is{' '}
                 <span className="font-semibold text-gray-900 dark:text-white">{availabilityLabel(availability.availability)}</span>.
               </p>
@@ -986,15 +988,13 @@ function StatusCard({ icon: Icon, label, value, colorKey }) {
   }
 
   return (
-    <div className={`rounded-2xl border ${colors[colorKey] || 'border-gray-200 bg-white'} p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{label}</p>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-        </div>
-        <div className="rounded-xl bg-indigo-100 p-3 text-indigo-700 shadow-sm dark:bg-indigo-950/35 dark:text-indigo-200">
-          <Icon className="h-5 w-5" />
-        </div>
+    <div className={`flex items-center justify-between gap-3 rounded-xl border ${colors[colorKey] || 'border-gray-200 bg-white'} px-3 py-2.5 shadow-sm dark:border-gray-700 dark:bg-gray-800`}>
+      <div className="min-w-0">
+        <p className="truncate text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
+        <p className="text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+      </div>
+      <div className="shrink-0 rounded-lg bg-indigo-100 p-2 text-indigo-700 shadow-sm dark:bg-indigo-950/35 dark:text-indigo-200">
+        <Icon className="h-4 w-4" />
       </div>
     </div>
   )
