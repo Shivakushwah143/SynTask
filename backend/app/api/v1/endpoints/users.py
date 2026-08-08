@@ -586,7 +586,7 @@ async def create_employee(
     # Create Employee
     # Permissions: normalize + privilege-limit the requested modules. When the
     # creator sends none, the legacy employee defaults are preserved.
-    parsed_modules = _resolve_new_user_modules(current_user, modules)
+    parsed_modules = _resolve_new_user_modules(current_user, _form_or_none(modules))
     employee = Employee(
         email=email,
         password_hash=get_password_hash(password),
@@ -831,6 +831,7 @@ async def update_user(
             if hasattr(user, "lead_id"):
                 user.lead_id = None
         await UserService.update_hierarchy_ancestors(user)
+    modules = _form_or_none(modules)
     if modules is not None:
         parsed_modules = normalize_modules(modules, require_tasks_projects=True)
         user.modules = _restrict_modules_for_creator(current_user, parsed_modules)
@@ -840,6 +841,16 @@ async def update_user(
 
     return {"message": "User updated successfully"}
 
+
+
+def _form_or_none(value):
+    """FastAPI Form defaults bind a ``Form()`` sentinel on direct function
+    calls (e.g. unit tests); FastAPI injection always provides str or None.
+    Only ``None`` / ``str`` / ``list`` are valid module values, so anything
+    else (the sentinel) is treated as "not provided"."""
+    if value is None or isinstance(value, (str, list)):
+        return value
+    return None
 
 
 def _module_allowed_for_user(user: User, module_id: str) -> bool:
@@ -939,7 +950,7 @@ async def create_user_hierarchical(
     # Determine company_id
     company_id = current_user.company_id if current_user.company_id else None
     
-    parsed_modules = normalize_modules(modules or [], require_tasks_projects=False)
+    parsed_modules = normalize_modules(_form_or_none(modules) or [], require_tasks_projects=False)
     if target_role == UserRole.SUB_ADMIN and not parsed_modules:
         parsed_modules = normalize_modules(["tasks_projects"], require_tasks_projects=False)
     if current_user.role not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):

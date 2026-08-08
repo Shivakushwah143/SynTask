@@ -10,7 +10,7 @@ import { EmptyState, Modal, PasswordInput, PhoneInput, phoneValidationMessage } 
 import { getDesignationOptions } from '../constants/designations'
 import toast from 'react-hot-toast'
 import ModulePermissionSelector from '../components/ui/ModulePermissionSelector'
-import { getRoleModuleDefaults } from '../config/modulePermissions'
+import { getRoleModuleDefaults, getMemberEditDefaults } from '../config/modulePermissions'
 
 const BULK_HEADERS = ['role', 'first_name', 'last_name', 'email', 'password', 'phone', 'department', 'designation', 'team_name', 'lead_email']
 const makeTempPassword = () => `SynTask@${Math.random().toString(36).slice(2, 8)}1`
@@ -76,6 +76,7 @@ const Users = () => {
   const [bulkErrors, setBulkErrors] = useState([])
   const [bulkImporting, setBulkImporting] = useState(false)
   const [selectedModules, setSelectedModules] = useState(() => getRoleModuleDefaults('employee'))
+  const [modulesTouched, setModulesTouched] = useState(false)
 
   const isLead = isLeadRole(user?.role)
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
@@ -328,6 +329,7 @@ const Users = () => {
     // Changing the role loads that role's default permissions so the creator
     // starts from a sensible baseline and can customize afterwards.
     setSelectedModules(getRoleModuleDefaults(nextType))
+    setModulesTouched(false)
   }
 
   const handleEdit = (userToEdit) => {
@@ -354,11 +356,11 @@ const Users = () => {
     setDesignationError('')
     const normalizedRole = normalizeRole(userToEdit.role)
     setUserType(normalizedRole === 'sub_admin' ? 'sub_admin' : normalizedRole === 'manager' ? 'manager' : normalizedRole === 'lead' ? 'lead' : 'employee')
-    // Preload the member's existing permissions (fall back to role defaults for
-    // legacy members who never had an explicit module list).
-    setSelectedModules(
-      userToEdit.modules?.length ? [...userToEdit.modules] : getRoleModuleDefaults(normalizedRole),
-    )
+    // Preload the member's existing permissions. Legacy members (no explicit
+    // module list) get their full effective access so a routine edit never
+    // silently strips permissions they already had.
+    setSelectedModules(getMemberEditDefaults(normalizedRole, userToEdit.modules))
+    setModulesTouched(false)
     setShowAddModal(true)
   }
 
@@ -367,6 +369,7 @@ const Users = () => {
     setEditingUser(null)
     setUserType('employee')
     setSelectedModules(getRoleModuleDefaults('employee'))
+    setModulesTouched(false)
     setFormErrors({})
     setSelectedDepartmentId('')
     setShowDepartmentCreate(false)
@@ -471,7 +474,11 @@ const Users = () => {
     }
 
     // Member-level module permissions are editable through the same modal.
-    updateData.modules = selectedModules.join(',')
+    // Only send them when the admin actually changed the selection, so a
+    // routine edit (name/email/etc.) never silently rewrites permissions.
+    if (modulesTouched) {
+      updateData.modules = selectedModules.join(',')
+    }
 
     const password = formData.get('password')
     if (password && password.length > 0) {
@@ -642,27 +649,32 @@ const Users = () => {
           department_id: department?.id || '',
         }
 
+        // Every bulk-imported member gets that role's default module permissions.
+        const roleModules = getRoleModuleDefaults(row.data.role)
         if (row.data.role === 'sub_admin') {
           await usersAPI.createUser({
             ...userData,
             role: 'sub_admin',
-            modules: 'tasks_projects',
+            modules: roleModules.join(','),
           })
         } else if (row.data.role === 'manager') {
           await usersAPI.createUser({
             ...userData,
             role: 'manager',
+            modules: roleModules.join(','),
             reports_to: String(user.id),
           })
         } else if (row.data.role === 'lead') {
           await usersAPI.createLead({
             ...userData,
             team_name: row.data.team_name,
+            modules: roleModules.join(','),
           })
         } else {
           await usersAPI.createEmployee({
             ...userData,
             designation: row.data.designation,
+            modules: roleModules.join(','),
             reports_to: isCompanyAdmin ? lead?.id || '' : '',
           })
         }
@@ -1314,7 +1326,10 @@ const Users = () => {
                 <div className="sm:col-span-2">
                   <ModulePermissionSelector
                     value={selectedModules}
-                    onChange={setSelectedModules}
+                    onChange={(next) => {
+                      setSelectedModules(next)
+                      setModulesTouched(true)
+                    }}
                     role={editingUser ? normalizeRole(editingUser.role) : userType}
                   />
                 </div>

@@ -3,6 +3,8 @@ import {
   MODULE_CATALOG,
   ROLE_IMPLIED_MODULES,
   getRoleModuleDefaults,
+  isLegacyModules,
+  getMemberEditDefaults,
 } from './modulePermissions'
 
 describe('modulePermissions registry', () => {
@@ -21,12 +23,13 @@ describe('modulePermissions registry', () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
-  test('role defaults: admin gets every module, employee gets a subset', () => {
+  test('role defaults: admin gets every module, employee gets a subset without sales', () => {
     const admin = getRoleModuleDefaults('admin')
     expect(admin.length).toBe(MODULE_CATALOG.length)
 
     const employee = getRoleModuleDefaults('employee')
     expect(employee).toContain('tasks_projects')
+    expect(employee).not.toContain('sales_crm')
     expect(employee).not.toContain('invoicing_ledger')
   })
 
@@ -34,7 +37,31 @@ describe('modulePermissions registry', () => {
     expect(getRoleModuleDefaults('hr_manager')).toEqual(getRoleModuleDefaults('employee'))
   })
 
-  test('implied modules cover employee-level auto-grants', () => {
+  test('legacy detection matches the backend defaults', () => {
+    expect(isLegacyModules([])).toBe(true)
+    expect(isLegacyModules(['task'])).toBe(true)
+    expect(isLegacyModules(['task', 'attendance_leaves'])).toBe(true)
+    expect(isLegacyModules(['tasks_projects'])).toBe(true)
+    // Explicit lists (anything the Permissions selector saves) are not legacy.
+    expect(isLegacyModules(['tasks_projects', 'chat'])).toBe(false)
+    expect(isLegacyModules(['tasks_projects', 'sales_crm', 'attendance_leaves'])).toBe(false)
+    expect(isLegacyModules(undefined)).toBe(true)
+  })
+
+  test('edit preload preserves a legacy member full effective access', () => {
+    const defaults = getMemberEditDefaults('employee', ['task'])
+    expect(defaults).toContain('tasks_projects')
+    expect(defaults).toContain('sales_crm') // auto-granted today -> kept
+    expect(defaults).toContain('tickets')
+    expect(defaults).toContain('recruitment')
+  })
+
+  test('edit preload keeps an explicit member list exactly', () => {
+    const stored = ['tasks_projects', 'chat', 'attendance_leaves']
+    expect(getMemberEditDefaults('employee', stored)).toEqual(stored)
+  })
+
+  test('implied modules cover the legacy auto-grants', () => {
     expect(ROLE_IMPLIED_MODULES.has('tasks_projects')).toBe(true)
     expect(ROLE_IMPLIED_MODULES.has('sales_crm')).toBe(true)
   })

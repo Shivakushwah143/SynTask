@@ -614,6 +614,8 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | DELETE | `/api/v1/users/detail/{user_id}` | `delete_user` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/detail/{user_id}` | `get_user` | Uses router/endpoint dependencies where configured. |
 | PUT | `/api/v1/users/detail/{user_id}` | `update_user` | Accepts an optional `modules` form param to update a member's sidebar-module permissions. The same creator-privilege guard applies (non-admin creators can only grant modules they can access). |
+
+**Module enforcement (`require_module`):** members whose stored `modules` list is a pre-permission-system default (`task` / `task,attendance_leaves` / `tasks_projects` / empty) keep the legacy role auto-grants (sales/tickets/recruitment for Manager/Lead/Employee). Members with any other explicit list are governed strictly by that list — the Permissions selector in the member create/edit forms is authoritative for them. Super Admin / Admin / Sub Admin have full module access regardless of the list.
 | PATCH | `/api/v1/users/detail/{user_id}/status` | `update_user_status` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/my-team` | `get_my_team` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/reporting-options` | `get_reporting_options` | Uses router/endpoint dependencies where configured. |

@@ -7,6 +7,8 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { ROLE, normalizeRole } from '../utils/roles'
 import { PasswordInput, PhoneInput } from '../components/ui'
+import ModulePermissionSelector from '../components/ui/ModulePermissionSelector'
+import { getRoleModuleDefaults, getMemberEditDefaults } from '../config/modulePermissions'
 import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
 import { timeService } from '@/services/timeService'
 
@@ -21,6 +23,8 @@ const MyTeam = () => {
   const [submitting, setSubmitting] = useState(false)
   const [openMenuFor, setOpenMenuFor] = useState(null)
   const [editingMember, setEditingMember] = useState(null)
+  const [selectedModules, setSelectedModules] = useState(() => getRoleModuleDefaults('employee'))
+  const [modulesTouched, setModulesTouched] = useState(false)
   const normalizedRole = normalizeRole(user?.role)
 
   const fetchTeam = useCallback(async () => {
@@ -80,6 +84,8 @@ const MyTeam = () => {
       phone: formData.get('phone') || '',
       department: formData.get('department') || '',
       designation: formData.get('designation') || '',
+      // Member-level sidebar module permissions (create + edit flows).
+      modules: selectedModules.join(','),
     }
 
     try {
@@ -87,6 +93,11 @@ const MyTeam = () => {
       if (editingMember) {
         // For edit, do not send password (not supported in this flow)
         delete memberPayload.password
+        // Only rewrite permissions when the admin actually changed them, so a
+        // routine edit never silently reduces a legacy member's access.
+        if (!modulesTouched) {
+          delete memberPayload.modules
+        }
         await usersAPI.updateUser(editingMember.id, memberPayload)
         toast.success('Member updated')
       } else {
@@ -199,6 +210,8 @@ const MyTeam = () => {
             type="button"
             onClick={() => {
               setEditingMember(null)
+              setSelectedModules(getRoleModuleDefaults('employee'))
+              setModulesTouched(false)
               setShowAddModal(true)
             }}
             className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20 self-start md:self-auto"
@@ -307,6 +320,8 @@ const MyTeam = () => {
                           className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                           onClick={() => {
                             setEditingMember(member)
+                            setSelectedModules(getMemberEditDefaults('employee', member.modules))
+                            setModulesTouched(false)
                             setShowAddModal(true)
                             setOpenMenuFor(null)
                           }}
@@ -471,6 +486,17 @@ const MyTeam = () => {
                   defaultValue={editingMember?.designation || ''}
                 />
               </div>
+
+              {/* Member-level sidebar module permissions */}
+              <ModulePermissionSelector
+                value={selectedModules}
+                onChange={(next) => {
+                  setSelectedModules(next)
+                  setModulesTouched(true)
+                }}
+                role="employee"
+                compact
+              />
 
               <div className="flex space-x-3 pt-4">
                 <button

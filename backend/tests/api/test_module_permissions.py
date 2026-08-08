@@ -22,6 +22,7 @@ from app.api.v1.endpoints.users import (
     _restrict_modules_for_creator,
     _resolve_new_user_modules,
 )
+from app.api.dependencies import _is_legacy_module_config, require_module
 
 
 def _user(role, modules=None):
@@ -123,7 +124,19 @@ def _function_source(name: str) -> str:
 def test_create_employee_accepts_modules_param_and_applies_guard():
     source = _function_source("create_employee")
     assert "modules: Optional[str] = Form(None)" in source
-    assert "_resolve_new_user_modules(current_user, modules)" in source
+    assert "_resolve_new_user_modules(current_user," in source
+    assert "_form_or_none(modules)" in source
+
+
+def test_form_or_none_treats_sentinel_as_not_provided():
+    from fastapi import Form
+    from app.api.v1.endpoints.users import _form_or_none
+
+    sentinel = Form(None)  # what direct function calls bind as the default
+    assert _form_or_none(sentinel) is None
+    assert _form_or_none(None) is None
+    assert _form_or_none("tasks_projects,chat") == "tasks_projects,chat"
+    assert _form_or_none(["tasks_projects"]) == ["tasks_projects"]
 
 
 def test_update_user_accepts_modules_param_and_applies_guard():
@@ -143,3 +156,62 @@ def test_restrict_helper_has_no_bare_setattr_loophole():
     before = list(creator.modules)
     _restrict_modules_for_creator(creator, ["reports"])
     assert list(creator.modules) == before
+
+
+# ── Legacy vs explicit module enforcement (require_module) ───────────────────
+
+
+def test_is_legacy_module_config_cases():
+    assert _is_legacy_module_config(["task"]) is True
+    assert _is_legacy_module_config(["task", "attendance_leaves"]) is True
+    assert _is_legacy_module_config([]) is True
+    assert _is_legacy_module_config(["tasks_projects"]) is True
+    assert _is_legacy_module_config(["tasks_projects", "chat"]) is False
+    assert _is_legacy_module_config(["tasks_projects", "sales_crm", "attendance_leaves"]) is False
+    assert _is_legacy_module_config(None) is True
+
+
+@pytest.mark.asyncio
+async def test_require_module_legacy_employee_keeps_sales_autogrant():
+    checker = require_module("sales")
+    user = _user(UserRole.EMPLOYEE, modules=["task"])
+    assert await checker(current_user=user) is user
+
+
+@pytest.mark.asyncio
+async def test_require_module_legacy_employee_keeps_recruitment_autogrant():
+    checker = require_module("recruitment")
+    user = _user(UserRole.EMPLOYEE, modules=["task"])
+    assert await checker(current_user=user) is user
+
+
+@pytest.mark.asyncio
+async def test_require_module_explicit_employee_without_sales_is_blocked():
+    checker = require_module("sales")
+    user = _user(UserRole.EMPLOYEE, modules=["tasks_projects", "chat", "attendance_leaves"])
+    with pytest.raises(Exception) as exc_info:
+        await checker(current_user=user)
+    assert getattr(exc_info.value, "status_code", None) == 403
+
+
+@pytest.mark.asyncio
+async def test_require_module_explicit_employee_with_sales_passes():
+    checker = require_module("sales")
+    user = _user(UserRole.EMPLOYEE, modules=["tasks_projects", "sales_crm", "attendance_leaves"])
+    assert await checker(current_user=user) is user
+
+
+@pytest.mark.asyncio
+async def test_require_module_explicit_employee_without_recruitment_is_blocked():
+    checker = require_module("recruitment")
+    user = _user(UserRole.EMPLOYEE, modules=["tasks_projects", "chat"])
+    with pytest.raises(Exception) as exc_info:
+        await checker(current_user=user)
+    assert getattr(exc_info.value, "status_code", None) == 403
+
+
+@pytest.mark.asyncio
+async def test_require_module_admin_always_passes():
+    checker = require_module("sales")
+    user = _user(UserRole.ADMIN, modules=[])
+    assert await checker(current_user=user) is user

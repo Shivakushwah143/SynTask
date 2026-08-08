@@ -96,16 +96,52 @@ def _module_access_allowed(module_name: str, user_modules: list[str]) -> bool:
     return module_name in normalized_modules
 
 
+# The exact module lists that every pre-permission-system user creation flow
+# wrote. Members whose list matches one of these are treated as legacy and keep
+# the role-based auto-grants below; members with any other (explicit) list are
+# governed strictly by what the admin selected in the Permissions selector.
+_LEGACY_MODULE_SETS = {
+    frozenset(),
+    frozenset({"task"}),
+    frozenset({"task", "attendance_leaves"}),
+    frozenset({"tasks_projects"}),
+}
+
+
+def _is_legacy_module_config(modules) -> bool:
+    """True when the module list is one of the pre-member-permissions defaults.
+
+    Kept in sync with `isLegacyModules` in frontend/src/config/modulePermissions.js.
+    """
+    return frozenset(modules or []) in _LEGACY_MODULE_SETS
+
+
 def require_module(module_name: str):
-    """Dependency factory to ensure the current user has access to a specific module."""
+    """Dependency factory to ensure the current user has access to a specific module.
+
+    Module access = role auto-grants (legacy members only) OR the member's own
+    explicit module list. Once a member has an explicit list (set through the
+    Permissions selector at create/edit time), that list is authoritative.
+    """
     async def _checker(current_user: User = Depends(get_current_user)) -> User:
         current_role = _normalize_role(getattr(current_user, "role", None))
         # Super Admin, Admin, and Sub Admin have full access to all modules
         if current_role == UserRole.SUPER_ADMIN or current_role == UserRole.ADMIN or current_role == UserRole.SUB_ADMIN:
             return current_user
-        if module_name in {"sales", "sales_crm", "tickets", "task", "tasks_projects"} and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
+        # Legacy members (pre-permission-system module lists) keep the role
+        # auto-grants so they never lose access after this change ships.
+        legacy_config = _is_legacy_module_config(getattr(current_user, "modules", []) or [])
+        if (
+            legacy_config
+            and module_name in {"sales", "sales_crm", "tickets", "task", "tasks_projects"}
+            and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}
+        ):
             return current_user
-        if module_name == "recruitment" and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
+        if (
+            legacy_config
+            and module_name == "recruitment"
+            and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}
+        ):
             return current_user
         modules = getattr(current_user, "modules", []) or []
         if not _module_access_allowed(module_name, modules):

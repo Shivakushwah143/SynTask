@@ -24,23 +24,26 @@ describe('ModulePermissionSelector', () => {
     expect(tasks.checked).toBe(true)
   })
 
-  test('Clear unchecks non-locked modules for employee-level roles', () => {
+  test('employee defaults exclude Sales but Sales is freely toggleable', () => {
     render(<Harness role="employee" />)
     const sales = screen.getByLabelText(/Sales & CRM/)
-    const reports = screen.getByLabelText(/Reports/)
-    // Sales & CRM is role-implied -> locked on; Reports is free.
-    expect(sales.checked).toBe(true)
-    expect(sales.disabled).toBe(true)
-    fireEvent.click(screen.getByText('Clear'))
-    expect(sales.checked).toBe(true) // locked stays
-    expect(reports.checked).toBe(false)
+    expect(sales.checked).toBe(false) // not in employee defaults
+    expect(sales.disabled).toBe(false) // and not locked
+    fireEvent.click(sales)
+    expect(screen.getByLabelText(/Sales & CRM/).checked).toBe(true)
   })
 
-  test('admin role can toggle every module freely', () => {
-    render(<Harness role="admin" />)
-    const sales = screen.getByLabelText(/Sales & CRM/)
-    expect(sales.disabled).toBe(false)
+  test('Clear unchecks every module', () => {
+    render(<Harness role="employee" />)
     fireEvent.click(screen.getByText('Clear'))
-    expect(sales.checked).toBe(false)
+    expect(screen.getByLabelText(/Tasks & Projects/).checked).toBe(false)
+    expect(screen.getByLabelText(/Reports/).checked).toBe(false)
+  })
+
+  test('Select All checks every catalog module', () => {
+    render(<Harness role="employee" initial={[]} />)
+    fireEvent.click(screen.getByText('Select All'))
+    expect(screen.getByLabelText(/Sales & CRM/).checked).toBe(true)
+    expect(screen.getByLabelText(/Reports/).checked).toBe(true)
   })
 })

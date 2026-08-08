@@ -14,6 +14,7 @@ import {
   normalizeRole,
   isSuperAdminRole,
 } from "./roles";
+import { isLegacyModules } from "../config/modulePermissions";
 
 const STANDARD_ROLE_VALUES = [
   ROLE.SUPER_ADMIN,
@@ -39,8 +40,10 @@ export const effectiveRole = (role) => {
  * Backend-equivalent of `require_module(module_name)` + `_module_access_allowed`.
  *
  * - Super Admin, Admin and Sub Admin have full access to every module.
- * - Manager / Lead / Employee are auto-granted `sales`, `sales_crm`,
- *   `tickets` and `recruitment` (matches backend `require_module`).
+ * - Manager / Lead / Employee with a LEGACY module list (pre-permission-system
+ *   defaults) are auto-granted `sales`, `sales_crm`, `tickets` and
+ *   `recruitment` (matches backend `require_module`). Members with an explicit
+ *   module list are governed strictly by that list.
  * - Everyone else must have the module in `user.modules`; legacy aliases
  *   (task <-> tasks_projects, sales <-> sales_crm, chat via task) are honoured.
  */
@@ -59,10 +62,13 @@ export const hasModuleAccess = (role, modules, moduleName) => {
     return true;
   }
 
-  // Backend auto-grants Manager / Lead / Employee access to sales modules,
-  // tickets and recruitment regardless of their module list.
+  // Backend role auto-grant applies ONLY to legacy (pre-permission-system)
+  // module lists. Explicit lists are authoritative. The set mirrors the
+  // backend require_module auto-grant exactly (incl. task/tasks_projects).
+  const legacyConfig = isLegacyModules(modules);
   if (
-    ["sales", "sales_crm", "tickets", "recruitment"].includes(moduleName) &&
+    legacyConfig &&
+    ["task", "tasks_projects", "sales", "sales_crm", "tickets", "recruitment"].includes(moduleName) &&
     [ROLE.MANAGER, ROLE.LEAD, ROLE.EMPLOYEE].includes(normalized)
   ) {
     return true;
