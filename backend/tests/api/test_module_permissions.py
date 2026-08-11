@@ -165,10 +165,25 @@ def test_is_legacy_module_config_cases():
     assert _is_legacy_module_config(["task"]) is True
     assert _is_legacy_module_config(["task", "attendance_leaves"]) is True
     assert _is_legacy_module_config([]) is True
-    assert _is_legacy_module_config(["tasks_projects"]) is True
+    # `tasks_projects` is a NEW id written only by permission-system flows, so a
+    # member created with just "Tasks & Projects" selected is explicit, not
+    # legacy (which would auto-grant Sales/Tickets/Recruitment).
+    assert _is_legacy_module_config(["tasks_projects"]) is False
     assert _is_legacy_module_config(["tasks_projects", "chat"]) is False
     assert _is_legacy_module_config(["tasks_projects", "sales_crm", "attendance_leaves"]) is False
     assert _is_legacy_module_config(None) is True
+
+
+@pytest.mark.asyncio
+async def test_require_module_explicit_single_module_employee_is_blocked_from_sales():
+    """An employee created with ONLY 'tasks_projects' selected must NOT be
+    auto-granted Sales — this was the 'deselect Sales but it still appears'
+    regression where ['tasks_projects'] was misclassified as legacy."""
+    checker = require_module("sales_crm")
+    user = _user(UserRole.EMPLOYEE, modules=["tasks_projects"])
+    with pytest.raises(Exception) as exc_info:
+        await checker(current_user=user)
+    assert getattr(exc_info.value, "status_code", None) == 403
 
 
 @pytest.mark.asyncio

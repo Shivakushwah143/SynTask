@@ -61,11 +61,14 @@ export const getRoleModuleDefaults = (role) => {
 
 // The exact module lists written by every pre-permission-system creation flow
 // (mirrors backend `_is_legacy_module_config` in app/api/dependencies.py).
+// NOTE: `['tasks_projects']` is deliberately NOT here — it is a new id written
+// only by the permission-system flows, so a member created with just
+// "Tasks & Projects" selected must be treated as explicit, not legacy (which
+// would auto-grant Sales/Tickets/Recruitment).
 const LEGACY_MODULE_SETS = [
   [],
   ['task'],
   ['task', 'attendance_leaves'],
-  ['tasks_projects'],
 ]
 
 /** True when the module list is a pre-permission-system default. */

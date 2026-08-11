@@ -41,7 +41,9 @@ describe('modulePermissions registry', () => {
     expect(isLegacyModules([])).toBe(true)
     expect(isLegacyModules(['task'])).toBe(true)
     expect(isLegacyModules(['task', 'attendance_leaves'])).toBe(true)
-    expect(isLegacyModules(['tasks_projects'])).toBe(true)
+    // `tasks_projects` is a NEW id written only by permission-system flows, so a
+    // member created with just "Tasks & Projects" is explicit, not legacy.
+    expect(isLegacyModules(['tasks_projects'])).toBe(false)
     // Explicit lists (anything the Permissions selector saves) are not legacy.
     expect(isLegacyModules(['tasks_projects', 'chat'])).toBe(false)
     expect(isLegacyModules(['tasks_projects', 'sales_crm', 'attendance_leaves'])).toBe(false)

@@ -104,7 +104,11 @@ _LEGACY_MODULE_SETS = {
     frozenset(),
     frozenset({"task"}),
     frozenset({"task", "attendance_leaves"}),
-    frozenset({"tasks_projects"}),
+    # NOTE: frozenset({"tasks_projects"}) is deliberately excluded. `tasks_projects`
+    # is a NEW id written only by the permission-system flows, so a member created
+    # with just "Tasks & Projects" selected must be treated as explicit, not
+    # legacy (which would auto-grant Sales/Tickets/Recruitment). Kept in sync with
+    # `isLegacyModules` in frontend/src/config/modulePermissions.js.
 }
 
 

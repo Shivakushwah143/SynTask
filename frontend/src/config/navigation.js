@@ -47,6 +47,7 @@ import {
   Globe,
 } from "lucide-react";
 import { ROLE, isManagerRole, isSuperAdminRole, normalizeRole } from "../utils/roles";
+import { hasModuleAccess as hasModuleAccessFromRbac } from "../utils/rbac";
 import { HR_MODULES } from "./hrModules";
 
 // NOTE: NAV_GROUPS_OPEN_KEY (collapsible-group expand state) was removed in the tab sub-nav plan
@@ -406,16 +407,16 @@ export const getNavContextForPath = (pathname, search = "") => {
 // Sidebar (section visibility + favorites pool) and the SectionTabs bar, so the two can never
 // drift apart. The rules below reproduce exactly what Sidebar.jsx computed inline before Phase A.
 
-// Same module logic as the old Sidebar.hasModule closure.
+// Single source of truth: delegates to utils/rbac.js `hasModuleAccess` (the
+// canonical mirror of backend `require_module`). That version honors the member's
+// explicit `modules` list — a deselected module (e.g. sales_crm) is truly hidden
+// for non-admin roles, while legacy (pre-permission-system) lists keep the role
+// auto-grants. HR nav entries use the legacy `module: "hr"` id; the catalog id
+// is `recruitment`, so map it for the check.
 export const hasModuleAccess = (user, module) => {
   if (!module) return true;
-  const role = normalizeRole(user?.role);
-  if (isSuperAdminRole(role)) return true;
-  if ([ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.EMPLOYEE].includes(role)) return true;
-  const userModules = user?.modules || [];
-  if (module === "sales_crm") return userModules.includes("sales_crm") || userModules.includes("sales");
-  if (module === "sales") return userModules.includes("sales") || userModules.includes("sales_crm");
-  return userModules.includes(module);
+  const canonicalModule = module === "hr" ? "recruitment" : module;
+  return hasModuleAccessFromRbac(user?.role, user?.modules, canonicalModule);
 };
 
 export const hasCapabilityAccess = (user, capability) => {
@@ -466,6 +467,9 @@ const getHrNavItems = (user) => {
   return HR_MODULES.filter(
     (module) =>
       module.roles.includes(role) &&
+      // People/HR visibility keeps its pre-permission-system rules: the backend
+      // gates HR recruitment routes by role (require_job_view, ...), NOT by the
+      // `recruitment` module, so the sidebar must not hide them by module.
       (hasModuleAccess(user, module.module) || module.key === "recruitment") &&
       hasCapabilityAccess(user, module.capability) &&
       hasDepartmentAccess(user, module.department)
