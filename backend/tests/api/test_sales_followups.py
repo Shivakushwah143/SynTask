@@ -199,11 +199,7 @@ def _install_fakes(monkeypatch):
     async def _noop_access(*args, **kwargs):
         return None
 
-    async def _noop_assign(*args, **kwargs):
-        return None
-
     monkeypatch.setattr(followups, "require_owned_record_access", _noop_access)
-    monkeypatch.setattr(followups, "_assert_can_assign_task", _noop_assign)
 
 
 # ── Creation ─────────────────────────────────────────────────────────────────
@@ -255,6 +251,7 @@ async def test_create_follow_up_creates_one_pending_create_task_job_and_syncs_re
     stored_lead = FakeLeadModel.leads["lead-1"]
     assert stored_lead.next_follow_up_at == request.scheduled_at
     assert stored_lead.next_action == "Follow up with Acme"
+    assert stored_lead.assigned_to == "user-1"
     assert stored_lead.current_stage == "Qualify"
 
     # 3. One scheduled FOLLOW_UP CRM activity linked to the job.
@@ -293,15 +290,15 @@ async def test_create_follow_up_converts_aware_datetime_to_naive_utc(monkeypatch
 
     monkeypatch.setattr(followups.SchedulingService, "schedule_job", fake_schedule_job)
 
-    aware = datetime(2026, 8, 10, 15, 30, tzinfo=timezone(timedelta(hours=5, minutes=30)))
+    aware = datetime(2026, 8, 20, 15, 30, tzinfo=timezone(timedelta(hours=5, minutes=30)))
     request = followups.SalesFollowUpCreateRequest(
         scheduled_at=aware,
         assigned_to="user-1",
     )
     await followups.create_sales_follow_up("lead-1", request, current_user)
 
-    assert captured["run_at"] == datetime(2026, 8, 10, 10, 0)
-    assert FakeLeadModel.leads["lead-1"].next_follow_up_at == datetime(2026, 8, 10, 10, 0)
+    assert captured["run_at"] == datetime(2026, 8, 20, 10, 0)
+    assert FakeLeadModel.leads["lead-1"].next_follow_up_at == datetime(2026, 8, 20, 10, 0)
 
 
 @pytest.mark.asyncio
@@ -354,6 +351,39 @@ async def test_create_follow_up_rejects_cross_company_assignee(monkeypatch):
         await followups.create_sales_follow_up("lead-1", request, current_user)
     assert exc.value.status_code == 400
     assert exc.value.detail == "Assigned user must be from the same company"
+
+
+@pytest.mark.asyncio
+async def test_create_follow_up_allows_admin_assignee_and_updates_lead_owner(monkeypatch):
+    FakeLeadModel.leads["lead-1"] = lead(assigned_to="manager-1")
+    FakeUserModel.users["admin-1"] = user(user_id="admin-1", role=UserRole.ADMIN)
+    current_user = user(user_id="manager-1", role=UserRole.MANAGER)
+
+    captured = {}
+
+    async def fake_schedule_job(**kwargs):
+        captured.update(kwargs)
+        return FakeJob(
+            id="job-1",
+            action_type=ScheduledJobActionType.CREATE_TASK,
+            payload=kwargs["payload"],
+            run_at=kwargs["run_at"],
+            status=ScheduledJobStatus.PENDING,
+            company_id=kwargs["company_id"],
+            created_by=kwargs["created_by"],
+        )
+
+    monkeypatch.setattr(followups.SchedulingService, "schedule_job", fake_schedule_job)
+
+    request = followups.SalesFollowUpCreateRequest(
+        scheduled_at=utc_now() + timedelta(days=2),
+        assigned_to="admin-1",
+    )
+    response = await followups.create_sales_follow_up("lead-1", request, current_user)
+
+    assert response["assigned_to"] == "admin-1"
+    assert captured["payload"]["assigned_to"] == "admin-1"
+    assert FakeLeadModel.leads["lead-1"].assigned_to == "admin-1"
 
 
 @pytest.mark.asyncio
@@ -529,6 +559,37 @@ async def test_reschedule_updates_all_related_records(monkeypatch):
     assert activity.scheduled_at == new_run_at
     assert activity.due_date == new_run_at
     assert response["scheduled_at"] == new_run_at
+
+
+@pytest.mark.asyncio
+async def test_reschedule_updates_assignee_activity_owner_and_lead_owner(monkeypatch):
+    old_run_at = utc_now() + timedelta(days=1)
+    FakeLeadModel.leads["lead-1"] = lead(next_follow_up_at=old_run_at, assigned_to="user-1")
+    FakeUserModel.users["admin-1"] = user(user_id="admin-1", role=UserRole.ADMIN)
+    job = make_pending_job(run_at=old_run_at)
+    FakeScheduledJobModel.jobs["job-1"] = job
+    activity = FakeActivity(
+        status="scheduled",
+        scheduled_at=old_run_at,
+        due_date=old_run_at,
+        owner_id="user-1",
+        owner_name="Old Owner",
+        metadata={"scheduled_job_id": "job-1"},
+    )
+    FakeActivity.stored = [activity]
+    current_user = user()
+
+    request = followups.SalesFollowUpUpdateRequest(
+        scheduled_at=utc_now() + timedelta(days=3),
+        assigned_to="admin-1",
+    )
+    response = await followups.update_sales_follow_up("lead-1", "job-1", request, current_user)
+
+    assert response["assigned_to"] == "admin-1"
+    assert job.payload["assigned_to"] == "admin-1"
+    assert FakeLeadModel.leads["lead-1"].assigned_to == "admin-1"
+    assert activity.owner_id == "admin-1"
+    assert activity.owner_name == "A B"
 
 
 @pytest.mark.asyncio

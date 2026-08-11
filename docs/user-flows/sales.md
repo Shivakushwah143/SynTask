@@ -48,10 +48,11 @@ flowchart TD
 
 ## Sales Pipeline
 - How the user reaches it: sales sidebar or `/sales/pipeline`.
-- What they can do: drag prospects between stages.
+- What they can do: drag prospects between stages and schedule follow-ups for active sales-stage leads.
 - What happens after every action: the board updates and the prospect stage is persisted.
-- Backend APIs called: sales prospect read/update APIs and stage data.
-- Timeline events created: stage updates should be surfaced in activity/timeline where configured.
+- Follow-up assignment: `POST/PATCH /api/v1/sales/prospects/{lead_id}/follow-ups` accepts active same-company Admin, Sub Admin, Manager, Lead, and Employee assignees. Employee users can schedule only self-assigned follow-ups on leads they own. Changing the follow-up assignee also updates the lead owner (`assigned_to`), the scheduled task payload, and the linked CRM activity owner.
+- Backend APIs called: sales prospect read/update APIs, stage data, and sales follow-up APIs.
+- Timeline events created: stage updates and scheduled follow-up activity should be surfaced in activity/timeline where configured.
 - Notifications sent: none directly.
 - Related modules updated: CRM Pipeline, Lead Timeline, Reports.
 
