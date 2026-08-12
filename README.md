@@ -88,6 +88,7 @@ SynTask uses a single database with tenant isolation through `company_id` fields
 ## Documentation
 - [Documentation Index](docs/DOCUMENTATION_INDEX.md)
 - [Product Requirements](docs/product/PRD.md)
+- [SOP Library User Flow](docs/user-flows/sop-library.md)
 - [Global Time ADR](docs/architecture/decisions/2026-07-19-global-time-service.md)
 - [Detailed Architecture](docs/architecture/DETAILED_ARCHITECTURE.md)
 - [Non-Functional Requirements](docs/architecture/NON_FUNCTIONAL_REQUIREMENTS.md)
