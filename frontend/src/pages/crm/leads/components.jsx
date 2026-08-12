@@ -22,6 +22,8 @@ import { LeadFilesTab } from './files'
 
 export const LEAD_TABS = [
   { key: 'overview', label: 'Overview' },
+  { key: 'discovery', label: 'Discovery' },
+  { key: 'audit', label: 'Audit' },
   { key: 'notes', label: 'Notes' },
   { key: 'tasks', label: 'Tasks' },
   { key: 'meetings', label: 'Meetings' },
@@ -32,7 +34,7 @@ export const LEAD_TABS = [
   { key: 'documents', label: 'Documents' },
   { key: 'ai', label: 'AI' },
 ]
-const PRIMARY_LEAD_TAB_KEYS = new Set(['overview', 'notes', 'tasks', 'meetings', 'emails'])
+const PRIMARY_LEAD_TAB_KEYS = new Set(['overview', 'discovery', 'audit', 'proposal', 'documents'])
 
 const leadTone = (value) => {
   const key = String(value || '').toLowerCase()

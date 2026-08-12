@@ -245,7 +245,7 @@ export function LeadDocumentsTab({ leadId, lead }) {
                         </>
                       ) : null}
                       {document.token_expires_at && !document.token_revoked_at ? <Button type="button" variant="ghost" size="sm" disabled={actionMutation.isLoading} onClick={() => actionMutation.mutate({ action: 'revoke', document })}>Revoke Link</Button> : null}
-                      {document.document_type === 'quotation' ? <Button type="button" variant="secondary" size="sm" onClick={() => actionMutation.mutate({ action: 'contract', document })}>Contract</Button> : null}
+                      {document.document_type === 'quotation' ? <Button type="button" variant="secondary" size="sm" disabled={document.status !== 'accepted' || actionMutation.isLoading} onClick={() => actionMutation.mutate({ action: 'contract', document })}>Contract</Button> : null}
                       {document.status !== 'cancelled' ? <Button type="button" variant="ghost" size="sm" onClick={() => actionMutation.mutate({ action: 'cancel', document })}>Cancel</Button> : null}
                     </div></td>
                   </tr>

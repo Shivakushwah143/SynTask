@@ -25,6 +25,7 @@ from app.api.v1.endpoints import crm_companies
 from app.api.v1.endpoints import crm_contacts
 from app.api.v1.endpoints import crm_activities
 from app.api.v1.endpoints import crm_deals
+from app.api.v1.endpoints import crm_discovery_audit
 from app.api.v1.endpoints import crm_documents
 from app.api.v1.endpoints import crm_notes
 from app.api.v1.endpoints import crm_pipeline
@@ -178,6 +179,7 @@ api_router.include_router(crm_companies.router, prefix="/crm/companies", tags=["
 api_router.include_router(crm_contacts.router, prefix="/crm/contacts", tags=["CRM Contacts"])
 api_router.include_router(crm_activities.router, prefix="/crm/activities", tags=["CRM Activities"])
 api_router.include_router(crm_deals.router, prefix="/crm", tags=["CRM Deals"])
+api_router.include_router(crm_discovery_audit.router, prefix="/crm", tags=["CRM Discovery Audit"])
 api_router.include_router(crm_documents.router, prefix="/crm", tags=["CRM Documents"])
 api_router.include_router(crm_notes.router, prefix="/crm", tags=["CRM Notes"])
 api_router.include_router(crm_pipeline.router, prefix="/crm/pipeline", tags=["CRM Pipeline"])

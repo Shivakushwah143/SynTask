@@ -142,6 +142,7 @@ async def test_create_contract_from_document_uses_fixed_counter(monkeypatch):
         id="quote-1",
         company_id="company-1",
         lead_id="lead-1",
+        document_type=CRMDocumentType.QUOTATION,
         document_number="QUO-2026-0001",
         currency="INR",
         subtotal=Decimal("100"),
@@ -151,6 +152,7 @@ async def test_create_contract_from_document_uses_fixed_counter(monkeypatch):
         terms="Terms",
         notes=None,
         content_snapshot={"items": []},
+        status=CRMDocumentStatus.ACCEPTED,
     )
 
     class FakeCRMDocument:
@@ -190,3 +192,26 @@ async def test_create_contract_from_document_uses_fixed_counter(monkeypatch):
     assert FakeCRMDocument.inserted.document_number == "CON-2026-0001"
     assert result["document"]["document_type"] == "contract"
     assert result["document"]["document_number"] == "CON-2026-0001"
+
+
+@pytest.mark.asyncio
+async def test_create_contract_from_document_requires_accepted_quotation(monkeypatch):
+    source = SimpleNamespace(
+        id="quote-1",
+        company_id="company-1",
+        lead_id="lead-1",
+        document_type=CRMDocumentType.QUOTATION,
+        document_number="QUO-2026-0001",
+        status=CRMDocumentStatus.DRAFT,
+    )
+
+    async def fake_document_for_user(current_user, lead_id, document_id):
+        return SimpleNamespace(id=lead_id), source
+
+    monkeypatch.setattr(documents, "_document_for_user", fake_document_for_user)
+
+    with pytest.raises(documents.HTTPException) as exc:
+        await documents.create_contract_from_document(SimpleNamespace(id="user-1"), "lead-1", "quote-1")
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Contract can be created only from an accepted quotation"

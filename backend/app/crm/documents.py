@@ -235,6 +235,8 @@ async def create_document(current_user: User, lead_id: str, payload: dict[str, A
             "confidentiality": payload.get("confidentiality"),
             "termination": payload.get("termination"),
             "clauses": payload.get("clauses") or [],
+            "proposal_context": payload.get("proposal_context") or {},
+            "source_snapshot": payload.get("source_snapshot") or {},
         },
         created_by=str(current_user.id),
     )
@@ -264,6 +266,10 @@ async def update_document(current_user: User, lead_id: str, document_id: str, pa
 
 async def create_contract_from_document(current_user: User, lead_id: str, document_id: str) -> dict[str, Any]:
     _, source = await _document_for_user(current_user, lead_id, document_id)
+    if source.document_type != CRMDocumentType.QUOTATION:
+        raise HTTPException(status_code=400, detail="Contracts can be created only from quotations")
+    if source.status != CRMDocumentStatus.ACCEPTED:
+        raise HTTPException(status_code=400, detail="Contract can be created only from an accepted quotation")
     contract = CRMDocument(
         company_id=source.company_id,
         lead_id=source.lead_id,

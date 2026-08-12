@@ -17,6 +17,7 @@ import { LeadTimelineTab } from './timeline'
 import { LeadAISalesTab } from './ai'
 import { MetaAttribution } from './MetaAttribution'
 import { LeadDocumentsTab } from './documents'
+import { LeadAuditTab, LeadDiscoveryTab } from './discoveryAudit'
 
 const ACTIVE_TAB_KEY = 'tab'
 const WORKSPACE_QUERY_KEY = 'crm-lead-workspace'
@@ -288,6 +289,8 @@ export default function CRMLeadWorkspacePage() {
   else if (activeTab === 'meetings') body = <LeadMeetingsTab />
   else if (activeTab === 'emails') body = <LeadEmailsTab />
   else if (activeTab === 'call_logs') body = <LeadCallLogsTab />
+  else if (activeTab === 'discovery') body = <LeadDiscoveryTab leadId={leadId} lead={lead} onScheduleFollowUp={openFollowUp} />
+  else if (activeTab === 'audit') body = <LeadAuditTab leadId={leadId} lead={lead} onScheduleFollowUp={openFollowUp} onQuotationGenerated={() => handleTabChange('documents')} />
   else if (activeTab === 'documents') body = <LeadDocumentsTab leadId={leadId} lead={lead} />
   else if (activeTab === 'proposal') {
     body = (

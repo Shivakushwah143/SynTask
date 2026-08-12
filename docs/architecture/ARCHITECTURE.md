@@ -92,6 +92,11 @@ FastAPI endpoints, Motor, Beanie, Redis, and background helpers are async-first.
 ### Dependency Injection
 Authentication, role gates, module gates, and company access checks are implemented as FastAPI dependencies.
 
+### Sales Commercial Workflow
+Sales lead identity and shared qualification fields live on `SalesProspect`. Larger pre-conversion Discovery and Audit workspaces are tenant+lead-scoped documents (`SalesDiscovery`, `SalesAudit`) with unique `(company_id, lead_id)` indexes so repeated opens or saves do not create duplicate workspace records. APIs load the existing lead first and enforce the same ownership fields used by the rest of CRM: `assigned_to`, `assigned_by`, and `created_by`.
+
+Discovery/Audit quotation generation reuses `CRMDocument` rather than creating a second quotation system. The generated quotation is always `draft` and its `content_snapshot` includes the captured Discovery/Audit source snapshot plus product-mapped line items. Contracts continue to be created from the selected quotation document snapshot, so later Discovery/Audit edits cannot alter sent, accepted, or contracted commercial terms.
+
 ### Meta Integration Foundation
 Meta support lives under `backend/app/integrations/meta` rather than CRM controllers. Phase 1 adds tenant-scoped settings, durable webhook inbox, sync-run, and marketing-insight documents. Deployment-wide Meta credentials come from environment variables; tenant tokens are encrypted with the existing Fernet helper before database storage. `META_INTEGRATION_ENABLED` defaults to `False`, and tenant settings default disabled, so deploying the foundation changes no CRM behavior.
 
