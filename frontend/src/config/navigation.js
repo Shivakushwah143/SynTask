@@ -422,16 +422,6 @@ export const hasModuleAccess = (user, module) => {
   if (!module) return true;
   const canonicalModule = module === "hr" ? "recruitment" : module;
   return hasModuleAccessFromRbac(user?.role, user?.modules, canonicalModule);
-  const role = normalizeRole(user?.role);
-  if (isSuperAdminRole(role)) return true;
-  if ([ROLE.ADMIN, ROLE.SUB_ADMIN].includes(role)) return true;
-  if (["sales", "sales_crm", "tickets", "recruitment"].includes(module) && [ROLE.MANAGER, ROLE.LEAD, ROLE.EMPLOYEE].includes(role)) return true;
-  const userModules = user?.modules || [];
-  if (module === "tasks_projects" || module === "task") return userModules.includes("tasks_projects") || userModules.includes("task");
-  if (module === "sales_crm") return userModules.includes("sales_crm") || userModules.includes("sales");
-  if (module === "sales") return userModules.includes("sales") || userModules.includes("sales_crm");
-  if (module === "chat") return userModules.includes("chat") || userModules.includes("task") || userModules.includes("tasks_projects");
-  return userModules.includes(module);
 };
 
 export const hasCapabilityAccess = (user, capability) => {

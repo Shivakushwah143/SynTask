@@ -9,41 +9,53 @@ const Harness = ({ role, initial }) => {
   return <ModulePermissionSelector value={value} onChange={setValue} role={role} />
 }
 
+const checkboxFor = (text) => screen.getByText(text).closest('label').querySelector('input')
+
 describe('ModulePermissionSelector', () => {
   test('renders the Permissions section with the catalog', () => {
     render(<Harness role="employee" />)
     expect(screen.getByText('Permissions')).toBeInTheDocument()
-    expect(screen.getAllByText(/Tasks & Projects/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/Sales & CRM/).length).toBeGreaterThan(0)
+    expect(screen.getByText('Work')).toBeInTheDocument()
+    expect(screen.getByText('Projects')).toBeInTheDocument()
+    expect(screen.getByText('Sales')).toBeInTheDocument()
+    expect(screen.getByText('Leads and All Leads')).toBeInTheDocument()
   })
 
   test('Use Role Defaults restores the role baseline', () => {
     render(<Harness role="employee" initial={[]} />)
     fireEvent.click(screen.getByText('Use Role Defaults'))
-    const tasks = screen.getByLabelText(/Tasks & Projects/)
-    expect(tasks.checked).toBe(true)
+    expect(checkboxFor('Projects').checked).toBe(true)
+    expect(checkboxFor('Tasks').checked).toBe(true)
   })
 
-  test('employee defaults exclude Sales but Sales is freely toggleable', () => {
+  test('employee defaults exclude Sales but Sales section is freely toggleable', () => {
     render(<Harness role="employee" />)
-    const sales = screen.getByLabelText(/Sales & CRM/)
+    const sales = checkboxFor('Sales')
     expect(sales.checked).toBe(false) // not in employee defaults
     expect(sales.disabled).toBe(false) // and not locked
     fireEvent.click(sales)
-    expect(screen.getByLabelText(/Sales & CRM/).checked).toBe(true)
+    expect(checkboxFor('Leads and All Leads').checked).toBe(true)
+    expect(checkboxFor('Pipeline stages').checked).toBe(true)
   })
 
   test('Clear unchecks every module', () => {
     render(<Harness role="employee" />)
     fireEvent.click(screen.getByText('Clear'))
-    expect(screen.getByLabelText(/Tasks & Projects/).checked).toBe(false)
-    expect(screen.getByLabelText(/Reports/).checked).toBe(false)
+    expect(checkboxFor('Projects').checked).toBe(false)
+    expect(checkboxFor('Workspace Reports').checked).toBe(false)
+    expect(checkboxFor('Home dashboard').checked).toBe(true)
   })
 
   test('Select All checks every catalog module', () => {
     render(<Harness role="employee" initial={[]} />)
     fireEvent.click(screen.getByText('Select All'))
-    expect(screen.getByLabelText(/Sales & CRM/).checked).toBe(true)
-    expect(screen.getByLabelText(/Reports/).checked).toBe(true)
+    expect(checkboxFor('Leads and All Leads').checked).toBe(true)
+    expect(checkboxFor('Workspace Reports').checked).toBe(true)
+  })
+
+  test('internal option toggles update the shared module behind it', () => {
+    render(<Harness role="employee" initial={[]} />)
+    fireEvent.click(checkboxFor('Content Studio'))
+    expect(checkboxFor('AI Assistant').checked).toBe(true)
   })
 })
