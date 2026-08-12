@@ -29,7 +29,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_current_user
-from app.api.v1.endpoints.tasks import _assert_can_assign_task
 from app.core.clock import parse_to_utc, utc_now
 from app.core.rbac_visibility import require_owned_record_access
 from app.crm.models import SalesProspect
@@ -69,6 +68,13 @@ TRANSFERRED_MESSAGE = (
 
 FOLLOW_UP_SOURCE = "sales_follow_up"
 FOLLOW_UP_RELATED_ENTITY_TYPE = "sales_lead"
+FOLLOW_UP_ASSIGNEE_ROLES = {
+    UserRole.ADMIN,
+    UserRole.SUB_ADMIN,
+    UserRole.MANAGER,
+    UserRole.LEAD,
+    UserRole.EMPLOYEE,
+}
 
 
 class SalesFollowUpCreateRequest(BaseModel):
@@ -139,11 +145,11 @@ async def _ensure_schedulable_stage(lead: SalesProspect) -> str:
 
 
 async def _resolve_assignee(current_user: User, assigned_to: Optional[str]) -> str:
-    """Validate the follow-up assignee against the existing task hierarchy.
+    """Validate the CRM follow-up owner.
 
     Employees may only schedule a follow-up assigned to themselves (and only for
     leads they can access — enforced by _load_lead_for_follow_up). Everyone else
-    follows the standard task assignment hierarchy.
+    may assign follow-ups to any active same-company CRM owner role.
     """
     if current_user.role == UserRole.EMPLOYEE:
         requested = str(assigned_to or "").strip()
@@ -173,7 +179,11 @@ async def _resolve_assignee(current_user: User, assigned_to: Optional[str]) -> s
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Assigned user must be active",
         )
-    await _assert_can_assign_task(current_user, assignee)
+    if assignee.role not in FOLLOW_UP_ASSIGNEE_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid assignee role",
+        )
     return assignee_id
 
 
@@ -333,6 +343,7 @@ async def create_sales_follow_up(
         # 2. SalesProspect — next follow-up fields only. current_stage and
         # current_stage_status are untouched (no stage/inner-status side effect).
         existing = lead.next_follow_up_at
+        lead.assigned_to = assigned_to
         lead.next_follow_up_at = scheduled_at if not existing or scheduled_at < existing else existing
         lead.next_action = title
         lead.updated_at = utc_now()
@@ -448,6 +459,10 @@ async def update_sales_follow_up(
             activity.title = payload["title"]
         if payload.get("description"):
             activity.description = payload["description"]
+        if request.assigned_to:
+            assignee = await User.get(payload.get("assigned_to"))
+            activity.owner_id = payload.get("assigned_to")
+            activity.owner_name = _display_name(assignee, payload.get("assigned_to"))
         activity.updated_at = utc_now()
         await activity.save()
 
@@ -457,6 +472,12 @@ async def update_sales_follow_up(
     if lead.next_follow_up_at and previous_run_at and abs((lead.next_follow_up_at - previous_run_at).total_seconds()) < 60:
         lead.next_follow_up_at = new_run_at
         lead.next_action = payload.get("title") or lead.next_action
+        if request.assigned_to:
+            lead.assigned_to = payload.get("assigned_to") or lead.assigned_to
+        lead.updated_at = utc_now()
+        await lead.save()
+    elif request.assigned_to:
+        lead.assigned_to = payload.get("assigned_to") or lead.assigned_to
         lead.updated_at = utc_now()
         await lead.save()
 
