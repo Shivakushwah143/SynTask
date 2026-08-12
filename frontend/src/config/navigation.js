@@ -9,6 +9,7 @@ import {
   AlarmClockCheck,
   BellRing,
   Bot,
+  BookOpenText,
   Briefcase,
   CalendarCheck2,
   CalendarClock,
@@ -67,6 +68,7 @@ export const SECTION_ICONS = {
   finance: DollarSign,
   insights: LineChart,
   settings: Settings,
+  sop: BookOpenText,
 };
 
 // ── Section-level role gates (spec §9, mapped to the real role enum) ───────────────────────────
@@ -146,6 +148,7 @@ export const SECTIONS = [
   { key: "finance", label: "Finance", items: ["Invoices", "Transactions", "Subscriptions"] },
   { key: "insights", label: "Insights", items: ["Workspace Reports", "Sales Reports"] },
   { key: "settings", label: "Settings", items: ["System Settings", "Roles & Permissions", "Automation Rules", "Connected Accounts", "Google Workspace", "Activity Logs", "Client Settings"] },
+  { key: "sop", label: "SOP Library", items: ["SOP Library"], overviewHref: "/sop-library", hideOverviewTab: true },
 ];
 
 // ── Flat navigation items (renamed per spec §4, routes corrected to App.jsx) ──────────────────
@@ -213,6 +216,7 @@ export const navigation = [
   { name: "Automation Rules", href: "/workflows", icon: GitBranch, roles: ADMIN_ROLES },
   { name: "Google Workspace", href: "/google-workspace", icon: Globe, roles: STANDARD_ROLES },
   { name: "Activity Logs", href: "/activity", icon: AlarmClockCheck, roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD] },
+  { name: "SOP Library", href: "/sop-library", icon: BookOpenText },
 ];
 
 // ── CRM items (Sales + Clients). Was "CRM Tools" — split by team. ──────────────────────────────
@@ -359,6 +363,7 @@ export const SECTION_COLORS = {
   finance: "text-yellow-400",
   insights: "text-lime-400",
   settings: "text-gray-400",
+  sop: "text-teal-400",
   default: "text-gray-400",
 };
 
@@ -417,6 +422,16 @@ export const hasModuleAccess = (user, module) => {
   if (!module) return true;
   const canonicalModule = module === "hr" ? "recruitment" : module;
   return hasModuleAccessFromRbac(user?.role, user?.modules, canonicalModule);
+  const role = normalizeRole(user?.role);
+  if (isSuperAdminRole(role)) return true;
+  if ([ROLE.ADMIN, ROLE.SUB_ADMIN].includes(role)) return true;
+  if (["sales", "sales_crm", "tickets", "recruitment"].includes(module) && [ROLE.MANAGER, ROLE.LEAD, ROLE.EMPLOYEE].includes(role)) return true;
+  const userModules = user?.modules || [];
+  if (module === "tasks_projects" || module === "task") return userModules.includes("tasks_projects") || userModules.includes("task");
+  if (module === "sales_crm") return userModules.includes("sales_crm") || userModules.includes("sales");
+  if (module === "sales") return userModules.includes("sales") || userModules.includes("sales_crm");
+  if (module === "chat") return userModules.includes("chat") || userModules.includes("task") || userModules.includes("tasks_projects");
+  return userModules.includes(module);
 };
 
 export const hasCapabilityAccess = (user, capability) => {

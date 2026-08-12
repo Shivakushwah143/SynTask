@@ -73,6 +73,7 @@ const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
 const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
 const GoogleWorkspace = lazy(() => import('./pages/GoogleWorkspace'))
 const SectionLanding = lazy(() => import('./pages/SectionLanding'))
+const SOPLibrary = lazy(() => import('./pages/SOPLibrary'))
 
 
 const SalesDashboard = lazy(() => import('./pages/sales/SalesDashboard'))
@@ -316,6 +317,9 @@ function App() {
         <Route path="eod" element={withBoundary(<EODReports />)} />
         <Route path="my-team" element={withBoundary(<MyTeam />)} />
         <Route path="settings" element={withBoundary(<Settings />)} />
+        <Route path="sop-library" element={withBoundary(<SOPLibrary />)} />
+        <Route path="sop-library/:moduleKey" element={withBoundary(<SOPLibrary />)} />
+        <Route path="sop-library/:moduleKey/:articleKey" element={withBoundary(<SOPLibrary />)} />
         <Route path="sections/:sectionKey" element={withBoundary(<SectionLanding />)} />
         {/* Sales workspace Overview — the first tab of the guided sales journey. */}
         <Route path="sales-overview" element={withBoundary(<SalesOverviewPage />)} />

@@ -38,6 +38,7 @@ const SECTION_LABELS = [
   'Finance',
   'Insights',
   'Settings',
+  'SOP Library',
 ]
 
 const SECTION_KEYS = [
@@ -53,6 +54,7 @@ const SECTION_KEYS = [
   'finance',
   'insights',
   'settings',
+  'sop',
 ]
 
 const renderSidebar = (path = '/dashboard') =>
@@ -69,14 +71,14 @@ beforeEach(() => {
 })
 
 describe('Sidebar tab sub-nav (Phase D): link-only sections', () => {
-  it('shows exactly 12 top-level sections as links', () => {
+  it('shows exactly 13 top-level sections as links', () => {
     renderSidebar()
     for (const label of SECTION_LABELS) {
       expect(screen.getByRole('link', { name: new RegExp(`^${label}$`, 'i') })).toBeTruthy()
     }
   })
 
-  it('renders the 12 sections in the exact spec order', () => {
+  it('renders the 13 sections in the exact spec order', () => {
     renderSidebar()
     const links = SECTION_LABELS.map((label) => screen.getByRole('link', { name: new RegExp(`^${label}$`, 'i') }))
     const orderMatches = links.every((link, index) => {
@@ -109,6 +111,11 @@ describe('Sidebar tab sub-nav (Phase D): link-only sections', () => {
   it('links the Home section straight to the dashboard', () => {
     renderSidebar()
     expect(screen.getByRole('link', { name: /^home$/i }).getAttribute('href')).toBe('/dashboard')
+  })
+
+  it('links the SOP Library section straight to the SOP Library page', () => {
+    renderSidebar()
+    expect(screen.getByRole('link', { name: /^sop library$/i }).getAttribute('href')).toBe('/sop-library')
   })
 
   it('highlights the Sales section on the dedicated sales overview page', () => {
@@ -151,9 +158,8 @@ describe('Sidebar tab sub-nav (Phase D): link-only sections', () => {
   it('keeps a non-empty sidebar for a non-standard role (hr_manager falls through to item gates)', () => {
     mockUser.role = 'hr_manager'
     renderSidebar()
-    // hr_manager is not in STANDARD_ROLES, so section gates must not blank the sidebar;
-    // item-level gates still decide what is visible (meta channel items carry no roles).
-    expect(screen.getByRole('link', { name: /^inbox$/i })).toBeTruthy()
+    // hr_manager is not in STANDARD_ROLES, so universal core sections must not be hidden.
+    expect(screen.getByRole('link', { name: /^sop library$/i })).toBeTruthy()
   })
 })
 
@@ -166,7 +172,7 @@ describe('Sidebar role-based visibility (spec §9)', () => {
     // /attendance, /leaves, /attendance-reports, /reports, /settings and
     // /google-workspace routers have no module gate — so the sidebar now exposes
     // exactly what the employee can actually use (Attendance, Leave, Requests, ...).
-    for (const label of ['Home', 'Sales', 'Work', 'Content', 'Inbox', 'People', 'Insights', 'Settings']) {
+    for (const label of ['Home', 'Sales', 'Work', 'Content', 'Inbox', 'People', 'Insights', 'Settings', 'SOP Library']) {
       expect(screen.getByRole('link', { name: new RegExp(`^${label}$`, 'i') })).toBeTruthy()
     }
     // Team/admin-only surfaces stay hidden: CRM clients, publishing, AI workspace
@@ -211,6 +217,14 @@ describe('Sidebar role-based visibility (spec §9)', () => {
     renderSidebar()
 
     expect(screen.getByRole('link', { name: /^settings$/i })).toBeTruthy()
+  })
+
+  it('shows SOP Library for users without normal module permissions', () => {
+    mockUser.role = 'employee'
+    mockUser.modules = []
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: /^sop library$/i }).getAttribute('href')).toBe('/sop-library')
   })
 })
 
