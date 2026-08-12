@@ -9,7 +9,8 @@ const Harness = ({ role, initial }) => {
   return <ModulePermissionSelector value={value} onChange={setValue} role={role} />
 }
 
-const checkboxFor = (text) => screen.getByText(text).closest('label').querySelector('input')
+const checkboxFor = (text, index = 0) => screen.getAllByText(text)[index].closest('label').querySelector('input')
+const checkboxesFor = (text) => screen.getAllByText(text).map((item) => item.closest('label').querySelector('input'))
 
 describe('ModulePermissionSelector', () => {
   test('renders the Permissions section with the catalog', () => {
@@ -42,7 +43,8 @@ describe('ModulePermissionSelector', () => {
     render(<Harness role="employee" />)
     fireEvent.click(screen.getByText('Clear'))
     expect(checkboxFor('Projects').checked).toBe(false)
-    expect(checkboxFor('Workspace Reports').checked).toBe(false)
+    expect(checkboxesFor('Sales Reports').every((input) => input.checked === false)).toBe(true)
+    expect(checkboxFor('Workspace Reports').checked).toBe(true)
     expect(checkboxFor('Home dashboard').checked).toBe(true)
   })
 
@@ -53,9 +55,10 @@ describe('ModulePermissionSelector', () => {
     expect(checkboxFor('Workspace Reports').checked).toBe(true)
   })
 
-  test('internal option toggles update the shared module behind it', () => {
+  test('internal option toggles only its own module when it can be separate', () => {
     render(<Harness role="employee" initial={[]} />)
     fireEvent.click(checkboxFor('Content Studio'))
-    expect(checkboxFor('AI Assistant').checked).toBe(true)
+    expect(checkboxFor('Content Studio').checked).toBe(true)
+    expect(checkboxFor('AI Assistant').checked).toBe(false)
   })
 })

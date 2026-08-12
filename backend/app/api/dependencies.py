@@ -9,6 +9,44 @@ from app.models.department import Department
 from app.models.capability import get_capabilities_for_role
 from app.models.user import User, UserRole, UserStatus
 
+WORK_MODULES = {
+    "projects",
+    "tasks",
+    "scheduled_work",
+    "time_tracking",
+    "daily_updates",
+    "content_calendar",
+    "automation_rules",
+}
+
+CRM_MODULES = {
+    "sales_overview",
+    "leads",
+    "sales_pipeline",
+    "import_leads",
+    "sales_reports",
+    "clients",
+    "companies",
+    "contacts",
+    "client_calendar",
+    "client_insights",
+    "meta_messages",
+    "meta_settings",
+    "publishing_centre",
+    "social_accounts",
+    "publishing_analytics",
+    "integrations",
+}
+
+WORKFORCE_MODULES = {
+    "attendance",
+    "live_attendance",
+    "attendance_reports",
+    "leave_management",
+}
+
+FINANCE_MODULES = {"invoices", "transactions"}
+AI_MODULES = {"ai_assistant", "ai_content_assistant"}
 
 def _normalize_role(role: Any) -> UserRole:
     if isinstance(role, UserRole):
@@ -83,6 +121,8 @@ def _module_access_allowed(module_name: str, user_modules: list[str]) -> bool:
         return "task" in normalized_modules or "tasks_projects" in normalized_modules
     if module_name == "tasks_projects":
         return "tasks_projects" in normalized_modules or "task" in normalized_modules
+    if module_name in WORK_MODULES:
+        return module_name in normalized_modules or "task" in normalized_modules or "tasks_projects" in normalized_modules
     if module_name == "chat":
         return (
             "chat" in normalized_modules
@@ -90,9 +130,36 @@ def _module_access_allowed(module_name: str, user_modules: list[str]) -> bool:
             or "tasks_projects" in normalized_modules
         )
     if module_name == "sales_crm":
-        return "sales_crm" in normalized_modules or "sales" in normalized_modules
+        return (
+            "sales_crm" in normalized_modules
+            or "sales" in normalized_modules
+            or any(module in normalized_modules for module in CRM_MODULES)
+        )
     if module_name == "sales":
         return "sales" in normalized_modules or "sales_crm" in normalized_modules
+    if module_name in CRM_MODULES:
+        return module_name in normalized_modules or "sales_crm" in normalized_modules or "sales" in normalized_modules
+    if module_name == "attendance_leaves":
+        return (
+            "attendance_leaves" in normalized_modules
+            or any(module in normalized_modules for module in WORKFORCE_MODULES)
+        )
+    if module_name in WORKFORCE_MODULES:
+        return module_name in normalized_modules or "attendance_leaves" in normalized_modules
+    if module_name == "invoicing_ledger":
+        return (
+            "invoicing_ledger" in normalized_modules
+            or any(module in normalized_modules for module in FINANCE_MODULES)
+        )
+    if module_name in FINANCE_MODULES:
+        return module_name in normalized_modules or "invoicing_ledger" in normalized_modules
+    if module_name == "ai_agents":
+        return (
+            "ai_agents" in normalized_modules
+            or any(module in normalized_modules for module in AI_MODULES)
+        )
+    if module_name in AI_MODULES:
+        return module_name in normalized_modules or "ai_agents" in normalized_modules
     return module_name in normalized_modules
 
 
@@ -137,7 +204,7 @@ def require_module(module_name: str):
         legacy_config = _is_legacy_module_config(getattr(current_user, "modules", []) or [])
         if (
             legacy_config
-            and module_name in {"sales", "sales_crm", "tickets", "task", "tasks_projects"}
+            and module_name in {"sales", "sales_crm", "tickets", "task", "tasks_projects", *WORK_MODULES, *CRM_MODULES}
             and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}
         ):
             return current_user

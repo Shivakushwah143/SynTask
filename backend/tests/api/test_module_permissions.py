@@ -50,7 +50,8 @@ def test_role_module_defaults_known_and_unknown_roles():
     # Unknown / legacy roles must never be locked out -> employee defaults.
     legacy_defaults = role_module_defaults("hr_manager")
     assert legacy_defaults == role_module_defaults("employee")
-    assert "tasks_projects" in legacy_defaults
+    assert "projects" in legacy_defaults
+    assert "tasks_projects" not in legacy_defaults
 
 
 # ── Privilege-escalation guard ───────────────────────────────────────────────
@@ -105,7 +106,14 @@ def test_resolve_new_user_modules_none_keeps_legacy_defaults():
 def test_resolve_new_user_modules_normalizes_and_restricts():
     creator = _user(UserRole.ADMIN)
     result = _resolve_new_user_modules(creator, "attendance_leaves, bogus, reports")
-    assert result == ["tasks_projects", "attendance_leaves", "reports"]
+    assert result == ["attendance_leaves", "reports"]
+
+
+def test_resolve_new_user_modules_keeps_granular_work_without_parent_alias():
+    creator = _user(UserRole.ADMIN)
+    result = _resolve_new_user_modules(creator, "projects,tasks")
+    assert result == ["projects", "tasks"]
+    assert "tasks_projects" not in result
 
 
 # ── Endpoint wiring (AST) ────────────────────────────────────────────────────

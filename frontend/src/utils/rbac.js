@@ -16,6 +16,45 @@ import {
 } from "./roles";
 import { isLegacyModules } from "../config/modulePermissions";
 
+const WORK_MODULES = new Set([
+  "projects",
+  "tasks",
+  "scheduled_work",
+  "time_tracking",
+  "daily_updates",
+  "content_calendar",
+  "automation_rules",
+]);
+
+const CRM_MODULES = new Set([
+  "sales_overview",
+  "leads",
+  "sales_pipeline",
+  "import_leads",
+  "sales_reports",
+  "clients",
+  "companies",
+  "contacts",
+  "client_calendar",
+  "client_insights",
+  "meta_messages",
+  "meta_settings",
+  "publishing_centre",
+  "social_accounts",
+  "publishing_analytics",
+  "integrations",
+]);
+
+const WORKFORCE_MODULES = new Set([
+  "attendance",
+  "live_attendance",
+  "attendance_reports",
+  "leave_management",
+]);
+
+const FINANCE_MODULES = new Set(["invoices", "transactions"]);
+const AI_MODULES = new Set(["ai_assistant", "ai_content_assistant"]);
+
 const STANDARD_ROLE_VALUES = [
   ROLE.SUPER_ADMIN,
   ROLE.ADMIN,
@@ -68,7 +107,7 @@ export const hasModuleAccess = (role, modules, moduleName) => {
   const legacyConfig = isLegacyModules(modules);
   if (
     legacyConfig &&
-    ["task", "tasks_projects", "sales", "sales_crm", "tickets", "recruitment"].includes(moduleName) &&
+    ["task", "tasks_projects", "sales", "sales_crm", "tickets", "recruitment", ...WORK_MODULES, ...CRM_MODULES].includes(moduleName) &&
     [ROLE.MANAGER, ROLE.LEAD, ROLE.EMPLOYEE].includes(normalized)
   ) {
     return true;
@@ -78,6 +117,9 @@ export const hasModuleAccess = (role, modules, moduleName) => {
   if (moduleName === "task" || moduleName === "tasks_projects") {
     return userModules.has("task") || userModules.has("tasks_projects");
   }
+  if (WORK_MODULES.has(moduleName)) {
+    return userModules.has(moduleName) || userModules.has("task") || userModules.has("tasks_projects");
+  }
   if (moduleName === "chat") {
     return (
       userModules.has("chat") ||
@@ -86,10 +128,31 @@ export const hasModuleAccess = (role, modules, moduleName) => {
     );
   }
   if (moduleName === "sales_crm") {
-    return userModules.has("sales_crm") || userModules.has("sales");
+    return userModules.has("sales_crm") || userModules.has("sales") || [...CRM_MODULES].some((id) => userModules.has(id));
   }
   if (moduleName === "sales") {
     return userModules.has("sales") || userModules.has("sales_crm");
+  }
+  if (CRM_MODULES.has(moduleName)) {
+    return userModules.has(moduleName) || userModules.has("sales_crm") || userModules.has("sales");
+  }
+  if (moduleName === "attendance_leaves") {
+    return userModules.has("attendance_leaves") || [...WORKFORCE_MODULES].some((id) => userModules.has(id));
+  }
+  if (WORKFORCE_MODULES.has(moduleName)) {
+    return userModules.has(moduleName) || userModules.has("attendance_leaves");
+  }
+  if (moduleName === "invoicing_ledger") {
+    return userModules.has("invoicing_ledger") || [...FINANCE_MODULES].some((id) => userModules.has(id));
+  }
+  if (FINANCE_MODULES.has(moduleName)) {
+    return userModules.has(moduleName) || userModules.has("invoicing_ledger");
+  }
+  if (moduleName === "ai_agents") {
+    return userModules.has("ai_agents") || [...AI_MODULES].some((id) => userModules.has(id));
+  }
+  if (AI_MODULES.has(moduleName)) {
+    return userModules.has(moduleName) || userModules.has("ai_agents");
   }
   return userModules.has(moduleName);
 };

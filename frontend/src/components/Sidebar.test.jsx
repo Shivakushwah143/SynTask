@@ -166,6 +166,7 @@ describe('Sidebar tab sub-nav (Phase D): link-only sections', () => {
 describe('Sidebar role-based visibility (spec §9)', () => {
   it('shows every section an Employee is authorized for (backend-driven)', () => {
     mockUser.role = 'employee'
+    mockUser.modules = ['projects', 'tasks', 'content_calendar', 'meta_settings', 'attendance', 'leave_management', 'activity_logs']
     renderSidebar()
 
     // Explicit member module lists are authoritative; this employee has Work

@@ -833,7 +833,7 @@ async def update_user(
         await UserService.update_hierarchy_ancestors(user)
     modules = _form_or_none(modules)
     if modules is not None:
-        parsed_modules = normalize_modules(modules, require_tasks_projects=True)
+        parsed_modules = normalize_modules(modules, require_tasks_projects=False)
         user.modules = _restrict_modules_for_creator(current_user, parsed_modules)
         user.active_module = user.modules[0] if user.modules else "task"
     user.updated_at = utc_now()
@@ -886,7 +886,7 @@ def _resolve_new_user_modules(creator: User, modules: Optional[str]) -> List[str
     """
     if modules is None:
         return ["task", "attendance_leaves"]
-    parsed = normalize_modules(modules, require_tasks_projects=True)
+    parsed = normalize_modules(modules, require_tasks_projects=False)
     return _restrict_modules_for_creator(creator, parsed)
 # ==================== CREATE USER ENDPOINT ====================
 

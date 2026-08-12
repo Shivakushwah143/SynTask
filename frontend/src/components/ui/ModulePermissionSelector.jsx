@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import {
   MODULE_CATALOG,
   MODULE_LABELS,
@@ -6,6 +6,39 @@ import {
   getOptionState,
   getRoleModuleDefaults,
 } from '../../config/modulePermissions'
+import { ROLE, normalizeRole } from '../../utils/roles'
+
+const STANDARD_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.EMPLOYEE]
+const TEAM_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD]
+const ADMIN_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN]
+const CRM_SETTINGS_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER]
+
+const OPTION_ROLES = {
+  'all-clients': ADMIN_ROLES,
+  companies: TEAM_ROLES,
+  contacts: TEAM_ROLES,
+  'client-calendar': TEAM_ROLES,
+  'client-insights': TEAM_ROLES,
+  'publishing-centre': CRM_SETTINGS_ROLES,
+  'social-accounts': CRM_SETTINGS_ROLES,
+  'publishing-analytics': CRM_SETTINGS_ROLES,
+  integrations: CRM_SETTINGS_ROLES,
+  employees: TEAM_ROLES,
+  'live-attendance': TEAM_ROLES,
+  departments: TEAM_ROLES,
+  invoices: ADMIN_ROLES,
+  transactions: ADMIN_ROLES,
+  subscriptions: ADMIN_ROLES,
+  'roles-permissions': ADMIN_ROLES,
+  'automation-rules': ADMIN_ROLES,
+  'activity-logs': [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD],
+  'client-settings': CRM_SETTINGS_ROLES,
+}
+
+const roleCanSeeOption = (role, option) => {
+  const normalized = normalizeRole(role) || ROLE.EMPLOYEE
+  return (OPTION_ROLES[option.id] || STANDARD_ROLES).includes(normalized)
+}
 
 /**
  * Reusable Permissions selector for member create/edit forms.
@@ -24,12 +57,30 @@ import {
  */
 export default function ModulePermissionSelector({ value, onChange, role, compact = false }) {
   const selected = useMemo(() => new Set(value || []), [value])
-
-  const selectAll = () => onChange(MODULE_CATALOG.map((m) => m.id))
-  const clearAll = () => onChange([])
-  const useRoleDefaults = () => onChange(getRoleModuleDefaults(role))
-
   const normalizeNext = (ids) => [...new Set(ids)].filter((id) => MODULE_LABELS[id])
+  const visibleSections = useMemo(() => (
+    SIDEBAR_PERMISSION_SECTIONS.map((section) => ({
+      ...section,
+      options: section.options.filter((option) => roleCanSeeOption(role, option)),
+    })).filter((section) => section.options.length)
+  ), [role])
+  const visibleModuleIds = useMemo(() => new Set(
+    visibleSections.flatMap((section) => [
+      ...(section.moduleIds || []),
+      ...section.options.flatMap((option) => option.moduleIds || []),
+    ]),
+  ), [visibleSections])
+
+  useEffect(() => {
+    const next = (value || []).filter((id) => !MODULE_LABELS[id] || visibleModuleIds.has(id))
+    if (next.length !== (value || []).length) {
+      onChange(normalizeNext(next))
+    }
+  }, [onChange, value, visibleModuleIds])
+
+  const selectAll = () => onChange(normalizeNext(MODULE_CATALOG.map((m) => m.id).filter((id) => visibleModuleIds.has(id))))
+  const clearAll = () => onChange([])
+  const useRoleDefaults = () => onChange(normalizeNext(getRoleModuleDefaults(role).filter((id) => visibleModuleIds.has(id))))
 
   const toggleModules = (moduleIds, checked) => {
     if (!moduleIds?.length) return
@@ -92,8 +143,14 @@ export default function ModulePermissionSelector({ value, onChange, role, compac
       </div>
 
       <div className="mt-3 space-y-3">
-        {SIDEBAR_PERMISSION_SECTIONS.map((section) => {
+        {visibleSections.map((section) => {
           const state = sectionState(section)
+          const moduleUseCounts = section.options.reduce((acc, option) => {
+            for (const id of option.moduleIds || []) {
+              acc[id] = (acc[id] || 0) + 1
+            }
+            return acc
+          }, {})
           return (
             <div key={section.id} className="rounded-xl border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-gray-900/50">
               <label className={`flex items-start gap-3 ${state.disabled ? 'cursor-default' : 'cursor-pointer'}`}>
@@ -127,6 +184,7 @@ export default function ModulePermissionSelector({ value, onChange, role, compac
                   const title = option.moduleIds?.length
                     ? `Controlled by ${option.moduleIds.map((id) => MODULE_LABELS[id]).join(', ')}`
                     : 'Always available by role or core access'
+                  const linked = (option.moduleIds || []).some((id) => moduleUseCounts[id] > 1)
                 return (
                   <label
                     key={option.id}
@@ -146,6 +204,7 @@ export default function ModulePermissionSelector({ value, onChange, role, compac
                     />
                     <span className="min-w-0 flex-1 truncate">{option.label}</span>
                     {disabled ? <span className="text-[10px] font-medium text-gray-400">Core</span> : null}
+                    {!disabled && linked ? <span className="text-[10px] font-medium text-indigo-500 dark:text-indigo-300">Linked</span> : null}
                   </label>
                 )
               })}

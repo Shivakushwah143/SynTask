@@ -28,7 +28,8 @@ describe('modulePermissions registry', () => {
     expect(admin.length).toBe(MODULE_CATALOG.length)
 
     const employee = getRoleModuleDefaults('employee')
-    expect(employee).toContain('tasks_projects')
+    expect(employee).toContain('projects')
+    expect(employee).toContain('tasks')
     expect(employee).not.toContain('sales_crm')
     expect(employee).not.toContain('invoicing_ledger')
   })
@@ -52,6 +53,8 @@ describe('modulePermissions registry', () => {
 
   test('edit preload preserves a legacy member full effective access', () => {
     const defaults = getMemberEditDefaults('employee', ['task'])
+    expect(defaults).toContain('projects')
+    expect(defaults).toContain('tasks')
     expect(defaults).toContain('tasks_projects')
     expect(defaults).toContain('sales_crm') // auto-granted today -> kept
     expect(defaults).toContain('tickets')

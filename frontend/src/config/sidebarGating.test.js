@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { hasModuleAccess, getSectionItems, gateNavItem } from './navigation'
 
 const salesItem = { name: 'Qualify', href: '/crm/pipeline/qualify', roles: ['super_admin', 'admin', 'sub_admin', 'manager', 'lead', 'employee'], module: 'sales_crm' }
-const tasksItem = { name: 'Tasks', href: '/tasks', roles: ['super_admin', 'admin', 'sub_admin', 'manager', 'lead', 'employee'], module: 'tasks_projects' }
+const projectsItem = { name: 'Projects', href: '/projects', roles: ['super_admin', 'admin', 'sub_admin', 'manager', 'lead', 'employee'], module: 'projects' }
+const tasksItem = { name: 'Tasks', href: '/tasks', roles: ['super_admin', 'admin', 'sub_admin', 'manager', 'lead', 'employee'], module: 'tasks' }
+const scheduledWorkItem = { name: 'Scheduled Work', href: '/scheduled-jobs', roles: ['super_admin', 'admin', 'sub_admin', 'manager', 'lead'], module: 'scheduled_work' }
 
 describe('sidebar module gating (explicit member permissions are authoritative)', () => {
   it('hides sales_crm for an employee whose explicit modules exclude it (deselected at creation)', () => {
@@ -29,6 +31,20 @@ describe('sidebar module gating (explicit member permissions are authoritative)'
     expect(hasModuleAccess(employee, 'sales_crm')).toBe(false)
     expect(gateNavItem(employee, salesItem)).toBe(false)
     expect(gateNavItem(employee, tasksItem)).toBe(true)
+  })
+
+  it('separates Projects, Tasks, and Scheduled Work for explicit members', () => {
+    const projectOnly = { role: 'employee', modules: ['projects'] }
+    expect(gateNavItem(projectOnly, projectsItem)).toBe(true)
+    expect(gateNavItem(projectOnly, tasksItem)).toBe(false)
+
+    const taskOnly = { role: 'employee', modules: ['tasks'] }
+    expect(gateNavItem(taskOnly, tasksItem)).toBe(true)
+    expect(gateNavItem(taskOnly, projectsItem)).toBe(false)
+
+    const leadScheduledOnly = { role: 'lead', modules: ['scheduled_work'] }
+    expect(gateNavItem(leadScheduledOnly, scheduledWorkItem)).toBe(true)
+    expect(gateNavItem(leadScheduledOnly, projectsItem)).toBe(false)
   })
 
   it('always allows admin/super_admin regardless of modules', () => {
