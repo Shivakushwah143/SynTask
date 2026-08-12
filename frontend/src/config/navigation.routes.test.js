@@ -123,6 +123,8 @@ describe('sidebar route correctness (Phase 7, spec §11)', () => {
       '/clients/:clientId/workspace',
       '/projects/:projectId/board',
       '/sections/:sectionKey', // tab sub-nav landing pages (D1)
+      '/sop-library',
+      '/sop-library/:moduleKey/:articleKey',
     ]) {
       expect(ROUTE_PATTERNS).toContain(expected)
     }
@@ -211,8 +213,8 @@ describe('sidebar config integrity (Phase 7)', () => {
     expect(missing).toEqual([])
   })
 
-  it('defines exactly 12 sections with unique keys', () => {
-    expect(SECTIONS).toHaveLength(12)
+  it('defines exactly 13 sections with unique keys', () => {
+    expect(SECTIONS).toHaveLength(13)
     const keys = SECTIONS.map((section) => section.key)
     expect(new Set(keys).size).toBe(keys.length)
   })
