@@ -50,3 +50,16 @@ flowchart TD
 - Timeline events created: user/admin audit events should be logged if supported.
 - Notifications sent: account/admin notifications may be emitted by backend.
 - Related modules updated: My Team, CRM ownership defaults, task assignment.
+
+### Member Module Permissions
+
+Status: Implemented
+Last reviewed: 2026-08-12
+
+- Tenant key: user records are scoped by `company_id`.
+- Authorization rule: company admins, sub admins, managers and leads can open the relevant member-management surfaces according to existing role rules; non-admin creators cannot grant modules they do not hold.
+- Permission model: the member form stores backend-supported module IDs such as `projects`, `tasks`, `scheduled_work`, `time_tracking`, `daily_updates`, `content_calendar`, `automation_rules`, granular Sales/CRM keys such as `leads`, `sales_pipeline`, `clients`, `companies`, `contacts`, `meta_messages`, and `meta_settings`, workforce keys such as `attendance`, `live_attendance`, `attendance_reports`, and `leave_management`, finance keys such as `invoices` and `transactions`, plus compatibility aliases such as `tasks_projects`, `sales_crm`, `attendance_leaves`, `invoicing_ledger`, and `ai_agents`.
+- Sidebar alignment: the permission selector is organized by the current sidebar sections and nested options. Selecting a main sidebar section selects every supported module used by its internal options. Selecting an internal option toggles the module that controls that option. Sidebar options with separate routes or independent visibility are separately configurable for newly saved explicit permission lists; duplicate entries for the same destination share the same permission.
+- Core options: entries that are always available by role or do not have a backend module gate are labelled `Core`; they explain visibility but are not saved as separate module permissions.
+- Legacy behavior: users with pre-permission-system module lists keep legacy role auto-grants until an admin saves an explicit list for them.
+- Negative cross-tenant test expectation: updating one member's modules must not affect users in another company, and non-admin creators cannot escalate another member beyond the creator's own module authority.

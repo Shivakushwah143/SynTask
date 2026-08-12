@@ -9,21 +9,11 @@ import { hasCompanyAdminAccess, isLeadRole, normalizeRole, getRoleLabel } from '
 import { EmptyState, Modal, PasswordInput, PhoneInput, phoneValidationMessage } from '../components/ui'
 import { getDesignationOptions } from '../constants/designations'
 import toast from 'react-hot-toast'
+import ModulePermissionSelector from '../components/ui/ModulePermissionSelector'
+import { getRoleModuleDefaults, getMemberEditDefaults } from '../config/modulePermissions'
 
 const BULK_HEADERS = ['role', 'first_name', 'last_name', 'email', 'password', 'phone', 'department', 'designation', 'team_name', 'lead_email']
 const makeTempPassword = () => `SynTask@${Math.random().toString(36).slice(2, 8)}1`
-const SUB_ADMIN_MODULE_OPTIONS = [
-  { id: 'tasks_projects', label: 'Tasks & Projects' },
-  { id: 'tickets', label: 'Tickets' },
-  { id: 'chat', label: 'Chat' },
-  { id: 'meetings_calendar', label: 'Meetings & Calendar' },
-  { id: 'invoicing_ledger', label: 'Invoicing & Ledger' },
-  { id: 'sales_crm', label: 'Sales & CRM' },
-  { id: 'attendance_leaves', label: 'Attendance & Leaves' },
-  { id: 'recruitment', label: 'Recruitment' },
-  { id: 'reports', label: 'Reports' },
-  { id: 'ai_agents', label: 'AI & Agents' },
-]
 
 // Stat Card Component
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
@@ -85,7 +75,8 @@ const Users = () => {
   const [bulkRows, setBulkRows] = useState([])
   const [bulkErrors, setBulkErrors] = useState([])
   const [bulkImporting, setBulkImporting] = useState(false)
-  const [selectedSubAdminModules, setSelectedSubAdminModules] = useState(['tasks_projects'])
+  const [selectedModules, setSelectedModules] = useState(() => getRoleModuleDefaults('employee'))
+  const [modulesTouched, setModulesTouched] = useState(false)
 
   const isLead = isLeadRole(user?.role)
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
@@ -281,9 +272,11 @@ const Users = () => {
         userData.department = formData.get('department')?.trim() || ''
       }
 
+      // Member-level module permissions are sent on every creation flow.
+      userData.modules = selectedModules.join(',')
+
       if (userType === 'sub_admin') {
         userData.role = 'sub_admin'
-        userData.modules = selectedSubAdminModules.join(',')
         await usersAPI.createUser(userData)
       } else if (userType === 'manager') {
         userData.role = 'manager'
@@ -331,6 +324,14 @@ const Users = () => {
     }
   }
 
+  const handleUserTypeChange = (nextType) => {
+    setUserType(nextType)
+    // Changing the role loads that role's default permissions so the creator
+    // starts from a sensible baseline and can customize afterwards.
+    setSelectedModules(getRoleModuleDefaults(nextType))
+    setModulesTouched(false)
+  }
+
   const handleEdit = (userToEdit) => {
     // Company-scoped roles (Admin/Sub Admin/Manager/Lead) may edit any user in
     // the company - no creator or department restriction. Employees may only
@@ -355,6 +356,11 @@ const Users = () => {
     setDesignationError('')
     const normalizedRole = normalizeRole(userToEdit.role)
     setUserType(normalizedRole === 'sub_admin' ? 'sub_admin' : normalizedRole === 'manager' ? 'manager' : normalizedRole === 'lead' ? 'lead' : 'employee')
+    // Preload the member's existing permissions. Legacy members (no explicit
+    // module list) get their full effective access so a routine edit never
+    // silently strips permissions they already had.
+    setSelectedModules(getMemberEditDefaults(normalizedRole, userToEdit.modules))
+    setModulesTouched(false)
     setShowAddModal(true)
   }
 
@@ -362,7 +368,8 @@ const Users = () => {
     setShowAddModal(false)
     setEditingUser(null)
     setUserType('employee')
-    setSelectedSubAdminModules(['tasks_projects'])
+    setSelectedModules(getRoleModuleDefaults('employee'))
+    setModulesTouched(false)
     setFormErrors({})
     setSelectedDepartmentId('')
     setShowDepartmentCreate(false)
@@ -464,6 +471,13 @@ const Users = () => {
       if (reportsTo !== null && reportsTo !== undefined) {
         updateData.reports_to = reportsTo
       }
+    }
+
+    // Member-level module permissions are editable through the same modal.
+    // Only send them when the admin actually changed the selection, so a
+    // routine edit (name/email/etc.) never silently rewrites permissions.
+    if (modulesTouched) {
+      updateData.modules = selectedModules.join(',')
     }
 
     const password = formData.get('password')
@@ -635,27 +649,32 @@ const Users = () => {
           department_id: department?.id || '',
         }
 
+        // Every bulk-imported member gets that role's default module permissions.
+        const roleModules = getRoleModuleDefaults(row.data.role)
         if (row.data.role === 'sub_admin') {
           await usersAPI.createUser({
             ...userData,
             role: 'sub_admin',
-            modules: 'tasks_projects',
+            modules: roleModules.join(','),
           })
         } else if (row.data.role === 'manager') {
           await usersAPI.createUser({
             ...userData,
             role: 'manager',
+            modules: roleModules.join(','),
             reports_to: String(user.id),
           })
         } else if (row.data.role === 'lead') {
           await usersAPI.createLead({
             ...userData,
             team_name: row.data.team_name,
+            modules: roleModules.join(','),
           })
         } else {
           await usersAPI.createEmployee({
             ...userData,
             designation: row.data.designation,
+            modules: roleModules.join(','),
             reports_to: isCompanyAdmin ? lead?.id || '' : '',
           })
         }
@@ -744,13 +763,7 @@ const Users = () => {
                     setShowDesignationCreate(false)
                     setNewDesignationName('')
                     setDesignationError('')
-                    if (isLead) {
-                      setUserType('employee')
-                    } else if (isSubAdmin) {
-                      setUserType('manager')
-                    } else if (isManager) {
-                      setUserType('employee')
-                    }
+                    handleUserTypeChange(isLead ? 'employee' : isSubAdmin ? 'manager' : 'employee')
                   }}
                   className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20"
                 >
@@ -1103,7 +1116,7 @@ const Users = () => {
                     {isFullCompanyAdmin && (
                       <button
                         type="button"
-                        onClick={() => setUserType('sub_admin')}
+                        onClick={() => handleUserTypeChange('sub_admin')}
                         className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                           userType === 'sub_admin'
                             ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm dark:bg-indigo-500'
@@ -1116,7 +1129,7 @@ const Users = () => {
                     {(isFullCompanyAdmin || isSubAdmin) && (
                       <button
                         type="button"
-                        onClick={() => setUserType('manager')}
+                        onClick={() => handleUserTypeChange('manager')}
                         className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                           userType === 'manager'
                             ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm dark:bg-indigo-500'
@@ -1129,7 +1142,7 @@ const Users = () => {
                     {(isFullCompanyAdmin || isSubAdmin || isManager) && (
                       <button
                         type="button"
-                        onClick={() => setUserType('lead')}
+                        onClick={() => handleUserTypeChange('lead')}
                         className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                           userType === 'lead'
                             ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm dark:bg-indigo-500'
@@ -1141,7 +1154,7 @@ const Users = () => {
                     )}
                     <button
                       type="button"
-                      onClick={() => setUserType('employee')}
+                      onClick={() => handleUserTypeChange('employee')}
                       className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                         userType === 'employee'
                           ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm dark:bg-indigo-500'
@@ -1310,30 +1323,16 @@ const Users = () => {
                   )}
                 </div>
 
-                {userType === 'sub_admin' && (
-                  <div className="sm:col-span-2 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-500/25 dark:bg-indigo-500/10">
-                    <label className="block text-sm font-semibold text-gray-800 dark:text-gray-100">Sub-admin authority</label>
-                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">Select modules this sub-admin can manage. They cannot grant authority outside this list.</p>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      {SUB_ADMIN_MODULE_OPTIONS.map((module) => {
-                        const checked = selectedSubAdminModules.includes(module.id)
-                        return (
-                          <label key={module.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${checked ? 'border-indigo-400 bg-white text-indigo-800 dark:bg-gray-800 dark:text-indigo-200' : 'border-gray-200 bg-white/70 text-gray-700 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300'}`}>
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => setSelectedSubAdminModules((current) => {
-                                if (current.includes(module.id)) return current.filter((item) => item !== module.id)
-                                return [...current, module.id]
-                              })}
-                            />
-                            {module.label}
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
+                <div className="sm:col-span-2">
+                  <ModulePermissionSelector
+                    value={selectedModules}
+                    onChange={(next) => {
+                      setSelectedModules(next)
+                      setModulesTouched(true)
+                    }}
+                    role={editingUser ? normalizeRole(editingUser.role) : userType}
+                  />
+                </div>
                 {userType === 'lead' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Team Name</label>

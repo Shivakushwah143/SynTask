@@ -82,9 +82,16 @@ class CloudinaryStorage:
             ) from exc
 
         if response.status_code >= 400:
+            try:
+                cloudinary_message = response.json().get("error", {}).get("message") or response.text[:300]
+            except Exception:
+                cloudinary_message = response.text[:300]
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Cloudinary upload failed",
+                detail=(
+                    "File upload failed at the storage provider: "
+                    + (cloudinary_message or "unknown error")
+                ),
             )
 
         payload = response.json()

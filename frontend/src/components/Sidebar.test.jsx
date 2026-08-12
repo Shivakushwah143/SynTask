@@ -166,28 +166,28 @@ describe('Sidebar tab sub-nav (Phase D): link-only sections', () => {
 describe('Sidebar role-based visibility (spec §9)', () => {
   it('shows every section an Employee is authorized for (backend-driven)', () => {
     mockUser.role = 'employee'
+    mockUser.modules = ['projects', 'tasks', 'content_calendar', 'meta_settings', 'attendance', 'leave_management', 'activity_logs']
     renderSidebar()
 
-    // Backend require_module auto-grants sales_crm/tickets to employees, and the
-    // /attendance, /leaves, /attendance-reports, /reports, /settings and
-    // /google-workspace routers have no module gate — so the sidebar now exposes
-    // exactly what the employee can actually use (Attendance, Leave, Requests, ...).
-    for (const label of ['Home', 'Sales', 'Work', 'Content', 'Inbox', 'People', 'Insights', 'Settings', 'SOP Library']) {
+    // Explicit member module lists are authoritative; this employee has Work
+    // access but no Sales/CRM module.
+    for (const label of ['Home', 'Work', 'Content', 'Inbox', 'People', 'Insights', 'Settings', 'SOP Library']) {
       expect(screen.getByRole('link', { name: new RegExp(`^${label}$`, 'i') })).toBeTruthy()
     }
     // Team/admin-only surfaces stay hidden: CRM clients, publishing, AI workspace
     // (requires the ai_agents module) and finance (invoicing_ledger + admin role).
-    const hidden = ['Clients', 'Publishing', 'AI Workspace', 'Finance']
+    const hidden = ['Sales', 'Clients', 'Publishing', 'AI Workspace', 'Finance']
     for (const label of hidden) {
       expect(screen.queryByRole('link', { name: new RegExp(`^${label}$`, 'i') })).toBeNull()
     }
   })
 
-  it('shows the Sales section for an Employee (backend auto-grants sales_crm)', () => {
+  it('shows the Sales section for a legacy Employee module list', () => {
     mockUser.role = 'employee'
+    mockUser.modules = ['task']
     renderSidebar()
 
-    // require_module("sales_crm") auto-grants Manager/Lead/Employee on the backend.
+    // Legacy pre-permission-system users keep the backend auto-grant.
     expect(screen.getByRole('link', { name: /^sales$/i })).toBeTruthy()
   })
 
@@ -198,13 +198,14 @@ describe('Sidebar role-based visibility (spec §9)', () => {
     // /settings is the user's own profile page (auth-only) and /google-workspace has
     // no backend gate; Client Settings is guarded by CRMSettingsGuard (admin+manager).
     expect(screen.getByRole('link', { name: /^settings$/i })).toBeTruthy()
-    expect(screen.getByRole('link', { name: /^sales$/i })).toBeTruthy()
     expect(screen.getByRole('link', { name: /^people$/i })).toBeTruthy()
     expect(screen.getByRole('link', { name: /^work$/i })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /^sales$/i })).toBeNull()
   })
 
-  it('shows Settings for a Team Lead (profile page is backend-open)', () => {
+  it('shows Sales for a Team Lead with Sales/CRM permission', () => {
     mockUser.role = 'lead'
+    mockUser.modules = ['task', 'sales_crm']
     renderSidebar()
 
     expect(screen.getByRole('link', { name: /^settings$/i })).toBeTruthy()

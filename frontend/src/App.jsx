@@ -268,42 +268,42 @@ function App() {
           <Route path="dashboard" element={<DashboardRoute />} />
           <Route path="workflow" element={<Navigate to="/crm/pipeline" replace />} />
           <Route path="leads" element={<Navigate to="/crm/leads" replace />} />
-          <Route path="tasks" element={withBoundary(<Tasks />)} />
+          <Route path="tasks" element={<ModuleGuard module="tasks">{withBoundary(<Tasks />)}</ModuleGuard>} />
           <Route path="tickets" element={withBoundary(<Tickets />)} />
           <Route path="chat" element={withBoundary(<Chat />)} />
-          <Route path="clients" element={withBoundary(<Clients />)} />
-          <Route path="clients/:clientId/workspace" element={withBoundary(<ClientWorkspacePage />)} />
-          <Route path="invoices" element={withBoundary(<Invoices />)} />
+          <Route path="clients" element={<ModuleGuard module="clients">{withBoundary(<Clients />)}</ModuleGuard>} />
+          <Route path="clients/:clientId/workspace" element={<ModuleGuard module="clients">{withBoundary(<ClientWorkspacePage />)}</ModuleGuard>} />
+          <Route path="invoices" element={<ModuleGuard module="invoices">{withBoundary(<Invoices />)}</ModuleGuard>} />
           {/* MSA hidden by request. Keep route commented for later restore.
           <Route path="msa" element={withBoundary(<MSA />)} />
           */}
-          <Route path="ledger" element={withBoundary(<Ledger />)} />
-          <Route path="bulk-leads" element={withBoundary(<BulkLeads />)} />
-          <Route path="projects" element={withBoundary(<Projects />)} />
-          <Route path="projects/:projectId/board" element={withBoundary(<ProjectBoard />)} />
-          <Route path="projects/:projectId/tasks/:taskId" element={withBoundary(<TaskDetail />)} />
-          <Route path="tasks/:taskId" element={withBoundary(<TaskDetail />)} />
-          <Route path="workflows" element={<CompanyAdminGuard>{withBoundary(<WorkflowAdmin />)}</CompanyAdminGuard>} />
+          <Route path="ledger" element={<ModuleGuard module="transactions">{withBoundary(<Ledger />)}</ModuleGuard>} />
+          <Route path="bulk-leads" element={<ModuleGuard module="import_leads">{withBoundary(<BulkLeads />)}</ModuleGuard>} />
+          <Route path="projects" element={<ModuleGuard module="projects">{withBoundary(<Projects />)}</ModuleGuard>} />
+          <Route path="projects/:projectId/board" element={<ModuleGuard module="projects">{withBoundary(<ProjectBoard />)}</ModuleGuard>} />
+          <Route path="projects/:projectId/tasks/:taskId" element={<ModuleGuard module="tasks">{withBoundary(<TaskDetail />)}</ModuleGuard>} />
+          <Route path="tasks/:taskId" element={<ModuleGuard module="tasks">{withBoundary(<TaskDetail />)}</ModuleGuard>} />
+          <Route path="workflows" element={<CompanyAdminGuard><ModuleGuard module="automation_rules">{withBoundary(<WorkflowAdmin />)}</ModuleGuard></CompanyAdminGuard>} />
           <Route path="time-tracking" element={withBoundary(<TimeTracking />)} />
           <Route path="meetings" element={withBoundary(<Meetings />)} />
           <Route path="calendar" element={withBoundary(<WorkspaceCalendar />)} />
           <Route path="google-workspace" element={withBoundary(<GoogleWorkspace />)} />
-          <Route path="content-calendar" element={withBoundary(<ContentCalendar />)} />
+          <Route path="content-calendar" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentCalendar />)}</ModuleGuard>} />
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
-          <Route path="timesheet" element={withBoundary(<Timesheet />)} />
-          <Route path="attendance" element={withBoundary(<Attendance />)} />
+          <Route path="timesheet" element={<ModuleGuard module="time_tracking">{withBoundary(<Timesheet />)}</ModuleGuard>} />
+          <Route path="attendance" element={<ModuleGuard module="attendance">{withBoundary(<Attendance />)}</ModuleGuard>} />
           <Route path="attendance/live" element={<Navigate to="/live-monitor" replace />} />
           <Route path="attendance/reports" element={<Navigate to="/attendance-reports" replace />} />
-          <Route path="live-monitor" element={withBoundary(<LiveMonitor />)} />
-          <Route path="attendance-reports" element={withBoundary(<AttendanceReports />)} />
+          <Route path="live-monitor" element={<ModuleGuard module="live_attendance">{withBoundary(<LiveMonitor />)}</ModuleGuard>} />
+          <Route path="attendance-reports" element={<ModuleGuard module="attendance_reports">{withBoundary(<AttendanceReports />)}</ModuleGuard>} />
 
         <Route path="reports" element={withBoundary(<Reports />)} />
         <Route path="notifications" element={withBoundary(<Notifications />)} />
-        <Route path="scheduled-jobs" element={withBoundary(<ScheduledJobs />)} />
+        <Route path="scheduled-jobs" element={<ModuleGuard module="scheduled_work">{withBoundary(<ScheduledJobs />)}</ModuleGuard>} />
         <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
-        <Route path="ai-hub" element={withBoundary(<AIHub />)} />
-        <Route path="creative-director" element={withBoundary(<CreativeDirector />)} />
-        <Route path="marketing-support" element={withBoundary(<MarketingChat />)} />
+        <Route path="ai-hub" element={<ModuleGuard module="ai_assistant">{withBoundary(<AIHub />)}</ModuleGuard>} />
+        <Route path="creative-director" element={<ModuleGuard module="ai_content_assistant">{withBoundary(<CreativeDirector />)}</ModuleGuard>} />
+        <Route path="marketing-support" element={<ModuleGuard module="ai_content_assistant">{withBoundary(<MarketingChat />)}</ModuleGuard>} />
         <Route path="marketing/calendar" element={withBoundary(<MarketingCalendar />)} />
         <Route path="ai-prioritization" element={withBoundary(<AIPrioritization />)} />
           <Route path="users" element={withBoundary(<Users />)} />
@@ -311,10 +311,10 @@ function App() {
           <Route path="admin-permissions" element={<CompanyAdminGuard>{withBoundary(<AdminPermissions />)}</CompanyAdminGuard>} />
           <Route path="companies" element={withBoundary(<Companies />)} />
           <Route path="subscriptions" element={withBoundary(<Subscriptions />)} />
-        <Route path="activity" element={withBoundary(<ActivityLog />)} />
+        <Route path="activity" element={<ModuleGuard module="activity_logs">{withBoundary(<ActivityLog />)}</ModuleGuard>} />
         <Route path="timeline" element={withBoundary(<Timeline />)} />
-        <Route path="leaves" element={withBoundary(<Leaves />)} />
-        <Route path="eod" element={withBoundary(<EODReports />)} />
+        <Route path="leaves" element={<ModuleGuard module="leave_management">{withBoundary(<Leaves />)}</ModuleGuard>} />
+        <Route path="eod" element={<ModuleGuard module="daily_updates">{withBoundary(<EODReports />)}</ModuleGuard>} />
         <Route path="my-team" element={withBoundary(<MyTeam />)} />
         <Route path="settings" element={withBoundary(<Settings />)} />
         <Route path="sop-library" element={withBoundary(<SOPLibrary />)} />
@@ -322,7 +322,7 @@ function App() {
         <Route path="sop-library/:moduleKey/:articleKey" element={withBoundary(<SOPLibrary />)} />
         <Route path="sections/:sectionKey" element={withBoundary(<SectionLanding />)} />
         {/* Sales workspace Overview — the first tab of the guided sales journey. */}
-        <Route path="sales-overview" element={withBoundary(<SalesOverviewPage />)} />
+        <Route path="sales-overview" element={<ModuleGuard module="sales_overview">{withBoundary(<SalesOverviewPage />)}</ModuleGuard>} />
           <Route path="hr">
             <Route index element={withBoundary(<HRDepartment />)} />
             <Route path="recruitment">
@@ -341,21 +341,21 @@ function App() {
           <Route path="crm" element={<ProtectedRoute><CRMLayout /></ProtectedRoute>}>
             <Route index element={<Navigate to="pipeline" replace />} />
             <Route path="dashboard" element={<Navigate to="/crm/pipeline" replace />} />
-            <Route path="pipeline" element={withBoundary(<CRMPipelinePage />)} />
-            <Route path="pipeline/:stageKey" element={withBoundary(<CRMPipelinePage />)} />
-            <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
-            <Route path="leads/all" element={withBoundary(<CRMAllLeadsPage />)} />
-            <Route path="leads/:leadId" element={withBoundary(<CRMLeadWorkspacePage />)} />
-            <Route path="companies" element={withBoundary(<CRMCompaniesPage />)} />
-            <Route path="companies/:companyId" element={withBoundary(<CRMCompanyWorkspacePage />)} />
-            <Route path="contacts" element={withBoundary(<CRMContactsPage />)} />
-            <Route path="inbox" element={withBoundary(<CRMMetaInboxPage />)} />
+            <Route path="pipeline" element={<ModuleGuard module="sales_pipeline">{withBoundary(<CRMPipelinePage />)}</ModuleGuard>} />
+            <Route path="pipeline/:stageKey" element={<ModuleGuard module="sales_pipeline">{withBoundary(<CRMPipelinePage />)}</ModuleGuard>} />
+            <Route path="leads" element={<ModuleGuard module="leads">{withBoundary(<CRMLeadsPage />)}</ModuleGuard>} />
+            <Route path="leads/all" element={<ModuleGuard module="leads">{withBoundary(<CRMAllLeadsPage />)}</ModuleGuard>} />
+            <Route path="leads/:leadId" element={<ModuleGuard module="leads">{withBoundary(<CRMLeadWorkspacePage />)}</ModuleGuard>} />
+            <Route path="companies" element={<ModuleGuard module="companies">{withBoundary(<CRMCompaniesPage />)}</ModuleGuard>} />
+            <Route path="companies/:companyId" element={<ModuleGuard module="companies">{withBoundary(<CRMCompanyWorkspacePage />)}</ModuleGuard>} />
+            <Route path="contacts" element={<ModuleGuard module="contacts">{withBoundary(<CRMContactsPage />)}</ModuleGuard>} />
+            <Route path="inbox" element={<ModuleGuard module="meta_messages">{withBoundary(<CRMMetaInboxPage />)}</ModuleGuard>} />
             <Route path="activities" element={withBoundary(<CRMActivitiesPage />)} />
-            <Route path="calendar" element={withBoundary(<CRMCalendarPage />)} />
-            <Route path="reports" element={withBoundary(<CRMReportsPage />)} />
+            <Route path="calendar" element={<ModuleGuard module="client_calendar">{withBoundary(<CRMCalendarPage />)}</ModuleGuard>} />
+            <Route path="reports" element={<ModuleGuard module="client_insights">{withBoundary(<CRMReportsPage />)}</ModuleGuard>} />
             <Route path="configuration" element={<Navigate to="/crm/settings" replace />} />
-            <Route path="settings/meta" element={<CRMSettingsGuard>{withBoundary(<CRMMetaIntegrationPage />)}</CRMSettingsGuard>} />
-            <Route path="settings" element={<CRMSettingsGuard>{withBoundary(<CRMSettingsPage />)}</CRMSettingsGuard>} />
+            <Route path="settings/meta" element={<CRMSettingsGuard><ModuleGuard module="meta_settings">{withBoundary(<CRMMetaIntegrationPage />)}</ModuleGuard></CRMSettingsGuard>} />
+            <Route path="settings" element={<CRMSettingsGuard><ModuleGuard module="meta_settings">{withBoundary(<CRMSettingsPage />)}</ModuleGuard></CRMSettingsGuard>} />
           </Route>
       </Route>
 

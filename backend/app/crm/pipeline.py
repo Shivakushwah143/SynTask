@@ -1850,6 +1850,13 @@ class CRMPipelineService:
         lead_key = str(prospect.id)
         restore_token: Optional[str] = None
 
+        logger.info(
+            "LEAD_DELETE_STARTED lead_id=%s company_id=%s actor=%s",
+            lead_key,
+            company_id,
+            getattr(current_user, "id", None),
+        )
+
         # 1. Snapshot lead + children for the Undo feature. Best-effort: a
         #    snapshot failure must never block the deletion itself.
         try:
@@ -1926,12 +1933,33 @@ class CRMPipelineService:
             company_id,
             deleted,
         )
-        return {
+        response = {
             "message": "Lead deleted permanently",
             "deleted_lead_id": lead_key,
             "deleted": deleted,
             "restore_token": restore_token,
         }
+        # Defensive guard: the endpoint must NEVER 500 while serializing the
+        # response after the lead was already deleted (that exact bug made the
+        # UI show a failure toast while the lead was actually gone). If any
+        # cascade value is somehow not JSON-safe, fall back to a sanitized copy.
+        try:
+            from fastapi.encoders import jsonable_encoder  # lazy: import-graph safe
+
+            jsonable_encoder(response)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error(
+                "LEAD_DELETE_RESPONSE_NOT_SERIALIZABLE lead_id=%s error=%s",
+                lead_key,
+                exc,
+            )
+            response = {
+                "message": "Lead deleted permanently",
+                "deleted_lead_id": lead_key,
+                "deleted": {key: int(value or 0) for key, value in deleted.items()},
+                "restore_token": str(restore_token) if restore_token else None,
+            }
+        return response
 
     @staticmethod
     async def restore_lead(current_user: User, restore_token: str) -> Dict[str, Any]:

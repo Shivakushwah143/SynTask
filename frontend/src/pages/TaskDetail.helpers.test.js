@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTaskAssignmentOptions, canEditTaskDetails, getProjectLeadName, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
+import { buildTaskAssignmentOptions, canEditTaskDetails, getAttachmentKind, getProjectLeadName, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
 
 describe('TaskDetail assignment helpers', () => {
   it('splits assignable users into lead and employee options', () => {
@@ -62,5 +62,27 @@ describe('TaskDetail assignment helpers', () => {
       selectClass: expect.stringContaining('blue'),
     }))
     expect(getTaskStatusTone('blocked_custom').label).toBe('blocked custom')
+  })
+})
+
+describe('getAttachmentKind', () => {
+  it('classifies images by extension', () => {
+    expect(getAttachmentKind('https://cdn.test/files/photo.png')).toBe('image')
+    expect(getAttachmentKind('https://cdn.test/files/pic.JPG')).toBe('image')
+  })
+
+  it('classifies videos by extension (with query strings stripped)', () => {
+    expect(getAttachmentKind('https://cdn.test/files/reel.mp4')).toBe('video')
+    expect(getAttachmentKind('/api/v1/files/clip.webm?token=abc')).toBe('video')
+  })
+
+  it('classifies office/PDF documents', () => {
+    expect(getAttachmentKind('https://cdn.test/files/report.pdf')).toBe('document')
+    expect(getAttachmentKind('https://cdn.test/files/budget.xlsx')).toBe('document')
+  })
+
+  it('falls back to generic file for unknown extensions', () => {
+    expect(getAttachmentKind('https://cdn.test/files/blob.xyz')).toBe('file')
+    expect(getAttachmentKind('')).toBe('file')
   })
 })
