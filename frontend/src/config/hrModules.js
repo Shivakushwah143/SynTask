@@ -83,6 +83,11 @@ export const HR_MODULES = [
         href: "/hr/recruitment/interview-screen",
         icon: UserRoundSearch,
       },
+      {
+        name: "Settings",
+        href: "/hr/recruitment/settings/document-types",
+        icon: ClipboardList,
+      },
     ],
   },
 ];

@@ -253,10 +253,13 @@ export const HR_ITEM_RENAMES = {
   "Inbox": "Applications",
   "Resume Pool": "Talent Pool",
   "Reports": "Hiring Reports",
+  // The HR employee-profile screen is distinct from People → Employees (/users,
+  // account management), so it is relabelled to avoid a duplicate nav entry.
+  "Employees": "Employee Profiles",
 };
-// "Employees" is merged into People → Employees (/users). "Candidate Interview Screen" is a
-// workflow screen, not a navigation item — hidden per the exact-structure rule.
-export const HR_ITEM_SKIP = new Set(["Employees", "Candidate Interview Screen"]);
+// "Candidate Interview Screen" is a workflow screen, not a navigation item —
+// hidden per the exact-structure rule.
+export const HR_ITEM_SKIP = new Set(["Candidate Interview Screen"]);
 
 // ── Item icon colours (extended map, keyed by NEW display names) ───────────────────────────────
 export const ITEM_COLORS = {

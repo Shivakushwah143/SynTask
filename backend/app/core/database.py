@@ -7,6 +7,8 @@ import logging
 
 from app.core.config import settings
 from app.models.user import User, SuperAdmin, CompanyAdmin, Admin, Manager, Lead, Employee
+from app.models.employee_profile import EmployeeProfile
+from app.models.hr_document import HRDocument, HRDocumentType, HRDocumentVersion
 from app.models.company import Company, Subscription
 from app.models.crm_company import CRMCompany
 from app.models.crm_activity import CRMActivity
@@ -177,6 +179,10 @@ async def init_db():
                 Manager,  # New Manager model
                 Lead,
                 Employee,
+                EmployeeProfile,
+                HRDocumentType,
+                HRDocument,
+                HRDocumentVersion,
                 Company,
                 CRMCompany,
                 CRMActivity,

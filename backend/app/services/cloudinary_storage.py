@@ -5,6 +5,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import requests
 from fastapi import HTTPException, status
@@ -95,6 +96,37 @@ class CloudinaryStorage:
             "delivery_type": payload.get("type") or params["type"],
             "bytes": payload.get("bytes"),
         }
+
+    @staticmethod
+    def signed_url(
+        public_id: str,
+        resource_type: str = "image",
+        delivery_type: str = "authenticated",
+        expires_in: int = 3600,
+        attachment: bool = False,
+    ) -> str | None:
+        """Build a short-lived signed delivery URL for a stored Cloudinary file.
+
+        Used for secure preview/download of ``authenticated`` resources so
+        confidential HR documents are never exposed through an unsigned URL.
+        Returns ``None`` when Cloudinary is not configured.
+        """
+        if not CloudinaryStorage.enabled() or not public_id:
+            return None
+        expires_at = int(time.time()) + expires_in
+        params = {
+            "timestamp": int(time.time()),
+            "public_id": public_id,
+            "expires_at": expires_at,
+        }
+        params["signature"] = _sign(params)
+        url = (
+            f"https://res.cloudinary.com/{settings.CLOUDINARY_CLOUD_NAME}/"
+            f"{resource_type}/{delivery_type}/{public_id}?{urlencode(params)}"
+        )
+        if attachment:
+            url += "&fl_attachment"
+        return url
 
     @staticmethod
     def delete(public_id: str, resource_type: str = "image", delivery_type: str = "upload") -> None:

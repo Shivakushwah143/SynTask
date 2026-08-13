@@ -61,6 +61,7 @@ DEFAULT_CAPABILITIES: dict[Tuple[DepartmentType, UserRole], List[str]] = {
         "recruitment.interviews.manage", "recruitment.offers.manage",
         "recruitment.offers.approve", "recruitment.convert_employee",
         "recruitment.reports.view", "recruitment.inbox.manage",
+        "employee_management.view", "employee_management.manage",
     ],
     (DepartmentType.HR, UserRole.MANAGER): [
         "hire", "attendance", "performance", "recruitment.view",
@@ -74,17 +75,20 @@ DEFAULT_CAPABILITIES: dict[Tuple[DepartmentType, UserRole], List[str]] = {
         "recruitment.interviews.manage", "recruitment.offers.manage",
         "recruitment.offers.approve", "recruitment.convert_employee",
         "recruitment.reports.view", "recruitment.inbox.manage",
+        "employee_management.view", "employee_management.manage",
     ],
     (DepartmentType.HR, UserRole.LEAD): [
         "recruitment.view", "recruitment.candidates.view",
         "recruitment.candidates.manage", "recruitment.resume_pool.view",
         "recruitment.candidates.assign", "recruitment.interviews.view",
         "recruitment.interviews.manage",
+        "employee_management.view",
     ],
     (DepartmentType.HR, UserRole.EMPLOYEE): [
         "recruitment.view", "recruitment.candidates.view",
         "recruitment.resume_pool.view", "recruitment.interviews.view",
         "recruitment.interviews.feedback",
+        "employee_management.view",
     ],
     (DepartmentType.FINANCE, UserRole.SUB_ADMIN): ["billing", "ledger", "reports"],
     (DepartmentType.FINANCE, UserRole.MANAGER): ["billing", "ledger", "reports"],
@@ -123,6 +127,12 @@ async def seed_default_capabilities() -> int:
             }
         )
         if existing:
+            # Merge newly added default capabilities into already-seeded rows so
+            # existing deployments pick up new capability keys on startup.
+            missing = [cap for cap in capabilities if cap not in (existing.capabilities or [])]
+            if missing:
+                existing.capabilities = list(dict.fromkeys([*(existing.capabilities or []), *missing]))
+                await existing.save()
             continue
         await RoleCapability(
             company_id=None,
