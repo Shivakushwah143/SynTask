@@ -53,17 +53,19 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle, change
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
+    <div className="group rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+      <div className="flex items-center gap-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-r ${colors[color]} text-white shadow-sm`}>
           <Icon className="h-4 w-4" />
         </div>
+        <div className="min-w-0 flex-1">
+          <span className="block truncate text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">{label}</span>
+          <p className="truncate text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="truncate text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
+        </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
       {change && (
-        <div className={`mt-2 inline-flex items-center gap-1 text-xs font-medium ${changeType === 'up' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+        <div className={`mt-2 inline-flex items-center gap-1 text-[11px] font-medium ${changeType === 'up' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
           {changeType === 'up' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
           {change}% from last month
         </div>
@@ -76,15 +78,15 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle, change
 // SECTION HEADER COMPONENT
 // ============================================================
 const SectionHeader = ({ icon: Icon, title, description, action }) => (
-  <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+  <div className="border-b border-gray-200 bg-gray-50/70 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/70">
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-          <Icon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+          <Icon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
         </div>
         <div>
-          <h2 className="font-bold text-gray-900 dark:text-white">{title}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">{title}</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{description}</p>
         </div>
       </div>
       {action}
@@ -106,15 +108,15 @@ const KPICard = ({ label, value, subtitle, icon: Icon, color = 'indigo' }) => {
   };
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+    <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-center gap-3">
-        <div className={`rounded-lg ${colors[color]} p-2.5`}>
-          <Icon className="h-5 w-5" />
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${colors[color]}`}>
+          <Icon className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
-          <p className="text-lg font-bold text-gray-900 dark:text-white">{value}</p>
-          {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+          <p className="truncate text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">{label}</p>
+          <p className="truncate text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="truncate text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
         </div>
       </div>
     </div>
@@ -125,18 +127,18 @@ const KPICard = ({ label, value, subtitle, icon: Icon, color = 'indigo' }) => {
 // CHART CARD COMPONENT
 // ============================================================
 const ChartCard = ({ title, children, icon: Icon }) => (
-  <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-    <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+  <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+    <div className="border-b border-gray-200 bg-gray-50/70 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/70">
       <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-          <Icon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+          <Icon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
         </div>
         <div>
-          <h3 className="font-bold text-gray-900 dark:text-white">{title}</h3>
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white">{title}</h3>
         </div>
       </div>
     </div>
-    <div className="p-4">
+    <div className="p-3">
       {children}
     </div>
   </div>
@@ -171,40 +173,33 @@ export default function ReportsPage() {
   const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#06b6d4'];
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-5">
       {/* ============================================================ */}
       {/* HERO SECTION - Gradient with Glassmorphism */}
       {/* ============================================================ */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-rose-600 via-pink-600 to-fuchsia-600 p-6 text-white shadow-xl md:p-8">
-        {/* Decorative blur circles */}
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
-        
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-rose-700 via-pink-700 to-fuchsia-700 px-4 py-3 text-white shadow-sm">
         <div className="relative z-10">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <BarChart3 className="h-6 w-6" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="rounded-lg bg-white/15 p-2 backdrop-blur-sm">
+                <BarChart3 className="h-5 w-5" />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Recruitment Reports</h1>
-                <p className="mt-1 text-indigo-100">
-                  Hiring funnel, analytics, trends and KPI cards.
-                </p>
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-bold md:text-xl">Recruitment Reports</h1>
+                <p className="truncate text-xs text-pink-100">Hiring funnel, analytics, trends and KPIs.</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex shrink-0 flex-wrap gap-2">
               <button 
                 onClick={() => overview.refetch()}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-white/15 px-3 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/25"
               >
                 <RefreshCw className="h-4 w-4" />
                 Refresh
               </button>
               <button 
                 onClick={() => toast.success("Export feature coming soon")}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-white px-3 text-xs font-semibold text-rose-700 shadow-sm transition hover:bg-rose-50"
               >
                 <Download className="h-4 w-4" />
                 Export
@@ -217,16 +212,16 @@ export default function ReportsPage() {
       {/* ============================================================ */}
       {/* DATE FILTERS */}
       {/* ============================================================ */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <SectionHeader 
           icon={Calendar}
           title="Date Range"
           description="Filter reports by date range"
         />
-        <div className="p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <div className="p-3">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end">
             <div className="flex-1">
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">From</label>
+              <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">From</label>
               <input 
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white" 
                 type="date" 
@@ -235,7 +230,7 @@ export default function ReportsPage() {
               />
             </div>
             <div className="flex-1">
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">To</label>
+              <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">To</label>
               <input 
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white" 
                 type="date" 
@@ -246,7 +241,7 @@ export default function ReportsPage() {
             <div className="flex items-end gap-2">
               <button
                 onClick={() => setFilters({ date_from: "", date_to: "" })}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 <RefreshCw className="h-4 w-4" />
                 Reset
@@ -264,11 +259,11 @@ export default function ReportsPage() {
       ) : isError ? (
         <ErrorState onRetry={() => overview.refetch()} />
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* ============================================================ */}
           {/* KPI CARDS - 5 Cards */}
           {/* ============================================================ */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
             <StatCard 
               label="Open Jobs" 
               value={dashboard.open_jobs ?? dashboard.openJobs ?? 0} 
@@ -309,7 +304,7 @@ export default function ReportsPage() {
           {/* ============================================================ */}
           {/* ADDITIONAL METRICS - Quick Stats */}
           {/* ============================================================ */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <KPICard 
               label="Conversion Rate" 
               value={`${conversionRate}%`} 
@@ -343,7 +338,7 @@ export default function ReportsPage() {
           {/* ============================================================ */}
           {/* CHARTS SECTION - 2 Column Grid */}
           {/* ============================================================ */}
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid gap-4 xl:grid-cols-2">
             {/* Hiring Funnel Chart */}
             <ChartCard title="Hiring Funnel" icon={PieChart}>
               <ResponsiveContainer width="100%" height={280}>
@@ -402,18 +397,18 @@ export default function ReportsPage() {
           {/* SOURCE BREAKDOWN */}
           {/* ============================================================ */}
           {sources.length > 0 && (
-            <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
               <SectionHeader 
                 icon={Users}
                 title="Application Sources"
                 description="Where candidates are coming from"
               />
-              <div className="p-4">
-                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              <div className="p-3">
+                <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                   {sources.slice(0, 8).map((source, index) => (
                     <div 
                       key={source.name || index}
-                      className="rounded-xl border border-gray-200 p-4 transition hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:hover:border-indigo-700"
+                      className="rounded-lg border border-gray-200 p-3 transition hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:hover:border-indigo-700"
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -442,14 +437,14 @@ export default function ReportsPage() {
           {/* STAGE BREAKDOWN */}
           {/* ============================================================ */}
           {stages.length > 0 && (
-            <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
               <SectionHeader 
                 icon={Target}
                 title="Stage Distribution"
                 description="Candidates by current stage"
               />
-              <div className="p-4">
-                <div className="space-y-3">
+              <div className="p-3">
+                <div className="space-y-2">
                   {stages.map((stage, index) => {
                     const max = Math.max(...stages.map(s => Number(s.count) || 0), 1);
                     const percentage = (Number(stage.count) / max) * 100;
