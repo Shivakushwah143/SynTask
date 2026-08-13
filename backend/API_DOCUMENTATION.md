@@ -254,7 +254,7 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 | GET | `/api/v1/files/clients/{filename}` | `get_client_file` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/files/msa/{filename}` | `get_msa_file` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/files/projects/{filename}` | `get_project_file` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/files/upload` | `upload_file` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/files/upload` | `upload_file` | General-purpose upload used by task/project attachments. Accepts **any file type** (images, videos, PDF, Excel, etc.) up to **200 MB** (`GENERAL_UPLOAD_MAX_SIZE`). Oversized files return `413` with a clear detail stating the actual size and the limit (e.g. `File is too large: 312.0 MB exceeds the maximum allowed size of 200 MB`). Avatar and other security-sensitive uploads keep their stricter type/size whitelists. |
 | GET | `/api/v1/files/{filename}` | `get_file` | Uses router/endpoint dependencies where configured. |
 
 ### Health
@@ -608,12 +608,14 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | GET | `/api/v1/users/` | `list_users` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/assignable` | `get_assignable_users` | Returns active company users eligible for assignment, including admins, managers, leads, and employees; `project_id` still narrows the list to project members. |
 | GET | `/api/v1/users/creatable-roles` | `get_creatable_roles` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/users/create-employee` | `create_employee` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/users/create-employee` | `create_employee` | Accepts an optional `modules` form param (comma-separated catalog ids, e.g. `tasks_projects,chat,attendance_leaves`) that sets the member's sidebar-module permissions. Omitted → legacy defaults (`task,attendance_leaves`). Creators can only grant modules they themselves can access (privilege-escalation guard). |
 | POST | `/api/v1/users/create-lead` | `create_lead` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/users/create-user` | `create_user_hierarchical` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/users/create-user` | `create_user_hierarchical` | Accepts an optional `modules` form param. Non-admin creators can only grant modules they can access; admins are unrestricted. |
 | DELETE | `/api/v1/users/detail/{user_id}` | `delete_user` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/detail/{user_id}` | `get_user` | Uses router/endpoint dependencies where configured. |
-| PUT | `/api/v1/users/detail/{user_id}` | `update_user` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/users/detail/{user_id}` | `update_user` | Accepts an optional `modules` form param to update a member's sidebar-module permissions. The same creator-privilege guard applies (non-admin creators can only grant modules they can access). |
+
+**Module enforcement (`require_module`):** members whose stored `modules` list is a pre-permission-system default (`task` / `task,attendance_leaves` / empty) keep the legacy role auto-grants (sales/tickets/recruitment for Manager/Lead/Employee). Members with any other explicit list — including a single `tasks_projects` (the new permission-system id) — are governed strictly by that list, so a module deselected in the Permissions selector is truly withheld. Super Admin / Admin / Sub Admin have full module access regardless of the list.
 | PATCH | `/api/v1/users/detail/{user_id}/status` | `update_user_status` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/my-team` | `get_my_team` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/reporting-options` | `get_reporting_options` | Uses router/endpoint dependencies where configured. |

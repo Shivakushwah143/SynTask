@@ -12,7 +12,8 @@ from app.api.v1.endpoints import (
     auth, users, companies, tasks, notifications, dashboard, files, reports, 
     activity, auth_2fa, projects, time_tracking, workflows, automation, backlog, webhooks,
     issue_types, components, versions, watchers, issue_links, changelog, tickets, chat, subscriptions, clients, invoices, msa, ledger, meetings, calendar, timesheet,
-    sales, search, departments, attendance, notification_emails, timeline, leaves, eod, admin_permissions, time
+    sales, search, departments, attendance, notification_emails, timeline, leaves, eod, admin_permissions, time,
+    employees, hr_documents
 )
 from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import ai_assistant
@@ -107,7 +108,7 @@ api_router.include_router(
     tasks.router,
     prefix="/tasks",
     tags=["Tasks"],
-    dependencies=[Depends(require_module("task"))]
+    dependencies=[Depends(require_module("tasks"))]
 )
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(notification_emails.router, prefix="/notifications", tags=["Notification Email"])
@@ -115,9 +116,9 @@ api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboar
 api_router.include_router(files.router, prefix="/files", tags=["Files"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(activity.router, prefix="/activity", tags=["Activity"])
-api_router.include_router(projects.router, prefix="/projects", tags=["Projects"], dependencies=[Depends(require_module("task"))])
-api_router.include_router(time_tracking.router, prefix="/time-tracking", tags=["Time Tracking"], dependencies=[Depends(require_module("task"))])
-api_router.include_router(workflows.router, prefix="/workflows", tags=["Workflows"], dependencies=[Depends(require_module("task"))])
+api_router.include_router(projects.router, prefix="/projects", tags=["Projects"], dependencies=[Depends(require_module("projects"))])
+api_router.include_router(time_tracking.router, prefix="/time-tracking", tags=["Time Tracking"], dependencies=[Depends(require_module("time_tracking"))])
+api_router.include_router(workflows.router, prefix="/workflows", tags=["Workflows"], dependencies=[Depends(require_module("automation_rules"))])
 api_router.include_router(automation.router, prefix="/automation", tags=["Automation"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(backlog.router, prefix="/backlog", tags=["Backlog"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"], dependencies=[Depends(require_module("task"))])
@@ -141,17 +142,19 @@ api_router.include_router(ledger.router, prefix="/ledger", tags=["Ledger"], depe
 api_router.include_router(meetings.router, prefix="/meetings", tags=["Meetings"])
 api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar"])
 api_router.include_router(time.router, prefix="/time", tags=["Time"])
-api_router.include_router(content_calendar.router, prefix="/content-calendar", tags=["Content Calendar"], dependencies=[Depends(require_module("task"))])
-api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=["Scheduled Jobs"])
-api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("task"))])
+api_router.include_router(content_calendar.router, prefix="/content-calendar", tags=["Content Calendar"], dependencies=[Depends(require_module("content_calendar"))])
+api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=["Scheduled Jobs"], dependencies=[Depends(require_module("scheduled_work"))])
+api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("time_tracking"))])
 api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])
+api_router.include_router(employees.router, prefix="/employees", tags=["Employees"])
+api_router.include_router(hr_documents.router, prefix="/hr", tags=["HR Documents"])
 # Expose attendance HTTP endpoints to authenticated users; gate specific admin/report endpoints inside the module where needed.
 api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
 # WebSocket handler for attendance is mounted without module dependency so token-auth via query param works for WS clients
 api_router.include_router(attendance.ws_router, prefix="/attendance")
 api_router.include_router(timeline.router, prefix="/timeline", tags=["Timeline"])
 api_router.include_router(leaves.router, prefix="/leaves", tags=["Leaves"])
-api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"])
+api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"], dependencies=[Depends(require_module("daily_updates"))])
 api_router.include_router(recruitment_router, prefix="/recruitment", tags=["Recruitment"], dependencies=[Depends(require_module("recruitment"))])
 api_router.include_router(careers_router, prefix="/careers", tags=["Careers"])
 api_router.include_router(public_router, prefix="/public", tags=["Public Recruitment"])

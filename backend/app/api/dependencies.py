@@ -9,6 +9,44 @@ from app.models.department import Department
 from app.models.capability import get_capabilities_for_role
 from app.models.user import User, UserRole, UserStatus
 
+WORK_MODULES = {
+    "projects",
+    "tasks",
+    "scheduled_work",
+    "time_tracking",
+    "daily_updates",
+    "content_calendar",
+    "automation_rules",
+}
+
+CRM_MODULES = {
+    "sales_overview",
+    "leads",
+    "sales_pipeline",
+    "import_leads",
+    "sales_reports",
+    "clients",
+    "companies",
+    "contacts",
+    "client_calendar",
+    "client_insights",
+    "meta_messages",
+    "meta_settings",
+    "publishing_centre",
+    "social_accounts",
+    "publishing_analytics",
+    "integrations",
+}
+
+WORKFORCE_MODULES = {
+    "attendance",
+    "live_attendance",
+    "attendance_reports",
+    "leave_management",
+}
+
+FINANCE_MODULES = {"invoices", "transactions"}
+AI_MODULES = {"ai_assistant", "ai_content_assistant"}
 
 def _normalize_role(role: Any) -> UserRole:
     if isinstance(role, UserRole):
@@ -83,6 +121,8 @@ def _module_access_allowed(module_name: str, user_modules: list[str]) -> bool:
         return "task" in normalized_modules or "tasks_projects" in normalized_modules
     if module_name == "tasks_projects":
         return "tasks_projects" in normalized_modules or "task" in normalized_modules
+    if module_name in WORK_MODULES:
+        return module_name in normalized_modules or "task" in normalized_modules or "tasks_projects" in normalized_modules
     if module_name == "chat":
         return (
             "chat" in normalized_modules
@@ -90,22 +130,89 @@ def _module_access_allowed(module_name: str, user_modules: list[str]) -> bool:
             or "tasks_projects" in normalized_modules
         )
     if module_name == "sales_crm":
-        return "sales_crm" in normalized_modules or "sales" in normalized_modules
+        return (
+            "sales_crm" in normalized_modules
+            or "sales" in normalized_modules
+            or any(module in normalized_modules for module in CRM_MODULES)
+        )
     if module_name == "sales":
         return "sales" in normalized_modules or "sales_crm" in normalized_modules
+    if module_name in CRM_MODULES:
+        return module_name in normalized_modules or "sales_crm" in normalized_modules or "sales" in normalized_modules
+    if module_name == "attendance_leaves":
+        return (
+            "attendance_leaves" in normalized_modules
+            or any(module in normalized_modules for module in WORKFORCE_MODULES)
+        )
+    if module_name in WORKFORCE_MODULES:
+        return module_name in normalized_modules or "attendance_leaves" in normalized_modules
+    if module_name == "invoicing_ledger":
+        return (
+            "invoicing_ledger" in normalized_modules
+            or any(module in normalized_modules for module in FINANCE_MODULES)
+        )
+    if module_name in FINANCE_MODULES:
+        return module_name in normalized_modules or "invoicing_ledger" in normalized_modules
+    if module_name == "ai_agents":
+        return (
+            "ai_agents" in normalized_modules
+            or any(module in normalized_modules for module in AI_MODULES)
+        )
+    if module_name in AI_MODULES:
+        return module_name in normalized_modules or "ai_agents" in normalized_modules
     return module_name in normalized_modules
 
 
+# The exact module lists that every pre-permission-system user creation flow
+# wrote. Members whose list matches one of these are treated as legacy and keep
+# the role-based auto-grants below; members with any other (explicit) list are
+# governed strictly by what the admin selected in the Permissions selector.
+_LEGACY_MODULE_SETS = {
+    frozenset(),
+    frozenset({"task"}),
+    frozenset({"task", "attendance_leaves"}),
+    # NOTE: frozenset({"tasks_projects"}) is deliberately excluded. `tasks_projects`
+    # is a NEW id written only by the permission-system flows, so a member created
+    # with just "Tasks & Projects" selected must be treated as explicit, not
+    # legacy (which would auto-grant Sales/Tickets/Recruitment). Kept in sync with
+    # `isLegacyModules` in frontend/src/config/modulePermissions.js.
+}
+
+
+def _is_legacy_module_config(modules) -> bool:
+    """True when the module list is one of the pre-member-permissions defaults.
+
+    Kept in sync with `isLegacyModules` in frontend/src/config/modulePermissions.js.
+    """
+    return frozenset(modules or []) in _LEGACY_MODULE_SETS
+
+
 def require_module(module_name: str):
-    """Dependency factory to ensure the current user has access to a specific module."""
+    """Dependency factory to ensure the current user has access to a specific module.
+
+    Module access = role auto-grants (legacy members only) OR the member's own
+    explicit module list. Once a member has an explicit list (set through the
+    Permissions selector at create/edit time), that list is authoritative.
+    """
     async def _checker(current_user: User = Depends(get_current_user)) -> User:
         current_role = _normalize_role(getattr(current_user, "role", None))
         # Super Admin, Admin, and Sub Admin have full access to all modules
         if current_role == UserRole.SUPER_ADMIN or current_role == UserRole.ADMIN or current_role == UserRole.SUB_ADMIN:
             return current_user
-        if module_name in {"sales", "sales_crm", "tickets", "task", "tasks_projects"} and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
+        # Legacy members (pre-permission-system module lists) keep the role
+        # auto-grants so they never lose access after this change ships.
+        legacy_config = _is_legacy_module_config(getattr(current_user, "modules", []) or [])
+        if (
+            legacy_config
+            and module_name in {"sales", "sales_crm", "tickets", "task", "tasks_projects", *WORK_MODULES, *CRM_MODULES}
+            and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}
+        ):
             return current_user
-        if module_name == "recruitment" and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
+        if (
+            legacy_config
+            and module_name == "recruitment"
+            and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}
+        ):
             return current_user
         modules = getattr(current_user, "modules", []) or []
         if not _module_access_allowed(module_name, modules):

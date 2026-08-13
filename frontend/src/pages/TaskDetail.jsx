@@ -3,12 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { 
   ArrowLeft, Trash2, Paperclip, Eye, History, Mail,
   X, Lock, Share2, MoreVertical, Maximize2, CheckSquare,
-  Zap, Sparkles, Plus, List
+  Zap, Sparkles, Plus, List, FileText
 } from 'lucide-react'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { aiAPI } from '../api/ai'
 import { tasksAPI } from '../api/tasks'
-import { filesAPI } from '../api/files'
+import { filesAPI, MAX_UPLOAD_SIZE, formatFileSize, getUploadErrorMessage } from '../api/files'
 import { usersAPI } from '../api/users'
 import { watchersApi } from '../api/watchers'
 import { changelogApi } from '../api/changelog'
@@ -16,7 +16,7 @@ import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
 import { EmailComposer } from '../components/EmailComposer'
 import { Badge, EmptyState } from '../components/ui'
-import { TASK_STATUS_TONES, buildTaskAssignmentOptions, canEditTaskDetails, getProjectLeadName, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
+import { TASK_STATUS_TONES, buildTaskAssignmentOptions, canEditTaskDetails, getAttachmentKind, getProjectLeadName, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
 import { normalizeRole } from '../utils/roles'
 import { buildTaskShareUrl, resolveTaskBackTarget, resolveTaskCloseFallback } from './taskNavigation'
 import toast from 'react-hot-toast'
@@ -420,6 +420,15 @@ const TaskDetail = () => {
     const file = e.target.files[0]
     if (!file || !taskId) return
 
+    // Client-side size pre-check for a clear, immediate message
+    if (file.size > MAX_UPLOAD_SIZE) {
+      toast.error(
+        `File is too large (${formatFileSize(file.size)}). Maximum allowed size is ${formatFileSize(MAX_UPLOAD_SIZE)}.`
+      )
+      e.target.value = ''
+      return
+    }
+
     try {
       setUploading(true)
       // Upload file
@@ -454,7 +463,7 @@ const TaskDetail = () => {
       toast.success('File uploaded successfully')
     } catch (error) {
       console.error('File upload error:', error)
-      toast.error(error.response?.data?.detail || 'Failed to upload file')
+      toast.error(getUploadErrorMessage(error))
     } finally {
       setUploading(false)
       // Reset file input
@@ -1310,11 +1319,11 @@ const TaskDetail = () => {
             {attachments.length > 0 && (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
                 {attachments.map((url, index) => {
-                  const fileName = url.split('/').pop()
-                  const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName)
+                  const fileName = decodeURIComponent(url.split('/').pop()?.split('?')[0] || '')
+                  const kind = getAttachmentKind(fileName)
                   return (
                     <div key={index} className="border border-gray-200 rounded-lg overflow-hidden">
-                      {isImage ? (
+                      {kind === 'image' ? (
                         <img 
                           src={url} 
                           alt={fileName}
@@ -1340,32 +1349,58 @@ const TaskDetail = () => {
                             console.log('Image loaded successfully:', url)
                           }}
                         />
+                      ) : kind === 'video' ? (
+                        <div className="relative">
+                          <video
+                            src={url}
+                            className="w-full h-32 object-cover bg-black"
+                            controls
+                            preload="metadata"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => window.open(url, '_blank')}
+                            className="absolute right-1.5 top-1.5 rounded-md bg-black/60 p-1.5 text-white backdrop-blur-sm transition hover:bg-black/80"
+                            title="Open video in new tab"
+                            aria-label="Open video in new tab"
+                          >
+                            <Maximize2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       ) : (
                         <div 
-                          className="w-full h-32 bg-gray-100 flex items-center justify-center cursor-pointer hover:bg-gray-200"
+                          className="w-full h-32 bg-gray-100 flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-gray-200"
                           onClick={() => window.open(url, '_blank')}
                         >
-                          <Paperclip className="h-8 w-8 text-gray-400" />
+                          <FileText className="h-8 w-8 text-gray-400" />
+                          <span className="max-w-[90%] truncate px-2 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                            {kind === 'document' ? 'Document' : 'File'}
+                          </span>
                         </div>
                       )}
                       <div className="p-2">
-                        <p className="text-xs text-gray-600 truncate">{fileName}</p>
+                        <p className="text-xs text-gray-600 truncate" title={fileName}>{fileName}</p>
                       </div>
                     </div>
                   )
                 })}
               </div>
             )}
-            <label className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
-              <Paperclip className="h-4 w-4 mr-2" />
-              {uploading ? 'Uploading...' : 'Upload File'}
-              <input
-                type="file"
-                onChange={handleFileUpload}
-                className="hidden"
-                disabled={uploading}
-              />
-            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
+                <Paperclip className="h-4 w-4 mr-2" />
+                {uploading ? 'Uploading...' : 'Upload File'}
+                <input
+                  type="file"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  disabled={uploading}
+                />
+              </label>
+              <span className="text-xs text-gray-400">
+                Any file type (images, videos, PDF, Excel…) · Max {formatFileSize(MAX_UPLOAD_SIZE)}
+              </span>
+            </div>
           </div>
 
           {/* Activity Section */}

@@ -1,0 +1,175 @@
+"""
+HR Document API Schemas — Phase 2 HRMS.
+
+DTOs only; file content never crosses these. Upload/replace are multipart
+requests handled by the endpoint (FormData), matching existing SynTask upload
+routes (``recruitment/candidates/{id}/attachment``, ``files/upload``).
+"""
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, Field, model_validator
+
+from app.models.hr_document import (
+    HROwnerScope,
+    HRDocumentStatus,
+    HRDocumentVisibility,
+)
+
+
+# =============================================================================
+# Document Types
+# =============================================================================
+
+
+class HRDocumentTypeCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    code: str = Field(min_length=1, max_length=60)
+    description: Optional[str] = Field(default=None, max_length=500)
+    owner_scope: HROwnerScope = HROwnerScope.BOTH
+    required: bool = False
+    expiry_supported: bool = True
+    default_visibility: HRDocumentVisibility = HRDocumentVisibility.EMPLOYEE_VISIBLE
+
+    @model_validator(mode="after")
+    def _normalize_code(self):
+        self.code = self.code.strip().lower().replace(" ", "_")
+        if not self.code:
+            raise ValueError("code is required")
+        return self
+
+
+class HRDocumentTypeUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    description: Optional[str] = Field(default=None, max_length=500)
+    owner_scope: Optional[HROwnerScope] = None
+    required: Optional[bool] = None
+    expiry_supported: Optional[bool] = None
+    default_visibility: Optional[HRDocumentVisibility] = None
+    active: Optional[bool] = None
+
+
+class HRDocumentTypeResponse(BaseModel):
+    id: str
+    company_id: str
+    name: str
+    code: str
+    description: Optional[str] = None
+    owner_scope: str
+    required: bool
+    expiry_supported: bool
+    default_visibility: str
+    active: bool
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+# =============================================================================
+# Documents
+# =============================================================================
+
+
+class HRDocumentUpdate(BaseModel):
+    """Metadata-only update — never creates a new file version."""
+
+    document_type_id: Optional[str] = None
+    expiry_date: Optional[datetime] = None
+    description: Optional[str] = None
+    visibility: Optional[HRDocumentVisibility] = None
+
+
+class HRDocumentVersionResponse(BaseModel):
+    id: str
+    document_id: str
+    version_number: int
+    original_filename: str
+    mime_type: str
+    file_size: int
+    uploaded_by: Optional[str] = None
+    uploaded_by_name: Optional[str] = None
+    uploaded_at: datetime
+    change_note: Optional[str] = None
+    can_download: bool = True
+
+
+class HRDocumentResponse(BaseModel):
+    """Normalized, frontend-ready document DTO.
+
+    Expiry state is always computed on the backend (one source of truth).
+    Permission capability flags let the UI render actions without re-deriving
+    authorization rules client-side.
+    """
+
+    id: str
+    company_id: str
+    owner_type: Optional[str] = None
+    employee_id: Optional[str] = None
+    candidate_id: Optional[str] = None
+    employee_name: Optional[str] = None
+    candidate_name: Optional[str] = None
+    document_type_id: Optional[str] = None
+    document_type: Optional[str] = None
+    document_type_code: Optional[str] = None
+    document_type_required: bool = False
+
+    status: str
+    expiry_date: Optional[datetime] = None
+    expiry_state: str
+    description: Optional[str] = None
+    visibility: str
+
+    current_version: int = 0
+    version_count: int = 0
+    filename: Optional[str] = None
+    mime_type: Optional[str] = None
+    file_size: Optional[int] = None
+
+    uploaded_by: Optional[str] = None
+    uploaded_by_name: Optional[str] = None
+    uploaded_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    can_view: bool = True
+    can_manage: bool = False
+    can_preview: bool = True
+    can_download: bool = True
+    can_replace: bool = False
+    can_edit: bool = False
+    can_archive: bool = False
+
+
+class HRDocumentListResponse(BaseModel):
+    items: list[HRDocumentResponse]
+    total: int
+    page: int
+    page_size: int
+    has_next: bool
+
+
+class HRMissingRequiredResponse(BaseModel):
+    missing: list[dict]
+    count: int
+
+
+# =============================================================================
+# Multipart upload payloads (FormData — not used directly by FastAPI bodies)
+# =============================================================================
+
+
+class HRDocumentUploadMetadata(BaseModel):
+    """Parsed from multipart form fields by the endpoint."""
+
+    document_type_id: str = Field(min_length=1)
+    expiry_date: Optional[str] = None
+    description: Optional[str] = None
+    visibility: Optional[str] = None
+
+
+class HRDocumentReplaceMetadata(BaseModel):
+    change_note: Optional[str] = None
+    expiry_date: Optional[str] = None
+    description: Optional[str] = None
+    visibility: Optional[str] = None

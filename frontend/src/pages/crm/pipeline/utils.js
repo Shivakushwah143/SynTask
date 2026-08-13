@@ -134,6 +134,18 @@ export const getLeadOwnerValue = (lead) => {
   return normalizeText(getLeadOwnerLabel(lead))
 }
 
+const getUserOptionLabel = (user) => {
+  if (!user) return ''
+  const nameParts = [user.first_name || user.firstName, user.last_name || user.lastName].filter(Boolean)
+  const label = user.full_name || user.fullName || user.name || user.display_name || user.displayName || nameParts.join(' ')
+  return String(label || user.email || '').trim()
+}
+
+const getUserOptionValue = (user) => {
+  const value = user?.id || user?._id || user?.user_id || user?.userId
+  return value === undefined || value === null ? '' : String(value).trim()
+}
+
 // Single source of truth for the lead's person name: returns the first non-empty
 // contact field as-is (no fallback label), shared by the label helper and the
 // pipeline table so every view shows the same person.
@@ -487,14 +499,23 @@ export const stageOptionsFromBoard = (board) =>
     label: stage.name,
   }))
 
-export const ownerOptionsFromBoard = (board) => {
+export const ownerOptionsFromBoard = (board, users = []) => {
   const values = new Map()
+  users.forEach((user) => {
+    const value = getUserOptionValue(user)
+    const label = getUserOptionLabel(user)
+    if (value && label) values.set(value, label)
+  })
   ;(board?.stages || []).forEach((stage) => {
     stage.leads.forEach((lead) => {
-      const owner = normalizeText(getLeadOwnerLabel(lead))
+      const ownerLabel = getLeadOwnerLabel(lead)
+      if (ownerLabel === 'Unassigned') return
+      const owner = normalizeText(ownerLabel)
       const ownerValue = getLeadOwnerValue(lead) || owner
-      if (ownerValue) values.set(ownerValue, getLeadOwnerLabel(lead))
+      if (ownerValue && !values.has(ownerValue)) values.set(ownerValue, ownerLabel)
     })
   })
-  return Array.from(values.entries()).map(([value, label]) => ({ value, label }))
+  return Array.from(values.entries())
+    .map(([value, label]) => ({ value, label }))
+    .sort((left, right) => left.label.localeCompare(right.label))
 }
