@@ -1068,6 +1068,81 @@ const Users = () => {
         </div>
       </Modal>
 
+      <Modal
+        isOpen={showDepartmentCreate}
+        onClose={() => {
+          if (departmentSubmitting) return
+          setShowDepartmentCreate(false)
+          setNewDepartmentName('')
+          setNewDepartmentManagerId('')
+          setDepartmentError('')
+        }}
+        title="Create Department"
+        description="Add a department and select it for this user."
+        size="md"
+        zIndexClass="z-[70]"
+        footer={(
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setShowDepartmentCreate(false)
+                setNewDepartmentName('')
+                setNewDepartmentManagerId('')
+                setDepartmentError('')
+              }}
+              disabled={departmentSubmitting}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleCreateDepartment}
+              disabled={departmentSubmitting}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {departmentSubmitting ? 'Creating...' : 'Create Department'}
+            </button>
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Department Name *</label>
+            <input
+              type="text"
+              value={newDepartmentName}
+              onChange={(event) => {
+                setNewDepartmentName(event.target.value)
+                if (departmentError) setDepartmentError('')
+              }}
+              className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${departmentError ? 'border-red-500' : ''}`}
+              placeholder="Enter department name"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Department Manager</label>
+            <select
+              value={newDepartmentManagerId}
+              onChange={(event) => setNewDepartmentManagerId(event.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            >
+              <option value="">No manager</option>
+              {reportingManagerOptions.map((member) => (
+                <option key={member.id || member._id} value={member.id || member._id}>
+                  {member.first_name} {member.last_name} ({member.email})
+                </option>
+              ))}
+            </select>
+          </div>
+          {departmentError && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">{departmentError}</p>
+          )}
+        </div>
+      </Modal>
+
       {/* Add/Edit User Modal - Keep existing modal code */}
       {showAddModal && (
         <div
