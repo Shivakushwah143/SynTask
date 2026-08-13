@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEAL_VALUE_FIELDS, buildPipelineBoard, filterPipelineLeads, getLeadDealValue, getStageStatusOptions, moveLeadInBoard } from './utils'
+import { DEAL_VALUE_FIELDS, buildPipelineBoard, filterPipelineLeads, getLeadDealValue, getStageStatusOptions, moveLeadInBoard, ownerOptionsFromBoard } from './utils'
 
 const pipelineResponse = {
   meta: { currency: 'INR' },
@@ -54,6 +54,33 @@ describe('crm pipeline helpers', () => {
       stage: 'new',
     })
     expect(filtered).toHaveLength(1)
+  })
+
+  it('builds owner filter options from users and skips unassigned leads', () => {
+    const options = ownerOptionsFromBoard(
+      buildPipelineBoard({
+        stages: [
+          {
+            key: 'acquire',
+            name: 'Acquire',
+            leads: [
+              { id: 'lead-1', assigned_to: '', owner_name: '' },
+              { id: 'lead-2', assigned_to: 'user-2', owner_name: 'Stale Name' },
+            ],
+          },
+        ],
+      }),
+      [
+        { id: 'user-1', full_name: 'Asha Patel' },
+        { id: 'user-2', full_name: 'Nikhil Rao' },
+      ],
+    )
+
+    expect(options).toEqual([
+      { value: 'user-1', label: 'Asha Patel' },
+      { value: 'user-2', label: 'Nikhil Rao' },
+    ])
+    expect(options.some((option) => option.label === 'Unassigned')).toBe(false)
   })
 
   it('reflects the lead-detail Budget in the pipeline Value column', () => {
