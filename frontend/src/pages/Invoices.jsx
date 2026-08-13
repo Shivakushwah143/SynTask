@@ -73,15 +73,15 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+    <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
       <div className="flex items-center gap-3">
-        <div className={`shrink-0 rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-r ${colors[color]} text-white shadow-sm`}>
           <Icon className="h-4 w-4" />
         </div>
         <div className="min-w-0">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
-          <p className="mt-0.5 truncate text-lg font-bold text-gray-900 dark:text-white">{value}</p>
-          {subtitle && <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+          <span className="truncate text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">{label}</span>
+          <p className="mt-0.5 truncate text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="truncate text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
         </div>
       </div>
     </div>
@@ -491,26 +491,24 @@ const Invoices = () => {
 
   if (loading && !invoices.length) {
     return (
-      <div className="space-y-6 p-4 md:p-6">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 p-4 text-white shadow-xl md:p-5">
-          <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-          <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+      <div className="space-y-4 p-4 md:p-5">
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 px-4 py-3 text-white shadow-sm">
           <div className="relative z-10">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+              <div className="rounded-lg bg-white/15 p-2 backdrop-blur-sm">
                 <LayoutDashboard className="h-5 w-5" />
               </div>
-              <div>
-                <h1 className="text-xl font-bold md:text-2xl">Invoices</h1>
-                <p className="mt-0.5 text-indigo-100">Loading invoices...</p>
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-bold md:text-xl">Invoices</h1>
+                <p className="mt-0.5 truncate text-xs text-cyan-100">Loading invoices...</p>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {[...Array(4)].map((_, index) => (
-            <div key={index} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div key={index} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
               <div className="flex items-center gap-3">
                 <div className="h-9 w-9 shrink-0 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
                 <div className="min-w-0 flex-1 space-y-1.5">
@@ -561,30 +559,27 @@ const Invoices = () => {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-5">
       {/* ============================================================ */}
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-4 text-white shadow-xl md:p-5">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        
-        <div className="relative z-10 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-white/20 p-2 backdrop-blur-md shadow-lg border border-white/20">
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-4 py-3 text-white shadow-sm">
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="rounded-lg border border-white/15 bg-white/15 p-2 backdrop-blur-md">
               <FileText className="h-5 w-5 text-white" />
             </div>
-            <div>
-              <h1 className="text-xl font-bold md:text-2xl text-white tracking-tight">Invoices & Financials</h1>
-              <p className="mt-0.5 text-indigo-100 text-sm">Generate tax invoices, proforma estimates & track client billing status</p>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-bold text-white md:text-xl">Invoices & Financials</h1>
+              <p className="mt-0.5 truncate text-xs text-indigo-100">Generate tax invoices, proforma estimates & track client billing status</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+          <div className="flex flex-wrap items-center gap-2">
             {(isCompanyAdmin || isLead) && (
               <>
                 <button
                   type="button"
                   onClick={() => setComposerOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 border border-white/10 shadow-md"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/10 px-3 text-xs font-semibold text-white backdrop-blur-md transition hover:bg-white/20"
                 >
                   <Mail className="h-4 w-4" />
                   <span>Send Email</span>
@@ -595,7 +590,7 @@ const Invoices = () => {
                     resetForm()
                     setShowCreateModal(true)
                   }}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/20 bg-white/20 px-3 text-xs font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40"
                 >
                   <Plus className="h-4 w-4" />
                   <span>Create Invoice</span>
@@ -609,7 +604,7 @@ const Invoices = () => {
       {/* ============================================================ */}
       {/* STAT CARDS - 4 Cards with Gradients */}
       {/* ============================================================ */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard 
           label="Total Invoices" 
           value={stats.total} 
