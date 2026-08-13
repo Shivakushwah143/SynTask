@@ -58,15 +58,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
+    <div className="group rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+      <div className="flex items-center gap-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-r ${colors[color]} text-white shadow-sm`}>
           <Icon className="h-4 w-4" />
         </div>
+        <div className="min-w-0 flex-1">
+          <span className="block truncate text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">{label}</span>
+          <p className="truncate text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="truncate text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
+        </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -75,15 +77,15 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
 // SECTION HEADER COMPONENT
 // ============================================================
 const SectionHeader = ({ icon: Icon, title, description, action }) => (
-  <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+  <div className="border-b border-gray-200 bg-gray-50/70 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/70">
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-          <Icon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+          <Icon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
         </div>
         <div>
-          <h2 className="font-bold text-gray-900 dark:text-white">{title}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">{title}</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{description}</p>
         </div>
       </div>
       {action}
@@ -119,35 +121,28 @@ export default function RecruitmentDashboard() {
   const conversionRate = activeJobs > 0 ? Math.round((totalCandidates / activeJobs) * 10) / 10 : 0;
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-5">
       {/* ============================================================ */}
       {/* HERO SECTION - Gradient with Glassmorphism */}
       {/* ============================================================ */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-teal-600 via-emerald-600 to-green-600 p-6 text-white shadow-xl md:p-8">
-        {/* Decorative blur circles */}
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
-        
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-teal-700 via-emerald-700 to-green-700 px-4 py-3 text-white shadow-sm">
         <div className="relative z-10">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <Users className="h-6 w-6" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="rounded-lg bg-white/15 p-2 backdrop-blur-sm">
+                <Users className="h-5 w-5" />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Recruitment Command Center</h1>
-                <p className="mt-1 text-indigo-100">
-                  Monitor hiring pipeline, act on urgent work, and move candidates without leaving HR.
-                </p>
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-bold md:text-xl">Recruitment Command Center</h1>
+                <p className="truncate text-xs text-emerald-100">Monitor hiring pipeline and urgent work.</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex shrink-0 flex-wrap gap-2">
               {quickActions.map((action) => (
                 <Link
                   key={action.href}
                   to={action.href}
-                  className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-white/15 px-3 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/25"
                 >
                   <action.icon className="h-4 w-4" />
                   {action.label}
@@ -162,7 +157,7 @@ export default function RecruitmentDashboard() {
       {/* STAT CARDS - 4 Cards with Gradients */}
       {/* ============================================================ */}
       {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
           {metrics.map((card) => <SkeletonCard key={card.key} />)}
         </div>
       ) : dashboardQuery.isError ? (
@@ -172,7 +167,7 @@ export default function RecruitmentDashboard() {
           <p className="text-sm text-rose-700 dark:text-rose-300">Metrics could not be loaded. Check backend and permissions.</p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {metrics.map((card) => (
             <StatCard 
               key={card.key} 
@@ -188,7 +183,7 @@ export default function RecruitmentDashboard() {
       {/* ============================================================ */}
       {/* MAIN GRID - Funnel & Recent Activity */}
       {/* ============================================================ */}
-      <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+      <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
         {/* Hiring Funnel */}
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
           <SectionHeader 
