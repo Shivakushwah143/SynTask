@@ -39,6 +39,8 @@ import {
 import { recruitmentApi } from "../../../../api/recruitment";
 import { usersAPI } from "../../../../api/users";
 import { Button, EmptyState, FormField, PageHeader, inputClassName } from "../../../../components/ui";
+import { useCanManageHrDocuments } from "../hooks/useCanManageHrDocuments";
+import DocumentsTab from "../components/DocumentsTab";
 import { CANDIDATE_STATUSES } from "../constants";
 import { AssignJobDialog, AssignRecruiterDialog } from "../dialogs/RecruitmentDialogs";
 import { RecruitmentDrawer } from "../components/RecruitmentDrawer";
@@ -57,6 +59,7 @@ const tabs = [
   { key: "interviews", label: "Interviews", icon: Calendar },
   { key: "notes", label: "Notes", icon: MessageSquare },
   { key: "attachments", label: "Attachments", icon: Paperclip },
+  { key: "documents", label: "Documents", icon: FileText },
   { key: "assignment", label: "Assignment", icon: UserPlus },
 ];
 
@@ -448,6 +451,7 @@ const AssignmentTabContent = ({ candidate, onAssign, onAssignJob }) => {
 // ============================================================
 export default function CandidatesPage() {
   const qc = useQueryClient();
+  const canManageHrDocuments = useCanManageHrDocuments();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({});
@@ -933,6 +937,15 @@ export default function CandidatesPage() {
 
             {/* Attachments Tab */}
             {activeTab === "attachments" && <AttachmentsTabContent attachments={detail.data?.attachments} />}
+
+            {/* HR Documents Tab (Phase 2) — combines resume + structured HR docs */}
+            {activeTab === "documents" && (
+              <DocumentsTab
+                candidateId={idOf(selected)}
+                ownerName={candidate?.full_name || candidate?.fullName || "this candidate"}
+                canManage={canManageHrDocuments}
+              />
+            )}
 
             {/* Assignment Tab */}
             {activeTab === "assignment" && (

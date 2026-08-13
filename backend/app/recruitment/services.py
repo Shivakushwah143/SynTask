@@ -197,55 +197,18 @@ class RecruitmentService:
 
     @staticmethod
     async def hire_candidate(company_id: str, actor_id: str, candidate: Candidate, job: RecruitmentJob) -> tuple[Optional[User], Optional[str], Optional[str]]:
-        """Convert a candidate into an employee record.
+        """Convert a candidate into an employee record (quick-hire path).
 
-        Creates a User with role=EMPLOYEE using the job's department and title as
-        designation (no prior offer/joined state required). If a User with the
-        candidate's email already exists we link it instead of failing.
+        Delegates to the canonical ``EmployeeOnboardingService`` so User +
+        Employee Profile creation is identical across all conversion paths.
         Returns (employee_user, designation, department_id).
         """
-        designation = job.title or None
-        department_id = job.department_id or None
+        from app.services.employee_profile_service import EmployeeOnboardingService
 
-        existing_user = await User.find_one({"email": candidate.email})
-        if existing_user:
-            employee = existing_user
-            if employee.department_id is None:
-                employee.department_id = department_id
-                employee.updated_at = utc_now()
-                await employee.save()
-        else:
-            names = candidate.full_name.strip().split(maxsplit=1)
-            employee = User(
-                email=candidate.email,
-                password_hash=get_password_hash(secrets.token_urlsafe(24)),
-                first_name=names[0],
-                last_name=names[1] if len(names) > 1 else "",
-                role=UserRole.EMPLOYEE,
-                status=UserStatus.PENDING,
-                modules=["task"],
-                company_id=company_id,
-                department_id=department_id,
-                reports_to=job.hiring_manager_id,
-                created_by=actor_id,
-            )
-            await employee.insert()
-
-        candidate.status = CandidateStatus.EMPLOYEE
-        candidate.employee_id = str(employee.id)
-        candidate.job_id = str(job.id)
-        candidate.updated_at = utc_now()
-        await candidate.save()
-
-        await record(
-            company_id,
-            "CandidateConverted",
-            actor_id,
-            candidate_id=str(candidate.id),
-            job_id=str(job.id),
-            payload={"employee_id": str(employee.id), "designation": designation, "department_id": department_id},
+        result = await EmployeeOnboardingService.create_employee_from_candidate(
+            company_id, actor_id, candidate, job=job
         )
-        return employee, designation, department_id
+        return result["user"], result["designation"], result["department_id"]
 
     @staticmethod
     async def list_employees(company_id: str, search: Optional[str] = None, page: int = 1, page_size: int = 50) -> tuple[list[dict], int]:
@@ -385,23 +348,30 @@ class RecruitmentService:
 
     @staticmethod
     async def convert(candidate: Candidate, payload: ConversionRequest, actor_id: str) -> User:
+        """Convert a joined candidate (with an accepted offer) into an employee.
+
+        Validates the recruitment prerequisites, then delegates to the canonical
+        ``EmployeeOnboardingService`` so User + Employee Profile creation is
+        identical across all conversion paths.
+        """
         if candidate.status != CandidateStatus.JOINED:
             raise HTTPException(status_code=409, detail="Candidate must be in joined status")
         offer = await Offer.find_one({"company_id": candidate.company_id, "candidate_id": str(candidate.id), "status": "accepted", "deleted_at": None})
         if not offer:
             raise HTTPException(status_code=409, detail="Accepted offer is required")
-        if await User.find_one({"email": candidate.email}):
-            raise HTTPException(status_code=409, detail="A user with this email already exists")
-        department = await Department.get(payload.department_id)
-        if not department or department.company_id != candidate.company_id or department.deleted_at is not None:
-            raise HTTPException(status_code=400, detail="Department not found")
-        names = candidate.full_name.strip().split(maxsplit=1)
-        employee = User(email=candidate.email, password_hash=get_password_hash(secrets.token_urlsafe(24)), first_name=names[0], last_name=names[1] if len(names) > 1 else "", role=UserRole.EMPLOYEE, status=UserStatus.PENDING, modules=["task"], company_id=candidate.company_id, department_id=payload.department_id, reports_to=payload.reports_to, created_by=actor_id)
-        await employee.insert()
-        candidate.status, candidate.employee_id, candidate.updated_at = CandidateStatus.EMPLOYEE, str(employee.id), utc_now()
-        await candidate.save()
-        await record(candidate.company_id, "CandidateConverted", actor_id, candidate_id=str(candidate.id), payload={"employee_id": str(employee.id), "designation": payload.designation})
-        return employee
+
+        from app.services.employee_profile_service import EmployeeOnboardingService
+
+        result = await EmployeeOnboardingService.create_employee_from_candidate(
+            candidate.company_id,
+            actor_id,
+            candidate,
+            offer=offer,
+            department_id=payload.department_id,
+            designation=payload.designation,
+            reports_to=payload.reports_to,
+        )
+        return result["user"]
 
 
 class JobService:

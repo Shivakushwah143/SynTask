@@ -12,7 +12,8 @@ from app.api.v1.endpoints import (
     auth, users, companies, tasks, notifications, dashboard, files, reports, 
     activity, auth_2fa, projects, time_tracking, workflows, automation, backlog, webhooks,
     issue_types, components, versions, watchers, issue_links, changelog, tickets, chat, subscriptions, clients, invoices, msa, ledger, meetings, calendar, timesheet,
-    sales, search, departments, attendance, notification_emails, timeline, leaves, eod, admin_permissions, time
+    sales, search, departments, attendance, notification_emails, timeline, leaves, eod, admin_permissions, time,
+    employees, hr_documents
 )
 from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import ai_assistant
@@ -144,6 +145,8 @@ api_router.include_router(content_calendar.router, prefix="/content-calendar", t
 api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=["Scheduled Jobs"], dependencies=[Depends(require_module("scheduled_work"))])
 api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("time_tracking"))])
 api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])
+api_router.include_router(employees.router, prefix="/employees", tags=["Employees"])
+api_router.include_router(hr_documents.router, prefix="/hr", tags=["HR Documents"])
 # Expose attendance HTTP endpoints to authenticated users; gate specific admin/report endpoints inside the module where needed.
 api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
 # WebSocket handler for attendance is mounted without module dependency so token-auth via query param works for WS clients

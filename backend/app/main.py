@@ -114,6 +114,12 @@ async def _startup_tasks() -> None:
             logger.info("Scheduled jobs background task started")
         except Exception as scheduling_err:
             logger.warning(f"Scheduled jobs startup skipped: {scheduling_err}")
+        try:
+            from app.services.hr_document_expiry import run_hr_document_expiry_loop
+            asyncio.create_task(run_hr_document_expiry_loop())
+            logger.info("HR document expiry background task started")
+        except Exception as hr_doc_err:
+            logger.warning(f"HR document expiry startup skipped: {hr_doc_err}")
     else:
         logger.warning("Database background workers skipped because MongoDB/Beanie is not ready.")
 

@@ -605,6 +605,15 @@ async def create_employee(
     await UserService.update_hierarchy_ancestors(employee)
     await employee.insert()
     
+    # Phase 1 HRMS: every created company employee gets an HR Employee Profile
+    # automatically so People → Employees is always populated.
+    try:
+        from app.services.employee_profile_service import ensure_employee_profile
+        await ensure_employee_profile(employee)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(f"Failed to create employee profile for {email}")
+    
     if department_doc:
         await _notify_department_assignment(
             employee=employee,
@@ -1048,6 +1057,16 @@ async def create_user_hierarchical(
     from app.services.user_service import UserService
     await UserService.update_hierarchy_ancestors(user)
     await user.insert()
+    
+    # Phase 1 HRMS: company staff (any authorization role) receive an HR Employee
+    # Profile automatically. Platform Super Admins are skipped.
+    if company_id and target_role != UserRole.SUPER_ADMIN:
+        try:
+            from app.services.employee_profile_service import ensure_employee_profile
+            await ensure_employee_profile(user)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(f"Failed to create employee profile for {email}")
     
     # Update Lead's managed_employee_ids if Employee reports to Lead
     if target_role == UserRole.EMPLOYEE and reports_to:
