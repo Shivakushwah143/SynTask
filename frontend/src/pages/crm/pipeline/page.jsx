@@ -889,7 +889,7 @@ export default function CRMPipelinePage() {
             filters={filters}
             onChange={updateFilters}
             onResetFilters={clearFilters}
-            ownerOptions={ownerOptionsFromBoard(board)}
+            ownerOptions={ownerOptionsFromBoard(board, users)}
             stageOptions={stageOptionsFromBoard(board)}
             searchValue={searchValue}
             onSearchChange={handleSearchChange}
