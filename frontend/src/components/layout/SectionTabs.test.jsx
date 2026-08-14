@@ -241,6 +241,24 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(screen.getByRole('tab', { name: /^Employees$/i })).toBeTruthy()
   })
 
+  it('keeps the Employees tab active on a nested employee detail page', () => {
+    renderTabs('/hr/employees/emp-123')
+
+    expect(screen.getByRole('tab', { name: /^Employees$/i })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('shows People tabs on the global HR Documents page', () => {
+    renderTabs('/hr/documents')
+
+    expect(screen.getByRole('tab', { name: /^Documents$/i })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('shows People tabs on HR Settings (Document Types)', () => {
+    renderTabs('/hr/settings/document-types')
+
+    expect(screen.getByRole('tab', { name: /^Document Types$/i })).toHaveAttribute('aria-selected', 'true')
+  })
+
   it('renders nothing on HR screens without a tab (interview screen)', () => {
     renderTabs('/hr/recruitment/interview-screen')
     expect(screen.queryByRole('tablist')).toBeNull()

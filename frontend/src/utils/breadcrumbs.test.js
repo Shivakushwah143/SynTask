@@ -45,15 +45,23 @@ describe('buildBreadcrumbTrail (Phase 5, spec §10.5)', () => {
     expect(buildBreadcrumbTrail('/crm/settings')).toEqual(['Home', 'Settings', 'Client Settings'])
   })
 
-  it('shows sidebar names for renamed items (Requests, Scheduled Work, Employees)', () => {
+  it('shows sidebar names for renamed items (Requests, Scheduled Work, User Accounts)', () => {
     expect(buildBreadcrumbTrail('/tickets')).toEqual(['Home', 'Work', 'Requests'])
     expect(buildBreadcrumbTrail('/scheduled-jobs')).toEqual(['Home', 'Work', 'Scheduled Work'])
-    expect(buildBreadcrumbTrail('/users')).toEqual(['Home', 'People', 'Employees'])
+    // People → Employees is the HR employee-profile surface; /users is now User Accounts.
+    expect(buildBreadcrumbTrail('/users')).toEqual(['Home', 'People', 'User Accounts'])
   })
 
   it('maps HR recruitment routes under People with renamed labels', () => {
     expect(buildBreadcrumbTrail('/hr/recruitment/jobs')).toEqual(['Home', 'People', 'Recruitment', 'Job Openings'])
     expect(buildBreadcrumbTrail('/hr/recruitment/reports')).toEqual(['Home', 'People', 'Recruitment', 'Hiring Reports'])
+  })
+
+  it('maps canonical HR employee/documents routes under People', () => {
+    expect(buildBreadcrumbTrail('/hr/employees')).toEqual(['Home', 'People', 'Employees'])
+    expect(buildBreadcrumbTrail('/hr/employees/emp-1')).toEqual(['Home', 'People', 'Employees', 'Employee Profile'])
+    expect(buildBreadcrumbTrail('/hr/documents')).toEqual(['Home', 'People', 'Documents'])
+    expect(buildBreadcrumbTrail('/hr/settings/document-types')).toEqual(['Home', 'People', 'HR Settings', 'Document Types'])
   })
 
   it('maps finance, insights, content and AI pages to their sections', () => {

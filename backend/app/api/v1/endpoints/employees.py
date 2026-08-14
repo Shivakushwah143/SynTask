@@ -146,6 +146,24 @@ async def my_employee_profile(current_user: User = Depends(get_current_user)):
     )
 
 
+@router.patch("/me", response_model=EmployeeDetail)
+async def update_my_employee_profile(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+):
+    """Employee self-service profile update — whitelisted personal fields only.
+
+    Backend rejects any HR-controlled field (department, designation, manager,
+    employee number, employment status, salary-affecting fields, ...) with an
+    explicit error; it is never silently ignored.
+    """
+    from app.services.ess_service import update_my_profile
+
+    if not current_user.company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee profile not found")
+    return await update_my_profile(current_user, payload)
+
+
 @router.get("/{employee_id}", response_model=EmployeeDetail)
 async def get_employee_endpoint(
     employee_id: str,

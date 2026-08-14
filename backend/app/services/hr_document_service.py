@@ -636,6 +636,7 @@ async def list_documents(
     *,
     employee_id: Optional[str] = None,
     candidate_id: Optional[str] = None,
+    owner_type: Optional[str] = None,
     document_type_id: Optional[str] = None,
     expiry_state: Optional[str] = None,
     status_filter: Optional[str] = None,
@@ -677,6 +678,10 @@ async def list_documents(
     else:
         await _require_company_document_view(company_id, actor)
         query = {"company_id": company_id}
+        if owner_type == "employee":
+            query["employee_id"] = {"$ne": None}
+        elif owner_type == "candidate":
+            query["candidate_id"] = {"$ne": None}
         if search:
             # Resolve matching employees + candidates for the search term.
             term = search.strip()

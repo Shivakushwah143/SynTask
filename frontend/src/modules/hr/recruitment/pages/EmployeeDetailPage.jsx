@@ -26,6 +26,9 @@ import { usersAPI } from '../../../../api/users'
 import { fmtDate, labelize } from '../utils/data'
 import { useCanManageHrDocuments } from '../hooks/useCanManageHrDocuments'
 import DocumentsTab from '../components/DocumentsTab'
+import SalaryTab from '../components/SalaryTab'
+import SalaryFormModal from '../components/SalaryFormModal'
+import LifecycleTab from '../components/LifecycleTab'
 
 const titleCase = labelize
 import EmployeeFormModal from '../components/EmployeeFormModal'
@@ -82,6 +85,8 @@ export default function EmployeeDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState('overview')
   const [showEdit, setShowEdit] = useState(false)
+  const [showSalaryForm, setShowSalaryForm] = useState(false)
+  const [salaryFormMode, setSalaryFormMode] = useState('assign')
   const [assignableUsers, setAssignableUsers] = useState([])
 
   const query = useQuery(['employees', 'detail', employeeId], () => employeesApi.get(employeeId), {
@@ -122,7 +127,7 @@ export default function EmployeeDetailPage() {
       <div>
         <button
           type="button"
-          onClick={() => navigate('/hr/recruitment/employees')}
+          onClick={() => navigate('/hr/employees')}
           className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition-colors hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400"
         >
           <ArrowLeft className="h-4 w-4" /> Back to Employees
@@ -298,8 +303,15 @@ export default function EmployeeDetailPage() {
             )}
             {activeTab === 'attendance' && <PlaceholderTab name="Attendance" />}
             {activeTab === 'leave' && <PlaceholderTab name="Leave" />}
-            {activeTab === 'salary' && <PlaceholderTab name="Salary" />}
-            {activeTab === 'lifecycle' && <PlaceholderTab name="Lifecycle / History" />}
+            {activeTab === 'salary' && (
+              <SalaryTab
+                employeeId={employee.id}
+                canManage={canManage}
+                onAssign={() => { setSalaryFormMode('assign'); setShowSalaryForm(true) }}
+                onRevise={() => { setSalaryFormMode('revision'); setShowSalaryForm(true) }}
+              />
+            )}
+            {activeTab === 'lifecycle' && <LifecycleTab employeeId={employee.id} employee={employee} canManage={canEdit} />}
           </div>
 
           {showEdit && (
@@ -311,6 +323,16 @@ export default function EmployeeDetailPage() {
               departments={departments}
               assignableUsers={assignableUsers}
               onSaved={handleSaved}
+            />
+          )}
+          {showSalaryForm && (
+            <SalaryFormModal
+              isOpen={showSalaryForm}
+              onClose={() => setShowSalaryForm(false)}
+              employeeId={employee.id}
+              mode={salaryFormMode}
+              currentSalary={null}
+              onSuccess={() => setShowSalaryForm(false)}
             />
           )}
         </>

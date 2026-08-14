@@ -158,6 +158,7 @@ async def list_all_documents_endpoint(
     items, total = await list_documents(
         company_id,
         current_user,
+        owner_type=owner_type,
         document_type_id=document_type_id,
         expiry_state=expiry_state,
         status_filter=status,
@@ -166,10 +167,6 @@ async def list_all_documents_endpoint(
         page=page,
         page_size=page_size,
     )
-    if owner_type == "employee":
-        items = [item for item in items if item["owner_type"] == "employee"]
-    elif owner_type == "candidate":
-        items = [item for item in items if item["owner_type"] == "candidate"]
     return HRDocumentListResponse(
         items=[HRDocumentResponse.model_validate(item) for item in items],
         total=total,

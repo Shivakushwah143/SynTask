@@ -84,10 +84,19 @@ from app.models.sales_masters import (
 )
 from app.models.attendance import (
     Attendance, AttendanceSession, BreakLog,
-    MonitoringSession, CameraSession, ScreenShareSession
+    MonitoringSession, CameraSession, ScreenShareSession,
+    AttendancePolicy, Holiday, AttendanceCorrectionRequest
 )
 from app.models.timeline import TimelineEvent
-from app.models.leave import LeaveRequest
+from app.models.leave import LeaveBalance, LeaveRequest, LeaveTypeConfig
+from app.models.salary import SalaryComponent, SalaryStructure
+from app.models.payroll import PayrollPeriod, PayrollRecord
+from app.models.payslip import Payslip
+from app.models.lifecycle import (
+    EmployeeLifecycleEvent,
+    EmployeeSeparationRequest,
+    EmployeeOffboarding,
+)
 from app.models.eod import EODReport
 from app.models.scheduled_job import ScheduledJob
 from app.models.capability import seed_default_capabilities
@@ -284,8 +293,21 @@ async def init_db():
                 MonitoringSession,
                 CameraSession,
                 ScreenShareSession,
+                AttendancePolicy,
+                Holiday,
+                AttendanceCorrectionRequest,
                 TimelineEvent,
                 LeaveRequest,
+                LeaveTypeConfig,
+                LeaveBalance,
+                SalaryComponent,
+                SalaryStructure,
+                PayrollPeriod,
+                PayrollRecord,
+                Payslip,
+                EmployeeLifecycleEvent,
+                EmployeeSeparationRequest,
+                EmployeeOffboarding,
                 EODReport,
                 ScheduledJob,
                 MetaIntegrationSettings,

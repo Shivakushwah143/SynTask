@@ -21,6 +21,8 @@ import {
   DollarSign,
   Factory,
   FileBarChart2,
+  FileText,
+  FileWarning,
   FolderKanban,
   Gauge,
   GitBranch,
@@ -42,6 +44,7 @@ import {
   TrendingUp,
   UserCheck,
   UserCog,
+  UserRound,
   UserRoundSearch,
   Users,
   Globe,
@@ -66,6 +69,7 @@ export const SECTION_ICONS = {
   finance: DollarSign,
   insights: LineChart,
   settings: Settings,
+  me: UserRound,
 };
 
 // ── Section-level role gates (spec §9, mapped to the real role enum) ───────────────────────────
@@ -141,10 +145,14 @@ export const SECTIONS = [
   { key: "publishing", label: "Publishing", items: ["Publishing Centre", "Social Accounts", "Publishing Analytics", "Integrations"] },
   { key: "inbox", label: "Inbox", items: ["WhatsApp", "Instagram", "Messenger", "Meta Messages", "Notifications", "Activity Feed", "Daily Updates", "AI Replies", "Approval Queue"] },
   { key: "ai", label: "AI Workspace", items: ["AI Assistant", "AI Content Assistant"] },
-  { key: "people", label: "People", items: ["Employees", "My People", "Attendance", "Live Attendance", "Attendance Reports", "Leave Management", "Departments", "Company Directory"] },
+  { key: "people", label: "People", items: ["User Accounts", "My People", "Attendance", "Live Attendance", "Attendance Reports", "Leave Management", "Departments", "Company Directory"] },
   { key: "finance", label: "Finance", items: ["Invoices", "Transactions", "Subscriptions"] },
   { key: "insights", label: "Insights", items: ["Workspace Reports", "Sales Reports"] },
   { key: "settings", label: "Settings", items: ["System Settings", "Roles & Permissions", "Automation Rules", "Connected Accounts", "Google Workspace", "Activity Logs", "Client Settings"] },
+  // Phase 8 — My HR (Employee Self-Service): the employee's own HR workspace.
+  // Visible to every authenticated company user with an Employee Profile; the
+  // layout itself shows the graceful "profile not set up" state otherwise.
+  { key: "me", label: "My HR", items: ["My Profile", "My Attendance", "My Leave", "My Documents", "My Payslips"], overviewHref: "/hr/me" },
 ];
 
 // ── Flat navigation items (renamed per spec §4, routes corrected to App.jsx) ──────────────────
@@ -186,12 +194,16 @@ export const navigation = [
   { name: "AI Content Assistant", href: "/marketing-support", icon: Headphones, roles: STANDARD_ROLES, module: "ai_agents" },
 
   // People
-  { name: "Employees", href: "/users", icon: UserCog, roles: TEAM_ROLES },
+  // HR Employee Profiles (Phase 1) are the canonical People → Employees surface
+  // and live in HR_MODULES (People → Employees → /hr/employees). The legacy
+  // /users screen is account administration, so it is renamed "User Accounts".
+  { name: "User Accounts", href: "/users", icon: UserCog, roles: TEAM_ROLES },
   { name: "My People", href: "/my-team", icon: HeartHandshake, roles: [ROLE.LEAD] },
   // /attendance has no backend module gate — Attendance must be visible to every role.
   { name: "Attendance", href: "/attendance", icon: UserCheck, roles: STANDARD_ROLES },
   { name: "Live Attendance", href: "/live-monitor", icon: MonitorCheck, roles: TEAM_ROLES },
   { name: "Attendance Reports", href: "/attendance-reports", icon: FileBarChart2, roles: STANDARD_ROLES },
+  { name: "Attendance Corrections", href: "/attendance/corrections", icon: FileWarning, roles: TEAM_ROLES },
   { name: "Leave Management", href: "/leaves", icon: CalendarCheck2, roles: STANDARD_ROLES },
   // Backend _can_read_departments: admin, sub_admin, manager, lead, super_admin.
   { name: "Departments", href: "/departments", icon: Network, roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD] },
@@ -212,6 +224,14 @@ export const navigation = [
   { name: "Automation Rules", href: "/workflows", icon: GitBranch, roles: ADMIN_ROLES },
   { name: "Google Workspace", href: "/google-workspace", icon: Globe, roles: STANDARD_ROLES },
   { name: "Activity Logs", href: "/activity", icon: AlarmClockCheck, roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD] },
+
+  // Phase 8 — My HR (Employee Self-Service) sub-pages. The section link itself
+  // opens /hr/me (the Overview); the SectionTabs bar renders these as tabs.
+  { name: "My Profile", href: "/hr/me/profile", icon: UserRound, roles: STANDARD_ROLES },
+  { name: "My Attendance", href: "/hr/me/attendance", icon: UserCheck, roles: STANDARD_ROLES },
+  { name: "My Leave", href: "/hr/me/leave", icon: CalendarCheck2, roles: STANDARD_ROLES },
+  { name: "My Documents", href: "/hr/me/documents", icon: FileText, roles: STANDARD_ROLES },
+  { name: "My Payslips", href: "/hr/me/payslips", icon: Receipt, roles: STANDARD_ROLES },
 ];
 
 // ── CRM items (Sales + Clients). Was "CRM Tools" — split by team. ──────────────────────────────
@@ -248,14 +268,15 @@ export const metaNavigation = [
 
 // ── HR items: rename for plain business English (spec §8 People) and drop merged/hidden ones ───
 export const HR_ITEM_RENAMES = {
+  "HR Dashboard": "HR Dashboard",
+  "HR Reports": "HR Reports",
   "Recruitment Dashboard": "Hiring Dashboard",
   "Jobs": "Job Openings",
   "Inbox": "Applications",
   "Resume Pool": "Talent Pool",
   "Reports": "Hiring Reports",
-  // The HR employee-profile screen is distinct from People → Employees (/users,
-  // account management), so it is relabelled to avoid a duplicate nav entry.
-  "Employees": "Employee Profiles",
+  // Employees / Documents are HR-wide modules surfaced under People — the
+  // recruitment module no longer owns them, so no renames are needed.
 };
 // "Candidate Interview Screen" is a workflow screen, not a navigation item —
 // hidden per the exact-structure rule.
@@ -312,12 +333,20 @@ export const ITEM_COLORS = {
   "AI Assistant": "text-purple-400",
   "AI Content Assistant": "text-rose-400",
 
-  Employees: "text-gray-400",
+  Employees: "text-emerald-400",
+  "User Accounts": "text-gray-400",
+  Documents: "text-sky-400",
+  "Document Types": "text-amber-400",
   "My People": "text-pink-400",
   Attendance: "text-orange-400",
   "Live Attendance": "text-amber-400",
   "Attendance Reports": "text-yellow-400",
+  "Attendance Corrections": "text-orange-400",
   "Leave Management": "text-emerald-400",
+  "Attendance Policy": "text-blue-400",
+  Holidays: "text-rose-400",
+  "Salary Components": "text-emerald-400",
+  Payroll: "text-yellow-400",
   Departments: "text-indigo-400",
   "Company Directory": "text-blue-400",
 
@@ -344,6 +373,13 @@ export const ITEM_COLORS = {
   "Activity Logs": "text-orange-400",
   "Client Settings": "text-gray-400",
 
+  // Phase 8 — My HR
+  "My Profile": "text-indigo-400",
+  "My Attendance": "text-orange-400",
+  "My Leave": "text-emerald-400",
+  "My Documents": "text-sky-400",
+  "My Payslips": "text-yellow-400",
+
   default: "text-gray-400",
 };
 
@@ -361,6 +397,7 @@ export const SECTION_COLORS = {
   finance: "text-yellow-400",
   insights: "text-lime-400",
   settings: "text-gray-400",
+  me: "text-emerald-400",
   default: "text-gray-400",
 };
 
@@ -463,8 +500,14 @@ export const isSectionVisible = (section, user) => {
 const getHrNavItems = (user) => {
   const role = normalizeRole(user?.role);
   const userDepartment = String(user?.department || user?.department_key || "").toLowerCase();
+  // Company admins (incl. SUB_ADMIN) + managers + HR-department staff. Super
+  // admins are granted too — the backend treats them as full HR access.
   const canSeeHr =
-    isManagerRole(role) || userDepartment === "hr" || role === ROLE.ADMIN || role === ROLE.SUB_ADMIN;
+    isManagerRole(role) ||
+    userDepartment === "hr" ||
+    role === ROLE.ADMIN ||
+    role === ROLE.SUB_ADMIN ||
+    isSuperAdminRole(role);
   if (!canSeeHr) return [];
   return HR_MODULES.filter(
     (module) =>

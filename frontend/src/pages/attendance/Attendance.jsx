@@ -9,6 +9,10 @@ import {
   Play,
   RefreshCw,
   Square,
+  FileWarning,
+  CalendarDays,
+  ShieldCheck,
+  Zap,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { attendanceAPI } from '../../api/attendance'
@@ -16,6 +20,7 @@ import { Button, Modal, PageHeader, Skeleton } from '../../components/ui'
 import { timeService } from '@/services/timeService'
 import { useAttendanceStore } from '../../store/attendanceStore'
 import { attendanceStatusMeta } from '../../features/attendance/attendanceStatus'
+import CorrectionRequestModal from './CorrectionRequestModal'
 
 const formatDuration = (totalSeconds) => {
   const s = Math.max(0, Math.floor(totalSeconds || 0))
@@ -88,6 +93,8 @@ const Attendance = () => {
   const [confirmCheckout, setConfirmCheckout] = useState(false)
   const [retrying, setRetrying] = useState(false)
   const [tick, setTick] = useState(Date.now())
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false)
+  const [enhancedData, setEnhancedData] = useState(null)
   const intervalRef = useRef(null)
 
   // The store is initialized globally (MainLayout bootstrap) once per session;
@@ -108,9 +115,20 @@ const Attendance = () => {
     }
   }, [])
 
+  // Load enhanced policy-aware today data
+  const loadEnhanced = useCallback(async () => {
+    try {
+      const res = await attendanceAPI.getTodayEnhanced()
+      setEnhancedData(res.data)
+    } catch {
+      // Silently fail — enhanced data is supplementary
+    }
+  }, [])
+
   useEffect(() => {
     loadHistory()
-  }, [loadHistory])
+    loadEnhanced()
+  }, [loadHistory, loadEnhanced])
 
   useEffect(() => {
     intervalRef.current = setInterval(() => setTick(Date.now()), 1000)
@@ -340,6 +358,65 @@ const Attendance = () => {
           )}
         </div>
       </section>
+
+      {/* Phase 4: Enhanced Policy Info */}
+      {enhancedData && (
+        <section className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-gray-500" />
+              <h2 className="font-semibold text-gray-900 dark:text-white">Today's Policy</h2>
+            </div>
+            {(enhancedData.is_holiday || enhancedData.is_week_off || enhancedData.leave) && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+                {enhancedData.is_holiday && <><CalendarDays className="h-3 w-3" /> Holiday: {enhancedData.holiday_name}</>}
+                {enhancedData.is_week_off && <>Week Off</>}
+                {enhancedData.leave && <>On Leave</>}
+              </span>
+            )}
+          </div>
+          <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <div className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Expected Hours</div>
+              <div className="mt-1 font-medium text-gray-900 dark:text-white">{formatDuration((enhancedData.expected_work_minutes || 480) * 60)}</div>
+            </div>
+            <div>
+              <div className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Schedule</div>
+              <div className="mt-1 font-medium text-gray-900 dark:text-white">
+                {enhancedData.expected_start_time || '09:00'} - {enhancedData.expected_end_time || '18:00'}
+              </div>
+            </div>
+            {enhancedData.is_late && (
+              <div>
+                <div className="text-xs font-medium uppercase text-red-500">Late By</div>
+                <div className="mt-1 font-medium text-red-600 dark:text-red-400">{Math.round(enhancedData.late_minutes || 0)} min</div>
+              </div>
+            )}
+            {enhancedData.overtime_seconds > 0 && (
+              <div>
+                <div className="text-xs font-medium uppercase text-emerald-500">Overtime</div>
+                <div className="mt-1 font-medium text-emerald-600 dark:text-emerald-400">{formatDuration(enhancedData.overtime_seconds)}</div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Correction Request Button */}
+      {record && record.status !== 'not_checked_in' && (
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={() => setShowCorrectionModal(true)} className="text-sm">
+            <FileWarning className="h-4 w-4" /> Request Correction
+          </Button>
+        </div>
+      )}
+
+      <CorrectionRequestModal
+        isOpen={showCorrectionModal}
+        onClose={() => setShowCorrectionModal(false)}
+        attendanceRecord={record}
+        onSuccess={loadHistory}
+      />
 
       <section className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
         <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">

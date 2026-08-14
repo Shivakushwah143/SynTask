@@ -13,7 +13,7 @@ from app.api.v1.endpoints import (
     activity, auth_2fa, projects, time_tracking, workflows, automation, backlog, webhooks,
     issue_types, components, versions, watchers, issue_links, changelog, tickets, chat, subscriptions, clients, invoices, msa, ledger, meetings, calendar, timesheet,
     sales, search, departments, attendance, notification_emails, timeline, leaves, eod, admin_permissions, time,
-    employees, hr_documents
+    employees, hr_documents, attendance_phase4, salary, payroll, ess, lifecycle, hr_dashboard
 )
 from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import ai_assistant
@@ -146,13 +146,25 @@ api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=
 api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])
 api_router.include_router(employees.router, prefix="/employees", tags=["Employees"])
+api_router.include_router(lifecycle.router, prefix="/employees", tags=["Employee Lifecycle"])
+api_router.include_router(lifecycle.self_router, prefix="/lifecycle", tags=["Employee Lifecycle Self-Service"])
 api_router.include_router(hr_documents.router, prefix="/hr", tags=["HR Documents"])
 # Expose attendance HTTP endpoints to authenticated users; gate specific admin/report endpoints inside the module where needed.
 api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
+api_router.include_router(attendance_phase4.router, prefix="/attendance", tags=["Attendance Phase 4"])
 # WebSocket handler for attendance is mounted without module dependency so token-auth via query param works for WS clients
 api_router.include_router(attendance.ws_router, prefix="/attendance")
 api_router.include_router(timeline.router, prefix="/timeline", tags=["Timeline"])
 api_router.include_router(leaves.router, prefix="/leaves", tags=["Leaves"])
+api_router.include_router(salary.router, prefix="/salary", tags=["Salary Structure"])
+api_router.include_router(payroll.router, prefix="/payroll", tags=["Payroll"])
+# Employee Self-Service (Phase 8): My HR overview aggregate. The module self
+# endpoints live in their owning routers (/employees/me, /attendance/me/*,
+# /leaves/balances/me, /payroll/me/payslips, ...).
+api_router.include_router(ess.router, prefix="/hr/me", tags=["Employee Self-Service"])
+# Phase 10 — HR Dashboard & Reports: centralized dashboard + report endpoints
+# mounted under /hr so dashboard lives at /hr/dashboard and reports at /hr/reports/*
+api_router.include_router(hr_dashboard.router, prefix="/hr", tags=["HR Dashboard & Reports"])
 api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"])
 api_router.include_router(recruitment_router, prefix="/recruitment", tags=["Recruitment"], dependencies=[Depends(require_module("recruitment"))])
 api_router.include_router(careers_router, prefix="/careers", tags=["Careers"])

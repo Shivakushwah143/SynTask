@@ -20,6 +20,9 @@ export const leavesAPI = {
   create: (data) => api.post('/leaves/', toFormData(data)),
   list: (params = {}) => api.get('/leaves/', { params }),
   myLeaves: (params = {}) => api.get('/leaves/my', { params }),
+  // Phase 3 self-service: active leave types + own balances.
+  leaveTypes: (params = {}) => api.get('/leaves/types', { params }),
+  myBalances: () => api.get('/leaves/balances/me'),
   calendar: (params = {}) => api.get('/leaves/calendar', { params }),
   availability: (params = {}) => api.get('/leaves/availability', { params }),
   forwardTargets: () => api.get('/leaves/forward-targets'),

@@ -705,7 +705,7 @@ export default function CandidatesPage() {
                 Refresh
               </button>
               <a 
-                href="/hr/recruitment/employees"
+                href="/hr/employees"
                 className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow transition hover:bg-indigo-50"
               >
                 <UserCheck className="h-4 w-4" />

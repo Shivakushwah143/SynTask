@@ -74,7 +74,7 @@ from app.models.attendance import (
     MonitoringSession, CameraSession, ScreenShareSession
 )
 from app.models.timeline import TimelineEvent, TimelineEventType, TimelineModule
-from app.models.leave import LeaveRequest, LeaveStatus, LeaveType
+from app.models.leave import LeaveBalance, LeaveDuration, LeaveRequest, LeaveStatus, LeaveType, LeaveTypeConfig
 
 
 __all__ = [
@@ -167,5 +167,5 @@ __all__ = [
     # Timeline models
     "TimelineEvent", "TimelineEventType", "TimelineModule",
     # Leave models
-    "LeaveRequest", "LeaveStatus", "LeaveType",
+    "LeaveRequest", "LeaveStatus", "LeaveType", "LeaveTypeConfig", "LeaveBalance", "LeaveDuration",
 ]

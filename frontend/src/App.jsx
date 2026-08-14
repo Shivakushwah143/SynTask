@@ -71,6 +71,13 @@ const ScheduledJobs = lazy(() => import('./pages/ScheduledJobs'))
 const Attendance = lazy(() => import('./pages/attendance/Attendance'))
 const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
 const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
+const AttendancePolicySettings = lazy(() => import('./pages/attendance/AttendancePolicySettings'))
+const HolidaysPage = lazy(() => import('./pages/attendance/HolidaysPage'))
+const CorrectionsPage = lazy(() => import('./pages/attendance/CorrectionsPage'))
+const SalaryComponentsPage = lazy(() => import('./pages/attendance/SalaryComponentsPage'))
+const PayrollPeriods = lazy(() => import('./pages/payroll/PayrollPeriods'))
+const PayrollPeriodDetail = lazy(() => import('./pages/payroll/PayrollPeriodDetail'))
+const PayrollRecordDetail = lazy(() => import('./pages/payroll/PayrollRecordDetail'))
 const GoogleWorkspace = lazy(() => import('./pages/GoogleWorkspace'))
 const SectionLanding = lazy(() => import('./pages/SectionLanding'))
 
@@ -97,6 +104,15 @@ const CRMAllLeadsPage = lazy(() => import('./pages/crm/leads/all'))
 const SalesOverviewPage = lazy(() => import('./pages/sales/SalesOverview'))
 const PublicCrmDocument = lazy(() => import('./pages/crm/PublicCrmDocument'))
 const HRDepartment = lazy(() => import('./pages/hr/HRDepartment'))
+const HRDashboard = lazy(() => import('./pages/hr/HRDashboard'))
+const HRReports = lazy(() => import('./pages/hr/HRReports'))
+const MyHRLayout = lazy(() => import('./pages/hr/me/MyHRLayout'))
+const MyHROverview = lazy(() => import('./pages/hr/me/MyHROverview'))
+const MyProfile = lazy(() => import('./pages/hr/me/MyProfile'))
+const MyAttendance = lazy(() => import('./pages/hr/me/MyAttendance'))
+const MyLeave = lazy(() => import('./pages/hr/me/MyLeave'))
+const MyDocuments = lazy(() => import('./pages/hr/me/MyDocuments'))
+const MyPayslips = lazy(() => import('./pages/hr/me/MyPayslips'))
 const RecruitmentDashboard = lazy(() => import('./pages/hr/recruitment/RecruitmentDashboard'))
 const CandidateInterviewScreen = lazy(() => import('./pages/hr/recruitment/CandidateInterviewScreen'))
 const RecruitmentJobsPage = lazy(() => import('./modules/hr/recruitment/pages/JobsPage'))
@@ -105,6 +121,7 @@ const RecruitmentCandidatesPage = lazy(() => import('./modules/hr/recruitment/pa
 const RecruitmentResumePoolPage = lazy(() => import('./modules/hr/recruitment/pages/ResumePoolPage'))
 const RecruitmentEmployeesPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeesPage'))
 const EmployeeDetailPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeeDetailPage'))
+const HRDocumentsPage = lazy(() => import('./pages/hr/HRDocumentsPage'))
 const RecruitmentInterviewsPage = lazy(() => import('./modules/hr/recruitment/pages/InterviewsPage'))
 const RecruitmentOffersPage = lazy(() => import('./modules/hr/recruitment/pages/OffersPage'))
 const RecruitmentReportsPage = lazy(() => import('./modules/hr/recruitment/pages/ReportsPage'))
@@ -180,6 +197,12 @@ const ModuleGuard = ({ module, children }) => {
 const LegacySalesLeadRedirect = () => {
   const { id } = useParams()
   return <Navigate to={`/crm/leads/${id}`} replace />
+}
+
+// Legacy HR routes → canonical HR routes (People → Employees is /hr/employees).
+const LegacyEmployeeDetailRedirect = () => {
+  const { employeeId } = useParams()
+  return <Navigate to={`/hr/employees/${employeeId}`} replace />
 }
 
 const DashboardRoute = () => {
@@ -291,10 +314,11 @@ function App() {
           <Route path="google-workspace" element={withBoundary(<GoogleWorkspace />)} />
           <Route path="content-calendar" element={withBoundary(<ContentCalendar />)} />
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
-          <Route path="timesheet" element={withBoundary(<Timesheet />)} />
-          <Route path="attendance" element={withBoundary(<Attendance />)} />
+          <Route path="timesheet" element={withBoundary(<Timesheet />)} />          <Route path="attendance" element={withBoundary(<Attendance />)} />
           <Route path="attendance/live" element={<Navigate to="/live-monitor" replace />} />
           <Route path="attendance/reports" element={<Navigate to="/attendance-reports" replace />} />
+          <Route path="attendance/corrections" element={withBoundary(<CorrectionsPage />)} />
+
           <Route path="live-monitor" element={withBoundary(<LiveMonitor />)} />
           <Route path="attendance-reports" element={withBoundary(<AttendanceReports />)} />
 
@@ -322,20 +346,47 @@ function App() {
         {/* Sales workspace Overview — the first tab of the guided sales journey. */}
         <Route path="sales-overview" element={withBoundary(<SalesOverviewPage />)} />
           <Route path="hr">
-            <Route index element={withBoundary(<HRDepartment />)} />
+            <Route index element={<Navigate to="/hr/dashboard" replace />} />
+            <Route path="dashboard" element={withBoundary(<HRDashboard />)} />
+            <Route path="reports" element={withBoundary(<HRReports />)} />
+            <Route path="reports/:category/:report" element={withBoundary(<HRReports />)} />
+            {/* Phase 8 — Employee Self-Service (My HR): available to every
+                authenticated company employee (role-independent). The layout
+                guards for a linked Employee Profile. */}
+            <Route path="me" element={withBoundary(<MyHRLayout />)}>
+              <Route index element={withBoundary(<MyHROverview />)} />
+              <Route path="profile" element={withBoundary(<MyProfile />)} />
+              <Route path="attendance" element={withBoundary(<MyAttendance />)} />
+              <Route path="leave" element={withBoundary(<MyLeave />)} />
+              <Route path="documents" element={withBoundary(<MyDocuments />)} />
+              <Route path="payslips" element={withBoundary(<MyPayslips />)} />
+            </Route>
+            {/* Canonical HR-wide routes: Employee Profiles and HR Documents are
+                People/HR features, not Recruitment features. */}
+            <Route path="employees" element={withBoundary(<RecruitmentEmployeesPage />)} />
+            <Route path="employees/:employeeId" element={withBoundary(<EmployeeDetailPage />)} />
+            <Route path="documents" element={withBoundary(<HRDocumentsPage />)} />
+            <Route path="settings/document-types" element={withBoundary(<DocumentTypesSettingsPage />)} />
+            <Route path="settings/attendance-policy" element={withBoundary(<AttendancePolicySettings />)} />
+            <Route path="settings/holidays" element={withBoundary(<HolidaysPage />)} />
+            <Route path="settings/salary-components" element={withBoundary(<SalaryComponentsPage />)} />
+            <Route path="payroll" element={withBoundary(<PayrollPeriods />)} />
+            <Route path="payroll/:periodId" element={withBoundary(<PayrollPeriodDetail />)} />
+            <Route path="payroll/:periodId/records/:recordId" element={withBoundary(<PayrollRecordDetail />)} />
             <Route path="recruitment">
               <Route index element={withBoundary(<RecruitmentDashboard />)} />
               <Route path="jobs" element={withBoundary(<RecruitmentJobsPage />)} />
               <Route path="inbox" element={withBoundary(<RecruitmentInboxPage />)} />
               <Route path="candidates" element={withBoundary(<RecruitmentCandidatesPage />)} />
-              <Route path="employees" element={withBoundary(<RecruitmentEmployeesPage />)} />
-              <Route path="employees/:employeeId" element={withBoundary(<EmployeeDetailPage />)} />
               <Route path="resume-pool" element={withBoundary(<RecruitmentResumePoolPage />)} />
               <Route path="interviews" element={withBoundary(<RecruitmentInterviewsPage />)} />
               <Route path="offers" element={withBoundary(<RecruitmentOffersPage />)} />
               <Route path="reports" element={withBoundary(<RecruitmentReportsPage />)} />
               <Route path="interview-screen" element={withBoundary(<CandidateInterviewScreen />)} />
-              <Route path="settings/document-types" element={withBoundary(<DocumentTypesSettingsPage />)} />
+              {/* Legacy aliases → canonical HR routes (backward compatible). */}
+              <Route path="employees" element={<Navigate to="/hr/employees" replace />} />
+              <Route path="employees/:employeeId" element={<LegacyEmployeeDetailRedirect />} />
+              <Route path="settings/document-types" element={<Navigate to="/hr/settings/document-types" replace />} />
             </Route>
           </Route>
           <Route path="crm" element={<ProtectedRoute><CRMLayout /></ProtectedRoute>}>

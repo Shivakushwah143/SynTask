@@ -366,6 +366,101 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 | POST | `/api/v1/scheduled-jobs/{job_id}/retry` | `retry_failed_job` | Moves failed or cancelled jobs back to pending and clears the stored error/retry count. |
 | DELETE | `/api/v1/scheduled-jobs/{job_id}` | `delete_scheduled_job` | Deletes completed, failed, or cancelled jobs only. |
 
+### Payroll & Payslips
+
+Phase 6 payroll endpoints manage monthly periods and employee records; Phase 7 payslip endpoints generate, preview, download, and version PDF payslips. **A payslip is a presentation artifact of an already PROCESSED payroll record — generation never recalculates payroll.** It reads the record's stored snapshots (employee, salary, attendance, earnings, deductions, gross/net) only.
+
+Permission model (backend authoritative):
+
+- `payroll.view` — view periods/records, preview and download payslips (company admins pass through).
+- `payroll.manage` — create/calculate periods, generate and regenerate payslips.
+- `payroll.approve` — approve/process periods.
+- Employee self-ownership — a user may preview/download **only their own** payslips; employee A can never access employee B's payslip. Managers without payroll permission are denied (reporting relationship ≠ salary access).
+- Company isolation — every operation is scoped to the actor's company; cross-company payslip IDs return `404`.
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/payroll/periods` | `list_periods` | Lists company payroll periods (`status` filter optional). Requires `payroll.view`. |
+| POST | `/api/v1/payroll/periods` | `create_period` | Creates a DRAFT payroll period (`year`, `month`). Requires `payroll.manage`. |
+| GET | `/api/v1/payroll/periods/{period_id}` | `get_period` | Payroll period detail with lifecycle metadata. Requires `payroll.view`. |
+| POST | `/api/v1/payroll/periods/{period_id}/calculate` | `calculate_period` | Runs the Phase 6 calculation (DRAFT→CALCULATED). Requires `payroll.manage`. |
+| POST | `/api/v1/payroll/periods/{period_id}/review` | `review_period` | Moves CALCULATED → REVIEW. Requires `payroll.manage`. |
+| POST | `/api/v1/payroll/periods/{period_id}/approve` | `approve_period` | Moves REVIEW → APPROVED (rejects when blocked records exist). Requires `payroll.approve`. |
+| POST | `/api/v1/payroll/periods/{period_id}/process` | `process_period` | Moves APPROVED → PROCESSED (terminal; finalizes records). Requires `payroll.approve`. |
+| GET | `/api/v1/payroll/periods/{period_id}/records` | `list_records` | Employee payroll records for a period; each item includes `payslip` state and `can_generate`/`can_preview`/`can_download`/`can_regenerate` flags. Requires `payroll.view`. |
+| GET | `/api/v1/payroll/records/{record_id}` | `get_payroll_record` | One employee payroll record with full snapshot + payslip state. Requires `payroll.view`. |
+| POST | `/api/v1/payroll/records/{record_id}/payslip` | `create_record_payslip` | Generates the payslip for one record. Only allowed after the period is PROCESSED; idempotent (returns the existing payslip on repeat). Requires `payroll.manage`. |
+| POST | `/api/v1/payroll/periods/{period_id}/payslips/generate` | `generate_period_payslips` | Bulk-generates payslips for all eligible records of a processed period. Idempotent: existing payslips are skipped unless `regenerate=true`. Returns `{ generated, already_existing, failed, skipped }` — one failing record never rolls back the rest. Requires `payroll.manage`. |
+| GET | `/api/v1/payroll/records/{record_id}/payslips` | `get_record_payslips` | Payslip version history for one record (newest first). Requires `payroll.view`. |
+| GET | `/api/v1/payroll/payslips/{payslip_id}` | `get_payslip_metadata` | Payslip metadata (version, file name, generated at/by, `can_*` flags). `payroll.view` OR the payslip's own employee. |
+| GET | `/api/v1/payroll/payslips/{payslip_id}/preview` | `preview_payslip` | Inline PDF preview (authorized; local file stream or short-lived Cloudinary signed URL — never a raw public URL). `payroll.view` OR the payslip's own employee. |
+| GET | `/api/v1/payroll/payslips/{payslip_id}/download` | `download_payslip` | Secure PDF download with attachment disposition. `payroll.view` OR the payslip's own employee. |
+| POST | `/api/v1/payroll/payslips/{payslip_id}/regenerate` | `regenerate_payslip` | Creates the next payslip version (V2, V3, …) from the SAME processed snapshot; the previous version and file are preserved. Never alters payroll values. Requires `payroll.manage`. |
+| GET | `/api/v1/payroll/me/payslips` | `my_payslips` | The caller's own payslips only (latest version per record) — Phase 8 self-service readiness. Any authenticated user. |
+
+### Employee Self-Service (ESS)
+
+Phase 8 surfaces the employee's **own** data from the existing modules through a `My HR` workspace (`/hr/me` in the frontend). ESS is secure employee access to existing HR modules — it never duplicates Employee / Attendance / Leave / Documents / Payroll logic. All self endpoints resolve the identity from the authenticated user; **no `employee_id` is accepted from the request** (manual-ID attacks are structurally impossible on self routes).
+
+Identity & permission model:
+
+- **Identity resolution** — the authenticated `User` is matched to their company-scoped `EmployeeProfile` (`company_id + user_id`). Availability depends on the Employee Profile existing, **not** on role string — MANAGER / LEAD / HR / ADMIN users who are also employees get My HR alongside their admin surfaces.
+- **No profile** — platform super-admins / non-employee accounts receive `404` (`Employee profile is not available for this account.`) instead of a crash; the frontend shows a graceful state.
+- **Self vs management** — self-access never requires the module management permission: viewing own attendance needs no `attendance.manage`, viewing own payslips needs no company `payroll.view`. Self-service never grants company-wide payroll/HR access.
+- **Profile self-edit whitelist** — `PATCH /api/v1/employees/me` accepts only `personal_email`, `personal_phone`, `address`, `emergency_contact`. HR-controlled fields (department, designation, manager, employee number, employment type/status, joining date, work mode/location, salary-affecting fields, …) are **explicitly rejected with `400`**, never silently ignored. Address/emergency contact merge over stored values (partial updates never erase sibling fields). Self-changes are audited through the existing profile event bus.
+- **Ownership** — documents: only own + `EMPLOYEE_VISIBLE` + ACTIVE (Phase 2 service; HR-only/confidential records omitted entirely, even filenames). Payslips: `payroll.view` OR the payslip's own employee (Phase 7 service). Salary: own user only. Cross-employee access is denied backend-side.
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/employees/me` | `my_employee_profile` | The current user's own Employee Profile detail DTO (Phase 1). Any authenticated user with a profile. |
+| PATCH | `/api/v1/employees/me` | `update_my_employee_profile` | Self-edit of the whitelisted personal fields only (see above); HR-controlled fields rejected with `400`. |
+| GET | `/api/v1/attendance/me/today` | `get_my_today_attendance` | Today's attendance for the caller (Phase 4). |
+| GET | `/api/v1/attendance/me/today-enhanced` | `get_my_today_enhanced` | Today's attendance with policy-aware HR status, expected hours, late flags (Phase 4). |
+| GET | `/api/v1/attendance/me/history` | `get_my_attendance_history` | The caller's attendance history (Phase 4). |
+| GET | `/api/v1/attendance/corrections/me` | `get_my_corrections` | The caller's attendance correction requests (Phase 4). |
+| GET | `/api/v1/leaves/balances/me` | `get_my_leave_balances` | The caller's leave balances across active leave types, backend-computed (Phase 3). |
+| GET | `/api/v1/leaves/my` | `get_my_leave_requests` | The caller's leave requests (Phase 3). |
+| GET | `/api/v1/hr/employees/{employee_id}/documents` | `list_employee_documents_endpoint` | The caller's own documents when called with their own Employee Profile id and no HR directory permission: server-side restricted to own + `EMPLOYEE_VISIBLE` + ACTIVE (Phase 2 service; HR-only/confidential omitted; other employee ids return `403`). |
+| GET | `/api/v1/salary/me` | `get_my_salary` | The caller's own current + upcoming Salary Structure (Phase 5 data, ownership by construction — keyed by user). |
+| GET | `/api/v1/payroll/me/payslips` | `my_payslips` | The caller's own generated payslips (Phase 7; see Payroll & Payslips above). |
+| GET | `/api/v1/hr/me/summary` | `my_hr_summary` | Lightweight My HR overview aggregate (profile essentials, today's attendance, leave balance summary + pending count, employee-visible document alerts, latest payslip, ESS capability flags). Summaries only — module pages use their own APIs for full histories. `404` when the caller has no Employee Profile. |
+
+### HR Dashboard & Reports
+
+Phase 10 provides an operational HR Dashboard and categorized reporting workspace. **Dashboard / Reports = read existing domain truth** — they never recalculate HR business logic independently. All metrics are computed backend-side from existing Employee, Attendance, Leave, Document, Recruitment, Lifecycle, and Payroll services.
+
+Permission model:
+
+- Dashboard is available to all company users (HR, managers, admins, employees) — sections are permission-aware.
+- Payroll summary on the dashboard is visible only to users with `payroll.view` or company admin role.
+- Payroll report endpoints require `payroll.view` capability.
+- Recruitment summary is visible to admins/managers.
+- All report queries are company-scoped. Cross-company data access is impossible.
+- Platform super-admins without a company see `403` on the dashboard.
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/hr/dashboard` | `get_hr_dashboard` | Aggregated HR dashboard: employee summary, attendance today, leave summary, document summary, lifecycle summary, recruitment summary (if authorized), payroll summary (if authorized), attention items. |
+| GET | `/api/v1/hr/reports/employees/directory` | `employee_directory_report` | Paginated employee directory with department/status/type filters. |
+| GET | `/api/v1/hr/reports/employees/headcount` | `headcount_report` | Headcount aggregated by department with overall summary. |
+| GET | `/api/v1/hr/reports/employees/joining-exit` | `joining_exit_report` | Joining/exit trend data for chart visualization (configurable months). |
+| GET | `/api/v1/hr/reports/attendance/summary` | `attendance_summary_report` | Per-employee attendance summary for a date range (present, leave, absent, late, overtime). |
+| GET | `/api/v1/hr/reports/attendance/late` | `late_arrival_report` | Late arrival report with expected vs actual check-in. |
+| GET | `/api/v1/hr/reports/attendance/absence` | `absence_report` | Absence report (excludes holidays, week-offs, and approved leaves). |
+| GET | `/api/v1/hr/reports/leave/balances` | `leave_balance_report` | Leave balances per employee per leave type. |
+| GET | `/api/v1/hr/reports/leave/usage` | `leave_usage_report` | Leave usage by type (approved, pending, rejected units). |
+| GET | `/api/v1/hr/reports/documents/expiry` | `document_expiry_report` | Document expiry report with status (expired, expiring soon, valid). |
+| GET | `/api/v1/hr/reports/lifecycle/events` | `lifecycle_events_report` | Lifecycle events with before/after state summaries. |
+| GET | `/api/v1/hr/reports/lifecycle/probation` | `probation_report` | Employees on probation with confirmation due dates. |
+| GET | `/api/v1/hr/reports/lifecycle/notice` | `notice_period_report` | Employees in notice period with exit details. |
+| GET | `/api/v1/hr/reports/payroll/summary` | `payroll_summary_report` | Payroll history by period. **Requires `payroll.view`.** |
+| GET | `/api/v1/hr/reports/payroll/employees` | `employee_payroll_report` | Per-employee payroll records. **Requires `payroll.view`.** |
+| GET | `/api/v1/hr/reports/employees/directory/export` | `export_employee_directory` | CSV export of employee directory. |
+| GET | `/api/v1/hr/reports/attendance/summary/export` | `export_attendance_summary` | CSV export of attendance summary. |
+| GET | `/api/v1/hr/reports/leave/balances/export` | `export_leave_balances` | CSV export of leave balances. |
+| GET | `/api/v1/hr/reports/payroll/summary/export` | `export_payroll_summary` | CSV export of payroll summary. **Requires `payroll.view`.** |
+| GET | `/api/v1/hr/reports/documents/expiry/export` | `export_document_expiry` | CSV export of document expiry report. |
+
 ### Projects
 
 | Method | Path | Handler | Notes |

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from 'react-query'
 import toast from 'react-hot-toast'
 import {
@@ -66,8 +67,12 @@ const expiryStateBadge = (state) => {
  */
 export default function DocumentsTab({ employeeId, candidateId, ownerName, canManage = true }) {
   const queryClient = useQueryClient()
+  // Global mode (no owner passed): company-wide HR document list via
+  // /hr/documents — used by the People → Documents page.
+  const global = !employeeId && !candidateId
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [ownerType, setOwnerType] = useState('')
   const [documentTypeId, setDocumentTypeId] = useState('')
   const [expiryState, setExpiryState] = useState('')
   const [visibility, setVisibility] = useState('')
@@ -86,10 +91,11 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
   const [archiveDoc, setArchiveDoc] = useState(null)
   const [archiveLoading, setArchiveLoading] = useState(false)
 
-  const ownerKey = employeeId ? { employeeId } : { candidateId }
+  const ownerKey = global ? { global: true } : employeeId ? { employeeId } : { candidateId }
 
   const buildParams = () => ({
     search: debouncedSearch || undefined,
+    owner_type: ownerType || undefined,
     document_type_id: documentTypeId || undefined,
     expiry_state: expiryState || undefined,
     visibility: visibility || undefined,
@@ -100,9 +106,11 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
   // Params captured at render time for the query.
   const params = buildParams()
 
-  const listFn = employeeId
-    ? () => hrDocumentsApi.listEmployeeDocuments(employeeId, params)
-    : () => hrDocumentsApi.listCandidateDocuments(candidateId, params)
+  const listFn = global
+    ? () => hrDocumentsApi.listDocuments(params)
+    : employeeId
+      ? () => hrDocumentsApi.listEmployeeDocuments(employeeId, params)
+      : () => hrDocumentsApi.listCandidateDocuments(candidateId, params)
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -113,7 +121,7 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
   }, [search])
 
   const query = useQuery(
-    ['hr-documents', ownerKey, { search: debouncedSearch, documentTypeId, expiryState, visibility, page }],
+    ['hr-documents', ownerKey, { search: debouncedSearch, ownerType, documentTypeId, expiryState, visibility, page }],
     listFn,
     { keepPreviousData: true }
   )
@@ -137,7 +145,7 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
   const documents = query.data?.data?.items || []
   const total = query.data?.data?.total || 0
   const hasNext = query.data?.data?.has_next || page * PAGE_SIZE < total
-  const hasActiveFilters = Boolean(documentTypeId || expiryState || visibility || debouncedSearch)
+  const hasActiveFilters = Boolean(ownerType || documentTypeId || expiryState || visibility || debouncedSearch)
 
   const invalidateAll = () => {
     queryClient.invalidateQueries(['hr-documents'])
@@ -293,12 +301,24 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
   }
 
   const resetFilters = () => {
+    setOwnerType('')
     setDocumentTypeId('')
     setExpiryState('')
     setVisibility('')
     setSearch('')
     setDebouncedSearch('')
     setPage(1)
+  }
+
+  // Owner display + navigation for the company-wide list.
+  const ownerLabel = (document) =>
+    document.employee_name ||
+    document.candidate_name ||
+    (document.owner_type === 'employee' ? 'Employee' : document.owner_type === 'candidate' ? 'Candidate' : '—')
+  const ownerHref = (document) => {
+    if (document.employee_id) return `/hr/employees/${document.employee_id}`
+    if (document.candidate_id) return '/hr/recruitment/candidates'
+    return null
   }
 
   const typeName = (id) => types.find((type) => type.id === id)?.name || id
@@ -321,7 +341,7 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
             </Button>
           )}
         </div>
-        {canManage && (
+        {canManage && !global && (
           <Button onClick={() => setShowUpload(true)}>
             <Plus className="mr-2 h-4 w-4" /> Upload Document
           </Button>
@@ -343,7 +363,17 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
 
       {/* Filters */}
       {showFilters && (
-        <div className="grid grid-cols-1 gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:grid-cols-3">
+        <div className={`grid grid-cols-1 gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 ${global ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
+          {global && (
+            <label className="space-y-1.5">
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">Owner Type</span>
+              <select className={selectClassName} aria-label="Filter by owner type" value={ownerType} onChange={(event) => { setOwnerType(event.target.value); setPage(1) }}>
+                <option value="">All owners</option>
+                <option value="employee">Employees</option>
+                <option value="candidate">Candidates</option>
+              </select>
+            </label>
+          )}
           <label className="space-y-1.5">
             <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">Document Type</span>
             <select className={selectClassName} aria-label="Filter by document type" value={documentTypeId} onChange={(event) => { setDocumentTypeId(event.target.value); setPage(1) }}>
@@ -400,8 +430,8 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
         <EmptyState
           icon={FileText}
           title="No documents yet"
-          description={`No HR documents have been added for ${ownerName || 'this employee'}.`}
-          action={canManage ? <Button onClick={() => setShowUpload(true)}><UploadCloud className="mr-2 h-4 w-4" /> Upload First Document</Button> : null}
+          description={global ? 'No HR documents have been uploaded for this company yet.' : `No HR documents have been added for ${ownerName || 'this employee'}.`}
+          action={canManage && !global ? <Button onClick={() => setShowUpload(true)}><UploadCloud className="mr-2 h-4 w-4" /> Upload First Document</Button> : null}
         />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -410,6 +440,7 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
               <thead className="bg-gray-50 dark:bg-gray-800/70">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Document</th>
+                  {global && <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Owner</th>}
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Type</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Expiry</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Uploaded</th>
@@ -431,6 +462,21 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
                         </div>
                       </div>
                     </td>
+                    {global && (
+                      <td className="px-4 py-3">
+                        {ownerHref(document) ? (
+                          <Link
+                            to={ownerHref(document)}
+                            onClick={(event) => event.stopPropagation()}
+                            className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-800 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300"
+                          >
+                            {ownerLabel(document)}
+                          </Link>
+                        ) : (
+                          <p className="text-sm text-gray-700 dark:text-gray-200">{ownerLabel(document)}</p>
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <p className="text-sm text-gray-700 dark:text-gray-200">{document.document_type || typeName(document.document_type_id)}</p>
                       {document.document_type_required ? <span className="text-xs text-gray-400 dark:text-gray-500">Required</span> : null}
@@ -693,7 +739,7 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
         isOpen={Boolean(archiveDoc)}
         onClose={() => setArchiveDoc(null)}
         title="Archive Document?"
-        message={`Archive “${archiveDoc?.filename || archiveDoc?.document_type || 'this document'}” for ${ownerName || 'this employee'}? The record stays in history and can be restored later, but it will no longer appear in the active list.`}
+        message={`Archive “${archiveDoc?.filename || archiveDoc?.document_type || 'this document'}” for ${global ? (archiveDoc?.employee_name || archiveDoc?.candidate_name || 'the owner') : (ownerName || 'this employee')}? The record stays in history and can be restored later, but it will no longer appear in the active list.`}
         confirmLabel="Archive"
         loading={archiveLoading}
         onConfirm={handleArchive}

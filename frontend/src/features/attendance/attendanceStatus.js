@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, Coffee, Play } from 'lucide-react'
+import { CheckCircle2, Clock, Coffee, Play, CalendarDays, Ban, MinusCircle, AlertTriangle } from 'lucide-react'
 
 /**
  * Canonical frontend attendance statuses. The backend normalizes its attendance
@@ -10,6 +10,69 @@ export const ATTENDANCE_STATUS = {
   WORKING: 'working',
   ON_BREAK: 'on_break',
   CHECKED_OUT: 'checked_out',
+}
+
+/**
+ * Phase 4: HR/Payroll-ready attendance statuses.
+ */
+export const HR_ATTENDANCE_STATUS = {
+  PRESENT: 'present',
+  ABSENT: 'absent',
+  PAID_LEAVE: 'paid_leave',
+  UNPAID_LEAVE: 'unpaid_leave',
+  HALF_DAY: 'half_day',
+  HOLIDAY: 'holiday',
+  WEEK_OFF: 'week_off',
+  IN_PROGRESS: 'in_progress',
+  NO_RECORD: 'no_record',
+}
+
+export const HR_STATUS_META = {
+  [HR_ATTENDANCE_STATUS.PRESENT]: {
+    label: 'Present',
+    badge: 'bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300',
+    icon: CheckCircle2,
+  },
+  [HR_ATTENDANCE_STATUS.ABSENT]: {
+    label: 'Absent',
+    badge: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300',
+    icon: Ban,
+  },
+  [HR_ATTENDANCE_STATUS.PAID_LEAVE]: {
+    label: 'Paid Leave',
+    badge: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+    icon: CalendarDays,
+  },
+  [HR_ATTENDANCE_STATUS.UNPAID_LEAVE]: {
+    label: 'Unpaid Leave',
+    badge: 'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
+    icon: CalendarDays,
+  },
+  [HR_ATTENDANCE_STATUS.HALF_DAY]: {
+    label: 'Half Day',
+    badge: 'bg-yellow-50 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300',
+    icon: MinusCircle,
+  },
+  [HR_ATTENDANCE_STATUS.HOLIDAY]: {
+    label: 'Holiday',
+    badge: 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
+    icon: CalendarDays,
+  },
+  [HR_ATTENDANCE_STATUS.WEEK_OFF]: {
+    label: 'Week Off',
+    badge: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+    icon: Coffee,
+  },
+  [HR_ATTENDANCE_STATUS.IN_PROGRESS]: {
+    label: 'In Progress',
+    badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+    icon: Play,
+  },
+  [HR_ATTENDANCE_STATUS.NO_RECORD]: {
+    label: 'No Record',
+    badge: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+    icon: Clock,
+  },
 }
 
 /**

@@ -4,12 +4,22 @@ Leave management business logic.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, Optional
 
+from beanie import Document
 from fastapi import HTTPException, status
+from pymongo import ReturnDocument
 
-from app.models.leave import LeaveRequest, LeaveStatus, LeaveType
+from app.models.attendance import Attendance
+from app.models.leave import (
+    LeaveBalance,
+    LeaveDuration,
+    LeaveRequest,
+    LeaveStatus,
+    LeaveType,
+    LeaveTypeConfig,
+)
 from app.models.notification import Notification, NotificationType
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.models.user import User, UserRole
@@ -21,6 +31,33 @@ logger = logging.getLogger(__name__)
 
 APPROVER_ROLES = {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}
 TERMINAL_LEAVE_STATUSES = {LeaveStatus.APPROVED, LeaveStatus.REJECTED, LeaveStatus.CANCELLED}
+ACTIVE_LEAVE_STATUSES = (LeaveStatus.PENDING, LeaveStatus.FORWARDED, LeaveStatus.APPROVED)
+
+# Legacy leave-type values → readable labels (Phase 3 keeps old enum values readable).
+LEGACY_LEAVE_LABELS = {
+    LeaveType.FULL_DAY: "Full Day",
+    LeaveType.HALF_DAY: "Half Day",
+    LeaveType.SICK_LEAVE: "Sick Leave",
+    LeaveType.CASUAL_LEAVE: "Casual Leave",
+    LeaveType.EMERGENCY_LEAVE: "Emergency Leave",
+    LeaveType.WORK_FROM_HOME: "Work From Home",
+}
+
+# Legacy category values map to the seeded configurable Leave Types by code.
+LEGACY_TYPE_CODE_MAP = {
+    LeaveType.SICK_LEAVE: "sick_leave",
+    LeaveType.CASUAL_LEAVE: "casual_leave",
+    LeaveType.EMERGENCY_LEAVE: "emergency_leave",
+}
+
+# Default configurable Leave Types seeded per company (idempotent).
+DEFAULT_LEAVE_TYPES = [
+    {"name": "Casual Leave", "code": "casual_leave", "is_paid": True, "default_annual_allocation": 10.0, "allow_half_day": True, "requires_approval": True, "description": "Paid casual leave for personal errands and short breaks."},
+    {"name": "Sick Leave", "code": "sick_leave", "is_paid": True, "default_annual_allocation": 6.0, "allow_half_day": True, "requires_approval": True, "description": "Paid leave for illness or medical appointments."},
+    {"name": "Annual Leave", "code": "annual_leave", "is_paid": True, "default_annual_allocation": 12.0, "allow_half_day": True, "requires_approval": True, "description": "Paid annual / earned leave."},
+    {"name": "Emergency Leave", "code": "emergency_leave", "is_paid": True, "default_annual_allocation": 2.0, "allow_half_day": True, "requires_approval": True, "description": "Paid leave for genuine emergencies."},
+    {"name": "Unpaid Leave", "code": "unpaid_leave", "is_paid": False, "default_annual_allocation": 0.0, "allow_half_day": True, "requires_approval": True, "description": "Leave without pay; tracked for payroll input."},
+]
 
 
 async def assert_leave_view_access(current_user: User, employee: User) -> None:
@@ -301,17 +338,38 @@ async def notify_admins(company_id: Optional[str], notification_type: Notificati
         await notify_user(str(approver.id), company_id, notification_type, title, message, leave_id)
 
 
-def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dict[str, Any]:
+def serialize_leave(
+    leave: LeaveRequest,
+    employee: Optional[User] = None,
+    type_map: Optional[Dict[str, LeaveTypeConfig]] = None,
+) -> Dict[str, Any]:
     employee_role = getattr(leave, "employee_role", None)
     if not employee_role and employee:
         employee_role = employee.role.value
+    legacy_value = leave.leave_type.value if isinstance(leave.leave_type, LeaveType) else None
+    leave_type_id = getattr(leave, "leave_type_id", None)
+    # Normalized leave-type info: prefer the configurable type; legacy requests
+    # fall back to a readable legacy label (never crash on old values).
+    type_config = (type_map or {}).get(leave_type_id or "") if leave_type_id else None
+    leave_type_name = type_config.name if type_config else (LEGACY_LEAVE_LABELS.get(LeaveType(legacy_value)) if legacy_value else None)
+    is_paid = type_config.is_paid if type_config else _legacy_is_paid(legacy_value)
+    allow_half_day = type_config.allow_half_day if type_config else True
+    raw_duration = getattr(leave, "duration", None)
+    duration = raw_duration.value if isinstance(raw_duration, LeaveDuration) else (legacy_value if legacy_value in {"full_day", "half_day"} else None)
     return {
         "id": str(leave.id),
         "employee_id": leave.employee_id,
         "employee_role": employee_role,
         "employee_name": employee.full_name() if employee else None,
         "company_id": leave.company_id,
-        "leave_type": leave.leave_type.value,
+        # Legacy compatibility field (historical values) — new requests set None.
+        "leave_type": legacy_value,
+        "leave_type_id": leave_type_id,
+        "leave_type_name": leave_type_name,
+        "duration": duration,
+        "requested_units": float(getattr(leave, "requested_units", 1.0) or 1.0),
+        "is_paid": is_paid,
+        "allow_half_day": allow_half_day,
         "start_date": leave.start_date,
         "end_date": leave.end_date,
         "reason": leave.reason,
@@ -334,5 +392,539 @@ def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dic
     }
 
 
+def _legacy_is_paid(legacy_value: Optional[str]) -> Optional[bool]:
+    """Best-effort paid classification for legacy requests (payroll input)."""
+    if legacy_value in {"sick_leave", "casual_leave", "emergency_leave"}:
+        return True
+    if legacy_value == "work_from_home":
+        return None  # attendance/work-mode, not paid leave
+    if legacy_value in {"full_day", "half_day"}:
+        return True
+    return None
+
+
+def leave_display_title(leave: LeaveRequest) -> str:
+    """Safe display title that never crashes on legacy/missing type values."""
+    legacy = leave.leave_type.value if isinstance(leave.leave_type, LeaveType) else None
+    if legacy:
+        return LEGACY_LEAVE_LABELS.get(LeaveType(legacy), legacy.replace("_", " ").title())
+    return "Leave"
+
+
+# =============================================================================
+# Phase 3 — Leave Type configuration
+# =============================================================================
+
+
+def serialize_leave_type(doc: LeaveTypeConfig) -> Dict[str, Any]:
+    return {
+        "id": str(doc.id),
+        "company_id": doc.company_id,
+        "name": doc.name,
+        "code": doc.code,
+        "description": doc.description,
+        "is_paid": doc.is_paid,
+        "default_annual_allocation": float(doc.default_annual_allocation or 0.0),
+        "allow_half_day": doc.allow_half_day,
+        "requires_approval": doc.requires_approval,
+        "carry_forward_allowed": doc.carry_forward_allowed,
+        "max_carry_forward": doc.max_carry_forward,
+        "active": doc.active,
+        "created_by": doc.created_by,
+        "created_at": doc.created_at,
+        "updated_at": doc.updated_at,
+    }
+
+
+async def ensure_default_leave_types(company_id: str, actor_id: Optional[str] = None) -> list[LeaveTypeConfig]:
+    """Idempotently seed the default configurable Leave Types for a company."""
+    from pymongo.errors import DuplicateKeyError
+
+    created: list[LeaveTypeConfig] = []
+    for spec in DEFAULT_LEAVE_TYPES:
+        existing = await LeaveTypeConfig.find_one({"company_id": company_id, "code": spec["code"]})
+        if existing:
+            continue
+        try:
+            doc = LeaveTypeConfig(company_id=company_id, created_by=actor_id, **spec)
+            await doc.insert()
+            created.append(doc)
+        except DuplicateKeyError:
+            continue
+    return created
+
+
+async def active_leave_types(company_id: str, *, include_inactive: bool = False) -> list[LeaveTypeConfig]:
+    await ensure_default_leave_types(company_id)
+    query: Dict[str, Any] = {"company_id": company_id}
+    if not include_inactive:
+        query["active"] = True
+    return await LeaveTypeConfig.find(query).sort("name", 1).to_list()
+
+
+async def get_leave_type_config(company_id: str, leave_type_id: str) -> Optional[LeaveTypeConfig]:
+    if not leave_type_id:
+        return None
+    return await LeaveTypeConfig.find_one({"company_id": company_id, "_id": leave_type_id})
+
+
+async def create_leave_type(company_id: str, actor: User, payload: Dict[str, Any]) -> LeaveTypeConfig:
+    from pymongo.errors import DuplicateKeyError
+
+    payload = dict(payload)
+    name = (payload.get("name") or "").strip()
+    code = (payload.get("code") or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Name is required")
+    if not code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Code is required")
+    existing = await LeaveTypeConfig.find_one({"company_id": company_id, "code": code})
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A leave type with this code already exists")
+    allowed = {
+        "name", "code", "description", "is_paid", "default_annual_allocation",
+        "allow_half_day", "requires_approval", "carry_forward_allowed", "max_carry_forward", "active",
+    }
+    clean = {k: v for k, v in payload.items() if k in allowed and v is not None}
+    try:
+        doc = LeaveTypeConfig(company_id=company_id, name=name, code=code, created_by=str(actor.id), **clean)
+        await doc.insert()
+    except DuplicateKeyError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A leave type with this code already exists")
+    return doc
+
+
+async def update_leave_type(company_id: str, leave_type_id: str, payload: Dict[str, Any]) -> LeaveTypeConfig:
+    doc = await LeaveTypeConfig.get(leave_type_id)
+    if not doc or doc.company_id != company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave type not found")
+    allowed = {
+        "name", "description", "is_paid", "default_annual_allocation",
+        "allow_half_day", "requires_approval", "carry_forward_allowed", "max_carry_forward", "active",
+    }
+    for key, value in payload.items():
+        if key in allowed and value is not None:
+            setattr(doc, key, value)
+    doc.updated_at = utc_now()
+    await doc.save()
+    return doc
+
+
+async def deactivate_leave_type(company_id: str, leave_type_id: str) -> LeaveTypeConfig:
+    """Soft deactivate — historical requests keep their reference."""
+    doc = await LeaveTypeConfig.get(leave_type_id)
+    if not doc or doc.company_id != company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave type not found")
+    doc.active = False
+    doc.updated_at = utc_now()
+    await doc.save()
+    return doc
+
+
+async def build_leave_type_map(company_id: str, type_ids: list[str]) -> Dict[str, LeaveTypeConfig]:
+    ids = [tid for tid in type_ids if tid]
+    if not ids:
+        return {}
+    docs = await LeaveTypeConfig.find({"company_id": company_id, "_id": {"$in": ids}}).to_list()
+    return {str(doc.id): doc for doc in docs}
+
+
+# =============================================================================
+# Phase 3 — Leave Duration / units
+# =============================================================================
+
+
+def legacy_duration_for(value: Optional[str]) -> Optional[LeaveDuration]:
+    if value == LeaveDuration.FULL_DAY.value:
+        return LeaveDuration.FULL_DAY
+    if value == LeaveDuration.HALF_DAY.value:
+        return LeaveDuration.HALF_DAY
+    return None
+
+
+def compute_requested_units(start_date: datetime, end_date: datetime, duration: Optional[LeaveDuration]) -> float:
+    """Backend-authoritative leave consumption.
+
+    Full day counts every calendar day in the inclusive range (Phase 3 does not
+    subtract weekends/holidays — a working-day provider can be injected in
+    Phase 4). Half day consumes 0.5 and must be a single day (enforced in
+    validation).
+    """
+    if duration == LeaveDuration.HALF_DAY:
+        return 0.5
+    start_day = start_date.date()
+    end_day = end_date.date()
+    return float(max(1, (end_day - start_day).days + 1))
+
+
+# =============================================================================
+# Phase 3 — Leave Balance / Allocation (cached + reconciled, CAS protected)
+# =============================================================================
+
+
+def _current_period() -> str:
+    return str(utc_now().year)
+
+
+async def _find_balance(company_id: str, employee_id: str, leave_type_id: str) -> Optional[LeaveBalance]:
+    return await LeaveBalance.find_one(
+        {"company_id": company_id, "employee_id": employee_id, "leave_type_id": leave_type_id}
+    )
+
+
+async def ensure_initial_allocations(company_id: str, employee_id: str) -> None:
+    """Idempotently create a balance (with the type's default allocation) for
+    every active leave type of the current period. New employees start with the
+    configured default; HR can override via the allocation APIs."""
+    from pymongo.errors import DuplicateKeyError
+
+    period = _current_period()
+    types = await active_leave_types(company_id, include_inactive=False)
+    for doc_type in types:
+        existing = await _find_balance(company_id, employee_id, str(doc_type.id))
+        if existing:
+            continue
+        try:
+            await LeaveBalance(
+                company_id=company_id,
+                employee_id=employee_id,
+                leave_type_id=str(doc_type.id),
+                period=period,
+                allocated=float(doc_type.default_annual_allocation or 0.0),
+                used=0.0,
+                pending=0.0,
+                version=0,
+                adjustments=[],
+            ).insert()
+        except DuplicateKeyError:
+            continue
+
+
+async def compute_used_pending(company_id: str, employee_id: str, leave_type_id: str) -> tuple[float, float]:
+    """Derive used/pending from requests (source of truth for the cache)."""
+    used = 0.0
+    pending = 0.0
+    requests = await LeaveRequest.find(
+        {"company_id": company_id, "employee_id": employee_id, "leave_type_id": leave_type_id}
+    ).to_list()
+    for req in requests:
+        units = float(getattr(req, "requested_units", 1.0) or 1.0)
+        if req.status == LeaveStatus.APPROVED:
+            used += units
+        elif req.status in (LeaveStatus.PENDING, LeaveStatus.FORWARDED):
+            pending += units
+    return round(used, 4), round(pending, 4)
+
+
+async def reconcile_balance(company_id: str, employee_id: str, leave_type_id: str) -> None:
+    """Sync the cached used/pending values from requests (optimistic-lock safe)."""
+    used, pending = await compute_used_pending(company_id, employee_id, leave_type_id)
+    bal = await _find_balance(company_id, employee_id, leave_type_id)
+    if not bal:
+        await ensure_initial_allocations(company_id, employee_id)
+        bal = await _find_balance(company_id, employee_id, leave_type_id)
+        if not bal:
+            return
+    for _ in range(10):
+        updated = await LeaveBalance.collection.find_one_and_update(
+            {"_id": bal.id, "version": bal.version},
+            {"$set": {"used": used, "pending": pending, "updated_at": utc_now()}, "$inc": {"version": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated:
+            return
+        refreshed = await _find_balance(company_id, employee_id, leave_type_id)
+        if not refreshed:
+            return
+        bal = refreshed
+
+
+async def get_balance(company_id: str, employee_id: str, leave_type_id: str) -> Optional[Dict[str, Any]]:
+    await ensure_initial_allocations(company_id, employee_id)
+    await reconcile_balance(company_id, employee_id, leave_type_id)
+    bal = await _find_balance(company_id, employee_id, leave_type_id)
+    if not bal:
+        return None
+    return {
+        "leave_type_id": leave_type_id,
+        "allocated": round(bal.allocated, 4),
+        "used": round(bal.used, 4),
+        "pending": round(bal.pending, 4),
+        "available": round(bal.allocated - bal.used - bal.pending, 4),
+        "period": bal.period,
+    }
+
+
+async def get_balances(company_id: str, employee_id: str) -> list[Dict[str, Any]]:
+    """Balances across active leave types — backend-computed, never frontend-calculated."""
+    types = await active_leave_types(company_id, include_inactive=False)
+    result = []
+    for doc_type in types:
+        bal = await get_balance(company_id, employee_id, str(doc_type.id))
+        if bal is None:
+            continue
+        result.append(
+            {
+                **bal,
+                "name": doc_type.name,
+                "code": doc_type.code,
+                "is_paid": doc_type.is_paid,
+                "allow_half_day": doc_type.allow_half_day,
+            }
+        )
+    return result
+
+
+async def reserve_balance_units(company_id: str, employee_id: str, leave_type_id: str, units: float) -> bool:
+    """Atomically reserve units on pending (CAS loop) — prevents concurrent over-allocation."""
+    if units <= 0:
+        return True
+    for _ in range(10):
+        bal = await _find_balance(company_id, employee_id, leave_type_id)
+        if not bal:
+            await ensure_initial_allocations(company_id, employee_id)
+            continue
+        available = round(bal.allocated - bal.used - bal.pending, 4)
+        if available + 1e-9 < units:
+            return False
+        updated = await LeaveBalance.collection.find_one_and_update(
+            {"_id": bal.id, "version": bal.version},
+            {"$set": {"pending": round(bal.pending + units, 4), "updated_at": utc_now()}, "$inc": {"version": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated:
+            return True
+    return False
+
+
+async def commit_balance_units(company_id: str, employee_id: str, leave_type_id: str, units: float) -> bool:
+    """Approve: move units pending → used. Returns False when allocation was reduced
+    below the commitment (approval must then be blocked/reviewed)."""
+    if units <= 0:
+        return True
+    for _ in range(10):
+        bal = await _find_balance(company_id, employee_id, leave_type_id)
+        if not bal:
+            await ensure_initial_allocations(company_id, employee_id)
+            continue
+        if round(bal.allocated - bal.used - bal.pending, 4) + 1e-9 < 0:
+            return False
+        updated = await LeaveBalance.collection.find_one_and_update(
+            {"_id": bal.id, "version": bal.version},
+            {
+                "$set": {
+                    "pending": round(bal.pending - units, 4),
+                    "used": round(bal.used + units, 4),
+                    "updated_at": utc_now(),
+                },
+                "$inc": {"version": 1},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated:
+            return True
+    return False
+
+
+async def release_balance_units(company_id: str, employee_id: str, leave_type_id: str, units: float) -> bool:
+    """Reject/cancel pending: release reserved units."""
+    if units <= 0:
+        return True
+    for _ in range(10):
+        bal = await _find_balance(company_id, employee_id, leave_type_id)
+        if not bal:
+            return True
+        new_pending = max(0.0, round(bal.pending - units, 4))
+        updated = await LeaveBalance.collection.find_one_and_update(
+            {"_id": bal.id, "version": bal.version},
+            {"$set": {"pending": new_pending, "updated_at": utc_now()}, "$inc": {"version": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated:
+            return True
+    return False
+
+
+async def reverse_used_units(company_id: str, employee_id: str, leave_type_id: str, units: float) -> bool:
+    """Cancel approved: reverse used units."""
+    if units <= 0:
+        return True
+    for _ in range(10):
+        bal = await _find_balance(company_id, employee_id, leave_type_id)
+        if not bal:
+            return True
+        new_used = max(0.0, round(bal.used - units, 4))
+        updated = await LeaveBalance.collection.find_one_and_update(
+            {"_id": bal.id, "version": bal.version},
+            {"$set": {"used": new_used, "updated_at": utc_now()}, "$inc": {"version": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated:
+            return True
+    return False
+
+
+async def adjust_allocation(
+    company_id: str,
+    employee_id: str,
+    leave_type_id: str,
+    new_allocated: float,
+    actor_id: str,
+    reason: Optional[str] = None,
+) -> Dict[str, Any]:
+    """HR allocation adjustment with audit trail."""
+    await ensure_initial_allocations(company_id, employee_id)
+    bal = await _find_balance(company_id, employee_id, leave_type_id)
+    if not bal:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave allocation not found")
+    new_allocated = float(new_allocated)
+    if new_allocated < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Allocation cannot be negative")
+    for _ in range(10):
+        updated = await LeaveBalance.collection.find_one_and_update(
+            {"_id": bal.id, "version": bal.version},
+            {
+                "$set": {"allocated": round(new_allocated, 4), "updated_at": utc_now()},
+                "$inc": {"version": 1},
+                "$push": {
+                    "adjustments": {
+                        "previous_allocated": round(bal.allocated, 4),
+                        "new_allocated": round(new_allocated, 4),
+                        "actor_id": str(actor_id),
+                        "reason": reason,
+                        "timestamp": utc_now().isoformat(),
+                    }
+                },
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated:
+            return await get_balance(company_id, employee_id, leave_type_id) or {
+                "leave_type_id": leave_type_id,
+                "allocated": round(new_allocated, 4),
+                "used": 0.0,
+                "pending": 0.0,
+                "available": round(new_allocated, 4),
+                "period": _current_period(),
+            }
+        refreshed = await _find_balance(company_id, employee_id, leave_type_id)
+        if not refreshed:
+            break
+        bal = refreshed
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Allocation was updated concurrently. Please retry.")
+
+
+# =============================================================================
+# Phase 3 — Leave → Attendance integration (minimal, reliable)
+# =============================================================================
+
+
+def attendance_leave_marker(leave: LeaveRequest, type_map: Optional[Dict[str, LeaveTypeConfig]] = None) -> Optional[str]:
+    """"paid_leave" | "unpaid_leave" | None for an APPROVED leave day."""
+    if leave_is_work_from_home(leave):
+        return None
+    is_paid = None
+    leave_type_id = getattr(leave, "leave_type_id", None)
+    if leave_type_id and type_map and leave_type_id in type_map:
+        is_paid = type_map[leave_type_id].is_paid
+    else:
+        is_paid = _legacy_is_paid(leave.leave_type.value if isinstance(leave.leave_type, LeaveType) else None)
+    return "paid_leave" if is_paid else "unpaid_leave"
+
+
+def leave_is_work_from_home(leave: LeaveRequest) -> bool:
+    return bool(isinstance(leave.leave_type, LeaveType) and leave.leave_type == LeaveType.WORK_FROM_HOME)
+
+
+def _date_range_days(start_date: datetime, end_date: datetime) -> list[date]:
+    days: list[date] = []
+    current = start_date.date()
+    end = end_date.date()
+    while current <= end:
+        days.append(current)
+        current += timedelta(days=1)
+    return days
+
+
+async def mark_leave_days_on_attendance(
+    company_id: str, employee_id: str, start_date: datetime, end_date: datetime, marker: Optional[str]
+) -> None:
+    """Upsert Attendance records so approved-leave days carry the leave marker."""
+    if not marker:
+        return
+    for day in _date_range_days(start_date, end_date):
+        await Attendance.collection.update_one(
+            {"company_id": company_id, "employee_id": employee_id, "date": day.strftime("%Y-%m-%d")},
+            {
+                "$set": {"leave_status": marker, "updated_at": utc_now()},
+                "$setOnInsert": {"status": "Offline", "created_at": utc_now()},
+            },
+            upsert=True,
+        )
+
+
+async def clear_leave_days_from_attendance(
+    company_id: str, employee_id: str, start_date: datetime, end_date: datetime
+) -> None:
+    """Remove the leave marker; delete records that were created solely for leave."""
+    for day in _date_range_days(start_date, end_date):
+        day_str = day.strftime("%Y-%m-%d")
+        record = await Attendance.find_one(
+            {"company_id": company_id, "employee_id": employee_id, "date": day_str}
+        )
+        if not record:
+            continue
+        record.leave_status = None
+        if not record.login_time and not record.logout_time and not (record.total_working_hours or 0) and not (record.break_duration or 0):
+            await record.delete()
+        else:
+            record.updated_at = utc_now()
+            await record.save()
+
+
+# =============================================================================
+# Phase 3 — Request validation
+# =============================================================================
+
+
+async def validate_new_leave_request(
+    company_id: str,
+    employee: User,
+    leave_type_id: Optional[str],
+    duration: Optional[LeaveDuration],
+    start_date: datetime,
+    end_date: datetime,
+    reason: str,
+) -> tuple[Optional[LeaveTypeConfig], float]:
+    """Validate a new leave request. Returns (type_config, requested_units).
+
+    Raises HTTPException with user-actionable messages; the frontend surfaces
+    these inline instead of treating them as system errors.
+    """
+    if end_date < start_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="End date cannot be before start date")
+    if not (reason or "").strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reason is required")
+
+    type_config = None
+    if leave_type_id:
+        type_config = await get_leave_type_config(company_id, leave_type_id)
+        if not type_config:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected leave type does not exist")
+        if type_config.active is False:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This leave type is currently inactive")
+        duration = duration or LeaveDuration.FULL_DAY
+        if duration == LeaveDuration.HALF_DAY:
+            if start_date.date() != end_date.date():
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Half-day leave can only be requested for a single day")
+            if not type_config.allow_half_day:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Half-day leave is not available for {type_config.name}")
+        units = compute_requested_units(start_date, end_date, duration)
+    else:
+        # Legacy path (old frontend/values): no configurable type, no balance.
+        units = compute_requested_units(start_date, end_date, duration or LeaveDuration.FULL_DAY)
+    return type_config, units
+
+
 def _leave_title(leave: LeaveRequest) -> str:
-    return leave.leave_type.value.replace("_", " ").title()
+    return leave_display_title(leave)

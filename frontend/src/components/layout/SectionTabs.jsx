@@ -87,9 +87,11 @@ const resolveSectionContext = (location) => {
     return { sectionKey: ctx.sectionKey, isLanding: isLegacyLanding, itemName: ctx.itemName };
   }
 
-  // HR recruitment screens belong to the People section (they were moved out of the
-  // sidebar config, but their tabs live under People). Exact-match only: the interview
-  // screen and /hr landing deliberately show no tab bar.
+  // HR screens belong to the People section (Employees, Documents, Recruitment,
+  // Document Types). Exact matches win over prefix matches so nested routes keep
+  // their parent tab (e.g. /hr/employees/:id stays on the Employees tab) without
+  // lighting up a module landing tab. The /hr landing page and the interview
+  // screen deliberately show no tab bar.
   const hrItems = HR_MODULES.flatMap((mod) =>
     mod.navigation
       .filter((item) => !HR_ITEM_SKIP.has(item.name))
@@ -99,8 +101,14 @@ const resolveSectionContext = (location) => {
         match: item.href === mod.basePath ? mod.basePath : undefined,
       })),
   );
+  const hrPath = (item) => (item.href || "").split("?")[0];
+  if (location.pathname === "/hr" || location.pathname === "/hr/recruitment/interview-screen") {
+    return null;
+  }
   const hrExact = hrItems.find((item) => isExactNavMatch(item, location));
   if (hrExact) return { sectionKey: "people", isLanding: false, itemName: hrExact.name };
+  const hrPrefix = hrItems.find((item) => location.pathname.startsWith(`${hrPath(item)}/`));
+  if (hrPrefix) return { sectionKey: "people", isLanding: false, itemName: hrPrefix.name };
 
   return null;
 };

@@ -282,7 +282,7 @@ async def test_forward_leave_request_supports_multiple_targets(monkeypatch):
     monkeypatch.setattr(leave_endpoints, "assert_forward_target", fake_forward_target)
     monkeypatch.setattr(leave_endpoints, "create_timeline_event", fake_timeline)
     monkeypatch.setattr(leave_endpoints, "notify_user", fake_notify)
-    monkeypatch.setattr(leave_endpoints, "serialize_leave", lambda l, e=None: {"id": str(l.id)})
+    monkeypatch.setattr(leave_endpoints, "serialize_leave", lambda l, e=None, type_map=None: {"id": str(l.id)})
 
     result = await leave_endpoints.forward_leave_request(
         leave_id="leave-1",

@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from 'react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -9,6 +10,7 @@ import { authAPI } from '../../../../api/auth'
 vi.mock('../../../../api/hrDocuments', () => ({
   hrDocumentsApi: {
     listTypes: vi.fn(),
+    listDocuments: vi.fn(),
     listEmployeeDocuments: vi.fn(),
     listCandidateDocuments: vi.fn(),
     missingRequired: vi.fn(),
@@ -84,6 +86,15 @@ const renderTab = (props = {}) =>
         {...props}
       />
     </QueryClientProvider>,
+  )
+
+const renderGlobalTab = (props = {}) =>
+  render(
+    <MemoryRouter>
+      <QueryClientProvider client={createTestQueryClient()}>
+        <DocumentsTab canManage={true} {...props} />
+      </QueryClientProvider>
+    </MemoryRouter>,
   )
 
 beforeEach(() => {
@@ -247,6 +258,58 @@ describe('DocumentsTab', () => {
     fireEvent.click(confirmArchive)
 
     await waitFor(() => expect(hrDocumentsApi.archiveDocument).toHaveBeenCalledWith('doc-1'))
+  })
+
+  it('lists company-wide documents via /hr/documents in global mode', async () => {
+    hrDocumentsApi.listDocuments.mockResolvedValue({
+      data: { items: [{ ...doc, employee_name: 'Jane Doe' }], total: 1, page: 1, page_size: 15, has_next: false },
+    })
+
+    renderGlobalTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    expect(hrDocumentsApi.listDocuments).toHaveBeenCalledWith(expect.objectContaining({ page_size: 15 }))
+    // Owner names come from the backend list (no per-row requests).
+    expect(screen.getByText('Jane Doe')).toBeInTheDocument()
+  })
+
+  it('links the owner to the employee profile from the global list', async () => {
+    hrDocumentsApi.listDocuments.mockResolvedValue({
+      data: { items: [{ ...doc, employee_id: 'emp-1', employee_name: 'Jane Doe' }], total: 1, page: 1, page_size: 15, has_next: false },
+    })
+
+    renderGlobalTab()
+
+    await waitFor(() => expect(screen.getByText('Jane Doe')).toBeInTheDocument())
+    expect(screen.getByText('Jane Doe').getAttribute('href')).toBe('/hr/employees/emp-1')
+  })
+
+  it('filters the global list by owner type via the backend', async () => {
+    hrDocumentsApi.listDocuments.mockResolvedValue({
+      data: { items: [{ ...doc, candidate_id: 'cand-1', candidate_name: 'John C' }], total: 1, page: 1, page_size: 15, has_next: false },
+    })
+
+    renderGlobalTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Filters/i }))
+    await waitFor(() => expect(screen.getByLabelText('Filter by owner type')).toBeInTheDocument())
+    fireEvent.change(screen.getByLabelText('Filter by owner type'), { target: { value: 'candidate' } })
+
+    await waitFor(() =>
+      expect(hrDocumentsApi.listDocuments).toHaveBeenCalledWith(expect.objectContaining({ owner_type: 'candidate' })),
+    )
+  })
+
+  it('hides the upload button in global mode', async () => {
+    hrDocumentsApi.listDocuments.mockResolvedValue({
+      data: { items: [{ ...doc, employee_name: 'Jane Doe' }], total: 1, page: 1, page_size: 15, has_next: false },
+    })
+
+    renderGlobalTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /Upload Document/i })).toBeNull()
   })
 
   it('hides manage actions when the backend forbids them', async () => {
