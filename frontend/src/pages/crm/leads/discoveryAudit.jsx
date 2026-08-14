@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { AlertCircle, CheckCircle2, FileText, Pencil, Plus, Save, Trash2, X } from 'lucide-react'
 import { crmApi } from '../../../api/crm'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
-import { Button, inputClassName } from '../../../components/ui'
+import { Button, Modal, inputClassName } from '../../../components/ui'
 
 const blankDiscovery = {
   business_information: {},
@@ -317,7 +317,7 @@ export function LeadDiscoveryTab({ leadId, lead, onScheduleFollowUp }) {
   )
 }
 
-export function LeadAuditTab({ leadId, lead, onScheduleFollowUp, onQuotationGenerated }) {
+export function LeadAuditTab({ leadId, lead, onScheduleFollowUp, onQuotationGenerated, onGoToDiscovery }) {
   const queryClient = useQueryClient()
   const query = useQuery(['crm-lead-audit', leadId], () => crmApi.getLeadAudit(leadId), { enabled: Boolean(leadId), staleTime: 60_000 })
   const discoveryQuery = useQuery(['crm-lead-discovery', leadId], () => crmApi.getLeadDiscovery(leadId), { enabled: Boolean(leadId), staleTime: 60_000 })
@@ -327,6 +327,7 @@ export function LeadAuditTab({ leadId, lead, onScheduleFollowUp, onQuotationGene
     primaryProblem: '',
     primaryGoal: '',
   })
+  const [discoveryGateOpen, setDiscoveryGateOpen] = useState(false)
   useEffect(() => setForm(mergeWorkspace(blankAudit, query.data?.audit)), [query.data])
   useEffect(() => {
     const discovery = mergeWorkspace(blankDiscovery, discoveryQuery.data?.discovery)
@@ -341,7 +342,7 @@ export function LeadAuditTab({ leadId, lead, onScheduleFollowUp, onQuotationGene
     onError: (error) => toast.error(error?.response?.data?.detail || 'Audit save failed'),
   })
   const complete = useMutation(() => crmApi.completeLeadAudit(leadId), {
-    onSuccess: (data) => { toast.success('Audit completed'); queryClient.setQueryData(['crm-lead-audit', leadId], data) },
+    onSuccess: (data) => { toast.success('Audit completed'); queryClient.setQueryData(['crm-lead-audit', leadId], data); queryClient.invalidateQueries(['crm-lead-workspace', leadId]) },
     onError: () => {},
   })
   const generate = useMutation(() => crmApi.generateQuotationFromDiscoveryAudit(leadId), {
@@ -357,6 +358,14 @@ export function LeadAuditTab({ leadId, lead, onScheduleFollowUp, onQuotationGene
     const saved = await crmApi.updateLeadDiscovery(leadId, payload)
     queryClient.setQueryData(['crm-lead-discovery', leadId], saved)
     return saved
+  }
+  const isDiscoveryComplete = String(discoveryQuery.data?.discovery?.status || '').toLowerCase() === 'completed'
+  const requireDiscoveryComplete = (action) => {
+    if (isDiscoveryComplete) {
+      action?.()
+      return
+    }
+    setDiscoveryGateOpen(true)
   }
   const handleSave = async () => {
     try {
@@ -390,14 +399,40 @@ export function LeadAuditTab({ leadId, lead, onScheduleFollowUp, onQuotationGene
           onChange={(value) => setForm((state) => ({ ...state, findings: value }))}
         />
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button type="button" variant="primary" loading={save.isLoading} onClick={handleSave}><Save className="h-4 w-4" />Save Draft</Button>
-          <Button type="button" variant="secondary" loading={complete.isLoading} onClick={() => complete.mutate()}>Complete Audit</Button>
-          <Button type="button" variant="secondary" onClick={onScheduleFollowUp}>Schedule Follow-up</Button>
-          <Button type="button" variant="primary" loading={generate.isLoading} onClick={handleGenerate}><FileText className="h-4 w-4" />Generate Quotation Draft</Button>
+          <Button type="button" variant="primary" loading={save.isLoading} onClick={() => requireDiscoveryComplete(handleSave)}><Save className="h-4 w-4" />Save Draft</Button>
+          <Button type="button" variant="secondary" loading={complete.isLoading} onClick={() => requireDiscoveryComplete(() => complete.mutate())}>Complete Audit</Button>
+          <Button type="button" variant="secondary" onClick={() => requireDiscoveryComplete(onScheduleFollowUp)}>Schedule Follow-up</Button>
+          <Button type="button" variant="primary" loading={generate.isLoading} onClick={() => requireDiscoveryComplete(handleGenerate)}><FileText className="h-4 w-4" />Generate Quotation Draft</Button>
         </div>
         <ValidationMessage error={complete.error || generate.error} />
         {included.length === 0 ? <CRMEmptyState title="No proposal recommendations selected" description="Mark at least one recommendation as included before generating a quotation draft." /> : null}
       </CRMSection>
+      <Modal
+        isOpen={discoveryGateOpen}
+        title="Complete Discovery first"
+        description="Audit actions unlock after Discovery is completed for this lead."
+        size="sm"
+        onClose={() => setDiscoveryGateOpen(false)}
+        footer={(
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setDiscoveryGateOpen(false)}>Cancel</Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => {
+                setDiscoveryGateOpen(false)
+                onGoToDiscovery?.()
+              }}
+            >
+              Go to Discovery
+            </Button>
+          </div>
+        )}
+      >
+        <p className="text-sm leading-6 text-gray-600 dark:text-gray-300">
+          Finish and complete the Discovery workspace before saving Audit work, completing Audit, scheduling from Audit, or generating a quotation draft.
+        </p>
+      </Modal>
       <CRMSection title="Quotation prerequisites">
         <div className="grid gap-4 lg:grid-cols-3">
           <Field label="Business / customer identity" value={prerequisites.businessName} onChange={(value) => updatePrerequisite('businessName', value)} />

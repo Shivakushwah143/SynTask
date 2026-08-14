@@ -933,6 +933,12 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   const gateRequirements = gate ? gate.requirements(lead) : []
   const gateReady = gate ? gateRequirements.every((req) => req.met) : false
   const isWonStage = currentStageKey === 'won'
+  const previousStage = useMemo(() => {
+    const index = LEAD_STAGE_STEPS.findIndex((stage) => getCanonicalPipelineStageKey(stage) === currentStageKey)
+    if (index <= 0) return null
+    const label = LEAD_STAGE_STEPS[index - 1]
+    return { key: getCanonicalPipelineStageKey(label), label }
+  }, [currentStageKey])
   const stageStatusOptions = getStageStatusOptions(currentStageKey)
   const stageStatusLabel = getStageStatusLabel(lead?.current_stage, getLeadStageStatus(lead))
   const [stageStatus, setStageStatus] = useState(() => getLeadStageStatus(lead))
@@ -1091,6 +1097,17 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
     }
   }
 
+  const handleMoveToPreviousStage = async () => {
+    if (!previousStage?.key || !lead?.id) return
+    try {
+      await crmApi.updatePipelineStage(lead.id, { stage: previousStage.key })
+      toast.success(`Lead moved to ${previousStage.label}`)
+      refreshWorkspace()
+    } catch (error) {
+      handleSidebarTransitionError(error, { mode: 'stage', targetStageKey: previousStage.key })
+    }
+  }
+
   useEffect(() => {
     const custom = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
     setForm({
@@ -1244,41 +1261,55 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       </LeadSidebarPanel>
 
       <LeadSidebarPanel title="Stage checklist" description="Requirements before the lead can move to the next stage.">
-        {gate ? (
-          <div className="space-y-2">
-            {gateRequirements.map((req) => (
-              <div key={req.label} className="flex items-start gap-2 rounded-xl border border-surface-border/70 bg-white/75 px-3 py-2 dark:border-gray-800 dark:bg-gray-900/70">
-                {req.met ? (
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                ) : (
-                  <X className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
-                )}
-                <span className={`text-sm ${req.met ? 'font-medium text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>
-                  {req.label}
-                </span>
-              </div>
-            ))}
+        <div className="space-y-2">
+          {gate ? (
+            <>
+              {gateRequirements.map((req) => (
+                <div key={req.label} className="flex items-start gap-2 rounded-xl border border-surface-border/70 bg-white/75 px-3 py-2 dark:border-gray-800 dark:bg-gray-900/70">
+                  {req.met ? (
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                  ) : (
+                    <X className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                  )}
+                  <span className={`text-sm ${req.met ? 'font-medium text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>
+                    {req.label}
+                  </span>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="primary"
+                className="mt-4 w-full justify-center shadow-sm"
+                onClick={handleMoveToNextStage}
+                title={gateReady ? `Move this lead to ${gate.nextLabel}` : gate.hint}
+              >
+                <ArrowRight className="h-4 w-4" />
+                Move to {gate.nextLabel}
+              </Button>
+              {!gateReady ? (
+                <p className="mt-2 text-xs leading-5 text-amber-600 dark:text-amber-400">{gate.hint}</p>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {isWonStage
+                ? 'Deal closed. Use the Won conversion panel below, then transfer to Clients.'
+                : 'This lead is at the end of the sales journey.'}
+            </p>
+          )}
+          {previousStage ? (
             <Button
               type="button"
-              variant="primary"
-              className="mt-4 w-full justify-center shadow-sm"
-              onClick={handleMoveToNextStage}
-              title={gateReady ? `Move this lead to ${gate.nextLabel}` : gate.hint}
+              variant="secondary"
+              className="mt-3 w-full justify-center"
+              onClick={handleMoveToPreviousStage}
+              title={`Move this lead back to ${previousStage.label}`}
             >
-              <ArrowRight className="h-4 w-4" />
-              Move to {gate.nextLabel}
+              <ArrowLeft className="h-4 w-4" />
+              Move back to {previousStage.label}
             </Button>
-            {!gateReady ? (
-              <p className="mt-2 text-xs leading-5 text-amber-600 dark:text-amber-400">{gate.hint}</p>
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {isWonStage
-              ? 'Deal closed. Use the Won conversion panel below, then transfer to Clients.'
-              : 'This lead is at the end of the sales journey.'}
-          </p>
-        )}
+          ) : null}
+        </div>
       </LeadSidebarPanel>
 
       <LeadSidebarPanel title="Pipeline edits" description="Ownership, stage and qualification fields.">

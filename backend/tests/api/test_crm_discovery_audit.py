@@ -33,6 +33,9 @@ class FakeLead:
         self.decision_maker = kwargs.pop("decision_maker", None)
         self.timeline = kwargs.pop("timeline", None)
         self.discovery_outcome = kwargs.pop("discovery_outcome", None)
+        self.current_stage = kwargs.pop("current_stage", "Discovery")
+        self.current_stage_status = kwargs.pop("current_stage_status", None)
+        self.stage_status_history = kwargs.pop("stage_status_history", [])
         self.updated_at = kwargs.pop("updated_at", datetime.utcnow())
 
     async def save(self):
@@ -203,7 +206,32 @@ async def test_complete_discovery_returns_structured_business_validation():
 
 
 @pytest.mark.asyncio
+async def test_complete_discovery_marks_stage_status_need_audit():
+    await discovery_audit.patch_discovery(user(), "lead-1", {
+        "business_information": {"business_name": "Acme"},
+        "problems": {"selected": ["poor Google visibility"]},
+        "goals": {"primary_goal": "rank on Google"},
+        "budget": {"budget_confirmed": "yes"},
+        "decision_maker": {"identified": "yes"},
+    })
+
+    await discovery_audit.complete_discovery(user(), "lead-1")
+
+    lead = FakeLeadModel.leads["lead-1"]
+    assert lead.discovery_outcome == "need_audit"
+    assert lead.current_stage_status == "need_audit"
+
+
+@pytest.mark.asyncio
 async def test_complete_audit_requires_proposal_recommendation():
+    await discovery_audit.patch_discovery(user(), "lead-1", {
+        "business_information": {"business_name": "Acme"},
+        "problems": {"selected": ["poor Google visibility"]},
+        "goals": {"primary_goal": "rank on Google"},
+        "budget": {"budget_confirmed": "yes"},
+        "decision_maker": {"identified": "yes"},
+    })
+    await discovery_audit.complete_discovery(user(), "lead-1")
     await discovery_audit.get_audit(user(), "lead-1")
 
     with pytest.raises(HTTPException) as exc:
@@ -214,13 +242,49 @@ async def test_complete_audit_requires_proposal_recommendation():
 
 
 @pytest.mark.asyncio
+async def test_complete_audit_marks_stage_status_need_proposal():
+    await discovery_audit.patch_discovery(user(), "lead-1", {
+        "business_information": {"business_name": "Acme"},
+        "problems": {"selected": ["poor Google visibility"]},
+        "goals": {"primary_goal": "rank on Google"},
+        "budget": {"budget_confirmed": "yes"},
+        "decision_maker": {"identified": "yes"},
+    })
+    await discovery_audit.complete_discovery(user(), "lead-1")
+    await discovery_audit.patch_audit(user(), "lead-1", {
+        "recommendations": [{"title": "Improve GBP", "suggested_service": "Local SEO", "include_in_proposal": True}],
+    })
+
+    await discovery_audit.complete_audit(user(), "lead-1")
+
+    lead = FakeLeadModel.leads["lead-1"]
+    assert lead.discovery_outcome == "need_proposal"
+    assert lead.current_stage_status == "need_proposal"
+
+
+@pytest.mark.asyncio
+async def test_complete_audit_requires_completed_discovery():
+    await discovery_audit.get_discovery(user(), "lead-1")
+    await discovery_audit.get_audit(user(), "lead-1")
+
+    with pytest.raises(HTTPException) as exc:
+        await discovery_audit.complete_audit(user(), "lead-1")
+
+    assert exc.value.status_code == 422
+    assert exc.value.detail["code"] == "DISCOVERY_REQUIRED"
+
+
+@pytest.mark.asyncio
 async def test_generate_quotation_draft_uses_existing_document_service_and_product_mapping(monkeypatch):
     FakeProductModel.products = [FakeProduct()]
     await discovery_audit.patch_discovery(user(), "lead-1", {
         "business_information": {"business_name": "Acme"},
         "problems": {"selected": ["poor Google visibility"]},
         "goals": {"primary_goal": "rank on Google"},
+        "budget": {"budget_confirmed": "yes"},
+        "decision_maker": {"identified": "yes"},
     })
+    await discovery_audit.complete_discovery(user(), "lead-1")
     await discovery_audit.patch_audit(user(), "lead-1", {
         "recommendations": [{"title": "Improve GBP", "suggested_service": "Local SEO", "include_in_proposal": True}],
         "swot": {"weaknesses": ["low visibility"], "opportunities": ["local search demand"]},

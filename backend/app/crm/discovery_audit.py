@@ -175,6 +175,21 @@ def _discovery_missing(discovery: SalesDiscovery) -> list[str]:
     return missing
 
 
+def _discovery_completed(discovery: Optional[SalesDiscovery]) -> bool:
+    return bool(discovery and discovery.status == SalesWorkspaceStatus.COMPLETED)
+
+
+def _raise_discovery_required() -> None:
+    raise HTTPException(
+        status_code=422,
+        detail={
+            "code": "DISCOVERY_REQUIRED",
+            "message": "Complete Discovery before continuing with Audit.",
+            "missing_items": ["Completed Discovery"],
+        },
+    )
+
+
 async def complete_discovery(current_user: User, lead_id: str) -> dict[str, Any]:
     _assert_can_edit(current_user)
     lead = await _lead_for_user(current_user, lead_id)
@@ -190,7 +205,9 @@ async def complete_discovery(current_user: User, lead_id: str) -> dict[str, Any]
     discovery.updated_at = utc_now()
     discovery.completion = _completion(DISCOVERY_SECTIONS, discovery)
     await discovery.save()
-    lead.discovery_outcome = lead.discovery_outcome or "need_proposal"
+    from app.crm.pipeline import apply_stage_status_change
+
+    apply_stage_status_change(lead, stage_key="discovery", new_status="need_audit", user=current_user, now=utc_now())
     lead.updated_at = utc_now()
     await lead.save()
     await _activity(lead, current_user, "Discovery completed", {"discovery_id": str(discovery.id), "version": discovery.version})
@@ -232,6 +249,9 @@ async def patch_audit(current_user: User, lead_id: str, payload: dict[str, Any])
 async def complete_audit(current_user: User, lead_id: str) -> dict[str, Any]:
     _assert_can_edit(current_user)
     lead = await _lead_for_user(current_user, lead_id)
+    discovery = await SalesDiscovery.find_one({"company_id": str(lead.company_id), "lead_id": str(lead.id)})
+    if discovery and not _discovery_completed(discovery):
+        _raise_discovery_required()
     await get_audit(current_user, lead_id)
     audit = await SalesAudit.find_one({"company_id": str(lead.company_id), "lead_id": str(lead.id)})
     if not _proposal_recommendations(audit):
@@ -243,6 +263,11 @@ async def complete_audit(current_user: User, lead_id: str) -> dict[str, Any]:
     audit.updated_at = utc_now()
     audit.completion = _completion(AUDIT_SECTIONS, audit)
     await audit.save()
+    from app.crm.pipeline import apply_stage_status_change
+
+    apply_stage_status_change(lead, stage_key="discovery", new_status="need_proposal", user=current_user, now=utc_now())
+    lead.updated_at = utc_now()
+    await lead.save()
     await _activity(lead, current_user, "Audit completed", {"audit_id": str(audit.id), "version": audit.version})
     return {"audit": _serialize(audit)}
 
@@ -301,6 +326,8 @@ async def generate_quotation_draft(current_user: User, lead_id: str) -> dict[str
     lead = await _lead_for_user(current_user, lead_id)
     discovery = await SalesDiscovery.find_one({"company_id": str(lead.company_id), "lead_id": str(lead.id)})
     audit = await SalesAudit.find_one({"company_id": str(lead.company_id), "lead_id": str(lead.id)})
+    if discovery and not _discovery_completed(discovery):
+        _raise_discovery_required()
     recommendations = _proposal_recommendations(audit)
     lead_problem = getattr(lead, "pain_points", None) or getattr(lead, "requirement", None)
     lead_goal = getattr(lead, "requirement", None) or getattr(lead, "next_action", None)

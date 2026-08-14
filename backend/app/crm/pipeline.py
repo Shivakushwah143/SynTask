@@ -728,6 +728,20 @@ def _is_allowed_transition(current_stage: str, target_stage: str) -> bool:
     target = _resolve_pipeline_stage(target_stage)
     if not current or not target:
         return False
+    journey = [
+        PipelineStage.ACQUIRE,
+        PipelineStage.QUALIFY,
+        PipelineStage.DISCOVERY,
+        PipelineStage.PROPOSAL,
+        PipelineStage.NEGOTIATION,
+        PipelineStage.AGREEMENT,
+        PipelineStage.WON,
+    ]
+    if current in journey and target in journey:
+        current_index = journey.index(current)
+        target_index = journey.index(target)
+        if target_index == current_index - 1:
+            return True
     return target in ALLOWED_TRANSITIONS.get(current, set())
 
 
