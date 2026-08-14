@@ -158,6 +158,10 @@ async def test_create_contract_from_document_uses_fixed_counter(monkeypatch):
     class FakeCRMDocument:
         inserted = None
 
+        @classmethod
+        async def find_one(cls, query):
+            return None
+
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
             self.id = "contract-1"
@@ -178,9 +182,13 @@ async def test_create_contract_from_document_uses_fixed_counter(monkeypatch):
     async def fake_next_document_number(company_id, document_type):
         return "CON-2026-0001"
 
+    async def fake_sync(*args, **kwargs):
+        return None
+
     monkeypatch.setattr(documents, "_document_for_user", fake_document_for_user)
     monkeypatch.setattr(documents, "_next_document_number", fake_next_document_number)
     monkeypatch.setattr(documents, "_event", fake_event)
+    monkeypatch.setattr(documents, "_sync_lead_status_from_document", fake_sync)
     monkeypatch.setattr(documents, "CRMDocument", FakeCRMDocument)
 
     result = await documents.create_contract_from_document(
@@ -215,3 +223,87 @@ async def test_create_contract_from_document_requires_accepted_quotation(monkeyp
 
     assert exc.value.status_code == 400
     assert exc.value.detail == "Contract can be created only from an accepted quotation"
+
+
+@pytest.mark.asyncio
+async def test_quotation_acceptance_syncs_proposal_status(monkeypatch):
+    document = SimpleNamespace(
+        id="doc-1",
+        company_id="company-1",
+        lead_id="lead-1",
+        document_type=CRMDocumentType.QUOTATION,
+        status=CRMDocumentStatus.ACCEPTED,
+    )
+    lead = SimpleNamespace(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        current_stage="Proposal",
+        proposal_status="sent",
+        current_stage_status="sent",
+        stage_status_history=[],
+        updated_at=None,
+    )
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_save():
+        lead.saved = True
+
+    lead.save = fake_save
+    monkeypatch.setattr(documents.SalesProspect, "get", fake_get)
+
+    await documents._sync_lead_status_from_document(document, SimpleNamespace(id="user-1", first_name="Ada", last_name="Admin"))
+
+    assert lead.proposal_status == "accepted"
+    assert lead.current_stage_status == "accepted"
+    assert lead.stage_status_history[-1]["to_status"] == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_contract_acceptance_syncs_agreement_status(monkeypatch):
+    document = SimpleNamespace(
+        id="doc-1",
+        company_id="company-1",
+        lead_id="lead-1",
+        document_type=CRMDocumentType.CONTRACT,
+        status=CRMDocumentStatus.ACCEPTED,
+    )
+    lead = SimpleNamespace(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        current_stage="Agreement",
+        agreement_status="sent",
+        current_stage_status="sent",
+        stage_status_history=[],
+        updated_at=None,
+    )
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_save():
+        lead.saved = True
+
+    lead.save = fake_save
+    monkeypatch.setattr(documents.SalesProspect, "get", fake_get)
+
+    await documents._sync_lead_status_from_document(document, None)
+
+    assert lead.agreement_status == "signed"
+    assert lead.current_stage_status == "signed"
+
+
+def test_unresolved_pricing_items_flags_required_zero_value_lines():
+    document = SimpleNamespace(
+        content_snapshot={
+            "items": [
+                {"description": "SEO Technical Audit", "requires_pricing": True, "unit_price": "0", "line_total": "0"},
+                {"description": "Website", "requires_pricing": False, "unit_price": "100", "line_total": "118"},
+            ]
+        }
+    )
+
+    assert documents.unresolved_pricing_items(document) == ["SEO Technical Audit"]

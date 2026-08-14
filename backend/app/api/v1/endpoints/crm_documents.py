@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from pydantic import BaseModel
 
 from app.api.dependencies import get_current_user
@@ -109,8 +109,8 @@ async def create_contract_from_document(lead_id: str, document_id: str, current_
 @router.post("/leads/{lead_id}/documents/upload")
 async def upload_lead_document_pdf(
     lead_id: str,
-    document_type: str = "contract",
-    title: Optional[str] = None,
+    document_type: Optional[str] = Form(None),
+    title: Optional[str] = Form(None),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):

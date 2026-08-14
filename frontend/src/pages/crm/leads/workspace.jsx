@@ -290,22 +290,12 @@ export default function CRMLeadWorkspacePage() {
   else if (activeTab === 'emails') body = <LeadEmailsTab />
   else if (activeTab === 'call_logs') body = <LeadCallLogsTab />
   else if (activeTab === 'discovery') body = <LeadDiscoveryTab leadId={leadId} lead={lead} onScheduleFollowUp={openFollowUp} />
-  else if (activeTab === 'audit') body = <LeadAuditTab leadId={leadId} lead={lead} onScheduleFollowUp={openFollowUp} onQuotationGenerated={() => handleTabChange('documents')} />
-  else if (activeTab === 'documents') body = <LeadDocumentsTab leadId={leadId} lead={lead} />
+  else if (activeTab === 'audit') body = <LeadAuditTab leadId={leadId} lead={lead} onScheduleFollowUp={openFollowUp} onQuotationGenerated={() => handleTabChange('proposal')} />
+  else if (activeTab === 'documents') body = <LeadDocumentsTab leadId={leadId} lead={lead} mode="documents" />
+  else if (activeTab === 'agreement') body = <LeadDocumentsTab leadId={leadId} lead={lead} mode="agreement" />
   else if (activeTab === 'proposal') {
     body = (
-      <LeadProposalTab
-        deal={deal}
-        proposals={proposals}
-        form={proposalForm}
-        onChange={handleProposalChange}
-        onSubmit={handleProposalSubmit}
-        onArchive={handleProposalArchive}
-        isSaving={proposalMutation.isLoading}
-        isLoading={proposalQuery.isLoading}
-        errorMessage={proposalQuery.isError ? proposalQuery.error?.response?.data?.detail || 'Proposal data could not be loaded.' : ''}
-        onRetry={() => proposalQuery.refetch()}
-      />
+      <LeadDocumentsTab leadId={leadId} lead={lead} mode="proposal" />
     )
   } else if (activeTab === 'ai') {
     body = <LeadAISalesTab leadId={leadId} lead={lead} onRefresh={handleRefresh} />

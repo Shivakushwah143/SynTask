@@ -24,17 +24,22 @@ export const LEAD_TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'discovery', label: 'Discovery' },
   { key: 'audit', label: 'Audit' },
+  { key: 'proposal', label: 'Proposal' },
+  { key: 'agreement', label: 'Agreement' },
+  { key: 'documents', label: 'Documents' },
+  { key: 'timeline', label: 'Activity' },
   { key: 'notes', label: 'Notes' },
   { key: 'tasks', label: 'Tasks' },
   { key: 'meetings', label: 'Meetings' },
   { key: 'emails', label: 'Emails' },
   { key: 'files', label: 'Files' },
   { key: 'call_logs', label: 'Calls' },
-  { key: 'proposal', label: 'Proposal' },
-  { key: 'documents', label: 'Documents' },
+  { key: 'history', label: 'Stage History' },
   { key: 'ai', label: 'AI' },
 ]
-const PRIMARY_LEAD_TAB_KEYS = new Set(['overview', 'discovery', 'audit', 'proposal', 'documents'])
+const PRIMARY_LEAD_TAB_KEYS = new Set(['overview', 'discovery', 'audit', 'proposal', 'agreement', 'documents', 'timeline'])
+const WORKSPACE_STAGE_ORDER = ['acquire', 'qualify', 'discovery', 'proposal', 'negotiation', 'agreement', 'won']
+const WORKSPACE_STAGE_MINIMUM = { discovery: 'discovery', audit: 'discovery', proposal: 'proposal', agreement: 'agreement' }
 
 const leadTone = (value) => {
   const key = String(value || '').toLowerCase()
@@ -316,7 +321,7 @@ export const LeadWorkspace = memo(function LeadWorkspace({
 
       <LeadJourneyTracker lead={lead} />
 
-      <LeadTabs activeTab={activeTab} onTabChange={onTabChange} />
+      <LeadTabs activeTab={activeTab} onTabChange={onTabChange} lead={lead} />
 
       <LeadWorkspaceLayout body={body} sidebar={sidebar} />
     </CRMPage>
@@ -573,33 +578,54 @@ function HeaderEditField({ label, value, onChange, type = 'text', placeholder, o
   )
 }
 
-export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange }) {
+const tabAvailability = (lead, tab) => {
+  const minimum = WORKSPACE_STAGE_MINIMUM[tab.key]
+  if (!minimum) return { locked: false }
+  const current = getCanonicalPipelineStageKey(lead?.current_stage || 'acquire')
+  const currentIndex = WORKSPACE_STAGE_ORDER.indexOf(current)
+  const requiredIndex = WORKSPACE_STAGE_ORDER.indexOf(minimum)
+  const locked = currentIndex >= 0 && requiredIndex >= 0 && currentIndex < requiredIndex
+  if (!locked) return { locked: false }
+  const messages = {
+    discovery: 'Complete Qualification before starting Discovery.',
+    audit: 'Complete Qualification before starting Audit.',
+    proposal: 'Complete Discovery before starting Proposal.',
+    agreement: 'Complete Proposal and Negotiation before starting Agreement.',
+  }
+  return { locked: true, message: messages[tab.key] || 'Complete the earlier sales stage first.' }
+}
+
+export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange, lead }) {
   const primaryTabs = LEAD_TABS.filter((tab) => PRIMARY_LEAD_TAB_KEYS.has(tab.key))
   const moreTabs = LEAD_TABS.filter((tab) => !PRIMARY_LEAD_TAB_KEYS.has(tab.key))
   const activeMoreTab = moreTabs.find((tab) => tab.key === activeTab)
+  const showLocked = (message) => toast(message)
   return (
     <nav aria-label="Lead workspace sections" className="overflow-x-auto rounded-2xl border border-surface-border/80 bg-white/90 p-2 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
       <div className="flex min-w-max items-center gap-2">
         {primaryTabs.map((tab) => {
           const isActive = activeTab === tab.key
+          const availability = tabAvailability(lead, tab)
           const commonClass = `inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
             isActive
               ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200'
               : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100'
           }`
 
-          if (tab.disabled) {
+          if (availability.locked || tab.disabled) {
             return (
               <button
                 key={tab.key}
                 type="button"
                 className={`${commonClass} cursor-not-allowed opacity-60`}
                 aria-disabled="true"
-                title="Coming soon"
+                title={availability.message || 'Coming soon'}
+                onClick={() => showLocked(availability.message || 'Coming soon')}
               >
                 {tab.label}
+                <Lock className="h-3.5 w-3.5" />
                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                  Soon
+                  Locked
                 </span>
               </button>
             )

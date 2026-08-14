@@ -291,7 +291,7 @@ async def _product_map(company_id: str, recommendations: list[dict[str, Any]], p
                 "sales_product_id": str(matched.id),
             })
         else:
-            items.append({"description": description, "quantity": "1", "unit": "service", "unit_price": "0", "discount": "0", "tax_rate": "18", "tax_type": "gst", "display_order": len(items), "source_recommendation": rec.get("title"), "mapping_status": "unmapped"})
+            items.append({"description": description, "quantity": "1", "unit": "service", "unit_price": "0", "discount": "0", "tax_rate": "18", "tax_type": "gst", "display_order": len(items), "source_recommendation": rec.get("title"), "mapping_status": "unmapped", "requires_pricing": True})
             unmapped.append({"title": description, "suggested_service": rec.get("suggested_service"), "message": "Recommended service is not mapped to a Sales Product."})
     return items, unmapped
 

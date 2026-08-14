@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import toast from 'react-hot-toast'
 import { Copy, Download, ExternalLink, FileText, Link2, Upload } from 'lucide-react'
@@ -23,7 +23,7 @@ const contractDefaults = {
 
 export const LEAD_DOCUMENTS_QUERY_KEY = 'crm-lead-documents'
 
-export function LeadDocumentsTab({ leadId, lead }) {
+export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState({
     document_type: 'quotation',
@@ -35,10 +35,22 @@ export function LeadDocumentsTab({ leadId, lead }) {
     ...contractDefaults,
   })
   const [uploadFile, setUploadFile] = useState(null)
+  const [uploadType, setUploadType] = useState('quotation')
   const [shareLinks, setShareLinks] = useState({})
 
   const documentsQuery = useQuery([LEAD_DOCUMENTS_QUERY_KEY, leadId], () => crmApi.getLeadDocuments(leadId), { enabled: Boolean(leadId), staleTime: 60_000 })
   const documents = useMemo(() => documentsQuery.data?.documents || [], [documentsQuery.data])
+  const visibleDocuments = useMemo(() => {
+    if (mode === 'proposal') return documents.filter((document) => document.document_type === 'quotation')
+    if (mode === 'agreement') return documents.filter((document) => document.document_type === 'contract')
+    return documents
+  }, [documents, mode])
+  const workspaceTitle = mode === 'proposal' ? 'Proposal' : mode === 'agreement' ? 'Agreement' : 'Documents'
+  const editorType = mode === 'agreement' ? 'contract' : 'quotation'
+  useEffect(() => {
+    if (mode === 'proposal') setForm((state) => ({ ...state, document_type: 'quotation' }))
+    if (mode === 'agreement') setForm((state) => ({ ...state, document_type: 'contract' }))
+  }, [mode])
 
   const refetch = () => {
     documentsQuery.refetch()
@@ -88,6 +100,7 @@ export function LeadDocumentsTab({ leadId, lead }) {
   const uploadMutation = useMutation(() => {
     const body = new FormData()
     body.append('file', uploadFile)
+    body.append('document_type', uploadType)
     return crmApi.uploadLeadDocumentPdf(leadId, body)
   }, {
     onSuccess: () => {
@@ -143,10 +156,14 @@ export function LeadDocumentsTab({ leadId, lead }) {
 
   return (
     <div className="space-y-6">
-      <CRMSection title="Documents" description="Quotations and contracts for this lead.">
+      <CRMSection title={workspaceTitle} description={mode === 'proposal' ? 'Manage the active quotation that drives Proposal status.' : mode === 'agreement' ? 'Create and manage the contract that completes Agreement.' : 'Central document repository and history for this lead.'}>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" onClick={() => setForm((s) => ({ ...s, document_type: 'quotation' }))}>Create Quotation</Button>
-          <Button type="button" variant="secondary" onClick={() => setForm((s) => ({ ...s, document_type: 'contract' }))}>Create Contract</Button>
+          {mode !== 'agreement' ? <Button type="button" variant="secondary" onClick={() => setForm((s) => ({ ...s, document_type: 'quotation' }))}>Create Quotation</Button> : null}
+          {mode !== 'proposal' ? <Button type="button" variant="secondary" onClick={() => setForm((s) => ({ ...s, document_type: 'contract' }))}>Create Contract</Button> : null}
+          <select className={inputClassName} value={uploadType} onChange={(event) => setUploadType(event.target.value)}>
+            <option value="quotation">Quotation PDF</option>
+            <option value="contract">Contract PDF</option>
+          </select>
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-surface-border bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200">
             <Upload className="h-4 w-4" />
             Upload Existing PDF
@@ -156,7 +173,7 @@ export function LeadDocumentsTab({ leadId, lead }) {
         </div>
       </CRMSection>
 
-      <CRMSection title={`${form.document_type === 'contract' ? 'Contract' : 'Quotation'} editor`} description="Backend saves this as a lead-linked CRM document.">
+      <CRMSection title={`${form.document_type === 'contract' ? 'Contract' : 'Quotation'} builder`} description="Review generated information before sending; backend totals and status synchronization are authoritative.">
         <div className="grid gap-4 lg:grid-cols-3">
           <label className="block lg:col-span-2">
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Title</span>
@@ -220,13 +237,13 @@ export function LeadDocumentsTab({ leadId, lead }) {
         </div>
       </CRMSection>
 
-      <CRMSection title="Previously created documents" description="Status, totals, sent date, and actions.">
-        {documentsQuery.isLoading ? <div className="h-28 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-800" /> : documents.length ? (
+      <CRMSection title={mode === 'documents' ? 'Document history' : 'Lifecycle'} description="Status, totals, sent date, and actions.">
+        {documentsQuery.isLoading ? <div className="h-28 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-800" /> : visibleDocuments.length ? (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-800">
               <thead><tr className="text-left text-xs uppercase text-gray-500"><th className="py-2">Document</th><th>Status</th><th>Total</th><th>Created</th><th>Link expiry</th><th>Actions</th></tr></thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {documents.map((document) => (
+                {visibleDocuments.map((document) => (
                   <tr key={document.id}>
                     <td className="py-3"><div className="font-medium text-gray-900 dark:text-gray-100">{document.document_number}</div><div className="text-gray-500">{document.title}</div></td>
                     <td><Badge label={document.status} colorKey={document.status === 'accepted' ? 'completed' : document.status === 'rejected' ? 'critical' : 'scheduled'} /></td>
@@ -234,9 +251,9 @@ export function LeadDocumentsTab({ leadId, lead }) {
                     <td>{formatShortDate(document.created_at)}</td>
                     <td>{formatShortDate(document.token_expires_at)}</td>
                     <td><div className="flex flex-wrap gap-2">
-                      <Button type="button" variant="secondary" size="sm" disabled={actionMutation.isLoading} onClick={() => actionMutation.mutate({ action: 'pdf', document })}><FileText className="h-4 w-4" />Generate PDF</Button>
-                      <a className="inline-flex items-center gap-1 rounded-lg border border-surface-border px-2 py-1 text-xs" href={crmApi.leadDocumentPdfUrl(leadId, document.id)} target="_blank" rel="noreferrer"><ExternalLink className="h-3 w-3" />Preview</a>
-                      <Button type="button" variant="secondary" size="sm" disabled={actionMutation.isLoading} onClick={() => actionMutation.mutate({ action: 'download', document })}><Download className="h-4 w-4" />Download</Button>
+                      {!document.pdf_file_path && !document.source_file_path ? <Button type="button" variant="secondary" size="sm" disabled={actionMutation.isLoading} onClick={() => actionMutation.mutate({ action: 'pdf', document })}><FileText className="h-4 w-4" />Generate PDF</Button> : null}
+                      {document.pdf_file_path || document.source_file_path ? <a className="inline-flex items-center gap-1 rounded-lg border border-surface-border px-2 py-1 text-xs" href={crmApi.leadDocumentPdfUrl(leadId, document.id)} target="_blank" rel="noreferrer"><ExternalLink className="h-3 w-3" />Preview</a> : null}
+                      {document.pdf_file_path || document.source_file_path ? <Button type="button" variant="secondary" size="sm" disabled={actionMutation.isLoading} onClick={() => actionMutation.mutate({ action: 'download', document })}><Download className="h-4 w-4" />Download</Button> : null}
                       <Button type="button" variant="secondary" size="sm" disabled={actionMutation.isLoading} onClick={() => actionMutation.mutate({ action: 'share', document })}><Link2 className="h-4 w-4" />{document.token_expires_at ? 'Regenerate Link' : 'Generate Secure Link'}</Button>
                       {shareLinks[document.id] ? (
                         <>
@@ -253,7 +270,7 @@ export function LeadDocumentsTab({ leadId, lead }) {
               </tbody>
             </table>
           </div>
-        ) : <CRMEmptyState icon={FileText} title="No documents yet" description="Create a quotation, contract, or upload an existing PDF." />}
+        ) : <CRMEmptyState icon={FileText} title={`No ${editorType}s yet`} description={mode === 'documents' ? 'Create a quotation, contract, or upload an existing PDF.' : `Create or upload a ${editorType} to continue this workspace.`} />}
       </CRMSection>
 
     </div>
