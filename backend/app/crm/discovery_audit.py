@@ -357,5 +357,10 @@ async def generate_quotation_draft(current_user: User, lead_id: str) -> dict[str
     }
     result = await documents.create_document(current_user, lead_id, payload)
     document = result["document"]
+    from app.crm.pipeline import apply_stage_status_change
+
+    apply_stage_status_change(lead, stage_key="discovery", new_status="need_proposal", user=current_user, now=utc_now())
+    lead.updated_at = utc_now()
+    await lead.save()
     await _activity(lead, current_user, "Quotation draft generated from Discovery/Audit", {"crm_document_id": document["id"], "generated_from": source_snapshot["generated_from"]})
     return {**result, "unmapped_recommendations": unmapped}

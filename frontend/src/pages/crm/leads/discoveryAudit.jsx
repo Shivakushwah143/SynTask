@@ -103,30 +103,32 @@ function EditableChecklist({ workspace, value = [], onChange, addPlaceholder = '
   )
 }
 
-function Field({ label, value, onChange, type = 'text', textarea = false, options }) {
+function Field({ label, value, onChange, type = 'text', textarea = false, options, error }) {
+  const controlClassName = `${inputClassName} ${error ? 'border-red-400 bg-red-50/60 text-red-900 focus:border-red-500 focus:ring-red-500 dark:border-red-700 dark:bg-red-950/20 dark:text-red-100' : ''}`
   return (
     <label className="block">
       <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>
       {options ? (
-        <select className={inputClassName} value={value || ''} onChange={(event) => onChange(event.target.value)}>
+        <select className={controlClassName} value={value || ''} aria-invalid={error ? 'true' : undefined} onChange={(event) => onChange(event.target.value)}>
           <option value="">Select</option>
           {options.map((option) => <option key={option} value={option}>{option}</option>)}
         </select>
       ) : textarea ? (
-        <textarea className={`${inputClassName} min-h-24`} value={value || ''} onChange={(event) => onChange(event.target.value)} />
+        <textarea className={`${controlClassName} min-h-24`} value={value || ''} aria-invalid={error ? 'true' : undefined} onChange={(event) => onChange(event.target.value)} />
       ) : (
-        <input className={inputClassName} type={type} value={value || ''} onChange={(event) => onChange(event.target.value)} />
+        <input className={controlClassName} type={type} value={value || ''} aria-invalid={error ? 'true' : undefined} onChange={(event) => onChange(event.target.value)} />
       )}
+      {error ? <p className="mt-1 text-xs font-medium text-red-600 dark:text-red-300">{error}</p> : null}
     </label>
   )
 }
 
-function MultiChoice({ label, options, value = [], onChange }) {
+function MultiChoice({ label, options, value = [], onChange, error }) {
   const selected = new Set(value || [])
   return (
     <div>
       <span className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>
-      <div className="flex flex-wrap gap-2">
+      <div className={`flex flex-wrap gap-2 rounded-lg ${error ? 'border border-red-300 bg-red-50/50 p-2 dark:border-red-800 dark:bg-red-950/20' : ''}`}>
         {options.map((option) => {
           const active = selected.has(option)
           return (
@@ -146,6 +148,7 @@ function MultiChoice({ label, options, value = [], onChange }) {
           )
         })}
       </div>
+      {error ? <p className="mt-1 text-xs font-medium text-red-600 dark:text-red-300">{error}</p> : null}
     </div>
   )
 }
@@ -199,6 +202,37 @@ function ValidationMessage({ error }) {
   )
 }
 
+const missingItems = (error) => error?.response?.data?.detail?.missing_items || []
+const hasValue = (value) => {
+  if (Array.isArray(value)) return value.some((item) => hasValue(item))
+  if (value && typeof value === 'object') return Object.values(value).some((item) => hasValue(item))
+  return String(value ?? '').trim().length > 0
+}
+
+function discoveryFieldErrors(error, form, lead) {
+  const missing = new Set(missingItems(error))
+  const errors = {}
+  if (missing.has('Business information') && !hasValue(form.business_information)) {
+    errors.business_name = 'Enter at least one business detail.'
+    errors.business_model = 'Enter at least one business detail.'
+  }
+  if (missing.has('Primary problem') && !hasValue(form.problems?.selected) && !hasValue(form.problems?.notes)) {
+    errors.primary_problem = 'Select a pain point or write the primary problem.'
+    errors.problem_notes = 'Select a pain point or write the primary problem.'
+  }
+  if (missing.has('Primary business goal') && !hasValue(form.goals?.primary_goal)) {
+    errors.primary_goal = 'Select the primary business goal.'
+  }
+  if (missing.has('Budget status') && !hasValue(form.budget?.budget_confirmed)) {
+    errors.budget_confirmed = 'Choose whether the budget is confirmed.'
+  }
+  if (missing.has('Decision maker') && !hasValue(form.decision_maker?.identified) && !hasValue(form.decision_maker?.name || lead?.decision_maker)) {
+    errors.decision_maker_identified = 'Choose whether the decision maker is identified.'
+    errors.decision_maker_name = 'Enter the decision maker name if known.'
+  }
+  return errors
+}
+
 export function LeadDiscoveryTab({ leadId, lead, onScheduleFollowUp }) {
   const queryClient = useQueryClient()
   const query = useQuery(['crm-lead-discovery', leadId], () => crmApi.getLeadDiscovery(leadId), { enabled: Boolean(leadId), staleTime: 60_000 })
@@ -214,6 +248,7 @@ export function LeadDiscoveryTab({ leadId, lead, onScheduleFollowUp }) {
   })
   const update = (section, key, value) => setForm((state) => ({ ...state, [section]: { ...(state[section] || {}), [key]: value } }))
   if (query.isLoading) return <div className="h-40 animate-pulse rounded-lg bg-gray-100 dark:bg-gray-800" />
+  const fieldErrors = discoveryFieldErrors(complete.error, form, lead)
   return (
     <div className="space-y-6">
       <CRMSection title="Discovery" description={completionLabel(form)}>
@@ -232,8 +267,8 @@ export function LeadDiscoveryTab({ leadId, lead, onScheduleFollowUp }) {
       </CRMSection>
       <CRMSection title="Business information">
         <div className="grid gap-4 lg:grid-cols-3">
-          <Field label="Business name" value={form.business_information.business_name || lead?.company_name || ''} onChange={(value) => update('business_information', 'business_name', value)} />
-          <Field label="Business model / type" value={form.business_information.business_model} onChange={(value) => update('business_information', 'business_model', value)} />
+          <Field label="Business name" value={form.business_information.business_name || lead?.company_name || ''} error={fieldErrors.business_name} onChange={(value) => update('business_information', 'business_name', value)} />
+          <Field label="Business model / type" value={form.business_information.business_model} error={fieldErrors.business_model} onChange={(value) => update('business_information', 'business_model', value)} />
           <Field label="Industry" value={form.business_information.industry || lead?.industry || ''} onChange={(value) => update('business_information', 'industry', value)} />
           <Field label="Products/services" value={form.business_information.products_services} onChange={(value) => update('business_information', 'products_services', value)} />
           <Field label="Target audience" value={form.business_information.target_audience} onChange={(value) => update('business_information', 'target_audience', value)} />
@@ -251,9 +286,9 @@ export function LeadDiscoveryTab({ leadId, lead, onScheduleFollowUp }) {
       </CRMSection>
       <CRMSection title="Problems and goals">
         <div className="space-y-5">
-          <MultiChoice label="Pain points" options={PROBLEMS} value={form.problems.selected} onChange={(value) => update('problems', 'selected', value)} />
-          <Field label="Pain-point notes" textarea value={form.problems.notes} onChange={(value) => update('problems', 'notes', value)} />
-          <Field label="Primary goal" value={form.goals.primary_goal} options={GOALS} onChange={(value) => update('goals', 'primary_goal', value)} />
+          <MultiChoice label="Pain points" options={PROBLEMS} value={form.problems.selected} error={fieldErrors.primary_problem} onChange={(value) => update('problems', 'selected', value)} />
+          <Field label="Pain-point notes" textarea value={form.problems.notes} error={fieldErrors.problem_notes} onChange={(value) => update('problems', 'notes', value)} />
+          <Field label="Primary goal" value={form.goals.primary_goal} options={GOALS} error={fieldErrors.primary_goal} onChange={(value) => update('goals', 'primary_goal', value)} />
           <MultiChoice label="Secondary goals" options={GOALS} value={form.goals.secondary_goals} onChange={(value) => update('goals', 'secondary_goals', value)} />
           <Field label="Expected outcome" textarea value={form.goals.expected_outcome} onChange={(value) => update('goals', 'expected_outcome', value)} />
         </div>
@@ -262,9 +297,9 @@ export function LeadDiscoveryTab({ leadId, lead, onScheduleFollowUp }) {
         <div className="grid gap-4 lg:grid-cols-3">
           <Field label="Expected budget" type="number" value={form.budget.expected_budget || lead?.budget || ''} onChange={(value) => update('budget', 'expected_budget', value)} />
           <Field label="Budget range" value={form.budget.budget_range} onChange={(value) => update('budget', 'budget_range', value)} />
-          <Field label="Budget confirmed?" value={form.budget.budget_confirmed} options={['yes', 'no', 'unknown']} onChange={(value) => update('budget', 'budget_confirmed', value)} />
-          <Field label="Decision maker identified?" value={form.decision_maker.identified} options={['yes', 'no', 'unknown']} onChange={(value) => update('decision_maker', 'identified', value)} />
-          <Field label="Decision maker name" value={form.decision_maker.name || lead?.decision_maker || ''} onChange={(value) => update('decision_maker', 'name', value)} />
+          <Field label="Budget confirmed?" value={form.budget.budget_confirmed} options={['yes', 'no', 'unknown']} error={fieldErrors.budget_confirmed} onChange={(value) => update('budget', 'budget_confirmed', value)} />
+          <Field label="Decision maker identified?" value={form.decision_maker.identified} options={['yes', 'no', 'unknown']} error={fieldErrors.decision_maker_identified} onChange={(value) => update('decision_maker', 'identified', value)} />
+          <Field label="Decision maker name" value={form.decision_maker.name || lead?.decision_maker || ''} error={fieldErrors.decision_maker_name} onChange={(value) => update('decision_maker', 'name', value)} />
           <Field label="Final approver" value={form.decision_maker.final_approver} onChange={(value) => update('decision_maker', 'final_approver', value)} />
           <Field label="Desired start date" type="date" value={form.timeline.desired_start_date} onChange={(value) => update('timeline', 'desired_start_date', value)} />
           <Field label="Expected decision date" type="date" value={form.timeline.expected_decision_date} onChange={(value) => update('timeline', 'expected_decision_date', value)} />
