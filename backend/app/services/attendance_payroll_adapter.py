@@ -19,6 +19,7 @@ from app.models.attendance import (
     AttendancePolicy,
     HRAttendanceStatus,
 )
+from app.models.employee_profile import EmployeeProfile
 from app.models.leave import LeaveRequest, LeaveStatus, LeaveTypeConfig
 from app.models.user import User
 from app.services.attendance_holiday_service import get_holidays_in_range, is_holiday
@@ -50,7 +51,23 @@ async def get_employee_period_summary(
     """
     if not policy:
         policy = await get_active_policy(company_id)
-    
+
+    # Effective employment boundaries (Phase 11 closure): days before joining or
+    # after the last working day must never be classified ABSENT. The period is
+    # constrained to the employment overlap; the underlying raw Attendance rows
+    # are never modified.
+    profile = await EmployeeProfile.find_one({
+        "company_id": company_id,
+        "user_id": employee_id,
+    })
+    employment_start: Optional[date] = None
+    employment_end: Optional[date] = None
+    if profile:
+        if profile.joining_date:
+            employment_start = profile.joining_date.date() if isinstance(profile.joining_date, datetime) else profile.joining_date
+        if profile.last_working_day:
+            employment_end = profile.last_working_day.date() if isinstance(profile.last_working_day, datetime) else profile.last_working_day
+
     # Batch-fetch all attendance records in range
     start_str = period_start.strftime("%Y-%m-%d")
     end_str = period_end.strftime("%Y-%m-%d")
@@ -75,14 +92,23 @@ async def get_employee_period_summary(
     holidays = await get_holidays_in_range(company_id, period_start, period_end)
     holiday_dates = {h.date.date() if isinstance(h.date, datetime) else h.date: h for h in holidays}
     
-    # Build leave type map
+    # Build leave type map (used to resolve paid/unpaid from LeaveTypeConfig)
     leave_type_ids = [l.leave_type_id for l in approved_leaves if l.leave_type_id]
     type_map = await build_leave_type_map(company_id, leave_type_ids) if leave_type_ids else {}
     
-    # Resolve day-by-day status
+    # Constrain the evaluated window to the employment overlap.
+    iter_start = period_start
+    iter_end = period_end
+    if employment_start and employment_start > iter_start:
+        iter_start = employment_start
+    if employment_end and employment_end < iter_end:
+        iter_end = employment_end
+    employment_overlap = iter_start <= iter_end
+
+    # Resolve day-by-day status (only within the employment overlap)
     day_records = []
-    current_date = period_start
-    while current_date <= period_end:
+    current_date = iter_start
+    while employment_overlap and current_date <= iter_end:
         attendance = attendance_by_date.get(current_date.strftime("%Y-%m-%d"))
         holiday = holiday_dates.get(current_date)
         
@@ -100,6 +126,7 @@ async def get_employee_period_summary(
             attendance=attendance,
             approved_leaves=day_leaves,
             holiday=holiday,
+            type_map=type_map,
         )
         
         hr_status = resolution["hr_status"]
@@ -147,6 +174,9 @@ async def get_employee_period_summary(
         "employee_id": employee_id,
         "period_start": start_str,
         "period_end": end_str,
+        "employment_start": employment_start.strftime("%Y-%m-%d") if employment_start else None,
+        "employment_end": employment_end.strftime("%Y-%m-%d") if employment_end else None,
+        "employment_overlap": employment_overlap,
         "day_records": day_records,
         "summary": summary,
     }
@@ -230,6 +260,7 @@ def _aggregate_summary(day_records: List[Dict[str, Any]]) -> Dict[str, Any]:
     half_days = 0
     holiday_days = 0
     week_off_days = 0
+    unclassified_leave_days = 0
     payable_days = 0.0
     total_work_minutes = 0.0
     total_overtime_minutes = 0.0
@@ -243,6 +274,16 @@ def _aggregate_summary(day_records: List[Dict[str, Any]]) -> Dict[str, Any]:
         
         if is_working:
             working_days += 1
+        
+        # Approved leave whose paid/unpaid classification could not be resolved
+        # (no LeaveTypeConfig and no legacy signal). This is a data warning —
+        # never silently treated as paid.
+        leave = day.get("leave") or {}
+        if leave.get("leave_paid") is None and day.get("status") in (
+            HRAttendanceStatus.PAID_LEAVE.value,
+            HRAttendanceStatus.UNPAID_LEAVE.value,
+        ):
+            unclassified_leave_days += 1
         
         if status == HRAttendanceStatus.PRESENT.value:
             present_days += 1
@@ -279,6 +320,7 @@ def _aggregate_summary(day_records: List[Dict[str, Any]]) -> Dict[str, Any]:
         "half_days": half_days,
         "holiday_days": holiday_days,
         "week_off_days": week_off_days,
+        "unclassified_leave_days": unclassified_leave_days,
         "payable_days": round(payable_days, 2),
         "total_work_minutes": round(total_work_minutes, 2),
         "total_overtime_minutes": round(total_overtime_minutes, 2),

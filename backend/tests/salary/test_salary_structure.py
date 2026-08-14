@@ -223,24 +223,28 @@ class TestOverlapPrevention:
     """Test salary structure overlap detection."""
 
     def test_overlap_with_open_ended(self):
-        """New structure after open-ended current = overlap (old needs closing)."""
+        """New structure after open-ended current is a VALID revision (no conflict).
+
+        V1 01-Jan-2026 -> open-ended, revision V2 01-Aug-2026: the previous
+        version is closed by the revision service, so this is NOT a conflict.
+        """
         existing = MagicMock()
         existing.effective_from = datetime(2026, 1, 1)
         existing.effective_to = None
         existing.id = "s1"
 
         result = _check_overlap([existing], datetime(2026, 8, 1))
-        assert result is not None  # Overlap — revision service should close old one
+        assert result is None  # Valid revision — old one is closed, not a conflict
 
     def test_overlap_with_open_ended_before(self):
-        """New structure before open-ended current = overlap."""
+        """New structure before an open-ended current = conflict (backdated/duplicate)."""
         existing = MagicMock()
         existing.effective_from = datetime(2026, 8, 1)
         existing.effective_to = None
         existing.id = "s1"
 
         result = _check_overlap([existing], datetime(2026, 6, 1))
-        assert result is None  # Before open-ended = no overlap (new one becomes the current)
+        assert result is not None  # A structure already starts on/after this date
 
     def test_overlap_with_closed_range(self):
         """New structure within closed range = overlap."""

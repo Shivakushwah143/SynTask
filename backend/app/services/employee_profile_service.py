@@ -608,23 +608,51 @@ async def update_profile(company_id: str, employee_id: str, actor: User, data: d
         profile.probation = ProbationInfo(**data["probation"])
 
     if changes:
+        # Phase 11 closure — lifecycle-sensitive changes are recorded BEFORE the
+        # profile save so a history failure aborts the mutation (no silent
+        # history loss). Personal/contact changes never block.
+        from app.services.lifecycle_service import _profile_employment_state, record_profile_changes
+
+        lifecycle_fields = {
+            "department_id", "designation", "reports_to",
+            "employment_type", "work_location", "work_mode",
+        }
+        touch_lifecycle = bool(lifecycle_fields & set(changes.keys()))
+        recorded_events = []
+        if touch_lifecycle:
+            before_state = _profile_employment_state(profile)
+            try:
+                recorded_events = await record_profile_changes(
+                    company_id, actor, profile, changes, before_state=before_state,
+                )
+            except HTTPException:
+                raise
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=(
+                        "Profile could not be updated because the employment history "
+                        "could not be recorded. No changes were saved — please retry."
+                    ),
+                ) from exc
+
         profile.updated_at = utc_now()
-        await profile.save()
+        try:
+            await profile.save()
+        except Exception:
+            # Compensation: history events were persisted but the profile save
+            # failed — remove them so no orphan history is left behind.
+            for event in recorded_events:
+                try:
+                    await event.delete()
+                except Exception:
+                    pass
+            raise
+
         await _record_employee_event(
             company_id, "EmployeeProfileUpdated", actor, profile,
             payload={"employee_id": str(profile.id), "changes": changes},
         )
-        # Phase 9 — preserve lifecycle history for direct edits of
-        # lifecycle-sensitive fields (department/designation/manager/type/
-        # work details/status). Never blocks the profile update.
-        try:
-            from app.services.lifecycle_service import record_profile_changes
-
-            await record_profile_changes(company_id, actor, profile, changes)
-        except Exception:
-            import logging
-
-            logging.getLogger(__name__).exception("Failed to record lifecycle changes for profile %s", profile.id)
     return await build_detail(profile, user, can_edit=True)
 
 

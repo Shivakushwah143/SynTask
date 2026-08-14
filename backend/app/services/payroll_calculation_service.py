@@ -24,7 +24,7 @@ from app.models.payroll import (
 )
 from app.models.user import User, UserRole
 from app.services.attendance_payroll_adapter import get_employee_period_summary
-from app.services.salary_structure_service import get_effective_salary_structure
+from app.services.salary_structure_service import get_salary_snapshot_for_payroll
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +65,10 @@ async def calculate_employee_payroll(
     employee_number = None
     department = None
     designation = None
+    employee_profile_id = None
 
     if employee_profile:
+        employee_profile_id = str(employee_profile.id)
         employee_number = employee_profile.employee_number
         department = employee_profile.department_id
         designation = employee_profile.designation
@@ -76,14 +78,18 @@ async def calculate_employee_payroll(
         if user:
             employee_name = user.full_name()
 
-    # 2. Get effective salary structure
-    salary_snapshot = await get_effective_salary_structure(company_id, employee_id, period_start)
+    # 2. Get the Phase 5 payroll-ready salary snapshot (normalized dict/DTO).
+    # Payroll NEVER reads the SalaryStructure model directly — the snapshot
+    # adapter is the single integration boundary.
+    salary_snapshot = await get_salary_snapshot_for_payroll(company_id, employee_id, period_start)
     if not salary_snapshot:
         blockers.append("No salary structure effective for this period")
         return {
             "status": PayrollRecordStatus.BLOCKED,
             "blockers": blockers,
             "warnings": warnings,
+            "employee_id": employee_id,
+            "employee_profile_id": employee_profile_id,
             "employee_name": employee_name,
             "employee_number": employee_number,
             "department": department,
@@ -103,7 +109,7 @@ async def calculate_employee_payroll(
             "attendance_snapshot": {},
         }
 
-    currency = salary_snapshot.currency
+    currency = salary_snapshot.get("currency", "INR")
 
     # 3. Get attendance summary
     try:
@@ -120,9 +126,19 @@ async def calculate_employee_payroll(
     payable_days = att_summary.get("payable_days", 0.0)
     calendar_days = att_summary.get("calendar_days", (period_end - period_start).days + 1)
 
+    # Phase 11 closure: no employment overlap with the period (or no attendance
+    # summary at all) must never silently produce a full-salary record.
+    if att_summary.get("calendar_days", 0) == 0 and att_summary:
+        blockers.append("Employee was not employed during this payroll period")
+
     # Check for attendance warnings
     if att_summary.get("unpaid_leave_days", 0) > 0:
         warnings.append(f"Unpaid leave: {att_summary['unpaid_leave_days']} days")
+    if att_summary.get("unclassified_leave_days", 0) > 0:
+        warnings.append(
+            f"Unclassified leave: {att_summary['unclassified_leave_days']} day(s) — "
+            "paid/unpaid could not be determined from the leave type configuration"
+        )
     if att_summary.get("absent_days", 0) > 0:
         warnings.append(f"Absent: {att_summary['absent_days']} days")
 
@@ -191,6 +207,8 @@ async def calculate_employee_payroll(
         "status": status,
         "blockers": blockers,
         "warnings": warnings,
+        "employee_id": employee_id,
+        "employee_profile_id": employee_profile_id,
         "employee_name": employee_name,
         "employee_number": employee_number,
         "department": department,
@@ -220,34 +238,34 @@ async def calculate_period_payroll(
 
     Returns (employee_results, period_summary).
     """
-    # Find eligible employees
-    profiles = await EmployeeProfile.find({
-        "company_id": company_id,
-        "employment_status": {"$in": [
-            EmploymentStatus.ACTIVE.value,
-            EmploymentStatus.PROBATION.value,
-            EmploymentStatus.ONBOARDING.value,
-            EmploymentStatus.NOTICE_PERIOD.value,
-        ]},
-    }).to_list()
-
-    # Also include employees who joined during the period
+    # Eligibility is based on EMPLOYMENT OVERLAP with the period, never on the
+    # current employment_status alone. An employee who exited mid-period (e.g.
+    # last_working_day = Aug 20, payroll run Sep 1, current status EXITED) must
+    # still appear in the August run:
+    #     joining_date <= period_end  AND  (last_working_day IS NULL OR last_working_day >= period_start)
+    # Employees without a joining_date (legacy data) are treated as eligible
+    # while they have no exit boundary.
     period_start_dt = datetime.combine(period_start, time.min)
     period_end_dt = datetime.combine(period_end, time.max)
 
-    joined_in_period = await EmployeeProfile.find({
+    profiles = await EmployeeProfile.find({
         "company_id": company_id,
-        "joining_date": {"$gte": period_start_dt, "$lte": period_end_dt},
+        "$and": [
+            {"$or": [
+                {"joining_date": None},
+                {"joining_date": {"$lte": period_end_dt}},
+            ]},
+            {"$or": [
+                {"last_working_day": None},
+                {"last_working_day": {"$gte": period_start_dt}},
+            ]},
+        ],
     }).to_list()
 
-    # Merge (deduplicate by user_id)
+    # Deduplicate by user_id
     seen_ids = set()
     eligible_profiles = []
     for p in profiles:
-        if p.user_id not in seen_ids:
-            seen_ids.add(p.user_id)
-            eligible_profiles.append(p)
-    for p in joined_in_period:
         if p.user_id not in seen_ids:
             seen_ids.add(p.user_id)
             eligible_profiles.append(p)

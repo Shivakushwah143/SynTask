@@ -44,6 +44,16 @@ async def get_effective_salary_structure(
 
     Rule: effective_from <= effective_date AND (effective_to is None OR effective_to > effective_date).
     If multiple structures match (shouldn't with overlap prevention), the most recent effective_from wins.
+
+    IMPORTANT (Phase 11 closure): lookup is driven purely by the effective
+    date range — the current ``status`` field (ACTIVE/SUPERSEDED) is never used
+    as a filter. A historical structure that has been SUPERSEDED must still be
+    returned for dates inside its effective range, e.g.:
+
+        V1: 01-Jan-2026 -> 31-Jul-2026  (SUPERSEDED after V2 created)
+        V2: 01-Aug-2026 -> open         (ACTIVE)
+
+    July 15 must resolve to V1 and August 15 to V2.
     """
     start_dt = datetime.combine(effective_date, time.min)
     end_dt = datetime.combine(effective_date, time.max)
@@ -56,7 +66,6 @@ async def get_effective_salary_structure(
             {"effective_to": None},
             {"effective_to": {"$gt": start_dt}},
         ],
-        "status": SalaryStatus.ACTIVE.value,
     }).sort("effective_from", -1).to_list()
 
     return structures[0] if structures else None
@@ -194,7 +203,18 @@ def _check_overlap(
     new_from: datetime,
     new_id: Optional[str] = None,
 ) -> Optional[SalaryStructure]:
-    """Check if a new effective_from would overlap with existing structures.
+    """Check if a revision effective date conflicts with existing structures.
+
+    Revision semantics (Phase 11 closure): a new version takes effect on
+    ``new_from`` and the previous version is CLOSED (effective_to = new_from - 1s,
+    status SUPERSEDED). Therefore an open-ended structure that starts BEFORE
+    ``new_from`` is NOT a conflict — it is the structure this revision replaces.
+
+    Conflicts:
+      - any structure whose effective_from is >= new_from (a same-day duplicate
+        or a future-dated structure already scheduled);
+      - any closed structure whose range [s_from, s_to) contains new_from
+        (inserting a revision in the middle of history).
 
     Returns the conflicting structure or None.
     """
@@ -203,15 +223,12 @@ def _check_overlap(
             continue
         s_from = s.effective_from
         s_to = s.effective_to
-        # Overlap: new_from falls within an existing range
-        if s_to is None:
-            # Open-ended (current) — overlap if new_from >= s_from
-            if new_from >= s_from:
-                return s
-        else:
-            # Closed range — overlap if new_from is within [s_from, s_to)
-            if s_from <= new_from < s_to:
-                return s
+        if new_from <= s_from:
+            # Same-day duplicate or new revision before an existing structure.
+            return s
+        if s_to is not None and new_from < s_to:
+            # New date falls inside an already-closed range.
+            return s
     return None
 
 
@@ -324,12 +341,16 @@ async def create_salary_revision(
 
     effective_from = _parse_date(effective_from_str)
 
-    # Check overlap
+    # Conflict validation (service-level, mandatory — the frontend disable is
+    # never the security boundary). A normal revision of an open-ended structure
+    # (e.g. V1 01-Jan-2026 -> open, V2 effective 01-Aug-2026) is VALID: the
+    # previous version is closed and this one takes over.
     conflict = _check_overlap(existing_structures, effective_from)
     if conflict:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Overlaps with existing salary structure effective from {conflict.effective_from.strftime('%Y-%m-%d')}",
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A salary structure already exists effective from {conflict.effective_from.strftime('%Y-%m-%d')}. "
+            f"Choose an effective date after {conflict.effective_from.strftime('%Y-%m-%d')}.",
         )
 
     currency = payload.get("currency", "INR")
@@ -357,8 +378,34 @@ async def create_salary_revision(
     )
     await structure.insert()
 
-    # Close previous active structure if this revision is before or at the current active's effective_from
-    # Actually: close any structure whose effective_to is None and effective_from < new effective_from
+    # Safety net for concurrent revisions (HR A + HR B on the same effective
+    # date): re-check after insert — if another ACTIVE structure with the same
+    # (company, employee, effective_from) slipped in, remove this one and fail.
+    try:
+        duplicate = await SalaryStructure.find_one({
+            "company_id": company_id,
+            "employee_id": employee_id,
+            "effective_from": effective_from,
+            "_id": {"$ne": structure.id},
+            "status": SalaryStatus.ACTIVE.value,
+        })
+        if duplicate:
+            await structure.delete()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A salary revision with the same effective date was created concurrently. "
+                "Please refresh and retry with a different effective date.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # Best-effort cleanup — never mask the insert result.
+        logger.exception("Duplicate-revision safety check failed for employee %s", employee_id)
+
+    # Close the previous open-ended structure (effective_to = new_from - 1s,
+    # SUPERSEDED) so the timeline is contiguous:
+    #   V1: 01-Jan-2026 -> 31-Jul-2026
+    #   V2: 01-Aug-2026 -> open
     now = utc_now()
     for s in existing_structures:
         if s.effective_to is None and s.effective_from < effective_from:

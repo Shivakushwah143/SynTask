@@ -16,7 +16,7 @@ const formatDate = (d) => {
   return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-const SalaryTab = ({ employeeId, canManage = false, onOpenAssign, onOpenRevise }) => {
+const SalaryTab = ({ employeeId, canManage = false, onAssign, onRevise }) => {
   const [current, setCurrent] = useState(null)
   const [upcoming, setUpcoming] = useState(null)
   const [history, setHistory] = useState([])

@@ -129,6 +129,33 @@ def compute_overtime(
     return 0.0
 
 
+async def _resolve_leave_paid(
+    company_id: str,
+    leave: LeaveRequest,
+    type_map: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[bool], bool]:
+    """Determine whether an approved leave is paid from the LeaveTypeConfig.
+
+    Returns (is_paid, resolved). ``resolved`` is False when the leave type could
+    not be found/classified — callers must never silently grant pay in that case.
+    """
+    leave_type_id = getattr(leave, "leave_type_id", None)
+    if leave_type_id:
+        if type_map and str(leave_type_id) in type_map:
+            config = type_map[str(leave_type_id)]
+            if config is not None:
+                return bool(config.is_paid), True
+        from app.services.leave_service import get_leave_type_config
+
+        config = await get_leave_type_config(company_id, str(leave_type_id))
+        if config:
+            return bool(config.is_paid), True
+    legacy_value = leave.leave_type.value if isinstance(leave.leave_type, LeaveType) else None
+    from app.services.leave_service import _legacy_is_paid
+
+    return _legacy_is_paid(legacy_value), False
+
+
 async def resolve_attendance_status(
     company_id: str,
     employee_id: str,
@@ -137,6 +164,7 @@ async def resolve_attendance_status(
     attendance: Optional[Attendance] = None,
     approved_leaves: Optional[List[LeaveRequest]] = None,
     holiday: Optional[Any] = None,
+    type_map: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Resolve the full HR status for an employee on a specific date.
     
@@ -151,6 +179,9 @@ async def resolve_attendance_status(
       - is_week_off
       - leave_type_id, leave_paid
       - status_source: what determined the status
+
+    ``type_map`` (optional) maps leave_type_id -> LeaveTypeConfig for the
+    caller's batch. When absent, the resolver resolves the config itself.
     """
     result = {
         "hr_status": HRAttendanceStatus.NO_RECORD.value,
@@ -190,45 +221,30 @@ async def resolve_attendance_status(
             leave_start = leave.start_date.date() if isinstance(leave.start_date, datetime) else leave.start_date
             leave_end = leave.end_date.date() if isinstance(leave.end_date, datetime) else leave.end_date
             if leave_start <= attendance_date <= leave_end:
-                # Determine paid/unpaid
-                is_paid = None
                 leave_type_id = getattr(leave, "leave_type_id", None)
-                # Check if half-day
+                # Half-day leave consumes 0.5 of the day regardless of payability.
                 is_half_day = (
                     leave.duration == LeaveDuration.HALF_DAY
                     or (leave.leave_type == LeaveType.HALF_DAY)
                 )
-                
+                is_paid, _resolved = await _resolve_leave_paid(company_id, leave, type_map)
+
                 if is_half_day:
                     result["hr_status"] = HRAttendanceStatus.HALF_DAY.value
                     result["status_source"] = "half_day_leave"
+                elif is_paid is True:
+                    result["hr_status"] = HRAttendanceStatus.PAID_LEAVE.value
+                    result["status_source"] = "paid_leave"
+                elif is_paid is False:
+                    result["hr_status"] = HRAttendanceStatus.UNPAID_LEAVE.value
+                    result["status_source"] = "unpaid_leave"
                 else:
-                    # Determine paid/unpaid from leave type config or legacy
-                    if leave_type_id:
-                        # We'll need type_map from caller; use leave.is_paid if available
-                        from app.services.leave_service import _legacy_is_paid
-                        is_paid = getattr(leave, "is_paid", None)
-                        if is_paid is None:
-                            is_paid = _legacy_is_paid(
-                                leave.leave_type.value if isinstance(leave.leave_type, LeaveType) else None
-                            )
-                    else:
-                        from app.services.leave_service import _legacy_is_paid
-                        is_paid = _legacy_is_paid(
-                            leave.leave_type.value if isinstance(leave.leave_type, LeaveType) else None
-                        )
-                    
-                    if is_paid is True:
-                        result["hr_status"] = HRAttendanceStatus.PAID_LEAVE.value
-                        result["status_source"] = "paid_leave"
-                    elif is_paid is False:
-                        result["hr_status"] = HRAttendanceStatus.UNPAID_LEAVE.value
-                        result["status_source"] = "unpaid_leave"
-                    else:
-                        # Default to paid for legacy leaves with unclear classification
-                        result["hr_status"] = HRAttendanceStatus.PAID_LEAVE.value
-                        result["status_source"] = "paid_leave_legacy"
-                
+                    # Unresolvable classification: NEVER silently grant pay.
+                    # Classify as unpaid (no salary credit) and surface a clear
+                    # data warning through the status_source so callers can flag it.
+                    result["hr_status"] = HRAttendanceStatus.UNPAID_LEAVE.value
+                    result["status_source"] = "leave_unclassified"
+
                 result["leave_type_id"] = leave_type_id
                 result["leave_paid"] = is_paid
                 return result

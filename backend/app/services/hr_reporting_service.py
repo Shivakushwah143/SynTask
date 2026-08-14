@@ -66,6 +66,23 @@ async def _resolve_employee_names(
     return {str(p.id): user_map.get(p.user_id, "Unknown") for p in profiles}
 
 
+async def _company_business_date(company_id: str) -> date:
+    """Return today's date in the company business timezone (Phase 4 policy).
+
+    The AttendancePolicy defines the company timezone; all "today" dashboard
+    metrics (Present Today / On Leave Today / Holiday Today / Week-Off Today)
+    must use this business date, never ``utc_now()``.
+    """
+    from app.services.attendance_policy_service import get_active_policy
+    from app.services.attendance_status_resolver import policy_today_str
+    try:
+        policy = await get_active_policy(company_id)
+    except Exception:
+        policy = None
+    today_str = policy_today_str(policy)  # falls back to UTC when no policy
+    return datetime.strptime(today_str, "%Y-%m-%d").date()
+
+
 async def _resolve_employee_details(
     company_id: str, employee_ids: List[str]
 ) -> Dict[str, Dict[str, Any]]:
@@ -143,12 +160,15 @@ async def get_employee_summary(company_id: str) -> dict:
 
 
 async def get_attendance_today_summary(company_id: str) -> dict:
-    """Today's attendance summary using Phase 4 normalized HR statuses."""
+    """Today's attendance summary using Phase 4 normalized HR statuses.
+
+    "Today" is the company business date (Phase 4 policy timezone).
+    """
     from app.models.attendance import Attendance
     from app.models.employee_profile import EmployeeProfile, EmploymentStatus
     from app.services.attendance_status_resolver import HRAttendanceStatus
 
-    today_str = utc_now().strftime("%Y-%m-%d")
+    today_str = (await _company_business_date(company_id)).strftime("%Y-%m-%d")
 
     # Only count active employees (not exited)
     active_profiles = await EmployeeProfile.find(
@@ -203,13 +223,17 @@ async def get_attendance_today_summary(company_id: str) -> dict:
 
 
 async def get_leave_summary(company_id: str) -> dict:
-    """Leave summary — pending requests, this month's activity, on leave today."""
+    """Leave summary — pending requests, this month's activity, on leave today.
+
+    "On leave today" uses the company business date (Phase 4 policy timezone).
+    """
     from app.models.leave import LeaveRequest, LeaveStatus, LeaveTypeConfig
 
     now = utc_now()
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today = await _company_business_date(company_id)
+    today_start = datetime.combine(today, time.min)
     today_end = today_start + timedelta(days=1)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     # Pending requests
     pending_count = await LeaveRequest.find(
@@ -514,12 +538,18 @@ async def get_employee_directory(
     employment_status: Optional[str] = None,
     employment_type: Optional[str] = None,
     skip: int = 0, limit: int = 50,
+    user_ids: Optional[List[str]] = None,
 ) -> dict:
-    """Employee directory report — filtered, paginated."""
+    """Employee directory report — filtered, paginated.
+
+    ``user_ids`` restricts the report to those Users (manager team scope).
+    """
     from app.models.employee_profile import EmployeeProfile
     from app.models.user import User
 
     query: dict = {"company_id": company_id}
+    if user_ids:
+        query["user_id"] = {"$in": user_ids}
     if employment_status:
         query["employment_status"] = employment_status
     if employment_type:
@@ -564,11 +594,14 @@ async def get_employee_directory(
 async def get_headcount_report(
     company_id: str, department: Optional[str] = None,
     employment_status: Optional[str] = None,
+    user_ids: Optional[List[str]] = None,
 ) -> dict:
     """Headcount aggregated by department."""
     from app.models.employee_profile import EmployeeProfile
 
     query: dict = {"company_id": company_id}
+    if user_ids:
+        query["user_id"] = {"$in": user_ids}
     if employment_status:
         query["employment_status"] = employment_status
     if department:
@@ -595,19 +628,32 @@ async def get_headcount_report(
 
 
 async def get_joining_exit_trend(
-    company_id: str, months: int = 6
+    company_id: str, months: int = 6, user_ids: Optional[List[str]] = None
 ) -> list:
-    """Joining/exit trend data for chart."""
+    """Joining/exit trend data for chart.
+
+    ``user_ids`` restricts the lifecycle events to those Users (manager team
+    scope); lifecycle events are keyed by EmployeeProfile _id, so the scoped
+    User ids are resolved to profile ids first.
+    """
     from app.models.employee_profile import EmployeeProfile, EmploymentStatus
     from app.models.lifecycle import EmployeeLifecycleEvent, LifecycleEventType
 
     now = utc_now()
     start_date = now - timedelta(days=months * 30)
 
+    base_query: dict = {"company_id": company_id}
+    if user_ids:
+        scoped_profiles = await EmployeeProfile.find(
+            {"company_id": company_id, "user_id": {"$in": user_ids}}
+        ).to_list()
+        allowed_profile_ids = [str(p.id) for p in scoped_profiles]
+        base_query["employee_id"] = {"$in": allowed_profile_ids} if allowed_profile_ids else {"$in": []}
+
     # Joiners — from lifecycle JOINED events
     join_events = await EmployeeLifecycleEvent.find(
         {
-            "company_id": company_id,
+            **base_query,
             "event_type": LifecycleEventType.JOINED.value,
             "effective_date": {"$gte": start_date},
         }
@@ -616,7 +662,7 @@ async def get_joining_exit_trend(
     # Exits — from lifecycle EXITED events
     exit_events = await EmployeeLifecycleEvent.find(
         {
-            "company_id": company_id,
+            **base_query,
             "event_type": {"$in": [
                 LifecycleEventType.EXITED.value,
                 LifecycleEventType.RESIGNATION_ACCEPTED.value,
@@ -650,6 +696,7 @@ async def get_attendance_summary_report(
     company_id: str, date_from: Optional[str] = None,
     date_to: Optional[str] = None, department: Optional[str] = None,
     skip: int = 0, limit: int = 50,
+    user_ids: Optional[List[str]] = None,
 ) -> dict:
     """Attendance summary report per employee for a date range."""
     from app.models.attendance import Attendance, HRAttendanceStatus
@@ -663,6 +710,8 @@ async def get_attendance_summary_report(
 
     # Get active employees
     emp_query: dict = {"company_id": company_id, "employment_status": {"$ne": "exited"}}
+    if user_ids:
+        emp_query["user_id"] = {"$in": user_ids}
     if department:
         emp_query["department_id"] = department
 
@@ -737,6 +786,7 @@ async def get_late_arrival_report(
     company_id: str, date_from: Optional[str] = None,
     date_to: Optional[str] = None, department: Optional[str] = None,
     skip: int = 0, limit: int = 50,
+    user_ids: Optional[List[str]] = None,
 ) -> dict:
     """Late arrival report — employees who clocked in late."""
     from app.models.attendance import Attendance
@@ -753,6 +803,8 @@ async def get_late_arrival_report(
     expected_start = policy.expected_start_time if policy else "09:00"
 
     emp_query: dict = {"company_id": company_id, "employment_status": {"$ne": "exited"}}
+    if user_ids:
+        emp_query["user_id"] = {"$in": user_ids}
     if department:
         emp_query["department_id"] = department
 
@@ -793,6 +845,7 @@ async def get_absence_report(
     company_id: str, date_from: Optional[str] = None,
     date_to: Optional[str] = None, department: Optional[str] = None,
     skip: int = 0, limit: int = 50,
+    user_ids: Optional[List[str]] = None,
 ) -> dict:
     """Absence report — employees with absent status (not holiday/week-off/leave)."""
     from app.models.attendance import Attendance, HRAttendanceStatus
@@ -804,6 +857,8 @@ async def get_absence_report(
         date_to = utc_now().strftime("%Y-%m-%d")
 
     emp_query: dict = {"company_id": company_id, "employment_status": {"$ne": "exited"}}
+    if user_ids:
+        emp_query["user_id"] = {"$in": user_ids}
     if department:
         emp_query["department_id"] = department
 
@@ -844,15 +899,23 @@ async def get_leave_balance_report(
     company_id: str, department: Optional[str] = None,
     leave_type_id: Optional[str] = None,
     skip: int = 0, limit: int = 50,
+    user_ids: Optional[List[str]] = None,
 ) -> dict:
-    """Leave balance report — per employee, per leave type."""
+    """Leave balance report — per employee, per leave type.
+
+    IDENTITY: ``LeaveBalance.employee_id`` stores the USER id (the Leave domain
+    is keyed by User), while ``EmployeeProfile`` is keyed by its own ``_id``.
+    This report maps balances to profiles through ``user_id`` — never by
+    treating a User id as an EmployeeProfile ``_id``.
+    """
     from app.models.leave import LeaveBalance, LeaveTypeConfig
     from app.models.employee_profile import EmployeeProfile
-    from app.models.user import User
 
     query: dict = {"company_id": company_id}
     if leave_type_id:
         query["leave_type_id"] = leave_type_id
+    if user_ids:
+        query["employee_id"] = {"$in": user_ids}
 
     # Get leave types for names
     leave_types = await LeaveTypeConfig.find({"company_id": company_id}).to_list()
@@ -860,16 +923,22 @@ async def get_leave_balance_report(
 
     balances = await LeaveBalance.find(query).to_list()
 
-    # Filter by department if needed
+    if not balances:
+        return {"items": [], "total": 0, "skip": skip, "limit": limit}
+
+    # Resolve the EmployeeProfile for each balance through user_id (NOT _id).
+    user_ids_set = list({b.employee_id for b in balances})
+    emp_profiles = await EmployeeProfile.find({
+        "company_id": company_id, "user_id": {"$in": user_ids_set}
+    }).to_list()
+    profile_by_user = {p.user_id: p for p in emp_profiles}
+
+    # Department filter (profile.department_id is the profile's own field).
     if department:
-        employee_ids = [b.employee_id for b in balances]
-        profiles = await EmployeeProfile.find({
-            "company_id": company_id,
-            "_id": {"$in": employee_ids},
-            "department_id": department,
-        }).to_list()
-        valid_ids = {str(p.id) for p in profiles}
-        balances = [b for b in balances if b.employee_id in valid_ids]
+        balances = [
+            b for b in balances
+            if (profile_by_user.get(b.employee_id) or {}).department_id == department
+        ]
 
     total = len(balances)
     balances = balances[skip:skip + limit]
@@ -877,23 +946,16 @@ async def get_leave_balance_report(
     if not balances:
         return {"items": [], "total": total, "skip": skip, "limit": limit}
 
-    # Resolve employee info
-    employee_ids = list({b.employee_id for b in balances})
-    emp_profiles = await EmployeeProfile.find({
-        "company_id": company_id, "_id": {"$in": employee_ids}
-    }).to_list()
-    user_ids = [p.user_id for p in emp_profiles]
-    emp_map = {str(p.id): p for p in emp_profiles}
-    name_map = await _resolve_user_names(user_ids)
+    name_map = await _resolve_user_names(user_ids_set)
     dept_ids = [p.department_id for p in emp_profiles if p.department_id]
     dept_names = await _resolve_department_names(company_id, dept_ids)
 
     items = []
     for b in balances:
-        profile = emp_map.get(b.employee_id)
+        profile = profile_by_user.get(b.employee_id)
         items.append({
             "employee_id": b.employee_id,
-            "employee_name": name_map.get(profile.user_id, "Unknown") if profile else "Unknown",
+            "employee_name": name_map.get(b.employee_id, "Unknown"),
             "employee_number": profile.employee_number if profile else None,
             "department": dept_names.get(profile.department_id) if profile and profile.department_id else None,
             "leave_type": type_map.get(b.leave_type_id, "Unknown"),
@@ -909,6 +971,7 @@ async def get_leave_balance_report(
 async def get_leave_usage_report(
     company_id: str, date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    user_ids: Optional[List[str]] = None,
 ) -> list:
     """Leave usage by type — approved units summary."""
     from app.models.leave import LeaveRequest, LeaveStatus, LeaveTypeConfig
@@ -922,11 +985,14 @@ async def get_leave_usage_report(
     leave_types = await LeaveTypeConfig.find({"company_id": company_id}).to_list()
     type_map = {str(lt.id): lt.name for lt in leave_types}
 
-    requests = await LeaveRequest.find({
+    leave_query: dict = {
         "company_id": company_id,
         "start_date": {"$gte": datetime.strptime(date_from, "%Y-%m-%d")},
         "end_date": {"$lte": datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)},
-    }).to_list()
+    }
+    if user_ids:
+        leave_query["employee_id"] = {"$in": user_ids}
+    requests = await LeaveRequest.find(leave_query).to_list()
 
     usage: Dict[str, dict] = {}
     for req in requests:
@@ -963,9 +1029,11 @@ async def get_leave_usage_report(
 async def get_document_expiry_report(
     company_id: str, department: Optional[str] = None,
     skip: int = 0, limit: int = 50,
+    user_ids: Optional[List[str]] = None,
 ) -> dict:
     """Document expiry report — all employee documents with expiry state."""
     from app.models.hr_document import HRDocument, HRDocumentStatus, HRDocumentType
+    from app.models.employee_profile import EmployeeProfile
     from app.services.hr_document_service import compute_expiry_state
 
     # Get document types for names
@@ -977,6 +1045,14 @@ async def get_document_expiry_report(
         "status": HRDocumentStatus.ACTIVE.value,
         "employee_id": {"$ne": None},
     }
+    if user_ids:
+        # HRDocuments reference EmployeeProfile _id — resolve allowed profile ids
+        # from the scoped User ids first.
+        scoped_profiles = await EmployeeProfile.find(
+            {"company_id": company_id, "user_id": {"$in": user_ids}}
+        ).to_list()
+        allowed_profile_ids = [str(p.id) for p in scoped_profiles]
+        query["employee_id"] = {"$in": allowed_profile_ids} if allowed_profile_ids else {"$in": []}
 
     documents = await HRDocument.find(query).to_list()
 
@@ -1034,11 +1110,19 @@ async def get_lifecycle_events_report(
     company_id: str, event_type: Optional[str] = None,
     date_from: Optional[str] = None, date_to: Optional[str] = None,
     skip: int = 0, limit: int = 50,
+    user_ids: Optional[List[str]] = None,
 ) -> dict:
     """Lifecycle events report."""
     from app.models.lifecycle import EmployeeLifecycleEvent
+    from app.models.employee_profile import EmployeeProfile
 
     query: dict = {"company_id": company_id}
+    if user_ids:
+        scoped_profiles = await EmployeeProfile.find(
+            {"company_id": company_id, "user_id": {"$in": user_ids}}
+        ).to_list()
+        allowed_profile_ids = [str(p.id) for p in scoped_profiles]
+        query["employee_id"] = {"$in": allowed_profile_ids} if allowed_profile_ids else {"$in": []}
     if event_type:
         query["event_type"] = event_type
     if date_from:
@@ -1107,6 +1191,7 @@ def _summarize_state(state: dict) -> Optional[str]:
 async def get_probation_report(
     company_id: str, department: Optional[str] = None,
     skip: int = 0, limit: int = 50,
+    user_ids: Optional[List[str]] = None,
 ) -> dict:
     """Employees currently on probation."""
     from app.models.employee_profile import EmployeeProfile, EmploymentStatus
@@ -1115,6 +1200,8 @@ async def get_probation_report(
         "company_id": company_id,
         "employment_status": EmploymentStatus.PROBATION.value,
     }
+    if user_ids:
+        query["user_id"] = {"$in": user_ids}
     if department:
         query["department_id"] = department
 
@@ -1156,6 +1243,7 @@ async def get_probation_report(
 async def get_notice_period_report(
     company_id: str, department: Optional[str] = None,
     skip: int = 0, limit: int = 50,
+    user_ids: Optional[List[str]] = None,
 ) -> dict:
     """Employees currently in notice period."""
     from app.models.employee_profile import EmployeeProfile, EmploymentStatus
@@ -1165,6 +1253,8 @@ async def get_notice_period_report(
         "company_id": company_id,
         "employment_status": EmploymentStatus.NOTICE_PERIOD.value,
     }
+    if user_ids:
+        query["user_id"] = {"$in": user_ids}
     if department:
         query["department_id"] = department
 

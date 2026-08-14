@@ -1,15 +1,27 @@
 """
 Phase 10 — HR Dashboard & Reports API endpoints.
 
-All endpoints enforce company scoping and permission-aware section omission.
-The dashboard returns only sections the user is authorized to see.
+Security model (Phase 11 closure):
+
+- Every REPORT endpoint enforces the relevant company capability server-side
+  (``require_capability``) — a normal authenticated employee can never call
+  company-wide HR reports; frontend hiding is not authorization.
+- Manager/Lead users with the required capability are restricted server-side to
+  their team scope (``_report_scope_user_ids``) for employee/attendance/leave/
+  document/lifecycle reports. Salary/Payroll/confidential data is never auto-
+  granted to managers — those endpoints keep their own ``payroll.view`` gate.
+- The dashboard returns only the sections the user is authorized to view;
+  unauthorized sections are ``None`` (the frontend renders empty states).
+- Attention items are permission-filtered so an HR user without payroll access
+  never receives payroll blocker counts.
+- Company scope is enforced on every query.
 """
+
 from __future__ import annotations
 
-import csv
 import io
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -17,15 +29,52 @@ from fastapi.responses import StreamingResponse
 from app.api.dependencies import get_current_user, require_capability
 from app.models.user import User, UserRole
 
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
 
 def _is_company_admin(user: User) -> bool:
     """Check if user has company admin access (admin, sub_admin, or super_admin)."""
     role = user.role.value if hasattr(user.role, "value") else str(user.role)
     return role in {UserRole.ADMIN.value, UserRole.SUB_ADMIN.value, UserRole.SUPER_ADMIN.value}
 
-logger = logging.getLogger(__name__)
 
-router = APIRouter()
+def _role(user: User) -> str:
+    return user.role.value if hasattr(user.role, "value") else str(user.role)
+
+
+def _has_capability(user: User, capability: str) -> bool:
+    return capability in set(user.capabilities or [])
+
+
+async def _report_scope_user_ids(current_user: User) -> Optional[List[str]]:
+    """Resolve the report scope for the current user.
+
+    - Company admins / super admins: ``None`` → company-wide.
+    - Managers / leads: their monitorable team (User ids), computed server-side
+      through the existing attendance reporting hierarchy — never a frontend filter.
+    - Everyone else (reports are additionally capability-gated): ``[]`` → nothing.
+    """
+    role = _role(current_user)
+    if role in {UserRole.ADMIN.value, UserRole.SUB_ADMIN.value, UserRole.SUPER_ADMIN.value}:
+        return None
+    if role in {UserRole.MANAGER.value, UserRole.LEAD.value}:
+        from app.api.v1.endpoints.attendance import get_monitorable_users
+
+        try:
+            users = await get_monitorable_users(current_user)
+        except Exception:
+            logger.exception("Failed to resolve manager report scope for user %s", current_user.id)
+            users = []
+        return [str(u.id) for u in users]
+    return []
+
+
+def _require_company(user: User) -> str:
+    if not user.company_id:
+        raise HTTPException(status_code=400, detail="User must belong to a company")
+    return user.company_id
 
 
 # =============================================================================
@@ -38,10 +87,23 @@ async def get_hr_dashboard(
 ):
     """HR Dashboard — aggregated summary from all HR modules.
 
-    Returns only sections the user is authorized to view.
-    Payroll sections are omitted for users without payroll.view permission.
-    Recruitment sections are omitted for users without recruitment access.
+    Returns only the sections the user is authorized to view; unauthorized
+    sections are omitted (None). Payroll sections are omitted for users without
+    payroll.view. Employee/attendance/leave/document/lifecycle sections follow
+    their own capability gates. Attention items are permission-filtered.
     """
+    if not current_user.company_id:
+        raise HTTPException(status_code=400, detail="User must belong to a company")
+
+    company_id = current_user.company_id
+    role = _role(current_user)
+
+    if role == UserRole.SUPER_ADMIN.value and not _is_company_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="HR Dashboard is not available for platform super-admin accounts.",
+        )
+
     from app.schemas.hr_reports import (
         HRDashboardResponse, EmployeeSummary, AttendanceTodaySummary,
         LeaveSummary, DocumentSummary, LifecycleSummary,
@@ -53,49 +115,80 @@ async def get_hr_dashboard(
         get_recruitment_summary, get_payroll_summary, get_attention_items,
     )
 
-    if not current_user.company_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User must belong to a company",
-        )
+    # Each dashboard section is permission-aware (backend authoritative).
+    employee_summary = None
+    attendance_today = None
+    leave_summary = None
+    document_summary = None
+    lifecycle_summary = None
 
-    company_id = current_user.company_id
+    if _is_company_admin(current_user) or _has_capability(current_user, "employee_management.view"):
+        try:
+            employee_summary = EmployeeSummary(**await get_employee_summary(company_id))
+        except Exception as e:
+            logger.warning("Employee summary failed (non-critical): %s", e)
 
-    # Non-employee users (platform super admins) cannot see HR Dashboard
-    role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
-    if role == UserRole.SUPER_ADMIN.value and not _is_company_admin(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="HR Dashboard is not available for platform super-admin accounts.",
-        )
+    if _is_company_admin(current_user) or _has_capability(current_user, "attendance_policy.view"):
+        try:
+            attendance_today = AttendanceTodaySummary(**await get_attendance_today_summary(company_id))
+        except Exception as e:
+            logger.warning("Attendance summary failed (non-critical): %s", e)
 
-    # Always available sections
-    employee_summary = EmployeeSummary(**await get_employee_summary(company_id))
-    attendance_today = AttendanceTodaySummary(**await get_attendance_today_summary(company_id))
-    leave_summary = LeaveSummary(**await get_leave_summary(company_id))
-    document_summary = DocumentSummary(**await get_document_summary(company_id))
-    lifecycle_summary = LifecycleSummary(**await get_lifecycle_summary(company_id))
+    if _is_company_admin(current_user) or _has_capability(current_user, "leave_management.view"):
+        try:
+            leave_summary = LeaveSummary(**await get_leave_summary(company_id))
+        except Exception as e:
+            logger.warning("Leave summary failed (non-critical): %s", e)
+
+    if _is_company_admin(current_user) or _has_capability(current_user, "employee_lifecycle.view"):
+        try:
+            lifecycle_summary = LifecycleSummary(**await get_lifecycle_summary(company_id))
+        except Exception as e:
+            logger.warning("Lifecycle summary failed (non-critical): %s", e)
+
+    from app.api.v1.endpoints.hr_documents import require_hr_document_view
+
+    can_view_documents = True
+    try:
+        await require_hr_document_view(current_user)
+    except HTTPException:
+        can_view_documents = False
+    if can_view_documents:
+        try:
+            document_summary = DocumentSummary(**await get_document_summary(company_id))
+        except Exception as e:
+            logger.warning("Document summary failed (non-critical): %s", e)
+
+    # Attention items — permission-filtered so unauthorized counts never leak.
     attention_items = await get_attention_items(company_id)
+    has_payroll_view = _is_company_admin(current_user) or _has_capability(current_user, "payroll.view")
+    if not has_payroll_view:
+        attention_items = [item for item in attention_items if item.get("type") != "payroll_blocked"]
+    # Only show attention items for modules the user can actually see.
+    allowed_types = []
+    if employee_summary is not None:
+        allowed_types.extend(["probation_due"])
+    if leave_summary is not None:
+        allowed_types.append("leave_pending")
+    if attendance_today is not None:
+        allowed_types.append("correction_pending")
+    if document_summary is not None:
+        allowed_types.append("document_expiring")
+    if has_payroll_view:
+        allowed_types.append("payroll_blocked")
+    if allowed_types:
+        attention_items = [item for item in attention_items if item.get("type") in set(allowed_types)]
+    else:
+        attention_items = []
 
-    # Permission-gated sections
     recruitment_summary = None
-    payroll_summary = None
-
-    # Check recruitment access (admins/managers/HR see it)
-    if _is_company_admin(current_user) or role in (
-        UserRole.MANAGER.value, UserRole.LEAD.value,
-    ):
+    if _is_company_admin(current_user) or role in (UserRole.MANAGER.value, UserRole.LEAD.value):
         try:
             recruitment_summary = RecruitmentSummary(**await get_recruitment_summary(company_id))
         except Exception as e:
             logger.warning("Recruitment summary failed (non-critical): %s", e)
 
-    # Check payroll access
-    capabilities = set(current_user.capabilities or [])
-    has_payroll_view = (
-        "payroll.view" in capabilities
-        or _is_company_admin(current_user)
-    )
+    payroll_summary = None
     if has_payroll_view:
         try:
             payroll_data = await get_payroll_summary(company_id)
@@ -117,7 +210,7 @@ async def get_hr_dashboard(
 
 
 # =============================================================================
-# Employee Reports
+# Employee Reports (employee_management.view required)
 # =============================================================================
 
 @router.get("/reports/employees/directory")
@@ -127,15 +220,15 @@ async def employee_directory_report(
     employment_type: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("employee_management.view")),
 ):
-    """Employee directory report."""
+    """Employee directory report — requires employee_management.view."""
     from app.services.hr_reporting_service import get_employee_directory
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
     return await get_employee_directory(
-        current_user.company_id, department, employment_status,
-        employment_type, skip, limit,
+        company_id, department, employment_status,
+        employment_type, skip, limit, user_ids=scope,
     )
 
 
@@ -143,30 +236,30 @@ async def employee_directory_report(
 async def headcount_report(
     department: Optional[str] = Query(None),
     employment_status: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("employee_management.view")),
 ):
     """Headcount report — aggregated by department."""
     from app.services.hr_reporting_service import get_headcount_report
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
-    return await get_headcount_report(current_user.company_id, department, employment_status)
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
+    return await get_headcount_report(company_id, department, employment_status, user_ids=scope)
 
 
 @router.get("/reports/employees/joining-exit")
 async def joining_exit_report(
     months: int = Query(6, ge=1, le=24),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("employee_management.view")),
 ):
     """Joining/exit trend data for charts."""
     from app.services.hr_reporting_service import get_joining_exit_trend
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
-    items = await get_joining_exit_trend(current_user.company_id, months)
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
+    items = await get_joining_exit_trend(company_id, months, user_ids=scope)
     return {"items": items}
 
 
 # =============================================================================
-# Attendance Reports
+# Attendance Reports (attendance_policy.view required)
 # =============================================================================
 
 @router.get("/reports/attendance/summary")
@@ -176,14 +269,14 @@ async def attendance_summary_report(
     department: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("attendance_policy.view")),
 ):
     """Attendance summary report — per employee for a date range."""
     from app.services.hr_reporting_service import get_attendance_summary_report
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
     return await get_attendance_summary_report(
-        current_user.company_id, date_from, date_to, department, skip, limit,
+        company_id, date_from, date_to, department, skip, limit, user_ids=scope,
     )
 
 
@@ -194,14 +287,14 @@ async def late_arrival_report(
     department: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("attendance_policy.view")),
 ):
     """Late arrival report."""
     from app.services.hr_reporting_service import get_late_arrival_report
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
     return await get_late_arrival_report(
-        current_user.company_id, date_from, date_to, department, skip, limit,
+        company_id, date_from, date_to, department, skip, limit, user_ids=scope,
     )
 
 
@@ -212,19 +305,19 @@ async def absence_report(
     department: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("attendance_policy.view")),
 ):
     """Absence report — employees with absent status."""
     from app.services.hr_reporting_service import get_absence_report
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
     return await get_absence_report(
-        current_user.company_id, date_from, date_to, department, skip, limit,
+        company_id, date_from, date_to, department, skip, limit, user_ids=scope,
     )
 
 
 # =============================================================================
-# Leave Reports
+# Leave Reports (leave_management.view required)
 # =============================================================================
 
 @router.get("/reports/leave/balances")
@@ -233,14 +326,14 @@ async def leave_balance_report(
     leave_type_id: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("leave_management.view")),
 ):
     """Leave balance report — per employee, per leave type."""
     from app.services.hr_reporting_service import get_leave_balance_report
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
     return await get_leave_balance_report(
-        current_user.company_id, department, leave_type_id, skip, limit,
+        company_id, department, leave_type_id, skip, limit, user_ids=scope,
     )
 
 
@@ -248,18 +341,18 @@ async def leave_balance_report(
 async def leave_usage_report(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("leave_management.view")),
 ):
     """Leave usage by type."""
     from app.services.hr_reporting_service import get_leave_usage_report
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
-    items = await get_leave_usage_report(current_user.company_id, date_from, date_to)
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
+    items = await get_leave_usage_report(company_id, date_from, date_to, user_ids=scope)
     return {"items": items}
 
 
 # =============================================================================
-# Document Reports
+# Document Reports (HR document view required)
 # =============================================================================
 
 @router.get("/reports/documents/expiry")
@@ -267,19 +360,19 @@ async def document_expiry_report(
     department: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("employee_management.view")),
 ):
-    """Document expiry report."""
+    """Document expiry report — requires HR document access."""
+    from app.api.v1.endpoints.hr_documents import require_hr_document_view
+    await require_hr_document_view(current_user)
     from app.services.hr_reporting_service import get_document_expiry_report
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
-    return await get_document_expiry_report(
-        current_user.company_id, department, skip, limit,
-    )
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
+    return await get_document_expiry_report(company_id, department, skip, limit, user_ids=scope)
 
 
 # =============================================================================
-# Lifecycle Reports
+# Lifecycle Reports (employee_lifecycle.view required)
 # =============================================================================
 
 @router.get("/reports/lifecycle/events")
@@ -289,14 +382,14 @@ async def lifecycle_events_report(
     date_to: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("employee_lifecycle.view")),
 ):
     """Lifecycle events report."""
     from app.services.hr_reporting_service import get_lifecycle_events_report
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
     return await get_lifecycle_events_report(
-        current_user.company_id, event_type, date_from, date_to, skip, limit,
+        company_id, event_type, date_from, date_to, skip, limit, user_ids=scope,
     )
 
 
@@ -305,13 +398,13 @@ async def probation_report(
     department: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("employee_lifecycle.view")),
 ):
     """Probation/confirmation report."""
     from app.services.hr_reporting_service import get_probation_report
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
-    return await get_probation_report(current_user.company_id, department, skip, limit)
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
+    return await get_probation_report(company_id, department, skip, limit, user_ids=scope)
 
 
 @router.get("/reports/lifecycle/notice")
@@ -319,17 +412,17 @@ async def notice_period_report(
     department: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("employee_lifecycle.view")),
 ):
     """Notice period report."""
     from app.services.hr_reporting_service import get_notice_period_report
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
-    return await get_notice_period_report(current_user.company_id, department, skip, limit)
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
+    return await get_notice_period_report(company_id, department, skip, limit, user_ids=scope)
 
 
 # =============================================================================
-# Payroll Reports (PAYROLL PERMISSION REQUIRED)
+# Payroll Reports (payroll.view required)
 # =============================================================================
 
 @router.get("/reports/payroll/summary")
@@ -340,9 +433,8 @@ async def payroll_summary_report(
 ):
     """Payroll summary report — requires payroll.view permission."""
     from app.services.hr_reporting_service import get_payroll_summary_report
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
-    return await get_payroll_summary_report(current_user.company_id, skip, limit)
+    company_id = _require_company(current_user)
+    return await get_payroll_summary_report(company_id, skip, limit)
 
 
 @router.get("/reports/payroll/employees")
@@ -355,15 +447,14 @@ async def employee_payroll_report(
 ):
     """Employee payroll report — requires payroll.view permission."""
     from app.services.hr_reporting_service import get_employee_payroll_report
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
+    company_id = _require_company(current_user)
     return await get_employee_payroll_report(
-        current_user.company_id, payroll_period_id, department, skip, limit,
+        company_id, payroll_period_id, department, skip, limit,
     )
 
 
 # =============================================================================
-# CSV Export Endpoints
+# CSV Export Endpoints (same permission + scope as their report)
 # =============================================================================
 
 @router.get("/reports/employees/directory/export")
@@ -371,16 +462,16 @@ async def export_employee_directory(
     department: Optional[str] = Query(None),
     employment_status: Optional[str] = Query(None),
     employment_type: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("employee_management.view")),
 ):
     """Export employee directory as CSV."""
     from app.services.hr_reporting_service import get_employee_directory, generate_csv
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
 
     result = await get_employee_directory(
-        current_user.company_id, department, employment_status,
-        employment_type, 0, 5000,
+        company_id, department, employment_status,
+        employment_type, 0, 5000, user_ids=scope,
     )
     headers = ["Employee Number", "Name", "Department", "Designation", "Manager", "Employment Type", "Joining Date", "Status"]
     rows = [
@@ -409,15 +500,15 @@ async def export_attendance_summary(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     department: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("attendance_policy.view")),
 ):
     """Export attendance summary as CSV."""
     from app.services.hr_reporting_service import get_attendance_summary_report, generate_csv
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
 
     result = await get_attendance_summary_report(
-        current_user.company_id, date_from, date_to, department, 0, 5000,
+        company_id, date_from, date_to, department, 0, 5000, user_ids=scope,
     )
     headers = ["Employee Name", "Employee Number", "Department", "Working Days", "Present", "Paid Leave", "Unpaid Leave", "Absent", "Half Day", "Late Count", "Overtime (min)"]
     rows = [
@@ -449,15 +540,15 @@ async def export_attendance_summary(
 async def export_leave_balances(
     department: Optional[str] = Query(None),
     leave_type_id: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("leave_management.view")),
 ):
     """Export leave balance report as CSV."""
     from app.services.hr_reporting_service import get_leave_balance_report, generate_csv
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
 
     result = await get_leave_balance_report(
-        current_user.company_id, department, leave_type_id, 0, 5000,
+        company_id, department, leave_type_id, 0, 5000, user_ids=scope,
     )
     headers = ["Employee Name", "Employee Number", "Department", "Leave Type", "Allocated", "Used", "Pending", "Available"]
     rows = [
@@ -487,10 +578,9 @@ async def export_payroll_summary(
 ):
     """Export payroll summary as CSV. Requires payroll.view."""
     from app.services.hr_reporting_service import get_payroll_summary_report, generate_csv
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
+    company_id = _require_company(current_user)
 
-    result = await get_payroll_summary_report(current_user.company_id, 0, 5000)
+    result = await get_payroll_summary_report(company_id, 0, 5000)
     headers = ["Period", "Employees", "Total Earnings", "Total Deductions", "Net Payroll", "Status", "Processed At"]
     rows = [
         [
@@ -515,14 +605,16 @@ async def export_payroll_summary(
 @router.get("/reports/documents/expiry/export")
 async def export_document_expiry(
     department: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_capability("employee_management.view")),
 ):
-    """Export document expiry report as CSV."""
+    """Export document expiry report as CSV — requires HR document access."""
+    from app.api.v1.endpoints.hr_documents import require_hr_document_view
+    await require_hr_document_view(current_user)
     from app.services.hr_reporting_service import get_document_expiry_report, generate_csv
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="User must belong to a company")
+    company_id = _require_company(current_user)
+    scope = await _report_scope_user_ids(current_user)
 
-    result = await get_document_expiry_report(current_user.company_id, department, 0, 5000)
+    result = await get_document_expiry_report(company_id, department, 0, 5000, user_ids=scope)
     headers = ["Employee Name", "Employee Number", "Department", "Document Type", "Expiry Date", "Status", "Days Remaining"]
     rows = [
         [

@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Briefcase,
+  CalendarCheck2,
   CalendarClock,
   CalendarDays,
   ClipboardList,
@@ -134,6 +135,16 @@ export const HR_MODULES = [
         name: "Document Types",
         href: "/hr/settings/document-types",
         icon: Settings,
+      },
+      {
+        name: "Leave Types",
+        href: "/hr/settings/leave-types",
+        icon: CalendarDays,
+      },
+      {
+        name: "Leave Allocations",
+        href: "/hr/leave-allocations",
+        icon: CalendarCheck2,
       },
     ],
   },

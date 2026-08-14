@@ -820,15 +820,29 @@ async def adjust_allocation(
 
 
 def attendance_leave_marker(leave: LeaveRequest, type_map: Optional[Dict[str, LeaveTypeConfig]] = None) -> Optional[str]:
-    """"paid_leave" | "unpaid_leave" | None for an APPROVED leave day."""
+    """"paid_leave" | "unpaid_leave" | None for an APPROVED leave day.
+
+    Paid/unpaid is decided by the LeaveTypeConfig referenced through
+    ``leave.leave_type_id`` (Phase 3 normalized model). Legacy requests fall
+    back to the legacy classification. When the classification cannot be
+    resolved the marker is None and a warning is logged — an unknown leave is
+    never silently treated as paid or unpaid.
+    """
     if leave_is_work_from_home(leave):
         return None
     is_paid = None
     leave_type_id = getattr(leave, "leave_type_id", None)
-    if leave_type_id and type_map and leave_type_id in type_map:
-        is_paid = type_map[leave_type_id].is_paid
+    if leave_type_id:
+        config = type_map.get(str(leave_type_id)) if type_map else None
+        is_paid = config.is_paid if config else None
     else:
         is_paid = _legacy_is_paid(leave.leave_type.value if isinstance(leave.leave_type, LeaveType) else None)
+    if is_paid is None:
+        logger.warning(
+            "Leave %s paid classification could not be resolved (leave_type_id=%s) — no attendance marker written",
+            leave.id, leave_type_id,
+        )
+        return None
     return "paid_leave" if is_paid else "unpaid_leave"
 
 

@@ -1665,50 +1665,55 @@ async def record_profile_changes(
     actor: User,
     profile: EmployeeProfile,
     changes: dict,
+    *,
+    before_state: Optional[dict] = None,
 ) -> List[EmployeeLifecycleEvent]:
     """Record lifecycle events for direct HR profile edits (legacy PATCH).
 
     The modern lifecycle endpoints are the preferred path, but the existing
-    Employee edit form still updates ``EmployeeProfile`` directly. To preserve
-    history, this hook maps raw changed fields to lifecycle events with
-    before/after snapshots — it never blocks the profile update.
+    Employee edit form still updates ``EmployeeProfile`` directly. This hook
+    maps raw changed fields to lifecycle events with accurate before/after
+    snapshots.
+
+    Phase 11 closure: history recording is NOT best-effort anymore. Callers
+    pass the pre-mutation ``before_state`` snapshot and must treat an exception
+    from this function as a FAILED mutation (the profile save must not go
+    ahead) — a lifecycle-sensitive change that cannot be recorded is never
+    silently lost.
     """
     recorded: List[EmployeeLifecycleEvent] = []
     if not changes:
         return recorded
 
+    after = _profile_employment_state(profile)
+    before = dict(before_state) if before_state is not None else dict(after)
+
     try:
-        current = _profile_employment_state(profile)
-        # Reconstruct the before-state from the change payload where possible;
-        # otherwise the previous snapshot is the current state minus this change.
         for field, event_type in _CHANGE_EVENT_MAP.items():
-            if field in changes:
-                before = dict(current)
-                before[field] = _change_before_value(profile, field, changes[field])
-                after = dict(current)
-                event = await _record_event(
-                    company_id,
-                    profile,
-                    event_type,
-                    before,
-                    after,
-                    effective_date=utc_now(),
-                    reason="Updated via employee profile edit",
-                    source=LifecycleEventSource.MANUAL,
-                    initiated_by=str(actor.id),
-                )
-                recorded.append(event)
+            if field not in changes:
+                continue
+            if before_state is not None and field in before:
+                field_before = before.get(field)
+            else:
+                field_before = _change_before_value(profile, field, changes[field])
+            event = await _record_event(
+                company_id,
+                profile,
+                event_type,
+                {**before, field: field_before},
+                after,
+                effective_date=utc_now(),
+                reason="Updated via employee profile edit",
+                source=LifecycleEventSource.MANUAL,
+                initiated_by=str(actor.id),
+            )
+            recorded.append(event)
 
         if "employment_status" in changes:
             status_value = changes["employment_status"]
             status_value = status_value.value if hasattr(status_value, "value") else str(status_value)
             event_type = _STATUS_EVENT_MAP.get(status_value)
             if event_type and event_type not in {e.event_type for e in recorded}:
-                before = dict(current)
-                before["employment_status"] = (
-                    profile.employment_status.value if profile.employment_status else None
-                )
-                after = dict(current)
                 event = await _record_event(
                     company_id,
                     profile,
@@ -1722,8 +1727,13 @@ async def record_profile_changes(
                 )
                 recorded.append(event)
     except Exception:
-        # History recording must never break the profile update.
-        logger.exception("Failed to record lifecycle events for profile %s", profile.id)
+        # Partial history must not be left behind — remove whatever was recorded.
+        for event in recorded:
+            try:
+                await event.delete()
+            except Exception:
+                pass
+        raise
     return recorded
 
 

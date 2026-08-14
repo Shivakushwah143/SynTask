@@ -5,7 +5,7 @@ Tests cover: period CRUD, lifecycle transitions, calculation service,
 eligibility, snapshots, permissions, and serialization.
 """
 import pytest
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.models.payroll import (
@@ -221,34 +221,188 @@ class TestPayrollSerialization:
 
 
 # =============================================================================
-# Eligibility Tests
+# Eligibility Tests (Phase 11 closure: employment-overlap based)
 # =============================================================================
 
 class TestPayrollEligibility:
-    """Test employee eligibility for payroll."""
+    """Eligibility is driven by employment overlap with the period — never by the
+    current employment_status alone. An employee who exited mid-period (current
+    status EXITED) must still appear in the overlapping payroll run."""
 
-    def test_active_employee_eligible(self):
-        """Active employees should be included in payroll."""
+    @pytest.mark.asyncio
+    async def test_eligibility_query_uses_employment_overlap(self):
+        """The eligibility query is: joining_date <= period_end AND
+        (last_working_day IS NULL OR last_working_day >= period_start) — never a
+        current-status-only filter."""
+        from app.services import payroll_calculation_service as svc
+
+        find_mock = MagicMock()
+        query_holder = {}
+
+        def _side_effect(query):
+            query_holder["query"] = query
+            q = MagicMock()
+            q.to_list = AsyncMock(return_value=[])
+            return q
+
+        find_mock.side_effect = _side_effect
+        with patch.object(svc.EmployeeProfile, "find", find_mock):
+            await svc.calculate_period_payroll("company-1", date(2026, 8, 1), date(2026, 8, 31))
+
+        query = query_holder["query"]
+        assert "employment_status" not in query
+        and_clauses = query["$and"]
+        assert len(and_clauses) == 2
+        joining_or = and_clauses[0]["$or"]
+        assert {"joining_date": None} in joining_or
+        assert {"joining_date": {"$lte": datetime.combine(date(2026, 8, 31), time.max)}} in joining_or
+        exit_or = and_clauses[1]["$or"]
+        assert {"last_working_day": None} in exit_or
+        assert {"last_working_day": {"$gte": datetime.combine(date(2026, 8, 1), time.min)}} in exit_or
+
+    @pytest.mark.asyncio
+    async def test_exited_mid_period_employee_eligible(self):
+        """An employee whose last_working_day falls inside the period is eligible
+        even when their current employment_status is EXITED."""
+        from app.services import payroll_calculation_service as svc
+
         profile = MagicMock()
-        profile.employment_status = "active"
-        # Verify the status is in the eligible set
-        eligible_statuses = {"active", "probation", "onboarding", "notice_period"}
-        assert profile.employment_status in eligible_statuses
+        profile.user_id = "user-1"
+        profile.employment_status = "exited"  # current status is EXITED
 
-    def test_exited_employee_not_eligible(self):
-        """Exited employees should not be included."""
-        profile = MagicMock()
-        profile.employment_status = "exited"
-        eligible_statuses = {"active", "probation", "onboarding", "notice_period"}
-        assert profile.employment_status not in eligible_statuses
+        find_mock = MagicMock()
 
-    def test_joined_during_period_eligible(self):
-        """Employees who joined during the period should be eligible."""
-        joining_date = datetime(2026, 8, 15)
-        period_start = date(2026, 8, 1)
-        period_end = date(2026, 8, 31)
-        # joining_date is within the period
-        assert period_start <= joining_date.date() <= period_end
+        def _side_effect(query):
+            q = MagicMock()
+            q.to_list = AsyncMock(return_value=[profile])
+            return q
+
+        find_mock.side_effect = _side_effect
+        with patch.object(svc.EmployeeProfile, "find", find_mock), patch.object(
+            svc, "calculate_employee_payroll", AsyncMock(return_value={
+                "employee_id": "user-1",
+                "status": PayrollRecordStatus.READY,
+                "warnings": [],
+                "blockers": [],
+                "gross_salary": 100.0,
+                "total_deductions": 0.0,
+                "net_salary": 100.0,
+            }),
+        ):
+            results, summary = await svc.calculate_period_payroll(
+                "company-1", date(2026, 8, 1), date(2026, 8, 31),
+            )
+
+        assert len(results) == 1
+        assert results[0]["employee_id"] == "user-1"
+        assert summary["ready_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_calculation_result_always_contains_employee_identity(self):
+        """Every result (READY/WARNING/BLOCKED) includes employee_id so PayrollService
+        never silently skips a successful calculation."""
+        from app.services import payroll_calculation_service as svc
+
+        with patch.object(
+            svc.EmployeeProfile, "find_one", AsyncMock(return_value=None),
+        ), patch.object(
+            svc, "get_salary_snapshot_for_payroll", AsyncMock(return_value=None),
+        ):
+            blocked = await svc.calculate_employee_payroll(
+                "company-1", "user-1", date(2026, 8, 1), date(2026, 8, 31),
+            )
+
+        assert blocked["employee_id"] == "user-1"
+        assert blocked["status"] == PayrollRecordStatus.BLOCKED
+
+
+# =============================================================================
+# Payroll Record Persistence (Phase 11 closure)
+# =============================================================================
+
+class TestPayrollRecordPersistence:
+    """A successful (READY) calculation must create a PayrollRecord — the result
+    contract always carries employee_id so records are never silently skipped."""
+
+    @pytest.mark.asyncio
+    async def test_successful_employee_creates_payroll_record(self):
+        from app.services import payroll_service as svc
+
+        period = _make_period()
+        period.save = AsyncMock()
+        result = {
+            "employee_id": "user-1",
+            "status": PayrollRecordStatus.READY,
+            "warnings": [],
+            "blockers": [],
+            "earnings": [],
+            "deductions": [],
+            "gross_salary": 50000.0,
+            "total_deductions": 2000.0,
+            "net_salary": 48000.0,
+            "payable_days": 22.0,
+            "working_days": 22,
+            "attendance_snapshot": {},
+            "employee_name": "John Doe",
+            "employee_number": "EMP-2026-0001",
+            "department": "dept-1",
+            "designation": "Engineer",
+            "salary_structure_id": "s1",
+            "salary_effective_from": datetime(2026, 1, 1),
+            "currency": "INR",
+            "configured_earnings": 50000.0,
+            "configured_deductions": 2000.0,
+        }
+        summary = {
+            "employee_count": 1, "ready_count": 1, "warning_count": 0,
+            "blocked_count": 0, "total_earnings": 50000.0,
+            "total_deductions": 2000.0, "total_net": 48000.0,
+        }
+
+        record_instance = MagicMock()
+        record_instance.insert = AsyncMock()
+        record_cls = MagicMock(return_value=record_instance)
+        record_cls.find_one = AsyncMock(return_value=None)
+
+        with patch.object(svc.PayrollPeriod, "get", AsyncMock(return_value=period)), \
+             patch.object(svc, "calculate_period_payroll", AsyncMock(return_value=([result], summary))), \
+             patch.object(svc, "PayrollRecord", record_cls):
+            calculated = await svc.calculate_payroll("company-1", "p1", MagicMock(id="actor-1"))
+
+        assert calculated.status == PayrollPeriodStatus.CALCULATED
+        assert calculated.employee_count == 1
+        record_instance.insert.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_ready_result_without_employee_id_skipped_only_when_missing(self):
+        """Results without employee_id are skipped (defensive), but the fixed
+        calculation contract always includes it — a READY result is never lost."""
+        from app.services import payroll_service as svc
+
+        period = _make_period()
+        period.save = AsyncMock()
+        result = {
+            "status": PayrollRecordStatus.READY,
+            "warnings": [], "blockers": [], "earnings": [], "deductions": [],
+            "gross_salary": 100.0, "total_deductions": 0.0, "net_salary": 100.0,
+        }
+        summary = {
+            "employee_count": 1, "ready_count": 1, "warning_count": 0,
+            "blocked_count": 0, "total_earnings": 100.0,
+            "total_deductions": 0.0, "total_net": 100.0,
+        }
+
+        record_instance = MagicMock()
+        record_instance.insert = AsyncMock()
+        record_cls = MagicMock(return_value=record_instance)
+        record_cls.find_one = AsyncMock(return_value=None)
+
+        with patch.object(svc.PayrollPeriod, "get", AsyncMock(return_value=period)), \
+             patch.object(svc, "calculate_period_payroll", AsyncMock(return_value=([result], summary))), \
+             patch.object(svc, "PayrollRecord", record_cls):
+            calculated = await svc.calculate_payroll("company-1", "p1", MagicMock(id="actor-1"))
+
+        record_instance.insert.assert_not_awaited()
 
 
 # =============================================================================

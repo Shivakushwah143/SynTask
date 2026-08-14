@@ -346,6 +346,8 @@ export const ITEM_COLORS = {
   "Attendance Policy": "text-blue-400",
   Holidays: "text-rose-400",
   "Salary Components": "text-emerald-400",
+  "Leave Types": "text-violet-400",
+  "Leave Allocations": "text-indigo-400",
   Payroll: "text-yellow-400",
   Departments: "text-indigo-400",
   "Company Directory": "text-blue-400",

@@ -127,6 +127,8 @@ const RecruitmentOffersPage = lazy(() => import('./modules/hr/recruitment/pages/
 const RecruitmentReportsPage = lazy(() => import('./modules/hr/recruitment/pages/ReportsPage'))
 const CandidateOfferPage = lazy(() => import('./modules/hr/recruitment/pages/CandidateOfferPage'))
 const DocumentTypesSettingsPage = lazy(() => import('./modules/hr/recruitment/pages/DocumentTypesSettingsPage'))
+const LeaveTypesSettingsPage = lazy(() => import('./modules/hr/recruitment/pages/LeaveTypesSettingsPage'))
+const LeaveAllocationsPage = lazy(() => import('./modules/hr/recruitment/pages/LeaveAllocationsPage'))
 const CareersLandingPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareersLandingPage })))
 const CareerJobDetailsPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareerJobDetailsPage })))
 const CareerTrackingPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareerTrackingPage })))
@@ -367,9 +369,11 @@ function App() {
             <Route path="employees/:employeeId" element={withBoundary(<EmployeeDetailPage />)} />
             <Route path="documents" element={withBoundary(<HRDocumentsPage />)} />
             <Route path="settings/document-types" element={withBoundary(<DocumentTypesSettingsPage />)} />
+            <Route path="settings/leave-types" element={withBoundary(<LeaveTypesSettingsPage />)} />
             <Route path="settings/attendance-policy" element={withBoundary(<AttendancePolicySettings />)} />
             <Route path="settings/holidays" element={withBoundary(<HolidaysPage />)} />
             <Route path="settings/salary-components" element={withBoundary(<SalaryComponentsPage />)} />
+            <Route path="leave-allocations" element={withBoundary(<LeaveAllocationsPage />)} />
             <Route path="payroll" element={withBoundary(<PayrollPeriods />)} />
             <Route path="payroll/:periodId" element={withBoundary(<PayrollPeriodDetail />)} />
             <Route path="payroll/:periodId/records/:recordId" element={withBoundary(<PayrollRecordDetail />)} />

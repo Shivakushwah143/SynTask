@@ -22,7 +22,15 @@ export const leavesAPI = {
   myLeaves: (params = {}) => api.get('/leaves/my', { params }),
   // Phase 3 self-service: active leave types + own balances.
   leaveTypes: (params = {}) => api.get('/leaves/types', { params }),
+  createLeaveType: (payload) => api.post('/leaves/types', payload),
+  updateLeaveType: (id, payload) => api.patch(`/leaves/types/${id}`, payload),
+  deactivateLeaveType: (id) => api.delete(`/leaves/types/${id}`),
   myBalances: () => api.get('/leaves/balances/me'),
+  // HR: a specific employee's balances (own + manager/HR scope enforced server-side).
+  employeeBalances: (employeeId) => api.get(`/leaves/employees/${employeeId}/balances`),
+  // HR: allocations list + adjustment (leave_management.view/manage required).
+  listAllocations: (params = {}) => api.get('/leaves/allocations', { params }),
+  updateAllocation: (balanceId, payload) => api.patch(`/leaves/allocations/${balanceId}`, payload),
   calendar: (params = {}) => api.get('/leaves/calendar', { params }),
   availability: (params = {}) => api.get('/leaves/availability', { params }),
   forwardTargets: () => api.get('/leaves/forward-targets'),

@@ -13,7 +13,6 @@ import {
   MapPin,
   Pencil,
   Phone,
-  ShieldAlert,
   User,
   Wallet,
   Users,
@@ -25,10 +24,14 @@ import { departmentsAPI } from '../../../../api/departments'
 import { usersAPI } from '../../../../api/users'
 import { fmtDate, labelize } from '../utils/data'
 import { useCanManageHrDocuments } from '../hooks/useCanManageHrDocuments'
+import { useCanManageSalary } from '../hooks/useCanManageSalary'
+import { useCanManageLeave } from '../hooks/useCanManageLeave'
 import DocumentsTab from '../components/DocumentsTab'
 import SalaryTab from '../components/SalaryTab'
 import SalaryFormModal from '../components/SalaryFormModal'
 import LifecycleTab from '../components/LifecycleTab'
+import EmployeeAttendanceTab from '../components/EmployeeAttendanceTab'
+import EmployeeLeaveTab from '../components/EmployeeLeaveTab'
 
 const titleCase = labelize
 import EmployeeFormModal from '../components/EmployeeFormModal'
@@ -71,14 +74,6 @@ function InfoItem({ label, value }) {
   )
 }
 
-const PlaceholderTab = ({ name }) => (
-  <EmptyState
-    icon={ShieldAlert}
-    title={`${name} not available yet`}
-    description={`The ${name.toLowerCase()} module is part of a later HRMS phase. It will appear here once available.`}
-  />
-)
-
 export default function EmployeeDetailPage() {
   const { employeeId } = useParams()
   const navigate = useNavigate()
@@ -109,6 +104,17 @@ export default function EmployeeDetailPage() {
   const departments = departmentsQuery.data || []
   const canEdit = employee?.can_edit === true
   const canManageHrDocuments = useCanManageHrDocuments()
+  const { canManage: canManageSalary } = useCanManageSalary()
+  const canManageLeave = useCanManageLeave()
+
+  // Identity contract (Phase 11 closure):
+  //  - Salary APIs are keyed by EmployeeProfile.user_id (the User id).
+  //  - Attendance records are keyed by User id (Attendance.employee_id).
+  //  - Leave domain (LeaveBalance/LeaveRequest employee_id) is keyed by User id.
+  //  - Documents/Lifecycle APIs are keyed by the EmployeeProfile _id.
+  // Resolve once here so every tab uses the right identity.
+  const userScopedId = employee?.user_id || employee?.id
+  const salaryEmployeeId = userScopedId
 
   // Support the list page's "Edit" action which navigates with ?edit=1.
   useEffect(() => {
@@ -301,12 +307,16 @@ export default function EmployeeDetailPage() {
             {activeTab === 'documents' && (
               <DocumentsTab employeeId={employee.id} ownerName={employee.full_name} canManage={canManageHrDocuments} />
             )}
-            {activeTab === 'attendance' && <PlaceholderTab name="Attendance" />}
-            {activeTab === 'leave' && <PlaceholderTab name="Leave" />}
+            {activeTab === 'attendance' && (
+              <EmployeeAttendanceTab employeeId={userScopedId} />
+            )}
+            {activeTab === 'leave' && (
+              <EmployeeLeaveTab employeeId={userScopedId} canManage={canManageLeave} />
+            )}
             {activeTab === 'salary' && (
               <SalaryTab
-                employeeId={employee.id}
-                canManage={canManage}
+                employeeId={salaryEmployeeId}
+                canManage={canManageSalary}
                 onAssign={() => { setSalaryFormMode('assign'); setShowSalaryForm(true) }}
                 onRevise={() => { setSalaryFormMode('revision'); setShowSalaryForm(true) }}
               />
@@ -329,7 +339,7 @@ export default function EmployeeDetailPage() {
             <SalaryFormModal
               isOpen={showSalaryForm}
               onClose={() => setShowSalaryForm(false)}
-              employeeId={employee.id}
+              employeeId={salaryEmployeeId}
               mode={salaryFormMode}
               currentSalary={null}
               onSuccess={() => setShowSalaryForm(false)}

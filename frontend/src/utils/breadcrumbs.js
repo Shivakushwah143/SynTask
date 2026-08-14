@@ -115,6 +115,8 @@ export const buildBreadcrumbTrail = (pathname, search = '') => {
     if (isHrPath && segment === 'documents') return 'Documents'
     if (isHrPath && segment === 'settings') return 'HR Settings'
     if (isHrPath && segment === 'document-types') return 'Document Types'
+    if (isHrPath && segment === 'leave-types') return 'Leave Types'
+    if (isHrPath && segment === 'leave-allocations') return 'Leave Allocations'
     return BREADCRUMB_LABELS[segment] || segment
   }
   let displaySegments = segments.map(labelSegment)
