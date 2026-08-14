@@ -7,9 +7,15 @@ import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
 import { CRMEmptyState, CRMPage, CRMSection } from '../../../components/crm'
 import { EmailComposer } from '../../../components/EmailComposer'
-import { Button, ConfirmDialog } from '../../../components/ui'
+import { Button, ConfirmDialog, Modal } from '../../../components/ui'
 import { useConfirmation } from '../../../hooks/useConfirmation'
 import SalesFollowUpDialog from '../../../components/sales/SalesFollowUpDialog'
+import { StageRequirementsDialog } from '../../../components/sales/StageRequirementsDialog'
+import {
+  TRANSITION_BLOCKER,
+  TRANSITION_WARNING_TOAST,
+  classifyTransitionFailure,
+} from '../../../utils/salesTransition'
 import { LeadAccessDeniedState, LeadAttachmentsTab, LeadCallLogsTab, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadTasksTab, LeadWorkspace } from './components'
 import { LEAD_FILES_QUERY_KEY, LeadFilesTab } from './files'
 import { LEAD_NOTES_QUERY_KEY, LeadNotesTab } from './notes'
@@ -17,6 +23,7 @@ import { LeadTimelineTab } from './timeline'
 import { LeadAISalesTab } from './ai'
 import { MetaAttribution } from './MetaAttribution'
 import { LeadDocumentsTab } from './documents'
+import { LeadAuditTab, LeadDiscoveryTab } from './discoveryAudit'
 
 const ACTIVE_TAB_KEY = 'tab'
 const WORKSPACE_QUERY_KEY = 'crm-lead-workspace'
@@ -30,6 +37,8 @@ export default function CRMLeadWorkspacePage() {
   const [timelineSearch, setTimelineSearch] = useState('')
   const [composerOpen, setComposerOpen] = useState(false)
   const [pendingLeadUpdate, setPendingLeadUpdate] = useState(null)
+  const [quotationDraftPrompt, setQuotationDraftPrompt] = useState(null)
+  const [requirementsDialog, setRequirementsDialog] = useState(null)
   const [followUpOpen, setFollowUpOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   // Synchronous guard so a rapid double-click on the confirm button cannot fire
@@ -237,6 +246,70 @@ export default function CRMLeadWorkspacePage() {
       },
     },
   )
+  const moveStageMutation = useMutation(
+    ({ stage }) => crmApi.updatePipelineStage(leadId, { stage }),
+    {
+      onSuccess: (_data, variables) => {
+        toast.success('Lead stage updated')
+        setQuotationDraftPrompt(null)
+        setRequirementsDialog(null)
+        queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId], { exact: true })
+        queryClient.invalidateQueries('crm-pipeline-board')
+        if (variables?.tab) handleTabChange(variables.tab)
+      },
+      onError: (error, variables) => {
+        const blocker = classifyTransitionFailure(error, 'Could not move lead stage yet')
+        if (blocker.category === TRANSITION_BLOCKER.MISSING_DETAILS) {
+          setRequirementsDialog({ blocker, targetStageKey: variables?.stage, tab: variables?.tab })
+          return
+        }
+        if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) toast.error(blocker.message)
+        else toast(blocker.message, TRANSITION_WARNING_TOAST)
+      },
+    },
+  )
+
+  const saveDialogFieldsOnly = useCallback(async (values) => {
+    const entries = Object.entries(values || {})
+    if (!entries.length) return
+    await salesApi.updateLeadForm(leadId, Object.fromEntries(entries))
+  }, [leadId])
+
+  const handleDialogSaveFields = useCallback(async (values) => {
+    try {
+      await saveDialogFieldsOnly(values)
+      toast.success('Details saved')
+      setRequirementsDialog(null)
+      queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId], { exact: true })
+    } catch (error) {
+      const blocker = classifyTransitionFailure(error, 'Unable to save details')
+      if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) toast.error(blocker.message)
+      else toast(blocker.message, TRANSITION_WARNING_TOAST)
+      throw error
+    }
+  }, [leadId, queryClient, saveDialogFieldsOnly])
+
+  const handleDialogSaveAndMove = useCallback(async (values) => {
+    if (!requirementsDialog?.targetStageKey) return
+    await saveDialogFieldsOnly(values)
+    moveStageMutation.mutate({ stage: requirementsDialog.targetStageKey, tab: requirementsDialog.tab })
+  }, [moveStageMutation, requirementsDialog, saveDialogFieldsOnly])
+
+  const moveLeadStage = useCallback((stage, tab) => {
+    if (!stage || moveStageMutation.isLoading) return
+    moveStageMutation.mutate({ stage, tab })
+  }, [moveStageMutation])
+
+  const handleQuotationGenerated = useCallback((document) => {
+    queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId], { exact: true })
+    const currentStage = String(lead?.current_stage || '').toLowerCase()
+    const proposalOpen = ['proposal', 'negotiation', 'agreement', 'won'].includes(currentStage)
+    if (proposalOpen) {
+      handleTabChange('proposal')
+      return
+    }
+    setQuotationDraftPrompt(document || {})
+  }, [handleTabChange, lead?.current_stage, leadId, queryClient])
 
   const handleProposalChange = useCallback((field, value) => {
     setProposalForm((state) => ({ ...state, [field]: value }))
@@ -288,21 +361,13 @@ export default function CRMLeadWorkspacePage() {
   else if (activeTab === 'meetings') body = <LeadMeetingsTab />
   else if (activeTab === 'emails') body = <LeadEmailsTab />
   else if (activeTab === 'call_logs') body = <LeadCallLogsTab />
-  else if (activeTab === 'documents') body = <LeadDocumentsTab leadId={leadId} lead={lead} />
+  else if (activeTab === 'discovery') body = <LeadDiscoveryTab leadId={leadId} lead={lead} onScheduleFollowUp={openFollowUp} />
+  else if (activeTab === 'audit') body = <LeadAuditTab leadId={leadId} lead={lead} onScheduleFollowUp={openFollowUp} onQuotationGenerated={handleQuotationGenerated} onGoToDiscovery={() => handleTabChange('discovery')} />
+  else if (activeTab === 'documents') body = <LeadDocumentsTab leadId={leadId} lead={lead} mode="documents" />
+  else if (activeTab === 'agreement') body = <LeadDocumentsTab leadId={leadId} lead={lead} mode="agreement" />
   else if (activeTab === 'proposal') {
     body = (
-      <LeadProposalTab
-        deal={deal}
-        proposals={proposals}
-        form={proposalForm}
-        onChange={handleProposalChange}
-        onSubmit={handleProposalSubmit}
-        onArchive={handleProposalArchive}
-        isSaving={proposalMutation.isLoading}
-        isLoading={proposalQuery.isLoading}
-        errorMessage={proposalQuery.isError ? proposalQuery.error?.response?.data?.detail || 'Proposal data could not be loaded.' : ''}
-        onRetry={() => proposalQuery.refetch()}
-      />
+      <LeadDocumentsTab leadId={leadId} lead={lead} mode="proposal" />
     )
   } else if (activeTab === 'ai') {
     body = <LeadAISalesTab leadId={leadId} lead={lead} onRefresh={handleRefresh} />
@@ -459,6 +524,59 @@ export default function CRMLeadWorkspacePage() {
         onClose={() => {
           if (!deleteLeadMutation.isLoading) setDeleteOpen(false)
         }}
+      />
+      <Modal
+        isOpen={Boolean(quotationDraftPrompt)}
+        title="Quotation draft created"
+        description="Discovery and Audit are ready for the Proposal step."
+        size="sm"
+        onClose={() => {
+          if (!moveStageMutation.isLoading) setQuotationDraftPrompt(null)
+        }}
+        footer={(
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={moveStageMutation.isLoading}
+              onClick={() => setQuotationDraftPrompt(null)}
+            >
+              Stay in Audit
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              loading={moveStageMutation.isLoading}
+              onClick={() => moveLeadStage('proposal', 'proposal')}
+            >
+              Move to Proposal
+            </Button>
+          </div>
+        )}
+      >
+        <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
+          <p>
+            The quotation draft was saved successfully. To review and send it from the Proposal workspace, move this lead to the next sales stage.
+          </p>
+          {quotationDraftPrompt?.document_number ? (
+            <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 font-medium text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
+              {quotationDraftPrompt.document_number} is ready for review.
+            </p>
+          ) : null}
+        </div>
+      </Modal>
+      <StageRequirementsDialog
+        open={Boolean(requirementsDialog)}
+        blocker={requirementsDialog?.blocker}
+        lead={lead}
+        users={users}
+        saving={moveStageMutation.isLoading}
+        moving={moveStageMutation.isLoading}
+        onClose={() => {
+          if (!moveStageMutation.isLoading) setRequirementsDialog(null)
+        }}
+        onSaveFields={handleDialogSaveFields}
+        onSaveAndMove={handleDialogSaveAndMove}
       />
     </>
   )

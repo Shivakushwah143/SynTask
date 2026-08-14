@@ -42,6 +42,8 @@ export default function PublicCrmDocument() {
 
   const items = document.content_snapshot?.items || []
   const lead = document.content_snapshot?.lead || {}
+  const snapshot = document.content_snapshot || {}
+  const isContract = document.document_type === 'contract'
 
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-8 text-gray-900">
@@ -70,7 +72,33 @@ export default function PublicCrmDocument() {
           </div>
         </div>
 
-        {items.length ? (
+        {isContract ? (
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            {[
+              ['Parties', snapshot.parties],
+              ['Scope of Work', snapshot.scope],
+              ['Deliverables', snapshot.deliverables],
+              ['Commercial Terms', snapshot.price],
+              ['Payment Schedule', snapshot.payment_schedule],
+              ['Timeline', [snapshot.start_date, snapshot.end_date].filter(Boolean).join(' to ')],
+              ['Confidentiality', snapshot.confidentiality],
+              ['Termination', snapshot.termination],
+            ].filter(([, value]) => value).map(([label, value]) => (
+              <div key={label}>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">{label}</h2>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{value}</p>
+              </div>
+            ))}
+            {Array.isArray(snapshot.clauses) && snapshot.clauses.length ? (
+              <div className="md:col-span-2">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Additional Clauses</h2>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                  {snapshot.clauses.map((clause, index) => <li key={index}>{clause}</li>)}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : items.length ? (
           <div className="mt-6 overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead><tr className="text-left text-gray-500"><th className="py-2">Description</th><th>Qty</th><th>Rate</th><th>Tax</th><th>Total</th></tr></thead>
@@ -104,7 +132,7 @@ export default function PublicCrmDocument() {
           </div>
           <label className="mt-3 flex items-center gap-2 text-sm text-gray-700">
             <input type="checkbox" checked={form.accepted} onChange={(event) => setForm((s) => ({ ...s, accepted: event.target.checked }))} />
-            I understand this records electronic acceptance, not a certified digital signature.
+            {isContract ? 'I understand this records electronic acceptance, not a certified digital signature.' : 'I confirm I am authorized to respond to this quotation.'}
           </label>
           <textarea className={`${inputClassName} mt-3 min-h-24`} placeholder="Comment for rejection or requested changes" value={form.comment} onChange={(event) => setForm((s) => ({ ...s, comment: event.target.value }))} />
           <div className="mt-4 flex flex-wrap gap-2">

@@ -6,7 +6,8 @@ from enum import Enum
 from typing import Any, Optional
 
 from beanie import Document, Indexed
-from pydantic import Field
+from bson import Decimal128
+from pydantic import Field, field_validator
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
 
@@ -38,6 +39,14 @@ class CRMDocument(Document):
     tax_total: Decimal = Decimal("0")
     grand_total: Decimal = Decimal("0")
     status: CRMDocumentStatus = CRMDocumentStatus.DRAFT
+
+    @field_validator("subtotal", "discount_total", "tax_total", "grand_total", mode="before")
+    @classmethod
+    def coerce_decimal128(cls, value: Any) -> Any:
+        # pydantic v2 rejects bson.Decimal128; MongoDB stores Decimal fields as Decimal128.
+        if isinstance(value, Decimal128):
+            return value.to_decimal()
+        return value
     valid_until: Optional[datetime] = None
     content_snapshot: dict[str, Any] = Field(default_factory=dict)
     terms: Optional[str] = None

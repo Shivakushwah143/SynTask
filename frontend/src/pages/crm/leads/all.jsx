@@ -7,6 +7,7 @@ import { useQuery } from 'react-query'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import {
   Download,
+  FileText,
   Filter,
   Layers,
   Mail,
@@ -261,6 +262,7 @@ export default function CRMAllLeadsPage() {
                     <th className="px-4 py-3 text-left font-semibold text-text-primary">Priority</th>
                     <th className="px-4 py-3 text-left font-semibold text-text-primary">Value</th>
                     <th className="px-4 py-3 text-left font-semibold text-text-primary">Status</th>
+                    <th className="px-4 py-3 text-right font-semibold text-text-primary">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -270,6 +272,7 @@ export default function CRMAllLeadsPage() {
                     const meetingScheduled = Boolean(custom.meeting_scheduled)
                     const deadEnd = Boolean(custom.dead_end)
                     const priority = getLeadPriority(lead)
+                    const key = getLeadStageKey(lead) || normalizeText(lead.current_stage || lead.stage || '')
                     return (
                       <tr
                         key={leadId}
@@ -305,6 +308,22 @@ export default function CRMAllLeadsPage() {
                             />
                             {deadEnd && <Badge label="Dead End" colorKey="danger" />}
                           </div>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {['discovery', 'proposal'].includes(key) ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                navigate(`/crm/leads/${leadId}?tab=audit`)
+                              }}
+                            >
+                              <FileText className="h-4 w-4" />
+                              Quotation
+                            </Button>
+                          ) : null}
                         </td>
                       </tr>
                     )

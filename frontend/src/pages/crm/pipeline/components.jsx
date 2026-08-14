@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'rea
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertCircle, CalendarClock, ChevronDown, Filter, Loader2, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
+import { AlertCircle, CalendarClock, ChevronDown, FileText, Filter, Loader2, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
@@ -345,6 +345,7 @@ export const PipelineBoard = memo(function PipelineBoard({
   onUpdateStageStatus,
   onRecordContact,
   onScheduleFollowUp,
+  onGenerateQuotation,
   onDeleteLead,
   getAllowedStageKeys,
   onCopyLeadId,
@@ -387,6 +388,7 @@ export const PipelineBoard = memo(function PipelineBoard({
               onUpdateStageStatus={onUpdateStageStatus}
               onRecordContact={onRecordContact}
               onScheduleFollowUp={onScheduleFollowUp}
+              onGenerateQuotation={onGenerateQuotation}
               onDeleteLead={onDeleteLead}
               getAllowedStageKeys={getAllowedStageKeys}
               onCopyLeadId={onCopyLeadId}
@@ -768,6 +770,18 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                           Follow up
                         </Button>
                       ) : null}
+                      {['discovery', 'proposal'].includes(getStageKey(stage)) ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onGenerateQuotation?.(lead)}
+                          title="Open Audit to generate quotation draft"
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                          Quotation
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
                         variant="primary"
@@ -814,6 +828,7 @@ export const PipelineColumn = memo(function PipelineColumn({
   users = [],
   onRecordContact,
   onScheduleFollowUp,
+  onGenerateQuotation,
   onMoveLeadToStage,
   onUpdateStageStatus,
   onDeleteLead,
@@ -871,6 +886,7 @@ export const PipelineColumn = memo(function PipelineColumn({
                 onUpdateStageStatus={onUpdateStageStatus}
                 onRecordContact={onRecordContact}
                 onScheduleFollowUp={onScheduleFollowUp}
+                onGenerateQuotation={onGenerateQuotation}
                 onDeleteLead={onDeleteLead}
                 allowedStageKeys={allowedStageKeys}
                 onCopyLeadId={onCopyLeadId}
@@ -912,6 +928,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   onUpdateStageStatus,
   onRecordContact,
   onScheduleFollowUp,
+  onGenerateQuotation,
   onDeleteLead,
   allowedStageKeys = new Set(),
   onCopyLeadId,
@@ -1065,6 +1082,15 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           label="Schedule Follow-up"
           onClick={() => {
             onScheduleFollowUp?.(lead)
+            setMenuOpen(false)
+          }}
+        />
+      ) : null}
+      {['discovery', 'proposal'].includes(getStageKey(stage)) ? (
+        <ActionItem
+          label="Generate quotation draft"
+          onClick={() => {
+            onGenerateQuotation?.(lead)
             setMenuOpen(false)
           }}
         />
@@ -1225,6 +1251,19 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           >
             <CalendarClock className="h-4 w-4" />
             Follow up
+          </Button>
+        ) : null}
+        {['discovery', 'proposal'].includes(getStageKey(stage)) ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={pipelineLeadCardClassNames.actionButton}
+            onClick={() => onGenerateQuotation?.(lead)}
+            title="Open Audit to generate quotation draft"
+          >
+            <FileText className="h-4 w-4" />
+            Quotation
           </Button>
         ) : null}
         {canMoveNext ? (

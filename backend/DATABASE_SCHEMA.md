@@ -2,7 +2,7 @@
 
 Database: `alphanexis_task_management`
 
-This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **56 unique MongoDB collection names** across **61 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
+This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **58 unique MongoDB collection names** across **63 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
 
 ## Collection Summary
 
@@ -38,6 +38,8 @@ This document is generated from Beanie `Document` models under `backend/app/mode
 | `sales_categories` | SalesCategory | Sales product/contact category master data. |
 | `sales_channels` | SalesChannel | Sales channel master data. |
 | `sales_contacts` | SalesContact | Sales CRM contacts. |
+| `sales_audits` | SalesAudit | Lead-scoped pre-conversion audit workspace and recommendations. |
+| `sales_discoveries` | SalesDiscovery | Lead-scoped pre-conversion discovery workspace. |
 | `sales_greeting_templates` | GreetingTemplate | GreetingTemplate persistence collection. |
 | `sales_nationalities` | Nationality | Nationality persistence collection. |
 | `sales_products` | SalesProduct | Sales product/service catalog entries. |
@@ -918,6 +920,56 @@ Indexes: `['company_id', 'category_id', 'name', 'deleted']`
 | `deleted` | `bool` | No | Yes | Model field |
 | `created_at` | `datetime.datetime` | No | No | Creation timestamp |
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
+
+### `sales_discoveries`
+
+#### Model: `SalesDiscovery`
+
+Indexes: unique `('company_id', 'lead_id')`, plus `('company_id', 'status', 'updated_at')`.
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `lead_id` | `str` | Yes | Yes | Existing `sales_prospects` lead reference |
+| `status` | `SalesWorkspaceStatus` | No | Yes | `draft`, `in_progress`, or `completed` |
+| `business_information` | `Dict[str, Any]` | No | No | Structured business profile; does not duplicate authoritative lead identity fields |
+| `current_marketing` | `Dict[str, Any]` | No | No | Website/social/current activity and spend snapshot |
+| `problems` | `Dict[str, Any]` | No | No | Selected pain points plus notes |
+| `goals` | `Dict[str, Any]` | No | No | Primary goal, secondary goals, expected outcome, timeframe |
+| `budget` | `Dict[str, Any]` | No | No | Budget context; `SalesProspect.budget` remains authoritative for numeric budget |
+| `decision_maker` | `Dict[str, Any]` | No | No | Decision-maker process/details; `SalesProspect.decision_maker` remains authoritative for the primary name |
+| `competitors` | `List[Dict[str, Any]]` | No | No | Structured competitor references |
+| `timeline` | `Dict[str, Any]` | No | No | Start/decision/duration/urgency details; `SalesProspect.timeline` remains authoritative for the primary timeline |
+| `summary` | `Dict[str, Any]` | No | No | Salesperson summary and recommended action |
+| `completion` | `Dict[str, Any]` | No | No | Calculated percent/checklist snapshot |
+| `version` | `int` | No | No | Incremented on partial update for quotation source snapshots |
+| `created_by`, `updated_by`, `completed_by` | `Optional[str]` | No | No | User IDs for auditability |
+| `created_at`, `updated_at`, `completed_at` | `datetime` | No | No | Lifecycle timestamps |
+
+### `sales_audits`
+
+#### Model: `SalesAudit`
+
+Indexes: unique `('company_id', 'lead_id')`, plus `('company_id', 'status', 'updated_at')`.
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `lead_id` | `str` | Yes | Yes | Existing `sales_prospects` lead reference |
+| `status` | `SalesWorkspaceStatus` | No | Yes | `draft`, `in_progress`, or `completed` |
+| `audit_source` | `str` | No | No | `manual` now; future-compatible with `ai` or `hybrid` |
+| `website` | `Dict[str, Any]` | No | No | Website audit observations |
+| `google_presence` | `Dict[str, Any]` | No | No | Google Business Profile/local visibility observations |
+| `social_media` | `Dict[str, Any]` | No | No | Channel observations |
+| `seo` | `Dict[str, Any]` | No | No | SEO findings designed for future crawler/AI population |
+| `competitors` | `List[Dict[str, Any]]` | No | No | Competitor audit observations |
+| `swot` | `Dict[str, Any]` | No | No | Strengths, weaknesses, opportunities, risks lists |
+| `recommendations` | `List[Dict[str, Any]]` | No | No | Structured recommendation cards with priority, impact, suggested service, and proposal inclusion flag |
+| `findings` | `List[Dict[str, Any]]` | No | No | Future-compatible finding records with source/confidence/review metadata |
+| `completion` | `Dict[str, Any]` | No | No | Calculated percent/checklist snapshot |
+| `version` | `int` | No | No | Incremented on partial update for quotation source snapshots |
+| `created_by`, `updated_by`, `completed_by` | `Optional[str]` | No | No | User IDs for auditability |
+| `created_at`, `updated_at`, `completed_at` | `datetime` | No | No | Lifecycle timestamps |
 
 ### `sales_prospects`
 

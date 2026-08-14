@@ -190,6 +190,20 @@ Out of scope: autonomous email sending from AI generation alone, cross-tenant or
 - Automation/webhooks are idempotent or safely retryable and expose terminal failures.
 
 Acceptance: create-to-close succeeds for each role; Employee project Leads can perform Lead actions only in their assigned project; normal project members cannot perform Lead-only actions; old Leads lose permissions after replacement; employee task creators retain list visibility after assigning work to another employee; scheduled project/task creation runs once at the requested future time; pending scheduled project/task placeholders are visible only to their creator before publish with the publish time shown; invalid transitions and foreign-tenant access fail; concurrent board changes do not silently lose data.
+
+### Sales Discovery, Audit, and Quotation Drafting
+
+SynTask supports a pre-conversion Discovery & Audit Workspace inside the existing CRM lead workspace. Discovery and Audit remain Sales-domain artifacts linked to the existing lead; they do not create Clients, Projects, separate quotations, or separate contracts.
+
+- Discovery captures business information, current marketing, pain points, goals, budget context, decision-maker details, competitors, timeline, and a salesperson summary with `draft`, `in_progress`, and `completed` states. Partial saves are allowed.
+- Audit captures manual website, Google presence, social, SEO, competitor, SWOT, finding, and recommendation data with `audit_source` ready for future `manual`/`ai`/`hybrid` population. Optional social platforms do not block completion.
+- `SalesProspect` remains authoritative for lead identity and shared qualification fields. Discovery budget, decision-maker, and timeline inputs sync to the existing lead fields when supplied; the structured workspace stores context without duplicating lead ownership or commercial truth.
+- Generate Quotation Draft creates a normal `crm_documents` quotation in `draft` status. The action validates minimum identity/problem/goal/recommendation data, maps proposal-included recommendations to existing Sales Products when possible, and returns unmapped recommendations for manual product selection. Unmapped required lines must be priced before send/share. Discovery budget is pricing context only and never becomes quotation price automatically.
+- Generated quotations store a Discovery/Audit source snapshot with document ids, versions, and update timestamps. Later Discovery/Audit edits do not mutate generated, sent, accepted, or historical quotation documents.
+- Quotation lifecycle is authoritative for Proposal status. Server-side quotation changes synchronize the lead's Proposal status, and users cannot manually mark authoritative Proposal outcomes through the generic stage-status API.
+- Contracts continue to be created from the accepted quotation document snapshot, preserving the existing accepted quotation -> contract -> signed contract plus required advance -> conversion/client/onboarding gate. Contract lifecycle is authoritative for Agreement status, including synchronizing valid contract acceptance to Agreement signed.
+- Lead workspace sections are stage-aware: future Discovery/Audit/Proposal/Agreement sections remain visible but locked until the required sales stage; Documents and Activity remain accessible as repository/history surfaces.
+- Access remains tenant-scoped by `company_id` and lead ownership fields. Super Admin, Admin, Sub Admin, Manager, Lead, and Employee users follow existing Sales access conventions, with backend checks authoritative.
 Agents extend Phase 1 and run through server-side authorization, tenant-safe retrieval, provider abstraction, structured audit, token budgets, timeouts, prompt versioning, and human approval for material actions.
 
 Each agent or subagent run includes tenant ID, authorized user ID, role/capability snapshot, project ID where applicable, task ID where applicable, prompt version, model, provider, allowed tools, context-source manifest, token budget, timeout, approval requirement, idempotency key, and audit record.

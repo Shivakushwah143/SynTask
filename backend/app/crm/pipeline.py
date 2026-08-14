@@ -728,6 +728,20 @@ def _is_allowed_transition(current_stage: str, target_stage: str) -> bool:
     target = _resolve_pipeline_stage(target_stage)
     if not current or not target:
         return False
+    journey = [
+        PipelineStage.ACQUIRE,
+        PipelineStage.QUALIFY,
+        PipelineStage.DISCOVERY,
+        PipelineStage.PROPOSAL,
+        PipelineStage.NEGOTIATION,
+        PipelineStage.AGREEMENT,
+        PipelineStage.WON,
+    ]
+    if current in journey and target in journey:
+        current_index = journey.index(current)
+        target_index = journey.index(target)
+        if target_index == current_index - 1:
+            return True
     return target in ALLOWED_TRANSITIONS.get(current, set())
 
 
@@ -1362,7 +1376,19 @@ class CRMPipelineService:
                 detail=f"'{stage_status}' is not a valid status for the {stage_status_display(prospect.current_stage)} stage.",
             )
 
+        current = _normalize_status_value(getattr(prospect, "current_stage_status", None)) or None
+
         # ── Stage-specific rules ──
+        if stage_key == "proposal" and normalized != current and normalized in {"accepted", "viewed", "sent", "revision_requested", "rejected", "expired"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Proposal status is driven by quotation activity. Use the quotation workflow instead.",
+            )
+        if stage_key == "agreement" and normalized != current and normalized in {"sent", "viewed", "signed", "rejected", "expired"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Agreement status is driven by contract activity. Use the contract workflow instead.",
+            )
         if stage_key == "qualify" and normalized == "qualified":
             interest_ok = _normalize_status_value(getattr(prospect, "qualify_status", None)) in QUALIFY_READY_STATUSES
             interest_ok = interest_ok or _normalize_status_value(getattr(prospect, "current_stage_status", None)) in QUALIFY_READY_STATUSES
@@ -1404,7 +1430,6 @@ class CRMPipelineService:
                         detail=f"Cannot move Won status backward from '{current_won}' to '{normalized}'.",
                     )
 
-        current = _normalize_status_value(getattr(prospect, "current_stage_status", None)) or None
         now = utc_now()
         changed = apply_stage_status_change(
             prospect, stage_key=stage_key, new_status=normalized, user=current_user, now=now

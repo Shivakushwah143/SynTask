@@ -22,17 +22,24 @@ import { LeadFilesTab } from './files'
 
 export const LEAD_TABS = [
   { key: 'overview', label: 'Overview' },
+  { key: 'discovery', label: 'Discovery' },
+  { key: 'audit', label: 'Audit' },
+  { key: 'proposal', label: 'Proposal' },
+  { key: 'agreement', label: 'Agreement' },
+  { key: 'documents', label: 'Documents' },
+  { key: 'timeline', label: 'Activity' },
   { key: 'notes', label: 'Notes' },
   { key: 'tasks', label: 'Tasks' },
   { key: 'meetings', label: 'Meetings' },
   { key: 'emails', label: 'Emails' },
   { key: 'files', label: 'Files' },
   { key: 'call_logs', label: 'Calls' },
-  { key: 'proposal', label: 'Proposal' },
-  { key: 'documents', label: 'Documents' },
+  { key: 'history', label: 'Stage History' },
   { key: 'ai', label: 'AI' },
 ]
-const PRIMARY_LEAD_TAB_KEYS = new Set(['overview', 'notes', 'tasks', 'meetings', 'emails'])
+const PRIMARY_LEAD_TAB_KEYS = new Set(['overview', 'discovery', 'audit', 'proposal', 'agreement', 'documents', 'timeline'])
+const WORKSPACE_STAGE_ORDER = ['acquire', 'qualify', 'discovery', 'proposal', 'negotiation', 'agreement', 'won']
+const WORKSPACE_STAGE_MINIMUM = { discovery: 'discovery', audit: 'discovery', proposal: 'proposal', agreement: 'agreement' }
 
 const leadTone = (value) => {
   const key = String(value || '').toLowerCase()
@@ -314,7 +321,7 @@ export const LeadWorkspace = memo(function LeadWorkspace({
 
       <LeadJourneyTracker lead={lead} />
 
-      <LeadTabs activeTab={activeTab} onTabChange={onTabChange} />
+      <LeadTabs activeTab={activeTab} onTabChange={onTabChange} lead={lead} />
 
       <LeadWorkspaceLayout body={body} sidebar={sidebar} />
     </CRMPage>
@@ -571,33 +578,54 @@ function HeaderEditField({ label, value, onChange, type = 'text', placeholder, o
   )
 }
 
-export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange }) {
+const tabAvailability = (lead, tab) => {
+  const minimum = WORKSPACE_STAGE_MINIMUM[tab.key]
+  if (!minimum) return { locked: false }
+  const current = getCanonicalPipelineStageKey(lead?.current_stage || 'acquire')
+  const currentIndex = WORKSPACE_STAGE_ORDER.indexOf(current)
+  const requiredIndex = WORKSPACE_STAGE_ORDER.indexOf(minimum)
+  const locked = currentIndex >= 0 && requiredIndex >= 0 && currentIndex < requiredIndex
+  if (!locked) return { locked: false }
+  const messages = {
+    discovery: 'Complete Qualification before starting Discovery.',
+    audit: 'Complete Qualification before starting Audit.',
+    proposal: 'Complete Discovery before starting Proposal.',
+    agreement: 'Complete Proposal and Negotiation before starting Agreement.',
+  }
+  return { locked: true, message: messages[tab.key] || 'Complete the earlier sales stage first.' }
+}
+
+export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange, lead }) {
   const primaryTabs = LEAD_TABS.filter((tab) => PRIMARY_LEAD_TAB_KEYS.has(tab.key))
   const moreTabs = LEAD_TABS.filter((tab) => !PRIMARY_LEAD_TAB_KEYS.has(tab.key))
   const activeMoreTab = moreTabs.find((tab) => tab.key === activeTab)
+  const showLocked = (message) => toast(message)
   return (
     <nav aria-label="Lead workspace sections" className="overflow-x-auto rounded-2xl border border-surface-border/80 bg-white/90 p-2 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
       <div className="flex min-w-max items-center gap-2">
         {primaryTabs.map((tab) => {
           const isActive = activeTab === tab.key
+          const availability = tabAvailability(lead, tab)
           const commonClass = `inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
             isActive
               ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200'
               : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100'
           }`
 
-          if (tab.disabled) {
+          if (availability.locked || tab.disabled) {
             return (
               <button
                 key={tab.key}
                 type="button"
                 className={`${commonClass} cursor-not-allowed opacity-60`}
                 aria-disabled="true"
-                title="Coming soon"
+                title={availability.message || 'Coming soon'}
+                onClick={() => showLocked(availability.message || 'Coming soon')}
               >
                 {tab.label}
+                <Lock className="h-3.5 w-3.5" />
                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                  Soon
+                  Locked
                 </span>
               </button>
             )
@@ -905,6 +933,12 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   const gateRequirements = gate ? gate.requirements(lead) : []
   const gateReady = gate ? gateRequirements.every((req) => req.met) : false
   const isWonStage = currentStageKey === 'won'
+  const previousStage = useMemo(() => {
+    const index = LEAD_STAGE_STEPS.findIndex((stage) => getCanonicalPipelineStageKey(stage) === currentStageKey)
+    if (index <= 0) return null
+    const label = LEAD_STAGE_STEPS[index - 1]
+    return { key: getCanonicalPipelineStageKey(label), label }
+  }, [currentStageKey])
   const stageStatusOptions = getStageStatusOptions(currentStageKey)
   const stageStatusLabel = getStageStatusLabel(lead?.current_stage, getLeadStageStatus(lead))
   const [stageStatus, setStageStatus] = useState(() => getLeadStageStatus(lead))
@@ -1063,6 +1097,17 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
     }
   }
 
+  const handleMoveToPreviousStage = async () => {
+    if (!previousStage?.key || !lead?.id) return
+    try {
+      await crmApi.updatePipelineStage(lead.id, { stage: previousStage.key })
+      toast.success(`Lead moved to ${previousStage.label}`)
+      refreshWorkspace()
+    } catch (error) {
+      handleSidebarTransitionError(error, { mode: 'stage', targetStageKey: previousStage.key })
+    }
+  }
+
   useEffect(() => {
     const custom = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
     setForm({
@@ -1216,41 +1261,55 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       </LeadSidebarPanel>
 
       <LeadSidebarPanel title="Stage checklist" description="Requirements before the lead can move to the next stage.">
-        {gate ? (
-          <div className="space-y-2">
-            {gateRequirements.map((req) => (
-              <div key={req.label} className="flex items-start gap-2 rounded-xl border border-surface-border/70 bg-white/75 px-3 py-2 dark:border-gray-800 dark:bg-gray-900/70">
-                {req.met ? (
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                ) : (
-                  <X className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
-                )}
-                <span className={`text-sm ${req.met ? 'font-medium text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>
-                  {req.label}
-                </span>
-              </div>
-            ))}
+        <div className="space-y-2">
+          {gate ? (
+            <>
+              {gateRequirements.map((req) => (
+                <div key={req.label} className="flex items-start gap-2 rounded-xl border border-surface-border/70 bg-white/75 px-3 py-2 dark:border-gray-800 dark:bg-gray-900/70">
+                  {req.met ? (
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                  ) : (
+                    <X className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                  )}
+                  <span className={`text-sm ${req.met ? 'font-medium text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>
+                    {req.label}
+                  </span>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="primary"
+                className="mt-4 w-full justify-center shadow-sm"
+                onClick={handleMoveToNextStage}
+                title={gateReady ? `Move this lead to ${gate.nextLabel}` : gate.hint}
+              >
+                <ArrowRight className="h-4 w-4" />
+                Move to {gate.nextLabel}
+              </Button>
+              {!gateReady ? (
+                <p className="mt-2 text-xs leading-5 text-amber-600 dark:text-amber-400">{gate.hint}</p>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {isWonStage
+                ? 'Deal closed. Use the Won conversion panel below, then transfer to Clients.'
+                : 'This lead is at the end of the sales journey.'}
+            </p>
+          )}
+          {previousStage ? (
             <Button
               type="button"
-              variant="primary"
-              className="mt-4 w-full justify-center shadow-sm"
-              onClick={handleMoveToNextStage}
-              title={gateReady ? `Move this lead to ${gate.nextLabel}` : gate.hint}
+              variant="secondary"
+              className="mt-3 w-full justify-center"
+              onClick={handleMoveToPreviousStage}
+              title={`Move this lead back to ${previousStage.label}`}
             >
-              <ArrowRight className="h-4 w-4" />
-              Move to {gate.nextLabel}
+              <ArrowLeft className="h-4 w-4" />
+              Move back to {previousStage.label}
             </Button>
-            {!gateReady ? (
-              <p className="mt-2 text-xs leading-5 text-amber-600 dark:text-amber-400">{gate.hint}</p>
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {isWonStage
-              ? 'Deal closed. Use the Won conversion panel below, then transfer to Clients.'
-              : 'This lead is at the end of the sales journey.'}
-          </p>
-        )}
+          ) : null}
+        </div>
       </LeadSidebarPanel>
 
       <LeadSidebarPanel title="Pipeline edits" description="Ownership, stage and qualification fields.">

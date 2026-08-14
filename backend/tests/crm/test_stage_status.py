@@ -219,25 +219,25 @@ async def test_qualify_rejects_draft(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_proposal_accepts_sent(monkeypatch):
+async def test_proposal_authoritative_statuses_require_quotation_workflow(monkeypatch):
     lead = _lead(current_stage="Proposal", proposal_status="draft", current_stage_status="draft")
     _patch_status_service(monkeypatch, lead)
 
-    result = await CRMPipelineService.update_stage_status(_user(), "lead-1", "Sent")
-    assert result["status"] == "sent"
-    assert lead.proposal_status == "sent"
-    assert lead.current_stage_status == "sent"
+    with pytest.raises(HTTPException) as exc_info:
+        await CRMPipelineService.update_stage_status(_user(), "lead-1", "Accepted")
+    assert exc_info.value.status_code == 400
+    assert "quotation workflow" in exc_info.value.detail
 
 
 @pytest.mark.asyncio
-async def test_agreement_accepts_signed(monkeypatch):
+async def test_agreement_authoritative_statuses_require_contract_workflow(monkeypatch):
     lead = _lead(current_stage="Agreement", agreement_status="sent", current_stage_status="sent")
     _patch_status_service(monkeypatch, lead)
 
-    result = await CRMPipelineService.update_stage_status(_user(), "lead-1", "Signed")
-    assert result["status"] == "signed"
-    assert lead.agreement_status == "signed"
-    assert lead.current_stage_status == "signed"
+    with pytest.raises(HTTPException) as exc_info:
+        await CRMPipelineService.update_stage_status(_user(), "lead-1", "Signed")
+    assert exc_info.value.status_code == 400
+    assert "contract workflow" in exc_info.value.detail
 
 
 @pytest.mark.asyncio
@@ -321,9 +321,8 @@ async def test_proposal_accepted_is_distinct_from_negotiation_accepted(monkeypat
     # "accepted" is valid in both Proposal and Negotiation, but never cross-applied.
     proposal_lead = _lead(current_stage="Proposal", proposal_status="draft", current_stage_status="draft")
     _patch_status_service(monkeypatch, proposal_lead)
-    result = await CRMPipelineService.update_stage_status(_user(), "lead-1", "Accepted")
-    assert result["status"] == "accepted"
-    assert proposal_lead.proposal_status == "accepted"
+    with pytest.raises(HTTPException):
+        await CRMPipelineService.update_stage_status(_user(), "lead-1", "Accepted")
 
     negotiation_lead = _lead(current_stage="Negotiation", negotiation_status="negotiation_started", current_stage_status="negotiation_started")
     async def fake_get_negotiation(lead_id):

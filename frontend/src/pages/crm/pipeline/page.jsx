@@ -653,6 +653,12 @@ export default function CRMPipelinePage() {
     setFollowUpLead(lead)
   }, [])
 
+  const handleGenerateQuotation = useCallback((lead) => {
+    const leadId = lead?.id || lead?._id
+    if (!leadId) return
+    navigate(`/crm/leads/${leadId}?tab=audit`)
+  }, [navigate])
+
   const handleSearchChange = useCallback((value) => {
     setSearchValue(value)
   }, [setSearchValue])
@@ -1010,6 +1016,7 @@ export default function CRMPipelinePage() {
               onUpdateStageStatus={handleStageStatusChange}
               onRecordContact={handleRecordContact}
               onScheduleFollowUp={handleScheduleFollowUp}
+              onGenerateQuotation={handleGenerateQuotation}
               onDeleteLead={handleDeleteLead}
               onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
               onResetFilters={clearFilters}
@@ -1038,6 +1045,7 @@ export default function CRMPipelinePage() {
                 onUpdateStageStatus={handleStageStatusChange}
                 onRecordContact={handleRecordContact}
                 onScheduleFollowUp={handleScheduleFollowUp}
+                onGenerateQuotation={handleGenerateQuotation}
                 getAllowedStageKeys={(stage) => getAllowedPipelineStageKeys(stage, interactiveStages)}
                 onCopyLeadId={handleCopyLeadId}
                 onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
