@@ -33,6 +33,12 @@ const apiErrorMessage = (error, fallback) => {
   return fallback
 }
 
+const fieldClassName = (error) => `${inputClassName} ${error ? 'border-red-400 bg-red-50/60 text-red-900 focus:border-red-500 focus:ring-red-500 dark:border-red-700 dark:bg-red-950/20 dark:text-red-100' : ''}`
+const fieldError = (message) => message ? <p className="mt-1 text-xs font-medium text-red-600 dark:text-red-300">{message}</p> : null
+const isPositiveNumber = (value) => Number.isFinite(Number(value)) && Number(value) > 0
+const isNonNegativeNumber = (value) => Number.isFinite(Number(value)) && Number(value) >= 0
+const dateTimePayload = (value) => value ? `${value}T00:00:00` : undefined
+
 export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState({
@@ -47,6 +53,7 @@ export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
   const [uploadFile, setUploadFile] = useState(null)
   const [uploadType, setUploadType] = useState('quotation')
   const [shareLinks, setShareLinks] = useState({})
+  const [fieldErrors, setFieldErrors] = useState({})
 
   const documentsQuery = useQuery([LEAD_DOCUMENTS_QUERY_KEY, leadId], () => crmApi.getLeadDocuments(leadId), { enabled: Boolean(leadId), staleTime: 60_000 })
   const documents = useMemo(() => documentsQuery.data?.documents || [], [documentsQuery.data])
@@ -122,22 +129,59 @@ export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
   })
 
   const updateItem = (index, field, value) => {
+    setFieldErrors((state) => {
+      const next = { ...state }
+      delete next[`items.${index}.${field}`]
+      return next
+    })
     setForm((state) => ({
       ...state,
       items: state.items.map((item, i) => (i === index ? { ...item, [field]: value } : item)),
     }))
   }
 
+  const updateField = (field, value) => {
+    setFieldErrors((state) => {
+      const next = { ...state }
+      delete next[field]
+      return next
+    })
+    setForm((state) => ({ ...state, [field]: value }))
+  }
+
+  const validateForm = () => {
+    const errors = {}
+    if (form.valid_until && Number.isNaN(Date.parse(form.valid_until))) errors.valid_until = 'Enter a valid date.'
+    if (form.document_type === 'quotation') {
+      let hasLine = false
+      form.items.forEach((item, index) => {
+        const hasDescription = Boolean(String(item.description || '').trim())
+        const hasAnyValue = hasDescription || ['quantity', 'unit_price', 'discount', 'tax_rate'].some((key) => String(item[key] ?? '').trim())
+        if (!hasAnyValue) return
+        if (!hasDescription) errors[`items.${index}.description`] = 'Enter line description.'
+        else hasLine = true
+        if (!isPositiveNumber(item.quantity)) errors[`items.${index}.quantity`] = 'Qty must be greater than 0.'
+        if (!isNonNegativeNumber(item.unit_price)) errors[`items.${index}.unit_price`] = 'Rate must be 0 or more.'
+        if (!isNonNegativeNumber(item.discount)) errors[`items.${index}.discount`] = 'Discount must be 0 or more.'
+        if (!isNonNegativeNumber(item.tax_rate)) errors[`items.${index}.tax_rate`] = 'GST must be 0 or more.'
+      })
+      if (!hasLine) errors['items.0.description'] = 'Add at least one quotation line.'
+    }
+    return errors
+  }
+
   const submit = () => {
-    const items = form.items.filter((item) => String(item.description || '').trim())
-    if (form.document_type === 'quotation' && !items.length) {
-      toast.error('Add at least one quotation line')
+    const errors = validateForm()
+    setFieldErrors(errors)
+    if (Object.keys(errors).length) {
+      toast.error('Fix highlighted fields')
       return undefined
     }
+    const items = form.items.filter((item) => String(item.description || '').trim())
     return createMutation.mutateAsync({
       ...form,
       title: form.title || `${form.document_type === 'contract' ? 'Contract' : 'Quotation'} for ${lead?.company_name || lead?.prospect_name || 'Lead'}`,
-      valid_until: form.valid_until || undefined,
+      valid_until: dateTimePayload(form.valid_until),
       items,
       clauses: String(form.clauses || '').split('\n').map((item) => item.trim()).filter(Boolean),
     })
@@ -192,11 +236,13 @@ export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
         <div className="grid gap-4 lg:grid-cols-3">
           <label className="block lg:col-span-2">
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Title</span>
-            <input className={inputClassName} value={form.title} onChange={(event) => setForm((s) => ({ ...s, title: event.target.value }))} />
+            <input className={fieldClassName(fieldErrors.title)} value={form.title} aria-invalid={fieldErrors.title ? 'true' : undefined} onChange={(event) => updateField('title', event.target.value)} />
+            {fieldError(fieldErrors.title)}
           </label>
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Valid until</span>
-            <input className={inputClassName} type="date" value={form.valid_until} onChange={(event) => setForm((s) => ({ ...s, valid_until: event.target.value }))} />
+            <input className={fieldClassName(fieldErrors.valid_until)} type="date" value={form.valid_until} aria-invalid={fieldErrors.valid_until ? 'true' : undefined} onChange={(event) => updateField('valid_until', event.target.value)} />
+            {fieldError(fieldErrors.valid_until)}
           </label>
         </div>
         {form.document_type === 'contract' ? (
@@ -212,39 +258,61 @@ export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
             ].map(([key, label]) => (
               <label key={key} className="block">
                 <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>
-                <textarea className={`${inputClassName} min-h-20`} value={form[key]} onChange={(event) => setForm((s) => ({ ...s, [key]: event.target.value }))} />
+                <textarea className={`${fieldClassName(fieldErrors[key])} min-h-20`} value={form[key]} aria-invalid={fieldErrors[key] ? 'true' : undefined} onChange={(event) => updateField(key, event.target.value)} />
+                {fieldError(fieldErrors[key])}
               </label>
             ))}
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Start date</span>
-              <input className={inputClassName} type="date" value={form.start_date} onChange={(event) => setForm((s) => ({ ...s, start_date: event.target.value }))} />
+              <input className={fieldClassName(fieldErrors.start_date)} type="date" value={form.start_date} aria-invalid={fieldErrors.start_date ? 'true' : undefined} onChange={(event) => updateField('start_date', event.target.value)} />
+              {fieldError(fieldErrors.start_date)}
             </label>
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">End date</span>
-              <input className={inputClassName} type="date" value={form.end_date} onChange={(event) => setForm((s) => ({ ...s, end_date: event.target.value }))} />
+              <input className={fieldClassName(fieldErrors.end_date)} type="date" value={form.end_date} aria-invalid={fieldErrors.end_date ? 'true' : undefined} onChange={(event) => updateField('end_date', event.target.value)} />
+              {fieldError(fieldErrors.end_date)}
             </label>
             <label className="block lg:col-span-2">
               <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Additional clauses</span>
-              <textarea className={`${inputClassName} min-h-24`} placeholder="One clause per line" value={form.clauses} onChange={(event) => setForm((s) => ({ ...s, clauses: event.target.value }))} />
+              <textarea className={`${fieldClassName(fieldErrors.clauses)} min-h-24`} placeholder="One clause per line" value={form.clauses} aria-invalid={fieldErrors.clauses ? 'true' : undefined} onChange={(event) => updateField('clauses', event.target.value)} />
+              {fieldError(fieldErrors.clauses)}
             </label>
           </div>
         ) : (
           <div className="mt-4 space-y-3">
           {form.items.map((item, index) => (
             <div key={index} className="grid gap-3 rounded-xl border border-surface-border p-3 dark:border-gray-800 lg:grid-cols-[minmax(0,2fr)_repeat(5,minmax(0,1fr))]">
-              <input className={inputClassName} placeholder="Description" value={item.description} onChange={(event) => updateItem(index, 'description', event.target.value)} />
-              <input className={inputClassName} placeholder="Qty" value={item.quantity} onChange={(event) => updateItem(index, 'quantity', event.target.value)} />
-              <input className={inputClassName} placeholder="Unit" value={item.unit} onChange={(event) => updateItem(index, 'unit', event.target.value)} />
-              <input className={inputClassName} placeholder="Rate" value={item.unit_price} onChange={(event) => updateItem(index, 'unit_price', event.target.value)} />
-              <input className={inputClassName} placeholder="Discount" value={item.discount} onChange={(event) => updateItem(index, 'discount', event.target.value)} />
-              <input className={inputClassName} placeholder="GST %" value={item.tax_rate} onChange={(event) => updateItem(index, 'tax_rate', event.target.value)} />
+              <label className="block">
+                <input className={fieldClassName(fieldErrors[`items.${index}.description`])} placeholder="Description" value={item.description} aria-invalid={fieldErrors[`items.${index}.description`] ? 'true' : undefined} onChange={(event) => updateItem(index, 'description', event.target.value)} />
+                {fieldError(fieldErrors[`items.${index}.description`])}
+              </label>
+              <label className="block">
+                <input className={fieldClassName(fieldErrors[`items.${index}.quantity`])} placeholder="Qty" value={item.quantity} aria-invalid={fieldErrors[`items.${index}.quantity`] ? 'true' : undefined} onChange={(event) => updateItem(index, 'quantity', event.target.value)} />
+                {fieldError(fieldErrors[`items.${index}.quantity`])}
+              </label>
+              <label className="block">
+                <input className={fieldClassName(fieldErrors[`items.${index}.unit`])} placeholder="Unit" value={item.unit} aria-invalid={fieldErrors[`items.${index}.unit`] ? 'true' : undefined} onChange={(event) => updateItem(index, 'unit', event.target.value)} />
+                {fieldError(fieldErrors[`items.${index}.unit`])}
+              </label>
+              <label className="block">
+                <input className={fieldClassName(fieldErrors[`items.${index}.unit_price`])} placeholder="Rate" value={item.unit_price} aria-invalid={fieldErrors[`items.${index}.unit_price`] ? 'true' : undefined} onChange={(event) => updateItem(index, 'unit_price', event.target.value)} />
+                {fieldError(fieldErrors[`items.${index}.unit_price`])}
+              </label>
+              <label className="block">
+                <input className={fieldClassName(fieldErrors[`items.${index}.discount`])} placeholder="Discount" value={item.discount} aria-invalid={fieldErrors[`items.${index}.discount`] ? 'true' : undefined} onChange={(event) => updateItem(index, 'discount', event.target.value)} />
+                {fieldError(fieldErrors[`items.${index}.discount`])}
+              </label>
+              <label className="block">
+                <input className={fieldClassName(fieldErrors[`items.${index}.tax_rate`])} placeholder="GST %" value={item.tax_rate} aria-invalid={fieldErrors[`items.${index}.tax_rate`] ? 'true' : undefined} onChange={(event) => updateItem(index, 'tax_rate', event.target.value)} />
+                {fieldError(fieldErrors[`items.${index}.tax_rate`])}
+              </label>
             </div>
           ))}
           </div>
         )}
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <textarea className={`${inputClassName} min-h-24`} placeholder="Terms" value={form.terms} onChange={(event) => setForm((s) => ({ ...s, terms: event.target.value }))} />
-          <textarea className={`${inputClassName} min-h-24`} placeholder="Notes" value={form.notes} onChange={(event) => setForm((s) => ({ ...s, notes: event.target.value }))} />
+          <textarea className={`${fieldClassName(fieldErrors.terms)} min-h-24`} placeholder="Terms" value={form.terms} aria-invalid={fieldErrors.terms ? 'true' : undefined} onChange={(event) => updateField('terms', event.target.value)} />
+          <textarea className={`${fieldClassName(fieldErrors.notes)} min-h-24`} placeholder="Notes" value={form.notes} aria-invalid={fieldErrors.notes ? 'true' : undefined} onChange={(event) => updateField('notes', event.target.value)} />
         </div>
         <div className="mt-4 flex justify-between gap-2">
           {form.document_type === 'quotation' ? <Button type="button" variant="secondary" onClick={() => setForm((s) => ({ ...s, items: [...s.items, { ...emptyItem }] }))}>Add line</Button> : <span />}

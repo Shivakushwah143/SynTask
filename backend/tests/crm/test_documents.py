@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from pymongo import ReturnDocument
 
 from app.crm import documents
+from app.api.v1.endpoints.crm_documents import CRMDocumentPayload
 from app.crm.documents import _hash_token, _next_document_number, _public_url, calculate_totals, public_serialize
 from app.models.crm_document import CRMDocumentStatus, CRMDocumentType
 
@@ -251,6 +252,68 @@ async def test_list_documents_falls_back_to_raw_legacy_rows(monkeypatch):
 def test_public_url_uses_configured_frontend_origin():
     assert _public_url("abc").endswith("/public/crm-documents/abc")
     assert "api/v1" not in _public_url("abc")
+
+
+def test_crm_document_payload_accepts_html_date_input():
+    payload = CRMDocumentPayload(valid_until="2026-08-14")
+
+    assert payload.valid_until.isoformat() == "2026-08-14T00:00:00"
+
+
+@pytest.mark.asyncio
+async def test_generate_pdf_accepts_legacy_string_document_type(monkeypatch, tmp_path):
+    document = SimpleNamespace(
+        id="doc-1",
+        company_id="company-1",
+        lead_id="lead-1",
+        document_type="quotation",
+        document_number="QUO-2026-0001",
+        title="Quotation",
+        subtotal=Decimal("100"),
+        tax_total=Decimal("18"),
+        grand_total=Decimal("118"),
+        discount_total=Decimal("0"),
+        terms="Terms",
+        notes="Notes",
+        valid_until=None,
+        source_file_path=None,
+        content_snapshot={
+            "lead": {"company_name": "Acme", "email": "buyer@example.com"},
+            "items": [{"description": "SEO", "quantity": "1", "unit_price": "100", "tax_rate": "18", "line_total": "118"}],
+        },
+        updated_at=None,
+    )
+    document.model_dump = lambda: document.__dict__.copy()
+
+    async def fake_document_for_user(current_user, lead_id, document_id):
+        return SimpleNamespace(id=lead_id), document
+
+    class FakeCRMDocumentEvent:
+        inserted = None
+
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        async def insert(self):
+            FakeCRMDocumentEvent.inserted = self
+
+    async def fake_activity(*args, **kwargs):
+        return None
+
+    async def fake_save():
+        document.saved = True
+
+    document.save = fake_save
+    monkeypatch.setattr(documents, "_document_for_user", fake_document_for_user)
+    monkeypatch.setattr(documents, "CRMDocumentEvent", FakeCRMDocumentEvent)
+    monkeypatch.setattr(documents.notification_service, "update_crm_activity", fake_activity)
+    monkeypatch.setattr(documents, "UPLOAD_DIR", tmp_path)
+
+    result = await documents.generate_pdf(SimpleNamespace(id="user-1"), "lead-1", "doc-1")
+
+    assert result["document"]["pdf_file_path"].endswith("QUO-2026-0001.pdf")
+    assert document.saved is True
+    assert FakeCRMDocumentEvent.inserted.event_type == "pdf_generated"
 
 
 @pytest.mark.asyncio

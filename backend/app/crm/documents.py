@@ -198,6 +198,7 @@ async def _next_document_number(company_id: str, document_type: CRMDocumentType)
 
 async def _event(document: CRMDocument, event_type: str, actor: Optional[User] = None, **metadata: Any) -> None:
     actor_name = _display_name(actor) if actor else None
+    document_type = str(_enum_value(getattr(document, "document_type", CRMDocumentType.QUOTATION.value)) or CRMDocumentType.QUOTATION.value)
     await CRMDocumentEvent(
         company_id=document.company_id,
         lead_id=document.lead_id,
@@ -214,7 +215,7 @@ async def _event(document: CRMDocument, event_type: str, actor: Optional[User] =
         entity_type="lead",
         entity_id=document.lead_id,
         activity_type="note",
-        title=f"{document.document_type.value.title()} {event_type.replace('_', ' ')}",
+        title=f"{document_type.title()} {event_type.replace('_', ' ')}",
         description=f"{document.document_number} {event_type.replace('_', ' ')}",
         owner_id=str(actor.id) if actor else document.created_by,
         owner_name=actor_name,
@@ -232,8 +233,8 @@ async def _event(document: CRMDocument, event_type: str, actor: Optional[User] =
 def serialize(document: CRMDocument, include_token: bool = False) -> dict[str, Any]:
     data = document.model_dump()
     data["id"] = str(document.id)
-    data["document_type"] = _enum_value(document.document_type)
-    data["status"] = _enum_value(document.status)
+    data["document_type"] = _enum_value(getattr(document, "document_type", data.get("document_type") or CRMDocumentType.QUOTATION.value))
+    data["status"] = _enum_value(getattr(document, "status", data.get("status") or CRMDocumentStatus.DRAFT.value))
     for key in ["subtotal", "discount_total", "tax_total", "grand_total"]:
         data[key] = str(getattr(document, key, data.get(key, 0)) or 0)
     if not include_token:
@@ -420,6 +421,8 @@ async def generate_pdf(current_user: User, lead_id: str, document_id: str) -> di
     doc = SimpleDocTemplate(str(path), pagesize=A4)
     snapshot = document.content_snapshot or {}
     lead = snapshot.get("lead") or {}
+    document_type = _enum_value(document.document_type)
+    document_type_label = str(document_type or CRMDocumentType.QUOTATION.value).title()
 
     def p(value: Any, style: str = "Normal"):
         return Paragraph(escape(str(value or "")), styles[style])
@@ -432,17 +435,18 @@ async def generate_pdf(current_user: User, lead_id: str, document_id: str) -> di
 
     story = [
         p("SynTask", "Title"),
-        p(f"{document.document_type.value.title()} {document.document_number}", "Heading2"),
+        p(f"{document_type_label} {document.document_number}", "Heading2"),
         p(document.title),
         p(f"Issue date: {utc_now().date().isoformat()}"),
         Spacer(1, 12),
     ]
     story.append(p(f"Client: {lead.get('company_name') or lead.get('name') or 'Lead'}"))
     story.append(p(f"Contact: {lead.get('email') or lead.get('phone') or '-'}"))
-    if document.valid_until:
-        story.append(p(f"Valid until: {document.valid_until.date().isoformat()}"))
+    valid_until = _parse_optional_datetime(getattr(document, "valid_until", None))
+    if valid_until:
+        story.append(p(f"Valid until: {valid_until.date().isoformat()}"))
 
-    if document.document_type == CRMDocumentType.CONTRACT:
+    if document_type == CRMDocumentType.CONTRACT.value:
         for label, key in [
             ("Parties", "parties"),
             ("Scope of work", "scope"),
@@ -465,7 +469,11 @@ async def generate_pdf(current_user: User, lead_id: str, document_id: str) -> di
         rows = [["Description", "Qty", "Unit Price", "Tax %", "Total"]]
         for item in snapshot.get("items") or []:
             rows.append([escape(str(item.get("description") or "")), item.get("quantity"), item.get("unit_price"), item.get("tax_rate"), item.get("line_total")])
-        rows += [["", "", "", "Subtotal", str(document.subtotal)], ["", "", "", "Tax", str(document.tax_total)], ["", "", "", "Total", str(document.grand_total)]]
+        rows += [
+            ["", "", "", "Subtotal", str(getattr(document, "subtotal", 0) or 0)],
+            ["", "", "", "Tax", str(getattr(document, "tax_total", 0) or 0)],
+            ["", "", "", "Total", str(getattr(document, "grand_total", 0) or 0)],
+        ]
         table = Table(rows)
         table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.grey), ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey)]))
         story += [Spacer(1, 12), table]
