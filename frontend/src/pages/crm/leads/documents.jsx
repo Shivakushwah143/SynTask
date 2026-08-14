@@ -23,6 +23,16 @@ const contractDefaults = {
 
 export const LEAD_DOCUMENTS_QUERY_KEY = 'crm-lead-documents'
 
+const apiErrorMessage = (error, fallback) => {
+  const detail = error?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail.map((item) => item?.msg || item?.message || JSON.stringify(item)).join('; ') || fallback
+  }
+  if (detail && typeof detail === 'object') return detail.message || detail.error || JSON.stringify(detail)
+  return fallback
+}
+
 export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState({
@@ -63,7 +73,7 @@ export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
       setForm((state) => ({ ...state, title: '', notes: '', items: [{ ...emptyItem }] }))
       refetch()
     },
-    onError: (error) => toast.error(error?.response?.data?.detail || 'Document create failed'),
+    onError: (error) => toast.error(apiErrorMessage(error, 'Document create failed')),
   })
   const actionMutation = useMutation(({ action, document }) => {
     if (action === 'pdf') return crmApi.generateLeadDocumentPdf(leadId, document.id)
@@ -95,7 +105,7 @@ export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
       }
       refetch()
     },
-    onError: (error) => toast.error(error?.response?.data?.detail || 'Document action failed'),
+    onError: (error) => toast.error(apiErrorMessage(error, 'Document action failed')),
   })
   const uploadMutation = useMutation(() => {
     const body = new FormData()
@@ -108,7 +118,7 @@ export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
       setUploadFile(null)
       refetch()
     },
-    onError: (error) => toast.error(error?.response?.data?.detail || 'PDF upload failed'),
+    onError: (error) => toast.error(apiErrorMessage(error, 'PDF upload failed')),
   })
 
   const updateItem = (index, field, value) => {
@@ -119,12 +129,17 @@ export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
   }
 
   const submit = () => {
-    createMutation.mutate({
+    const items = form.items.filter((item) => String(item.description || '').trim())
+    if (form.document_type === 'quotation' && !items.length) {
+      toast.error('Add at least one quotation line')
+      return undefined
+    }
+    return createMutation.mutateAsync({
       ...form,
       title: form.title || `${form.document_type === 'contract' ? 'Contract' : 'Quotation'} for ${lead?.company_name || lead?.prospect_name || 'Lead'}`,
       valid_until: form.valid_until || undefined,
-      items: form.items.filter((item) => item.description.trim()),
-      clauses: form.clauses.split('\n').map((item) => item.trim()).filter(Boolean),
+      items,
+      clauses: String(form.clauses || '').split('\n').map((item) => item.trim()).filter(Boolean),
     })
   }
 
@@ -233,7 +248,7 @@ export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
         </div>
         <div className="mt-4 flex justify-between gap-2">
           {form.document_type === 'quotation' ? <Button type="button" variant="secondary" onClick={() => setForm((s) => ({ ...s, items: [...s.items, { ...emptyItem }] }))}>Add line</Button> : <span />}
-          <Button type="button" variant="primary" onClick={submit} disabled={createMutation.isLoading}>Save document</Button>
+          <Button type="button" variant="primary" onClick={submit} loading={createMutation.isLoading}>Save document</Button>
         </div>
       </CRMSection>
 

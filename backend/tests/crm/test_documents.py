@@ -29,6 +29,34 @@ class FakeDatabase:
         return self.collection
 
 
+class FakeRawDocumentCursor:
+    def __init__(self, documents):
+        self.documents = documents
+
+    def sort(self, *args):
+        return self
+
+    async def to_list(self, length=None):
+        return self.documents
+
+
+class FakeRawDocumentCollection:
+    def __init__(self, documents):
+        self.documents = documents
+
+    def find(self, query):
+        return FakeRawDocumentCursor(self.documents)
+
+
+class FakeRawDatabase:
+    def __init__(self, collection):
+        self.collection = collection
+
+    def __getitem__(self, name):
+        assert name == "crm_documents"
+        return self.collection
+
+
 @pytest.mark.asyncio
 async def test_next_document_number_creates_first_number_atomically(monkeypatch):
     collection = FakeSequenceCollection()
@@ -129,6 +157,95 @@ def test_public_serializer_removes_internal_document_fields():
     assert "token_hash" not in payload
     assert "pdf_file_path" not in payload
     assert payload["content_snapshot"]["lead"] == {"name": "Lead", "company_name": "Acme"}
+
+
+def test_serializer_accepts_legacy_string_document_type_and_status():
+    document = SimpleNamespace(
+        id="doc-1",
+        company_id="company-1",
+        lead_id="lead-1",
+        document_type="quotation",
+        document_number="QUO-2026-0001",
+        title="Quotation",
+        currency="INR",
+        subtotal=Decimal("0"),
+        discount_total=Decimal("0"),
+        tax_total=Decimal("0"),
+        grand_total=Decimal("0"),
+        status="draft",
+        valid_until=None,
+        content_snapshot={},
+        terms=None,
+        notes=None,
+        pdf_file_path=None,
+        source_file_path=None,
+        source_file_url=None,
+        source_file_name=None,
+        created_by="user-1",
+        sent_to=None,
+        send_error=None,
+        token_hash=None,
+        token_expires_at=None,
+        token_revoked_at=None,
+        created_at=None,
+        updated_at=None,
+        sent_at=None,
+        viewed_at=None,
+        accepted_at=None,
+        rejected_at=None,
+        expired_at=None,
+        model_dump=lambda: document.__dict__.copy(),
+    )
+
+    payload = documents.serialize(document)
+
+    assert payload["document_type"] == "quotation"
+    assert payload["status"] == "draft"
+
+
+@pytest.mark.asyncio
+async def test_list_documents_falls_back_to_raw_legacy_rows(monkeypatch):
+    lead = SimpleNamespace(id="lead-1", company_id="company-1", deleted=False)
+    raw_documents = [{
+        "_id": "doc-1",
+        "company_id": "company-1",
+        "lead_id": "lead-1",
+        "document_type": "quotation",
+        "document_number": "QUO-2026-0001",
+        "title": "Quotation",
+        "status": "draft",
+    }]
+
+    class BrokenCRMDocument:
+        class Settings:
+            name = "crm_documents"
+
+        @classmethod
+        def find(cls, query):
+            raise RuntimeError("legacy document parse failed")
+
+    async def fake_lead_for_user(current_user, lead_id):
+        return lead
+
+    monkeypatch.setattr(documents, "_lead_for_user", fake_lead_for_user)
+    monkeypatch.setattr(documents, "CRMDocument", BrokenCRMDocument)
+    monkeypatch.setattr(documents, "get_database", lambda: FakeRawDatabase(FakeRawDocumentCollection(raw_documents)))
+
+    result = await documents.list_documents(SimpleNamespace(id="user-1"), "lead-1")
+
+    assert result["documents"] == [{
+        "company_id": "company-1",
+        "lead_id": "lead-1",
+        "document_type": "quotation",
+        "document_number": "QUO-2026-0001",
+        "title": "Quotation",
+        "status": "draft",
+        "id": "doc-1",
+        "subtotal": "0",
+        "discount_total": "0",
+        "tax_total": "0",
+        "grand_total": "0",
+    }]
 
 
 def test_public_url_uses_configured_frontend_origin():

@@ -39,6 +39,10 @@ def _display_name(user: User) -> str:
     return f"{getattr(user, 'first_name', '') or ''} {getattr(user, 'last_name', '') or ''}".strip() or getattr(user, "email", "") or str(user.id)
 
 
+def _enum_value(value: Any) -> Any:
+    return value.value if hasattr(value, "value") else value
+
+
 def _public_url(token: str) -> str:
     return f"{settings.FRONTEND_URL.rstrip('/')}/public/crm-documents/{token}"
 
@@ -228,10 +232,10 @@ async def _event(document: CRMDocument, event_type: str, actor: Optional[User] =
 def serialize(document: CRMDocument, include_token: bool = False) -> dict[str, Any]:
     data = document.model_dump()
     data["id"] = str(document.id)
-    data["document_type"] = document.document_type.value
-    data["status"] = document.status.value
+    data["document_type"] = _enum_value(document.document_type)
+    data["status"] = _enum_value(document.status)
     for key in ["subtotal", "discount_total", "tax_total", "grand_total"]:
-        data[key] = str(getattr(document, key))
+        data[key] = str(getattr(document, key, data.get(key, 0)) or 0)
     if not include_token:
         data.pop("token_hash", None)
     return data
@@ -250,8 +254,25 @@ def public_serialize(document: CRMDocument) -> dict[str, Any]:
 
 async def list_documents(current_user: User, lead_id: str) -> dict[str, Any]:
     lead = await _lead_for_user(current_user, lead_id)
-    documents = await CRMDocument.find({"company_id": str(lead.company_id), "lead_id": str(lead.id)}).sort("-created_at").to_list()
-    return {"documents": [serialize(document) for document in documents]}
+    try:
+        documents = await CRMDocument.find({"company_id": str(lead.company_id), "lead_id": str(lead.id)}).sort("-created_at").to_list()
+        return {"documents": [serialize(document) for document in documents]}
+    except Exception:
+        raw_documents = await get_database()[CRMDocument.Settings.name].find(
+            {"company_id": str(lead.company_id), "lead_id": str(lead.id)}
+        ).sort("created_at", -1).to_list(length=None)
+        return {"documents": [_serialize_raw_document(document) for document in raw_documents]}
+
+
+def _serialize_raw_document(document: dict[str, Any]) -> dict[str, Any]:
+    data = dict(document or {})
+    data["id"] = str(data.pop("_id", data.get("id", "")))
+    data["document_type"] = _enum_value(data.get("document_type") or CRMDocumentType.QUOTATION.value)
+    data["status"] = _enum_value(data.get("status") or CRMDocumentStatus.DRAFT.value)
+    for key in ["subtotal", "discount_total", "tax_total", "grand_total"]:
+        data[key] = str(data.get(key, 0) or 0)
+    data.pop("token_hash", None)
+    return data
 
 
 async def create_document(current_user: User, lead_id: str, payload: dict[str, Any]) -> dict[str, Any]:
