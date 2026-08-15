@@ -632,6 +632,48 @@ def _user_full_name(user: Optional[User], fallback: Optional[str] = None) -> str
     return full_name or getattr(user, "email", None) or fallback or str(getattr(user, "id", ""))
 
 
+async def _record_stage_activity(
+    prospect: SalesProspect,
+    current_user: User,
+    *,
+    previous_stage: str,
+    new_stage: str,
+    normalized_stage: str,
+    now: datetime,
+) -> None:
+    if normalized_stage not in {"negotiation", "agreement"}:
+        return
+    title = "Negotiation started" if normalized_stage == "negotiation" else "Moved to Agreement"
+    actor_name = _user_display_name(current_user)
+    activity = CRMActivity.model_construct(
+        company_id=_user_company_id(current_user),
+        entity_type="lead",
+        entity_id=str(prospect.id),
+        activity_type=CRMActivityType.NOTE.value,
+        title=title,
+        description=title,
+        status=CRMActivityStatus.COMPLETED,
+        priority=CRMActivityPriority.MEDIUM,
+        owner_id=str(getattr(current_user, "id", "")),
+        owner_name=actor_name,
+        due_date=None,
+        scheduled_at=None,
+        metadata={
+            "workflow": "pipeline",
+            "previous_stage": previous_stage,
+            "new_stage": new_stage,
+            "stage_key": normalized_stage,
+        },
+        created_by=str(getattr(current_user, "id", "")),
+        created_by_name=actor_name,
+        updated_by=str(getattr(current_user, "id", "")),
+        updated_by_name=actor_name,
+        created_at=now,
+        updated_at=now,
+    )
+    await activity.insert()
+
+
 def _can_write_pipeline(current_user: User, prospect: SalesProspect) -> bool:
     if current_user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]:
         return True
@@ -1305,6 +1347,14 @@ class CRMPipelineService:
                 "surface": "crm",
                 "workflow": "pipeline",
             },
+        )
+        await _record_stage_activity(
+            prospect,
+            current_user,
+            previous_stage=current_stage,
+            new_stage=resolved_stage,
+            normalized_stage=normalized_stage,
+            now=now,
         )
 
         if normalized_stage == "won":

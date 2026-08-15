@@ -25,6 +25,7 @@ export const LEAD_TABS = [
   { key: 'discovery', label: 'Discovery' },
   { key: 'audit', label: 'Audit' },
   { key: 'proposal', label: 'Proposal' },
+  { key: 'negotiation', label: 'Negotiation' },
   { key: 'agreement', label: 'Agreement' },
   { key: 'documents', label: 'Documents' },
   { key: 'timeline', label: 'Activity' },
@@ -37,9 +38,9 @@ export const LEAD_TABS = [
   { key: 'history', label: 'Stage History' },
   { key: 'ai', label: 'AI' },
 ]
-const PRIMARY_LEAD_TAB_KEYS = new Set(['overview', 'discovery', 'audit', 'proposal', 'agreement', 'documents', 'timeline'])
+const PRIMARY_LEAD_TAB_KEYS = new Set(['overview', 'discovery', 'audit', 'proposal', 'negotiation', 'agreement', 'documents', 'timeline'])
 const WORKSPACE_STAGE_ORDER = ['acquire', 'qualify', 'discovery', 'proposal', 'negotiation', 'agreement', 'won']
-const WORKSPACE_STAGE_MINIMUM = { discovery: 'discovery', audit: 'discovery', proposal: 'proposal', agreement: 'agreement' }
+const WORKSPACE_STAGE_MINIMUM = { discovery: 'discovery', audit: 'discovery', proposal: 'proposal', negotiation: 'negotiation', agreement: 'agreement' }
 
 const leadTone = (value) => {
   const key = String(value || '').toLowerCase()
@@ -590,6 +591,7 @@ const tabAvailability = (lead, tab) => {
     discovery: 'Complete Qualification before starting Discovery.',
     audit: 'Complete Qualification before starting Audit.',
     proposal: 'Complete Discovery before starting Proposal.',
+    negotiation: 'Complete Proposal before starting Negotiation.',
     agreement: 'Complete Proposal and Negotiation before starting Agreement.',
   }
   return { locked: true, message: messages[tab.key] || 'Complete the earlier sales stage first.' }
@@ -912,7 +914,7 @@ function LeadEditField({ field, onChange }) {
   )
 }
 
-export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
+export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail, onStageMoved }) {
   const navigate = useNavigate()
   const activityPath = lead?.id ? `/crm/activities?entity_type=lead&entity_id=${lead.id}` : '/crm/activities'
   const { data: stagesData } = useQuery('crm-lead-edit-stages', salesApi.getStages)
@@ -1015,6 +1017,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       await crmApi.updatePipelineStage(leadId, { stage: targetStageKey })
       toast.success('Lead stage updated')
       refreshWorkspace()
+      onStageMoved?.(targetStageKey)
       setRequirementsDialog(null)
     } catch (error) {
       const blocker = classifyTransitionFailure(error, 'Stage update failed')
@@ -1092,6 +1095,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       await crmApi.updatePipelineStage(lead.id, { stage: gate.nextKey })
       toast.success('Lead stage updated')
       refreshWorkspace()
+      onStageMoved?.(gate.nextKey)
     } catch (error) {
       handleSidebarTransitionError(error, { mode: 'stage', targetStageKey: gate.nextKey })
     }
@@ -1103,6 +1107,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       await crmApi.updatePipelineStage(lead.id, { stage: previousStage.key })
       toast.success(`Lead moved to ${previousStage.label}`)
       refreshWorkspace()
+      onStageMoved?.(previousStage.key)
     } catch (error) {
       handleSidebarTransitionError(error, { mode: 'stage', targetStageKey: previousStage.key })
     }
@@ -1123,9 +1128,10 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   }, [lead])
 
   const stageMutation = useMutation((stage) => crmApi.updatePipelineStage(lead?.id, { stage }), {
-    onSuccess: () => {
+    onSuccess: (_data, stage) => {
       toast.success('Lead stage updated')
       refreshWorkspace()
+      onStageMoved?.(stage)
     },
     onError: (error) => handleSidebarTransitionError(error, {
       mode: 'stage',

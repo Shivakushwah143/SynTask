@@ -1021,7 +1021,15 @@ Indexes: includes a partial unique `('company_id', 'meta_lead_id')` index for Me
 | `closed_date` | `Optional[datetime.datetime]` | No | No | Model field |
 | `closed_by` | `Optional[str]` | No | No | Model field |
 | `reason_for_lost` | `Optional[str]` | No | No | Model field |
-| `won_amount` | `Optional[float]` | No | No | Model field |
+| `won_amount` | `Optional[float]` | No | No | Deal amount; also reused as Negotiation final agreed amount |
+| `negotiation_status` | `Optional[str]` | No | No | Negotiation inner status (`negotiation_started`, `waiting_client`, `waiting_internal`, `discount_approval`, `final_offer`, `accepted`, `rejected`) |
+| `negotiation_notes` | `Optional[str]` | No | No | Negotiation notes |
+| `customer_counter_offer` | `Optional[float]` | No | No | Customer counter-offer amount |
+| `discount` | `Optional[float]` | No | No | Negotiated discount amount |
+| `final_scope` | `Optional[str]` | No | No | Final negotiated scope |
+| `payment_terms` | `Optional[str]` | No | No | Final negotiated payment terms |
+| `client_conditions` | `Optional[str]` | No | No | Client conditions captured during negotiation |
+| `accepted_quotation_reference` | `Optional[str]` | No | No | Accepted quotation/document reference shown in Negotiation workspace |
 | `company_id` | `Optional[str]` | No | Yes | Tenant scope key |
 | `created_by` | `Optional[str]` | No | No | Model field |
 | `deleted` | `bool` | No | Yes | Model field |
