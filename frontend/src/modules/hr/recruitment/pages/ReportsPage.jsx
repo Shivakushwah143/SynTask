@@ -27,8 +27,6 @@ import {
   UserX,
   CalendarDays,
   FileText,
-  Download,
-  Eye,
   ChevronDown,
   ChevronRight
 } from "lucide-react";
@@ -202,13 +200,7 @@ export default function ReportsPage() {
                 <RefreshCw className="h-4 w-4" />
                 Refresh
               </button>
-              <button 
-                onClick={() => toast.success("Export feature coming soon")}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
-              >
-                <Download className="h-4 w-4" />
-                Export
-              </button>
+
             </div>
           </div>
         </div>

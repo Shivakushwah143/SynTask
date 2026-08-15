@@ -131,13 +131,22 @@ export default function JobsPage() {
   );
   
   const actionMutation = useMutation(
-    ({ action, id }) => recruitmentApi[action](id),
+    ({ action, id }) => {
+      if (action === 'rejectJob') return recruitmentApi.rejectJob(id, {});
+      return recruitmentApi[action](id);
+    },
     {
       onSuccess: (_, variables) => {
         const messages = {
-          archiveJob: "Job archived successfully! 📦",
-          publishJob: "Job published successfully! 🚀",
-          duplicateJob: "Job duplicated successfully! 📋"
+          archiveJob: "Job archived successfully!",
+          publishJob: "Job published successfully!",
+          pauseJob: "Job paused successfully!",
+          closeJob: "Job closed successfully!",
+          restoreJob: "Job restored successfully!",
+          duplicateJob: "Job duplicated successfully!",
+          submitJobForApproval: "Job submitted for approval!",
+          approveJob: "Job approved successfully!",
+          rejectJob: "Job rejected and returned to draft.",
         };
         toast.success(messages[variables.action] || "Job updated");
         setArchiveJob(null);
@@ -239,7 +248,9 @@ export default function JobsPage() {
     { 
       key: "actions", 
       header: "Actions", 
-      render: (job) => (
+      render: (job) => {
+        const status = job.lifecycle_status || job.status;
+        return (
         <div className="flex gap-1">
           <Button 
             type="button" 
@@ -251,26 +262,109 @@ export default function JobsPage() {
             <Eye className="h-4 w-4" />
             <span className="sr-only">View</span>
           </Button>
-          <Button 
-            type="button" 
-            size="sm" 
-            variant="ghost" 
-            className="text-gray-500 transition hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400"
-            onClick={() => { setDialogJob(job); setDialogOpen(true); }}
-          >
-            <FileText className="h-4 w-4" />
-            <span className="sr-only">Edit</span>
-          </Button>
-          <Button 
-            type="button" 
-            size="sm" 
-            variant="ghost" 
-            className="text-gray-500 transition hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400"
-            onClick={() => actionMutation.mutate({ id: idOf(job), action: "publishJob" })}
-          >
-            <Send className="h-4 w-4" />
-            <span className="sr-only">Publish</span>
-          </Button>
+          {(status === "draft" || status === "rejected") && (
+            <>
+              <Button 
+                type="button" 
+                size="sm" 
+                variant="ghost" 
+                className="text-gray-500 transition hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400"
+                onClick={() => { setDialogJob(job); setDialogOpen(true); }}
+              >
+                <FileText className="h-4 w-4" />
+                <span className="sr-only">Edit</span>
+              </Button>
+              <Button 
+                type="button" 
+                size="sm" 
+                variant="ghost" 
+                className="text-gray-500 transition hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400"
+                onClick={() => actionMutation.mutate({ id: idOf(job), action: "submitJobForApproval" })}
+                title="Submit for approval"
+              >
+                <Send className="h-4 w-4" />
+                <span className="sr-only">Submit</span>
+              </Button>
+            </>
+          )}
+          {status === "pending_approval" && (
+            <>
+              <Button 
+                type="button" 
+                size="sm" 
+                variant="ghost" 
+                className="text-gray-500 transition hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400"
+                onClick={() => actionMutation.mutate({ id: idOf(job), action: "approveJob" })}
+                title="Approve job"
+              >
+                <CheckCircle className="h-4 w-4" />
+                <span className="sr-only">Approve</span>
+              </Button>
+              <Button 
+                type="button" 
+                size="sm" 
+                variant="ghost" 
+                className="text-gray-500 transition hover:text-rose-600 dark:text-gray-400 dark:hover:text-rose-400"
+                onClick={() => actionMutation.mutate({ id: idOf(job), action: "rejectJob" })}
+                title="Reject job"
+              >
+                <XCircle className="h-4 w-4" />
+                <span className="sr-only">Reject</span>
+              </Button>
+            </>
+          )}
+          {status === "approved" && (
+            <Button 
+              type="button" 
+              size="sm" 
+              variant="ghost" 
+              className="text-gray-500 transition hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400"
+              onClick={() => actionMutation.mutate({ id: idOf(job), action: "publishJob" })}
+              title="Publish job"
+            >
+              <Send className="h-4 w-4" />
+              <span className="sr-only">Publish</span>
+            </Button>
+          )}
+          {status === "published" && (
+            <Button 
+              type="button" 
+              size="sm" 
+              variant="ghost" 
+              className="text-gray-500 transition hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400"
+              onClick={() => actionMutation.mutate({ id: idOf(job), action: "pauseJob" })}
+              title="Pause job"
+            >
+              <ClockIcon className="h-4 w-4" />
+              <span className="sr-only">Pause</span>
+            </Button>
+          )}
+          {status === "paused" && (
+            <Button 
+              type="button" 
+              size="sm" 
+              variant="ghost" 
+              className="text-gray-500 transition hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400"
+              onClick={() => actionMutation.mutate({ id: idOf(job), action: "publishJob" })}
+              title="Resume job"
+            >
+              <Send className="h-4 w-4" />
+              <span className="sr-only">Resume</span>
+            </Button>
+          )}
+          {(status === "published" || status === "paused") && (
+            <Button 
+              type="button" 
+              size="sm" 
+              variant="ghost" 
+              className="text-gray-500 transition hover:text-rose-600 dark:text-gray-400 dark:hover:text-rose-400"
+              onClick={() => actionMutation.mutate({ id: idOf(job), action: "closeJob" })}
+              title="Close job"
+            >
+              <XCircle className="h-4 w-4" />
+              <span className="sr-only">Close</span>
+            </Button>
+          )}
           <Button 
             type="button" 
             size="sm" 
@@ -281,21 +375,36 @@ export default function JobsPage() {
             <Copy className="h-4 w-4" />
             <span className="sr-only">Duplicate</span>
           </Button>
-          <Button 
-            type="button" 
-            size="sm" 
-            variant="ghost" 
-            className="text-gray-500 transition hover:text-rose-600 dark:text-gray-400 dark:hover:text-rose-400"
-            disabled={actionMutation.isLoading} 
-            onClick={() => setArchiveJob(job)} 
-            title="Archive job" 
-            aria-label={`Archive ${job.title || "job"}`}
-          >
-            <Archive className="h-4 w-4" />
-            <span className="sr-only">Archive</span>
-          </Button>
+          {status !== "archived" ? (
+            <Button 
+              type="button" 
+              size="sm" 
+              variant="ghost" 
+              className="text-gray-500 transition hover:text-rose-600 dark:text-gray-400 dark:hover:text-rose-400"
+              disabled={actionMutation.isLoading} 
+              onClick={() => setArchiveJob(job)} 
+              title="Archive job" 
+              aria-label={`Archive ${job.title || "job"}`}
+            >
+              <Archive className="h-4 w-4" />
+              <span className="sr-only">Archive</span>
+            </Button>
+          ) : (
+            <Button 
+              type="button" 
+              size="sm" 
+              variant="ghost" 
+              className="text-gray-500 transition hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400"
+              onClick={() => actionMutation.mutate({ id: idOf(job), action: "restoreJob" })}
+              title="Restore job"
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span className="sr-only">Restore</span>
+            </Button>
+          )}
         </div>
-      ) 
+        );
+      } 
     },
   ], [actionMutation]);
 

@@ -22,12 +22,14 @@ import {
   BarChart3,
   PieChart,
   Target,
-  Zap
+  Zap,
+  FileText,
+  Database,
+  LayoutDashboard
 } from "lucide-react";
 
 import { recruitmentApi } from "../../../api/recruitment";
 import { Badge, EmptyState, SkeletonCard } from "../../../components/ui";
-import { RecruitmentStatCard } from "../../../modules/hr/recruitment/components/RecruitmentStatCard";
 import { StatusBadge } from "../../../modules/hr/recruitment/components/StatusBadge";
 import { fmtDateTime, toArray } from "../../../modules/hr/recruitment/utils/data";
 
@@ -38,10 +40,17 @@ const metrics = [
   { key: "offers_pending", alt: "offersPending", label: "Pending Offers", icon: FileBarChart2, color: "amber" },
 ];
 
-const quickActions = [
-  { label: "Create Job", href: "/hr/recruitment/jobs", icon: Plus },
-  { label: "Import Resume", href: "/hr/recruitment/inbox", icon: Inbox },
-  { label: "Schedule Interview", href: "/hr/recruitment/interviews", icon: CalendarClock },
+// ============================================================
+// RECRUITMENT WORKSPACE — 8 clickable module cards
+// ============================================================
+const recruitmentModules = [
+  { name: "Job Openings", href: "/hr/recruitment/jobs", icon: Briefcase, color: "from-indigo-500 to-purple-500", description: "Create, approve, publish and manage job openings" },
+  { name: "Candidates", href: "/hr/recruitment/candidates", icon: Users, color: "from-emerald-500 to-teal-500", description: "Track candidates through the hiring pipeline" },
+  { name: "Interviews", href: "/hr/recruitment/interviews", icon: CalendarClock, color: "from-blue-500 to-cyan-500", description: "Schedule, conduct and manage interviews" },
+  { name: "Offers", href: "/hr/recruitment/offers", icon: FileText, color: "from-violet-500 to-purple-500", description: "Create, approve, send and track offer letters" },
+  { name: "Talent Pool", href: "/hr/recruitment/resume-pool", icon: Database, color: "from-cyan-500 to-sky-500", description: "Browse all uploaded resumes and parsed profiles" },
+  { name: "Applications", href: "/hr/recruitment/inbox", icon: Inbox, color: "from-emerald-500 to-green-500", description: "Email resume imports, sync and duplicate detection" },
+  { name: "Hiring Reports", href: "/hr/recruitment/reports", icon: BarChart3, color: "from-rose-500 to-pink-500", description: "Funnel, trends, recruiter and department analytics" },
 ];
 
 // ============================================================
@@ -112,19 +121,12 @@ export default function RecruitmentDashboard() {
 
   const isLoading = dashboardQuery.isLoading || jobDashboardQuery.isLoading;
 
-  // Calculate additional stats
-  const totalCandidates = recentApplications.length + interviews.length;
-  const activeJobs = metricsData.open_jobs || metricsData.openJobs || 0;
-  const todayInterviews = metricsData.interviews_scheduled || metricsData.interviewsScheduled || 0;
-  const conversionRate = activeJobs > 0 ? Math.round((totalCandidates / activeJobs) * 10) / 10 : 0;
-
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* ============================================================ */}
       {/* HERO SECTION - Gradient with Glassmorphism */}
       {/* ============================================================ */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-teal-600 via-emerald-600 to-green-600 p-6 text-white shadow-xl md:p-8">
-        {/* Decorative blur circles */}
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
@@ -142,18 +144,45 @@ export default function RecruitmentDashboard() {
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {quickActions.map((action) => (
-                <Link
-                  key={action.href}
-                  to={action.href}
-                  className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
-                >
-                  <action.icon className="h-4 w-4" />
-                  {action.label}
-                </Link>
-              ))}
-            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* RECRUITMENT WORKSPACE — 8 Clickable Module Cards */}
+      {/* ============================================================ */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <SectionHeader 
+          icon={LayoutDashboard}
+          title="Recruitment Workspace"
+          description="Quick access to all recruitment modules"
+        />
+        <div className="p-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {recruitmentModules.map((mod) => (
+              <Link
+                key={mod.name + mod.href}
+                to={mod.href}
+                className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:shadow-lg hover:scale-[1.02] hover:border-indigo-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-600"
+              >
+                <div className={`absolute inset-0 bg-gradient-to-br ${mod.color} opacity-5 group-hover:opacity-10 transition-opacity`} />
+                <div className="relative">
+                  <div className={`mb-3 inline-flex rounded-xl bg-gradient-to-r ${mod.color} p-3 text-white shadow-lg transition-transform group-hover:scale-110`}>
+                    <mod.icon className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                    {mod.name}
+                  </h3>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
+                    {mod.description}
+                  </p>
+                  <div className="mt-3 flex items-center gap-1 text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                    Open
+                    <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-1" />
+                  </div>
+                </div>
+              </Link>
+            ))}
           </div>
         </div>
       </div>

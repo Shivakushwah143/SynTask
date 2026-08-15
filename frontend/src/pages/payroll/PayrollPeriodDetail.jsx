@@ -123,10 +123,25 @@ const PayrollPeriodDetail = () => {
       </div>
 
       {period.blocked_count > 0 && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/30">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-950/30">
           <p className="text-sm font-medium text-red-700 dark:text-red-300">
             {period.blocked_count} employee(s) have blockers (missing salary structure or other issues).
           </p>
+          {records.filter(r => r.status === 'blocked').length > 0 && (
+            <div className="mt-2 space-y-1">
+              {records.filter(r => r.status === 'blocked').map(r => (
+                <div key={r.id} className="flex items-start gap-2 text-xs text-red-600 dark:text-red-400">
+                  <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+                  <span>
+                    <span className="font-medium">{r.employee_name || r.employee_id}</span>
+                    {r.blockers && r.blockers.length > 0 && (
+                      <span> — {r.blockers.join('; ')}</span>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -205,6 +220,11 @@ const PayrollPeriodDetail = () => {
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[r.status] || 'bg-gray-100 text-gray-600'}`}>
                         {r.status}
                       </span>
+                      {r.status === 'blocked' && r.blockers && r.blockers.length > 0 && (
+                        <p className="mt-1 max-w-[200px] text-[11px] leading-tight text-red-500 dark:text-red-400">
+                          {r.blockers[0]}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {r.payslip?.generated ? (

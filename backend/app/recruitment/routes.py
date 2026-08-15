@@ -21,7 +21,8 @@ from app.recruitment.advanced_services import (
 )
 from app.recruitment.permissions import (require_job_archive, require_job_create,
                                          require_job_publish, require_job_update,
-                                         require_job_view, require_recruitment_access,
+                                         require_job_view, require_job_approve,
+                                         require_recruitment_access,
                                          require_recruitment_manager,
                                          require_candidate_view,
                                          require_candidate_manage,
@@ -48,8 +49,10 @@ from app.recruitment.schemas import (ApplicationApplyResponse, ApplicationStatus
                                      InterviewCancelRequest,
                                      InterviewDecisionRequest, JobCreate,
                                      JobFilter, JobListResponse, JobResponse,
-                                     JobSort, JobUpdate, KeywordMatchResponse,
-                                     OfferCreate,
+                                     JobSort, JobUpdate, JobRejectRequest,
+                                     KeywordMatchResponse,
+                                     MarkJoinedRequest,
+                                     OfferCreate, OfferListResponse,
                                      OfferUpdate, PublicJobListResponse,
                                      PublicJobResponse, ResumePoolResponse)
 from app.recruitment.services import (ApplicationService, CareerPortalService,
@@ -309,6 +312,33 @@ async def duplicate_job(job_id: str, user: User = Depends(require_job_create)):
     """Duplicate an existing job."""
     job = await JobService.get_job(job_id, company(user))
     job = await JobService.duplicate_job(job, str(user.id))
+    return serialize_job(job)
+
+
+# Submit Job for Approval (DRAFT → PENDING_APPROVAL)
+@router.post("/jobs/{job_id}/submit-for-approval", response_model=JobResponse)
+async def submit_job_for_approval(job_id: str, user: User = Depends(require_job_update)):
+    """Submit a draft job for approval."""
+    job = await JobService.get_job(job_id, company(user))
+    job = await JobService.submit_job(job, str(user.id))
+    return serialize_job(job)
+
+
+# Approve Job (PENDING_APPROVAL → APPROVED)
+@router.post("/jobs/{job_id}/approve", response_model=JobResponse)
+async def approve_job(job_id: str, user: User = Depends(require_job_approve)):
+    """Approve a pending-approval job."""
+    job = await JobService.get_job(job_id, company(user))
+    job = await JobService.approve_job(job, str(user.id))
+    return serialize_job(job)
+
+
+# Reject Job (PENDING_APPROVAL → DRAFT)
+@router.post("/jobs/{job_id}/reject", response_model=JobResponse)
+async def reject_job(job_id: str, payload: JobRejectRequest | None = None, user: User = Depends(require_job_approve)):
+    """Reject a pending-approval job back to draft."""
+    job = await JobService.get_job(job_id, company(user))
+    job = await JobService.reject_job(job, str(user.id))
     return serialize_job(job)
 
 
@@ -735,6 +765,13 @@ async def convert_candidate(candidate_id: str, payload: ConversionRequest, user:
     return await RecruitmentService.convert(candidate, payload, str(user.id))
 
 
+@router.post("/candidates/{candidate_id}/mark-joined")
+async def mark_candidate_joined(candidate_id: str, payload: MarkJoinedRequest | None = None, user: User = Depends(require_recruitment_manager)):
+    """Mark an offer-accepted candidate as joined (OFFER_ACCEPTED → JOINED)."""
+    candidate = await CandidateWorkspaceService.get_candidate(company(user), candidate_id)
+    return await RecruitmentService.mark_joined(candidate, (payload or MarkJoinedRequest()).joining_date, str(user.id))
+
+
 @router.get("/candidates/{candidate_id}/timeline")
 async def timeline(candidate_id: str, user: User = Depends(require_recruitment_access)):
     await CandidateWorkspaceService.get_candidate(company(user), candidate_id)
@@ -1069,6 +1106,45 @@ async def interview_feedback(interview_id: str, payload: InterviewFeedback, user
 async def interview_decision(interview_id: str, payload: InterviewDecisionRequest, user: User = Depends(require_interview_manage)):
     interview = await InterviewDecisionService.record_decision(company(user), interview_id, str(user.id), payload)
     return InterviewResponse.model_validate(InterviewService.payload(interview))
+
+
+@router.get("/offers", response_model=OfferListResponse)
+async def list_offers(
+    status: Optional[str] = None,
+    candidate_id: Optional[str] = None,
+    job_id: Optional[str] = None,
+    search: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
+    user: User = Depends(require_recruitment_manager),
+):
+    """List offers with filtering and pagination."""
+    query: dict = {"company_id": company(user), "deleted_at": None}
+    if status:
+        query["status"] = status
+    if candidate_id:
+        query["candidate_id"] = candidate_id
+    if job_id:
+        query["job_id"] = job_id
+    if search:
+        query["$or"] = [
+            {"job_title": {"$regex": search, "$options": "i"}},
+            {"offer_number": {"$regex": search, "$options": "i"}},
+        ]
+    skip = (page - 1) * page_size
+    total = await Offer.find(query).count()
+    items = await Offer.find(query).sort("-created_at").skip(skip).limit(min(page_size, 100)).to_list()
+    # Enrich with candidate names
+    enriched = []
+    for offer in items:
+        offer_dict = offer.model_dump() if hasattr(offer, "model_dump") else {k: getattr(offer, k) for k in offer.model_fields}
+        offer_dict["id"] = str(offer.id)
+        candidate = await TenantRepository.get(Candidate, offer.candidate_id, company(user))
+        if candidate:
+            offer_dict["candidate_name"] = candidate.full_name
+            offer_dict["candidate_email"] = candidate.email
+        enriched.append(offer_dict)
+    return OfferListResponse(items=enriched, total=total, page=page, page_size=page_size, has_next=(page * page_size) < total)
 
 
 @router.post("/offers", status_code=201)

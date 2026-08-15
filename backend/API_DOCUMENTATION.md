@@ -386,7 +386,7 @@ Permission model (backend authoritative):
 | POST | `/api/v1/payroll/periods/{period_id}/calculate` | `calculate_period` | Runs the Phase 6 calculation (DRAFT→CALCULATED). Requires `payroll.manage`. |
 | POST | `/api/v1/payroll/periods/{period_id}/review` | `review_period` | Moves CALCULATED → REVIEW. Requires `payroll.manage`. |
 | POST | `/api/v1/payroll/periods/{period_id}/approve` | `approve_period` | Moves REVIEW → APPROVED (rejects when blocked records exist). Requires `payroll.approve`. |
-| POST | `/api/v1/payroll/periods/{period_id}/process` | `process_period` | Moves APPROVED → PROCESSED (terminal; finalizes records). Requires `payroll.approve`. |
+| POST | `/api/v1/payroll/periods/{period_id}/process` | `process_period` | Moves APPROVED → PROCESSED (terminal; finalizes records) and **auto-generates missing payslips** for eligible records (idempotent — records with an existing payslip or in BLOCKED state are skipped; per-record failures never roll back the transition). Requires `payroll.approve`. |
 | GET | `/api/v1/payroll/periods/{period_id}/records` | `list_records` | Employee payroll records for a period; each item includes `payslip` state and `can_generate`/`can_preview`/`can_download`/`can_regenerate` flags. Requires `payroll.view`. |
 | GET | `/api/v1/payroll/records/{record_id}` | `get_payroll_record` | One employee payroll record with full snapshot + payslip state. Requires `payroll.view`. |
 | POST | `/api/v1/payroll/records/{record_id}/payslip` | `create_record_payslip` | Generates the payslip for one record. Only allowed after the period is PROCESSED; idempotent (returns the existing payslip on repeat). Requires `payroll.manage`. |

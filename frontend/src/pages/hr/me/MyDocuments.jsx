@@ -10,6 +10,9 @@ import { EXPIRY_STATE_META, formatDate } from './myHrUtils'
 const MyDocuments = () => {
   const { data: profile, isLoading: profileLoading, isError: profileError } = useMyProfile()
   const { data: documents, isLoading: docsLoading, isError: docsError, refetch } = useMyDocuments(profile?.id)
+  // The backend returns HRDocumentListResponse ({ items, total, page, ... });
+  // the axios interceptor passes it through unchanged, so unwrap `.items`.
+  const items = documents?.items || []
 
   const [preview, setPreview] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
@@ -84,7 +87,7 @@ const MyDocuments = () => {
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white">My Documents</h3>
         </div>
 
-        {!documents || documents.length === 0 ? (
+        {items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-400">No employee-visible documents are available.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -99,7 +102,7 @@ const MyDocuments = () => {
                 </tr>
               </thead>
               <tbody>
-                {documents.map((document) => {
+                {items.map((document) => {
                   const expiryMeta = EXPIRY_STATE_META[document.expiry_state] || EXPIRY_STATE_META.no_expiry
                   return (
                     <tr key={document.id} className="border-b border-gray-50 dark:border-gray-800">

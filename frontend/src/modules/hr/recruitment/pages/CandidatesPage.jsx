@@ -778,7 +778,6 @@ export default function CandidatesPage() {
             filters={[
               { key: "status", label: "Status", options: CANDIDATE_STATUSES },
               { key: "source", label: "Source", options: ["portal", "email", "manual", "referral"] },
-              { key: "notice_period", label: "Notice period", options: ["immediate", "15_days", "30_days", "60_days", "90_days"] },
             ]}
           />
         </div>
@@ -960,8 +959,7 @@ export default function CandidatesPage() {
           {/* Sidebar */}
           <aside className="space-y-4">
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Quick Actions</h3>
-              <div className="mt-3 space-y-2">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Quick Actions</h3>              <div className="mt-3 space-y-2">
                 <QuickActionButton 
                   icon={Briefcase} 
                   label="Assign Job & Hire" 
@@ -973,19 +971,13 @@ export default function CandidatesPage() {
                   onClick={() => setAssignOpen(true)} 
                 />
                 <QuickActionButton 
-                  icon={Archive} 
-                  label="Archive Candidate" 
-                  onClick={() => archive.mutate(idOf(candidate))}
-                  loading={archive.isLoading}
-                />
-                <QuickActionButton 
                   icon={Upload}
                   label="Upload Resume"
                   onClick={() => { setResumeUploadMode(true); fileInputRef.current?.click(); }}
                   loading={uploading && resumeUploadMode}
                 />
                 <QuickActionButton 
-                  icon={Paperclip} 
+                  icon={Paperclip}
                   label={uploading ? "Uploading..." : "Add Attachment"} 
                   onClick={() => { setResumeUploadMode(false); fileInputRef.current?.click(); }}
                   loading={uploading && !resumeUploadMode}
@@ -996,6 +988,79 @@ export default function CandidatesPage() {
                   onClick={shareProfile}
                 />
               </div>
+              
+              {/* Lifecycle Actions - show based on current status */}
+              {candidate?.status && [
+                { status: "new", target: "screening", label: "Move to Screening", icon: TrendingUp },
+                { status: "screening", target: "shortlisted", label: "Shortlist", icon: Star },
+                { status: "shortlisted", target: "interview_1", label: "Move to Interview 1", icon: Calendar },
+                { status: "interview_1", target: "interview_2", label: "Move to Interview 2", icon: Calendar },
+                { status: "offered", target: "offer_accepted", label: "Mark Offer Accepted", icon: CheckCircle },
+                { status: "offer_accepted", target: "joined", label: "Mark Joined", icon: UserCheck },
+              ].filter(a => a.status === candidate.status).map(action => (
+                <QuickActionButton
+                  key={action.target}
+                  icon={action.icon}
+                  label={action.label}
+                  variant="primary"
+                  onClick={async () => {
+                    try {
+                      if (action.target === "joined") {
+                        await recruitmentApi.markCandidateJoined(idOf(candidate), {});
+                      } else {
+                        await recruitmentApi.moveCandidate(idOf(candidate), { status: action.target });
+                      }
+                      toast.success(`${action.label} successfully!`);
+                      qc.invalidateQueries(["recruitment", "candidates"]);
+                      qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]);
+                    } catch (err) {
+                      toast.error(err?.response?.data?.detail || `Failed: ${action.label}`);
+                    }
+                  }}
+                />
+              ))}
+              {candidate?.status === "offer_accepted" && (
+                <QuickActionButton
+                  icon={UserCheck}
+                  label="Convert to Employee"
+                  variant="primary"
+                  onClick={async () => {
+                    try {
+                      await recruitmentApi.convertCandidate(idOf(candidate), { department_id: candidate.department_id || "", designation: candidate.designation || "" });
+                      toast.success("Candidate converted to employee!");
+                      qc.invalidateQueries(["recruitment", "candidates"]);
+                      qc.invalidateQueries(["recruitment", "employees"]);
+                      setSelected(null);
+                    } catch (err) {
+                      toast.error(err?.response?.data?.detail || "Failed to convert candidate");
+                    }
+                  }}
+                />
+              )}
+              {(candidate?.status === "new" || candidate?.status === "screening" || candidate?.status === "shortlisted" || candidate?.status === "interview_1" || candidate?.status === "interview_2") && (
+                <QuickActionButton
+                  icon={UserX}
+                  label="Reject Candidate"
+                  onClick={() => {
+                    const reason = window.prompt("Rejection reason:");
+                    if (reason) {
+                      recruitmentApi.rejectCandidate(idOf(candidate), { reason })
+                        .then(() => {
+                          toast.success("Candidate rejected");
+                          qc.invalidateQueries(["recruitment", "candidates"]);
+                          qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]);
+                        })
+                        .catch(err => toast.error(err?.response?.data?.detail || "Failed to reject"));
+                    }
+                  }}
+                />
+              )}
+              <QuickActionButton 
+                icon={Archive} 
+                label="Archive Candidate" 
+                onClick={() => archive.mutate(idOf(candidate))}
+                loading={archive.isLoading}
+              />
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">

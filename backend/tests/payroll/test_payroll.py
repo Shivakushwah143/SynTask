@@ -468,3 +468,149 @@ class TestPayrollCalculationContract:
         """Week off should contribute 1.0 to payable days."""
         from app.services.attendance_status_resolver import get_payable_factor
         assert get_payable_factor("week_off") == 1.0
+
+
+# =============================================================================
+# Phase 7 closure — processing auto-generates missing payslips
+# =============================================================================
+
+class TestProcessAutoGeneratesPayslips:
+    """Processing a payroll finalizes records AND backfills missing payslips so
+    employees see them in My HR without a manual HR step.
+
+    The backfill reuses the existing idempotent bulk payslip generator — it
+    never recalculates payroll, never duplicates existing payslips, and never
+    fails the authoritative PROCESSED transition (best-effort + logged).
+    """
+
+    @pytest.mark.asyncio
+    async def test_process_marks_records_processed_and_triggers_backfill(self):
+        from app.services import payroll_service as svc
+
+        period = _make_period(status=PayrollPeriodStatus.APPROVED)
+        period.save = AsyncMock()
+        record = _make_record()
+        record.save = AsyncMock()
+        cursor = MagicMock()
+        cursor.to_list = AsyncMock(return_value=[record])
+        actor = MagicMock(id="actor-1")
+
+        generated = {
+            "generated": [{"record_id": "r1", "payslip_id": "payslip-1", "version": 1}],
+            "already_existing": [],
+            "failed": [],
+            "skipped": [],
+        }
+        with patch.object(svc.PayrollPeriod, "get", AsyncMock(return_value=period)), \
+             patch.object(svc.PayrollRecord, "find", MagicMock(return_value=cursor)), \
+             patch("app.services.payslip_service.generate_period_payslips", AsyncMock(return_value=generated)) as gen_mock:
+            result = await svc.process_payroll("company-1", "p1", actor)
+
+        assert result.status == PayrollPeriodStatus.PROCESSED
+        assert result.processed_by == "actor-1"
+        assert result.processed_at is not None
+        # Records are finalized before the backfill runs.
+        assert record.processed_at is not None
+        record.save.assert_awaited()
+        # The existing idempotent bulk generator is called once, without
+        # regenerate — existing payslips are never re-created here.
+        gen_mock.assert_awaited_once_with("company-1", "p1", actor)
+
+    @pytest.mark.asyncio
+    async def test_process_backfill_skips_records_with_existing_payslips(self):
+        from app.services import payroll_service as svc
+
+        period = _make_period(status=PayrollPeriodStatus.APPROVED)
+        period.save = AsyncMock()
+        record = _make_record()
+        record.save = AsyncMock()
+        cursor = MagicMock()
+        cursor.to_list = AsyncMock(return_value=[record])
+        actor = MagicMock(id="actor-1")
+
+        generated = {
+            "generated": [],
+            "already_existing": [{"record_id": "r1", "payslip_id": "payslip-1", "version": 2}],
+            "failed": [],
+            "skipped": [],
+        }
+        with patch.object(svc.PayrollPeriod, "get", AsyncMock(return_value=period)), \
+             patch.object(svc.PayrollRecord, "find", MagicMock(return_value=cursor)), \
+             patch("app.services.payslip_service.generate_period_payslips", AsyncMock(return_value=generated)) as gen_mock:
+            result = await svc.process_payroll("company-1", "p1", actor)
+
+        # The transition still succeeds and the already-existing payslip is
+        # reported back as untouched (idempotency is delegated to the service).
+        assert result.status == PayrollPeriodStatus.PROCESSED
+        gen_mock.assert_awaited_once_with("company-1", "p1", actor)
+
+    @pytest.mark.asyncio
+    async def test_process_transition_survives_backfill_failure(self):
+        """Payslip generation is best-effort: a failure (e.g. PDF renderer or
+        storage outage) must never roll back the PROCESSED payroll."""
+        from app.services import payroll_service as svc
+
+        period = _make_period(status=PayrollPeriodStatus.APPROVED)
+        period.save = AsyncMock()
+        record = _make_record()
+        record.save = AsyncMock()
+        cursor = MagicMock()
+        cursor.to_list = AsyncMock(return_value=[record])
+        actor = MagicMock(id="actor-1")
+
+        with patch.object(svc.PayrollPeriod, "get", AsyncMock(return_value=period)), \
+             patch.object(svc.PayrollRecord, "find", MagicMock(return_value=cursor)), \
+             patch("app.services.payslip_service.generate_period_payslips", AsyncMock(side_effect=RuntimeError("pdf render failed"))):
+            result = await svc.process_payroll("company-1", "p1", actor)
+
+        assert result.status == PayrollPeriodStatus.PROCESSED
+        assert record.processed_at is not None
+
+    @pytest.mark.asyncio
+    async def test_process_backfill_empty_records_is_not_an_error(self):
+        """Empty data must never produce a 500: a processed period with no
+        records completes normally and the backfill no-ops."""
+        from app.services import payroll_service as svc
+
+        period = _make_period(status=PayrollPeriodStatus.APPROVED)
+        period.save = AsyncMock()
+        cursor = MagicMock()
+        cursor.to_list = AsyncMock(return_value=[])
+        actor = MagicMock(id="actor-1")
+
+        generated = {"generated": [], "already_existing": [], "failed": [], "skipped": []}
+        with patch.object(svc.PayrollPeriod, "get", AsyncMock(return_value=period)), \
+             patch.object(svc.PayrollRecord, "find", MagicMock(return_value=cursor)), \
+             patch("app.services.payslip_service.generate_period_payslips", AsyncMock(return_value=generated)) as gen_mock:
+            result = await svc.process_payroll("company-1", "p1", actor)
+
+        assert result.status == PayrollPeriodStatus.PROCESSED
+        gen_mock.assert_awaited_once_with("company-1", "p1", actor)
+
+    @pytest.mark.asyncio
+    async def test_backfill_per_record_failures_do_not_break_transition(self):
+        """The bulk generator already isolates per-record failures; the
+        transition is unaffected and the failure summary is returned/logged."""
+        from app.services import payroll_service as svc
+
+        period = _make_period(status=PayrollPeriodStatus.APPROVED)
+        period.save = AsyncMock()
+        record = _make_record()
+        record.save = AsyncMock()
+        cursor = MagicMock()
+        cursor.to_list = AsyncMock(return_value=[record])
+        actor = MagicMock(id="actor-1")
+
+        generated = {
+            "generated": [],
+            "already_existing": [],
+            "failed": [{"record_id": "r1", "error": "snapshot inconsistent"}],
+            "skipped": [],
+        }
+        with patch.object(svc.PayrollPeriod, "get", AsyncMock(return_value=period)), \
+             patch.object(svc.PayrollRecord, "find", MagicMock(return_value=cursor)), \
+             patch("app.services.payslip_service.generate_period_payslips", AsyncMock(return_value=generated)) as gen_mock:
+            result = await svc.process_payroll("company-1", "p1", actor)
+
+        assert result.status == PayrollPeriodStatus.PROCESSED
+        gen_mock.assert_awaited_once_with("company-1", "p1", actor)

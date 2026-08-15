@@ -305,7 +305,44 @@ async def process_payroll(
         record.updated_at = now
         await record.save()
 
+    # Phase 7 closure — a processed payroll automatically backfills missing
+    # payslips for eligible records so employees see them in My HR without a
+    # manual HR step. Reuses the existing idempotent payslip service: records
+    # that already have a current payslip are left untouched, BLOCKED records
+    # are skipped, and per-record failures are isolated. Generation is
+    # best-effort — the authoritative PROCESSED transition never fails because
+    # of presentation work, and any failure stays recoverable via the explicit
+    # bulk/manual payslip actions.
+    await _auto_generate_period_payslips(company_id, period_id, actor)
+
     return period
+
+
+async def _auto_generate_period_payslips(
+    company_id: str, period_id: str, actor: User
+) -> None:
+    """Best-effort payslip backfill for a freshly PROCESSED payroll period.
+
+    Reuses ``payslip_service.generate_period_payslips`` (idempotent, skips
+    BLOCKED records, isolates per-record failures). Never raises: the payroll
+    transition is authoritative and must not roll back because payslip
+    generation failed; failures are logged and remain recoverable through the
+    explicit ``POST /payroll/periods/{id}/payslips/generate`` action.
+    """
+    from app.services.payslip_service import generate_period_payslips
+
+    try:
+        summary = await generate_period_payslips(company_id, period_id, actor)
+        failed = summary.get("failed") or []
+        if failed:
+            logger.warning(
+                "Auto payslip generation for period %s had %d failure(s): %s",
+                period_id, len(failed), failed,
+            )
+    except Exception:
+        logger.exception(
+            "Auto payslip generation failed for processed period %s", period_id
+        )
 
 
 # =============================================================================

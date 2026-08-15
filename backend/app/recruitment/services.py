@@ -373,6 +373,19 @@ class RecruitmentService:
         )
         return result["user"]
 
+    @staticmethod
+    async def mark_joined(candidate: Candidate, joining_date: datetime | None, actor_id: str) -> Candidate:
+        """Mark a candidate as joined (OFFER_ACCEPTED → JOINED).
+
+        The candidate must already have an accepted offer. This is the standard
+        pre-conversion step — convert() is a separate action.
+        """
+        candidate = await RecruitmentService.move(candidate, CandidateStatus.JOINED, actor_id)
+        if joining_date:
+            candidate.updated_at = utc_now()
+            await candidate.save()
+        return candidate
+
 
 class JobService:
     """Service for Job aggregate operations."""
@@ -500,6 +513,8 @@ class JobService:
         # Publish domain event
         event_name = {
             JobLifecycleStatus.PUBLISHED: "RecruitmentJobPublished",
+            JobLifecycleStatus.PENDING_APPROVAL: "RecruitmentJobSubmitted",
+            JobLifecycleStatus.APPROVED: "RecruitmentJobApproved",
             JobLifecycleStatus.PAUSED: "RecruitmentJobPaused",
             JobLifecycleStatus.CLOSED: "RecruitmentJobClosed",
             JobLifecycleStatus.ARCHIVED: "RecruitmentJobArchived",
@@ -508,6 +523,21 @@ class JobService:
 
         await record(job.company_id, event_name, actor_id, job_id=str(job.id), payload={"from": current_status.value, "to": target_status.value})
         return job
+
+    @staticmethod
+    async def submit_job(job: RecruitmentJob, actor_id: str) -> RecruitmentJob:
+        """Submit a draft job for approval (DRAFT → PENDING_APPROVAL)."""
+        return await JobService.transition_job(job, JobLifecycleStatus.PENDING_APPROVAL, actor_id)
+
+    @staticmethod
+    async def approve_job(job: RecruitmentJob, actor_id: str) -> RecruitmentJob:
+        """Approve a pending-approval job (PENDING_APPROVAL → APPROVED)."""
+        return await JobService.transition_job(job, JobLifecycleStatus.APPROVED, actor_id)
+
+    @staticmethod
+    async def reject_job(job: RecruitmentJob, actor_id: str) -> RecruitmentJob:
+        """Reject a pending-approval job back to draft (PENDING_APPROVAL → DRAFT)."""
+        return await JobService.transition_job(job, JobLifecycleStatus.DRAFT, actor_id)
 
     @staticmethod
     async def publish_job(job: RecruitmentJob, actor_id: str) -> RecruitmentJob:

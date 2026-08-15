@@ -363,10 +363,7 @@ export default function ResumePoolPage() {
             values={filters}
             onChange={(k, v) => { setFilters((current) => ({ ...current, [k]: v })); setPage(1); }}
             onReset={() => { setSearch(""); setFilters({}); setPage(1); }}
-            filters={[
-              { key: "status", label: "Status", options: ["linked", "unlinked", "all"] },
-              { key: "mime_type", label: "File Type", options: ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/jpeg", "image/png"] },
-            ]}
+            filters={[]}
           />
         </div>
       </div>

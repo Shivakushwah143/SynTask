@@ -559,6 +559,25 @@ class EmployeeListResponse(BaseModel):
     has_next: bool
 
 
+class OfferListResponse(BaseModel):
+    items: list[dict]
+    total: int
+    page: int
+    page_size: int
+    has_next: bool
+
+
+class MarkJoinedRequest(BaseModel):
+    joining_date: Optional[datetime] = None
+    department_id: Optional[str] = None
+    designation: Optional[str] = None
+    reports_to: Optional[str] = None
+
+
+class JobRejectRequest(BaseModel):
+    reason: Optional[str] = None
+
+
 class ResumePoolResponse(BaseModel):
     items: list[dict]
     total: int
