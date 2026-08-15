@@ -38,7 +38,8 @@ export const LEAD_TABS = [
   { key: 'history', label: 'Stage History' },
   { key: 'ai', label: 'AI' },
 ]
-const PRIMARY_LEAD_TAB_KEYS = new Set(['overview', 'discovery', 'audit', 'proposal', 'negotiation', 'agreement', 'documents', 'timeline'])
+const GLOBAL_LEAD_TAB_KEYS = new Set(['overview', 'documents', 'timeline', 'notes', 'tasks', 'meetings', 'emails', 'files', 'call_logs', 'history', 'ai'])
+const STAGE_LEAD_TAB_KEYS = new Set(['discovery', 'audit', 'proposal', 'negotiation', 'agreement'])
 const WORKSPACE_STAGE_ORDER = ['acquire', 'qualify', 'discovery', 'proposal', 'negotiation', 'agreement', 'won']
 const WORKSPACE_STAGE_MINIMUM = { discovery: 'discovery', audit: 'discovery', proposal: 'proposal', negotiation: 'negotiation', agreement: 'agreement' }
 
@@ -598,72 +599,61 @@ const tabAvailability = (lead, tab) => {
 }
 
 export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange, lead }) {
-  const primaryTabs = LEAD_TABS.filter((tab) => PRIMARY_LEAD_TAB_KEYS.has(tab.key))
-  const moreTabs = LEAD_TABS.filter((tab) => !PRIMARY_LEAD_TAB_KEYS.has(tab.key))
-  const activeMoreTab = moreTabs.find((tab) => tab.key === activeTab)
+  const globalTabs = LEAD_TABS.filter((tab) => GLOBAL_LEAD_TAB_KEYS.has(tab.key))
+  const stageTabs = LEAD_TABS.filter((tab) => STAGE_LEAD_TAB_KEYS.has(tab.key))
   const showLocked = (message) => toast(message)
-  return (
-    <nav aria-label="Lead workspace sections" className="overflow-x-auto rounded-2xl border border-surface-border/80 bg-white/90 p-2 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
-      <div className="flex min-w-max items-center gap-2">
-        {primaryTabs.map((tab) => {
-          const isActive = activeTab === tab.key
-          const availability = tabAvailability(lead, tab)
-          const commonClass = `inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-            isActive
-              ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200'
-              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100'
-          }`
+  const renderTab = (tab, { lockable = false } = {}) => {
+    const isActive = activeTab === tab.key
+    const availability = lockable ? tabAvailability(lead, tab) : { locked: false }
+    const commonClass = `inline-flex min-h-10 items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+      isActive
+        ? 'bg-primary-50 text-primary-700 ring-1 ring-primary-100 dark:bg-primary-950/60 dark:text-primary-200 dark:ring-primary-900/50'
+        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100'
+    }`
 
-          if (availability.locked || tab.disabled) {
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                className={`${commonClass} cursor-not-allowed opacity-60`}
-                aria-disabled="true"
-                title={availability.message || 'Coming soon'}
-                onClick={() => showLocked(availability.message || 'Coming soon')}
-              >
-                {tab.label}
-                <Lock className="h-3.5 w-3.5" />
-                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                  Locked
-                </span>
-              </button>
-            )
-          }
-
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => onTabChange?.(tab.key)}
-              aria-current={isActive ? 'page' : undefined}
-              className={commonClass}
-            >
-              {tab.label}
-            </button>
-          )
-        })}
-        <label className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-          activeMoreTab
-            ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200'
-            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100'
-        }`}
+    if (availability.locked || tab.disabled) {
+      return (
+        <button
+          key={tab.key}
+          type="button"
+          className={`${commonClass} cursor-not-allowed opacity-60`}
+          aria-disabled="true"
+          title={availability.message || 'Coming soon'}
+          onClick={() => showLocked(availability.message || 'Coming soon')}
         >
-          <span>More</span>
-          <select
-            className="bg-transparent text-sm font-medium outline-none"
-            value={activeMoreTab?.key || ''}
-            onChange={(event) => {
-              if (event.target.value) onTabChange?.(event.target.value)
-            }}
-            aria-label="More lead sections"
-          >
-            <option value="">Select</option>
-            {moreTabs.map((tab) => <option key={tab.key} value={tab.key}>{tab.label}</option>)}
-          </select>
-        </label>
+          {tab.label}
+          <Lock className="h-3.5 w-3.5" />
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+            Locked
+          </span>
+        </button>
+      )
+    }
+
+    return (
+      <button
+        key={tab.key}
+        type="button"
+        onClick={() => onTabChange?.(tab.key)}
+        aria-current={isActive ? 'page' : undefined}
+        className={commonClass}
+      >
+        {tab.label}
+      </button>
+    )
+  }
+
+  return (
+    <nav aria-label="Lead workspace sections" className="space-y-3">
+      <div className="overflow-x-auto rounded-2xl border border-surface-border/80 bg-white/90 p-2 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
+        <div className="flex min-w-max items-center gap-2">
+          {globalTabs.map((tab) => renderTab(tab))}
+        </div>
+      </div>
+      <div className="overflow-x-auto rounded-2xl border border-primary-100/80 bg-primary-50/45 p-2 shadow-sm dark:border-primary-900/50 dark:bg-primary-950/20">
+        <div className="flex min-w-max items-center gap-2">
+          {stageTabs.map((tab) => renderTab(tab, { lockable: true }))}
+        </div>
       </div>
     </nav>
   )
