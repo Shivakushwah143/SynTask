@@ -17,6 +17,7 @@ const { salesApiMock, crmApiMock } = vi.hoisted(() => ({
     createLeadProposal: vi.fn(),
     updateLeadProposal: vi.fn(),
     archiveLeadProposal: vi.fn(),
+    getLeadDocuments: vi.fn(),
   },
 }))
 
@@ -136,37 +137,33 @@ describe('CRM lead workspace E2E', () => {
         },
       ],
     })
+    crmApiMock.getLeadDocuments.mockResolvedValue({
+      documents: [
+        {
+          id: 'doc-1',
+          document_type: 'quotation',
+          document_number: 'QTN-001',
+          title: 'Accepted quotation',
+          status: 'accepted',
+          grand_total: 2500,
+          created_at: '2026-07-12T10:00:00Z',
+        },
+      ],
+    })
 
     crmApiMock.updateLeadProposal.mockResolvedValue({ message: 'Proposal updated successfully' })
     salesApiMock.updateLeadForm.mockResolvedValue({ message: 'Lead updated successfully' })
   })
 
-  it('moves from lead to proposal to history with real data and mutations', async () => {
+  it('moves from lead to proposal to history with real data', async () => {
     const proposalView = renderPage()
 
     expect(await screen.findByRole('heading', { name: 'Alpha Co', level: 1 })).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('More lead sections'), { target: { value: 'proposal' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Proposal' }))
 
-    expect(await screen.findByText('Proposal composer')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save proposal version' }))
-
-    await waitFor(() => {
-      expect(crmApiMock.updateLeadProposal).toHaveBeenCalledWith(
-        'lead-1',
-        'proposal-1',
-        expect.objectContaining({
-          title: 'Proposal v1',
-          summary: 'Initial proposal',
-          status: 'draft',
-          deal_value: 2500,
-          probability: 60,
-          negotiation_notes: 'Early notes',
-          decision_maker: 'Sam Buyer',
-        }),
-      )
-    })
+    expect(await screen.findByText('Quotation builder')).toBeInTheDocument()
+    expect(screen.getByText('QTN-001')).toBeInTheDocument()
 
     proposalView.unmount()
 
@@ -197,6 +194,52 @@ describe('CRM lead workspace E2E', () => {
       expect(salesApiMock.updateLeadForm).toHaveBeenCalledWith(
         'lead-1',
         expect.objectContaining({ company_name: 'Beta Co' }),
+      )
+    })
+  })
+
+  it('shows negotiation as a locked future tab before the negotiation stage', async () => {
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Alpha Co', level: 1 })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /NegotiationLocked/i })).toBeInTheDocument()
+  })
+
+  it('saves manual negotiation status through the lead update API', async () => {
+    salesApiMock.getLead.mockResolvedValue({
+      id: 'lead-1',
+      prospect_name: 'Alpha Co',
+      company_name: 'Alpha Co',
+      current_stage: 'Negotiation',
+      status: 'active',
+      assigned_to: 'user-1',
+      interest_level: 'warm',
+      proposal_status: 'accepted',
+      negotiation_status: 'waiting_client',
+      negotiation_notes: 'Client asked for one change',
+      budget: 2500,
+      custom_fields: {},
+      created_at: '2026-07-01T10:00:00Z',
+    })
+
+    renderPage(['/crm/leads/lead-1?tab=negotiation'])
+
+    expect(await screen.findByText('Negotiation workspace')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('QTN-001')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Negotiation Status'), { target: { value: 'accepted' } })
+    fireEvent.change(screen.getByLabelText('Final Agreed Amount'), { target: { value: '2400' } })
+    fireEvent.click(screen.getByRole('button', { name: /Save Negotiation/i }))
+
+    await waitFor(() => {
+      expect(salesApiMock.updateLeadForm).toHaveBeenCalledWith(
+        'lead-1',
+        expect.objectContaining({
+          negotiation_status: 'accepted',
+          negotiation_notes: 'Client asked for one change',
+          won_amount: 2400,
+          custom_fields: expect.any(String),
+        }),
       )
     })
   })
