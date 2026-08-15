@@ -412,6 +412,13 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 | GET | `/api/v1/sales/health` | `sales_health` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/sales/me` | `sales_me` | Uses router/endpoint dependencies where configured. |
 
+### CRM Negotiation
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/crm/leads/{lead_id}/negotiation` | `get_lead_negotiation` | Loads the Negotiation workspace after the lead reaches Negotiation. Enforces existing lead company and ownership access. |
+| PATCH | `/api/v1/crm/leads/{lead_id}/negotiation` | `patch_lead_negotiation` | Saves negotiation terms, keeps `negotiation_status` manually editable, syncs accepted/final amount to existing Sales lead fields where applicable, and records a CRM lead activity event. Agreement entry remains gated by `negotiation_status = accepted`. |
+
 ### Sales Categories
 
 Sales category list/create/update/delete are tenant-scoped and require the canonical `sales_crm` module. Create is allowed for Admin, Manager, Lead, and Super Admin; delete is allowed for Admin, Manager, and Super Admin.

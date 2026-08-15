@@ -415,6 +415,7 @@ class LeadNormalizer:
             "pain_points", "current_agency", "num_employees",
             "qualify_status", "discovery_outcome", "discovery_notes",
             "proposal_status", "negotiation_status", "negotiation_notes",
+            "final_scope", "payment_terms", "client_conditions", "accepted_quotation_reference",
             "agreement_status", "next_action", "current_stage_status",
         ]:
             value = normalized.get(key)
@@ -435,6 +436,15 @@ class LeadNormalizer:
                 normalized["won_amount"] = None
         else:
             normalized["won_amount"] = None
+        for key in ["customer_counter_offer", "discount"]:
+            value = normalized.get(key)
+            if value is not None and value != "":
+                try:
+                    normalized[key] = float(value)
+                except (TypeError, ValueError):
+                    normalized[key] = None
+            else:
+                normalized[key] = None
         return normalized
 
     @staticmethod
@@ -939,6 +949,12 @@ class LeadEngine:
             proposal_status=normalized.get("proposal_status"),
             negotiation_status=normalized.get("negotiation_status"),
             negotiation_notes=normalized.get("negotiation_notes"),
+            customer_counter_offer=normalized.get("customer_counter_offer"),
+            discount=normalized.get("discount"),
+            final_scope=normalized.get("final_scope"),
+            payment_terms=normalized.get("payment_terms"),
+            client_conditions=normalized.get("client_conditions"),
+            accepted_quotation_reference=normalized.get("accepted_quotation_reference"),
             agreement_status=normalized.get("agreement_status"),
             next_action=normalized.get("next_action"),
             current_stage_status=normalized.get("current_stage_status"),
@@ -990,6 +1006,16 @@ class LeadEngine:
             "closed_by": prospect.closed_by,
             "reason_for_lost": prospect.reason_for_lost,
             "won_amount": prospect.won_amount,
+            "accepted_quotation_reference": getattr(prospect, "accepted_quotation_reference", None),
+            "negotiation_status": getattr(prospect, "negotiation_status", None),
+            "negotiation_notes": getattr(prospect, "negotiation_notes", None),
+            "customer_counter_offer": getattr(prospect, "customer_counter_offer", None),
+            "final_agreed_amount": getattr(prospect, "won_amount", None),
+            "discount": getattr(prospect, "discount", None),
+            "final_scope": getattr(prospect, "final_scope", None),
+            "payment_terms": getattr(prospect, "payment_terms", None),
+            "delivery_timeline": getattr(prospect, "timeline", None),
+            "client_conditions": getattr(prospect, "client_conditions", None),
             "created_at": prospect.created_at,
             "updated_at": prospect.updated_at,
             "stage_entered_at": prospect.stage_entered_at,
@@ -1122,6 +1148,7 @@ class LeadEngine:
             "pain_points", "current_agency", "num_employees",
             "qualify_status", "discovery_outcome", "discovery_notes",
             "proposal_status", "negotiation_status", "negotiation_notes",
+            "final_scope", "payment_terms", "client_conditions", "accepted_quotation_reference",
             "agreement_status", "next_action",
         ]
         for key in text_field_keys:
@@ -1136,6 +1163,16 @@ class LeadEngine:
                     prospect.budget = float(budget_value)
                 except (TypeError, ValueError):
                     prospect.budget = None
+        for key in ["customer_counter_offer", "discount"]:
+            if key in payload:
+                value = payload.get(key)
+                if value is None or value == "":
+                    setattr(prospect, key, None)
+                else:
+                    try:
+                        setattr(prospect, key, float(value))
+                    except (TypeError, ValueError):
+                        setattr(prospect, key, None)
         if "source" in payload:
             prospect.source = _normalize_text(payload.get("source")) or prospect.source
         if "first_contact_at" in payload:

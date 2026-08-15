@@ -18,6 +18,8 @@ const { salesApiMock, crmApiMock } = vi.hoisted(() => ({
     updateLeadProposal: vi.fn(),
     archiveLeadProposal: vi.fn(),
     getLeadDocuments: vi.fn(),
+    getLeadNegotiation: vi.fn(),
+    updateLeadNegotiation: vi.fn(),
   },
 }))
 
@@ -150,6 +152,23 @@ describe('CRM lead workspace E2E', () => {
         },
       ],
     })
+    crmApiMock.getLeadNegotiation.mockResolvedValue({
+      negotiation: {
+        lead_id: 'lead-1',
+        accepted_quotation_reference: 'QTN-001',
+        negotiation_status: 'waiting_client',
+        negotiation_notes: 'Client asked for one change',
+        customer_counter_offer: null,
+        final_agreed_amount: null,
+        discount: null,
+        final_scope: '',
+        payment_terms: '',
+        delivery_timeline: '',
+        client_conditions: '',
+        next_follow_up: null,
+      },
+    })
+    crmApiMock.updateLeadNegotiation.mockResolvedValue({ negotiation: { negotiation_status: 'accepted' } })
 
     crmApiMock.updateLeadProposal.mockResolvedValue({ message: 'Proposal updated successfully' })
     salesApiMock.updateLeadForm.mockResolvedValue({ message: 'Lead updated successfully' })
@@ -232,15 +251,56 @@ describe('CRM lead workspace E2E', () => {
     fireEvent.click(screen.getByRole('button', { name: /Save Negotiation/i }))
 
     await waitFor(() => {
-      expect(salesApiMock.updateLeadForm).toHaveBeenCalledWith(
+      expect(crmApiMock.updateLeadNegotiation).toHaveBeenCalledWith(
         'lead-1',
         expect.objectContaining({
           negotiation_status: 'accepted',
           negotiation_notes: 'Client asked for one change',
-          won_amount: 2400,
-          custom_fields: expect.any(String),
+          final_agreed_amount: 2400,
         }),
       )
     })
+  })
+
+  it('prefills agreement contract builder from accepted quotation and negotiated terms', async () => {
+    salesApiMock.getLead.mockResolvedValue({
+      id: 'lead-1',
+      prospect_name: 'Alpha Co',
+      company_name: 'Alpha Co',
+      current_stage: 'Agreement',
+      status: 'active',
+      assigned_to: 'user-1',
+      proposal_status: 'accepted',
+      negotiation_status: 'accepted',
+      budget: 2500,
+      custom_fields: {},
+      created_at: '2026-07-01T10:00:00Z',
+    })
+    crmApiMock.getLeadNegotiation.mockResolvedValue({
+      negotiation: {
+        lead_id: 'lead-1',
+        accepted_quotation_reference: 'QTN-001',
+        negotiation_status: 'accepted',
+        negotiation_notes: 'Use negotiated handoff terms',
+        customer_counter_offer: 2300,
+        final_agreed_amount: 2400,
+        discount: 100,
+        final_scope: 'SEO plus weekly reporting',
+        payment_terms: '60% advance, 40% on delivery',
+        delivery_timeline: '45 days',
+        client_conditions: 'Client legal review before kickoff',
+        next_follow_up: null,
+      },
+    })
+
+    renderPage(['/crm/leads/lead-1?tab=agreement'])
+
+    expect(await screen.findByText('Contract builder')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('2400')).toBeInTheDocument()
+    expect(screen.getAllByDisplayValue('SEO plus weekly reporting').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByDisplayValue('60% advance, 40% on delivery')).toBeInTheDocument()
+    expect(screen.getByDisplayValue(/Final agreed amount: 2400/)).toBeInTheDocument()
+    expect(screen.getByDisplayValue(/Delivery timeline: 45 days/)).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Client legal review before kickoff')).toBeInTheDocument()
   })
 })

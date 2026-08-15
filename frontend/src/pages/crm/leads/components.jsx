@@ -914,7 +914,7 @@ function LeadEditField({ field, onChange }) {
   )
 }
 
-export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
+export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail, onStageMoved }) {
   const navigate = useNavigate()
   const activityPath = lead?.id ? `/crm/activities?entity_type=lead&entity_id=${lead.id}` : '/crm/activities'
   const { data: stagesData } = useQuery('crm-lead-edit-stages', salesApi.getStages)
@@ -1017,6 +1017,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       await crmApi.updatePipelineStage(leadId, { stage: targetStageKey })
       toast.success('Lead stage updated')
       refreshWorkspace()
+      onStageMoved?.(targetStageKey)
       setRequirementsDialog(null)
     } catch (error) {
       const blocker = classifyTransitionFailure(error, 'Stage update failed')
@@ -1094,6 +1095,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       await crmApi.updatePipelineStage(lead.id, { stage: gate.nextKey })
       toast.success('Lead stage updated')
       refreshWorkspace()
+      onStageMoved?.(gate.nextKey)
     } catch (error) {
       handleSidebarTransitionError(error, { mode: 'stage', targetStageKey: gate.nextKey })
     }
@@ -1105,6 +1107,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       await crmApi.updatePipelineStage(lead.id, { stage: previousStage.key })
       toast.success(`Lead moved to ${previousStage.label}`)
       refreshWorkspace()
+      onStageMoved?.(previousStage.key)
     } catch (error) {
       handleSidebarTransitionError(error, { mode: 'stage', targetStageKey: previousStage.key })
     }
@@ -1125,9 +1128,10 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   }, [lead])
 
   const stageMutation = useMutation((stage) => crmApi.updatePipelineStage(lead?.id, { stage }), {
-    onSuccess: () => {
+    onSuccess: (_data, stage) => {
       toast.success('Lead stage updated')
       refreshWorkspace()
+      onStageMoved?.(stage)
     },
     onError: (error) => handleSidebarTransitionError(error, {
       mode: 'stage',

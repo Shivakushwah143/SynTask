@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import toast from 'react-hot-toast'
 import { Copy, Download, ExternalLink, FileText, Link2, Upload } from 'lucide-react'
@@ -38,6 +38,42 @@ const fieldError = (message) => message ? <p className="mt-1 text-xs font-medium
 const isPositiveNumber = (value) => Number.isFinite(Number(value)) && Number(value) > 0
 const isNonNegativeNumber = (value) => Number.isFinite(Number(value)) && Number(value) >= 0
 const dateTimePayload = (value) => value ? `${value}T00:00:00` : undefined
+const text = (value) => String(value ?? '').trim()
+const firstText = (...values) => values.map(text).find(Boolean) || ''
+const moneyText = (value) => {
+  const number = Number(value)
+  return Number.isFinite(number) && number > 0 ? String(number) : ''
+}
+
+const buildAgreementPrefill = ({ lead, quotation, negotiation }) => {
+  const quoteRef = firstText(negotiation?.accepted_quotation_reference, quotation?.document_number, quotation?.title)
+  const finalAmount = moneyText(negotiation?.final_agreed_amount) || moneyText(quotation?.grand_total)
+  const discount = moneyText(negotiation?.discount)
+  const paymentTerms = firstText(negotiation?.payment_terms, quotation?.terms)
+  const deliveryTimeline = text(negotiation?.delivery_timeline)
+  const clientConditions = text(negotiation?.client_conditions)
+  const scope = firstText(negotiation?.final_scope, quotation?.scope, quotation?.description)
+  const commercialLines = [
+    quoteRef ? `Accepted quotation: ${quoteRef}` : '',
+    finalAmount ? `Final agreed amount: ${finalAmount}` : '',
+    discount ? `Discount: ${discount}` : '',
+    paymentTerms ? `Payment terms: ${paymentTerms}` : '',
+    deliveryTimeline ? `Delivery timeline: ${deliveryTimeline}` : '',
+    clientConditions ? `Client conditions: ${clientConditions}` : '',
+  ].filter(Boolean)
+
+  return {
+    title: `Contract for ${lead?.company_name || lead?.prospect_name || 'Lead'}`,
+    parties: firstText(lead?.company_name, lead?.prospect_name),
+    scope,
+    deliverables: scope,
+    price: finalAmount,
+    payment_schedule: paymentTerms,
+    terms: commercialLines.join('\n'),
+    notes: firstText(negotiation?.negotiation_notes, quoteRef ? `Prepared from ${quoteRef}.` : ''),
+    clauses: clientConditions,
+  }
+}
 
 export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
   const queryClient = useQueryClient()
@@ -54,9 +90,16 @@ export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
   const [uploadType, setUploadType] = useState('quotation')
   const [shareLinks, setShareLinks] = useState({})
   const [fieldErrors, setFieldErrors] = useState({})
+  const agreementPrefillKeyRef = useRef('')
 
   const documentsQuery = useQuery([LEAD_DOCUMENTS_QUERY_KEY, leadId], () => crmApi.getLeadDocuments(leadId), { enabled: Boolean(leadId), staleTime: 60_000 })
+  const negotiationQuery = useQuery(['crm-lead-negotiation', leadId], () => crmApi.getLeadNegotiation(leadId), { enabled: Boolean(leadId) && mode === 'agreement', staleTime: 30_000 })
   const documents = useMemo(() => documentsQuery.data?.documents || [], [documentsQuery.data])
+  const negotiation = negotiationQuery.data?.negotiation || null
+  const acceptedQuotation = useMemo(
+    () => documents.find((document) => document.document_type === 'quotation' && document.status === 'accepted') || null,
+    [documents],
+  )
   const visibleDocuments = useMemo(() => {
     if (mode === 'proposal') return documents.filter((document) => document.document_type === 'quotation')
     if (mode === 'agreement') return documents.filter((document) => document.document_type === 'contract')
@@ -68,6 +111,31 @@ export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
     if (mode === 'proposal') setForm((state) => ({ ...state, document_type: 'quotation' }))
     if (mode === 'agreement') setForm((state) => ({ ...state, document_type: 'contract' }))
   }, [mode])
+
+  useEffect(() => {
+    if (mode !== 'agreement' || !leadId || negotiationQuery.isLoading) return
+    const key = [
+      leadId,
+      acceptedQuotation?.id || acceptedQuotation?.document_number || '',
+      negotiation?.updated_at || JSON.stringify(negotiation || {}),
+    ].join(':')
+    if (agreementPrefillKeyRef.current === key) return
+    agreementPrefillKeyRef.current = key
+    const prefill = buildAgreementPrefill({ lead, quotation: acceptedQuotation, negotiation })
+    setForm((state) => ({
+      ...state,
+      document_type: 'contract',
+      title: state.title || prefill.title,
+      parties: state.parties || prefill.parties,
+      scope: state.scope || prefill.scope,
+      deliverables: state.deliverables || prefill.deliverables,
+      price: state.price || prefill.price,
+      payment_schedule: state.payment_schedule || prefill.payment_schedule,
+      terms: state.terms || prefill.terms,
+      notes: state.notes || prefill.notes,
+      clauses: state.clauses || prefill.clauses,
+    }))
+  }, [acceptedQuotation, lead, leadId, mode, negotiation, negotiationQuery.isLoading])
 
   const refetch = () => {
     documentsQuery.refetch()
@@ -233,6 +301,11 @@ export function LeadDocumentsTab({ leadId, lead, mode = 'documents' }) {
       </CRMSection>
 
       <CRMSection title={`${form.document_type === 'contract' ? 'Contract' : 'Quotation'} builder`} description="Review generated information before sending; backend totals and status synchronization are authoritative.">
+        {mode === 'agreement' && negotiationQuery.isError ? (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+            Negotiated terms could not be loaded. The contract builder is still available.
+          </div>
+        ) : null}
         <div className="grid gap-4 lg:grid-cols-3">
           <label className="block lg:col-span-2">
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Title</span>

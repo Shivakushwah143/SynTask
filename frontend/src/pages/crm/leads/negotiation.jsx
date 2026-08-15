@@ -3,22 +3,10 @@ import { useMutation, useQuery, useQueryClient } from 'react-query'
 import toast from 'react-hot-toast'
 import { CheckCircle2, FileText, Save } from 'lucide-react'
 import { crmApi } from '../../../api/crm'
-import { salesApi } from '../../../api/sales'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, inputClassName } from '../../../components/ui'
 import { formatCurrency, formatShortDate } from '../pipeline/utils'
 import { LEAD_DOCUMENTS_QUERY_KEY } from './documents'
-
-const CUSTOM_KEYS = [
-  'accepted_quotation_reference',
-  'customer_counter_offer',
-  'final_agreed_amount',
-  'discount',
-  'final_scope',
-  'payment_terms',
-  'delivery_timeline',
-  'client_conditions',
-]
 
 const STATUS_OPTIONS = [
   { value: '', label: 'Not Started' },
@@ -31,22 +19,20 @@ const STATUS_OPTIONS = [
   { value: 'rejected', label: 'Rejected' },
 ]
 
-const buildCustomFields = (lead) => (lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {})
-
-const buildForm = (lead = {}, acceptedQuotation = null) => {
-  const custom = buildCustomFields(lead)
+const buildForm = (lead = {}, acceptedQuotation = null, negotiation = null) => {
+  const source = negotiation || lead || {}
   return {
-    accepted_quotation_reference: custom.accepted_quotation_reference || acceptedQuotation?.document_number || '',
-    negotiation_status: lead?.negotiation_status || '',
-    customer_counter_offer: custom.customer_counter_offer || '',
-    final_agreed_amount: custom.final_agreed_amount || (lead?.won_amount ? String(lead.won_amount) : ''),
-    discount: custom.discount || '',
-    final_scope: custom.final_scope || '',
-    payment_terms: custom.payment_terms || '',
-    delivery_timeline: custom.delivery_timeline || lead?.timeline || '',
-    client_conditions: custom.client_conditions || '',
-    negotiation_notes: lead?.negotiation_notes || '',
-    next_follow_up_at: lead?.next_follow_up_at ? String(lead.next_follow_up_at).slice(0, 10) : '',
+    accepted_quotation_reference: source.accepted_quotation_reference || acceptedQuotation?.document_number || '',
+    negotiation_status: source.negotiation_status || '',
+    customer_counter_offer: source.customer_counter_offer ?? '',
+    final_agreed_amount: source.final_agreed_amount ?? source.won_amount ?? '',
+    discount: source.discount ?? '',
+    final_scope: source.final_scope || '',
+    payment_terms: source.payment_terms || '',
+    delivery_timeline: source.delivery_timeline || source.timeline || '',
+    client_conditions: source.client_conditions || '',
+    negotiation_notes: source.negotiation_notes || '',
+    next_follow_up_at: (source.next_follow_up || source.next_follow_up_at) ? String(source.next_follow_up || source.next_follow_up_at).slice(0, 10) : '',
   }
 }
 
@@ -83,21 +69,24 @@ const CommercialContext = ({ quotation, lead }) => (
 export function LeadNegotiationTab({ leadId, lead, onSaved, onScheduleFollowUp }) {
   const queryClient = useQueryClient()
   const documentsQuery = useQuery([LEAD_DOCUMENTS_QUERY_KEY, leadId], () => crmApi.getLeadDocuments(leadId), { enabled: Boolean(leadId), staleTime: 60_000 })
+  const negotiationQuery = useQuery(['crm-lead-negotiation', leadId], () => crmApi.getLeadNegotiation(leadId), { enabled: Boolean(leadId), staleTime: 60_000 })
   const documents = useMemo(() => documentsQuery.data?.documents || [], [documentsQuery.data])
   const acceptedQuotation = useMemo(() => pickAcceptedQuotation(documents), [documents])
-  const [form, setForm] = useState(() => buildForm(lead, acceptedQuotation))
+  const negotiation = negotiationQuery.data?.negotiation || null
+  const [form, setForm] = useState(() => buildForm(lead, acceptedQuotation, negotiation))
 
   useEffect(() => {
-    setForm(buildForm(lead, acceptedQuotation))
-  }, [lead, acceptedQuotation])
+    setForm(buildForm(lead, acceptedQuotation, negotiation))
+  }, [lead, acceptedQuotation, negotiation])
 
   const updateField = (field, value) => {
     setForm((state) => ({ ...state, [field]: value }))
   }
 
-  const saveMutation = useMutation((payload) => salesApi.updateLeadForm(leadId, payload), {
+  const saveMutation = useMutation((payload) => crmApi.updateLeadNegotiation(leadId, payload), {
     onSuccess: () => {
       toast.success('Negotiation saved')
+      queryClient.invalidateQueries(['crm-lead-negotiation', leadId], { exact: true })
       queryClient.invalidateQueries(['crm-lead-workspace', leadId], { exact: true })
       queryClient.invalidateQueries(['crm-lead-workspace', leadId, 'timeline'], { exact: true })
       queryClient.invalidateQueries('crm-pipeline-board')
@@ -107,20 +96,18 @@ export function LeadNegotiationTab({ leadId, lead, onSaved, onScheduleFollowUp }
   })
 
   const handleSave = () => {
-    const existingCustom = buildCustomFields(lead)
-    const customFields = { ...existingCustom }
-    CUSTOM_KEYS.forEach((key) => {
-      if (form[key]) customFields[key] = form[key]
-      else delete customFields[key]
-    })
-
     saveMutation.mutate({
+      accepted_quotation_reference: form.accepted_quotation_reference,
       negotiation_status: form.negotiation_status,
       negotiation_notes: form.negotiation_notes,
-      next_follow_up_at: form.next_follow_up_at,
-      won_amount: form.final_agreed_amount === '' ? '' : Number(form.final_agreed_amount),
-      timeline: form.delivery_timeline,
-      custom_fields: JSON.stringify(customFields),
+      next_follow_up: form.next_follow_up_at,
+      customer_counter_offer: form.customer_counter_offer === '' ? null : Number(form.customer_counter_offer),
+      final_agreed_amount: form.final_agreed_amount === '' ? null : Number(form.final_agreed_amount),
+      discount: form.discount === '' ? null : Number(form.discount),
+      final_scope: form.final_scope,
+      payment_terms: form.payment_terms,
+      delivery_timeline: form.delivery_timeline,
+      client_conditions: form.client_conditions,
     })
   }
 

@@ -4,7 +4,7 @@ Date: 2026-08-15
 
 ## Status
 
-Accepted
+Superseded by `2026-08-15-sales-negotiation-workspace-phase-2.md`
 
 ## Context
 

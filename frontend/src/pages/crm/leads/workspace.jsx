@@ -240,6 +240,12 @@ export default function CRMLeadWorkspacePage() {
     moveStageMutation.mutate({ stage, tab })
   }, [moveStageMutation])
 
+  const handleSidebarStageMoved = useCallback((stage) => {
+    const key = String(stage || '').trim().toLowerCase()
+    if (key === 'negotiation') handleTabChange('negotiation')
+    if (key === 'agreement') handleTabChange('agreement')
+  }, [handleTabChange])
+
   const handleQuotationGenerated = useCallback((document) => {
     queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId], { exact: true })
     const currentStage = String(lead?.current_stage || '').toLowerCase()
@@ -385,7 +391,7 @@ export default function CRMLeadWorkspacePage() {
         isSaving={leadUpdateMutation.isLoading}
         users={users}
         body={body}
-        sidebar={<LeadSidebar lead={lead} onSendEmail={openComposer} />}
+        sidebar={<LeadSidebar lead={lead} onSendEmail={openComposer} onStageMoved={handleSidebarStageMoved} />}
       />
       <EmailComposer
         isOpen={composerOpen}
