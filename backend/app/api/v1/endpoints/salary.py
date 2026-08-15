@@ -30,6 +30,7 @@ from app.services.salary_structure_service import (
     get_salary_history,
     get_salary_snapshot_for_payroll,
     get_upcoming_salary,
+    resolve_salary_employee_user_id,
     serialize_structure,
 )
 
@@ -134,15 +135,21 @@ async def get_employee_salary(
     employee_id: str,
     current_user: User = Depends(get_current_user),
 ):
-    """Get current and upcoming salary for an employee."""
+    """Get current and upcoming salary for an employee.
+
+    Salary storage is keyed by EmployeeProfile.user_id. The path parameter name
+    remains for route compatibility; profile ids are resolved to user ids.
+    """
     if not current_user.company_id:
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="User must belong to a company")
 
-    # Permission check: only salary_management.view, own profile, or admin
-    _assert_salary_view_permission(current_user, employee_id)
+    salary_user_id = await resolve_salary_employee_user_id(current_user.company_id, employee_id)
 
-    current = await get_current_salary(current_user.company_id, employee_id)
-    upcoming = await get_upcoming_salary(current_user.company_id, employee_id)
+    # Permission check: only salary_management.view, own profile, or admin
+    _assert_salary_view_permission(current_user, salary_user_id)
+
+    current = await get_current_salary(current_user.company_id, salary_user_id)
+    upcoming = await get_upcoming_salary(current_user.company_id, salary_user_id)
 
     return {
         "success": True,
@@ -158,13 +165,14 @@ async def get_employee_salary_history(
     employee_id: str,
     current_user: User = Depends(get_current_user),
 ):
-    """Get salary history for an employee."""
+    """Get salary history for an employee. Salary identity resolves to user id."""
     if not current_user.company_id:
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="User must belong to a company")
 
-    _assert_salary_view_permission(current_user, employee_id)
+    salary_user_id = await resolve_salary_employee_user_id(current_user.company_id, employee_id)
+    _assert_salary_view_permission(current_user, salary_user_id)
 
-    structures = await get_salary_history(current_user.company_id, employee_id)
+    structures = await get_salary_history(current_user.company_id, salary_user_id)
     return {
         "success": True,
         "data": [serialize_structure(s) for s in structures],
@@ -185,9 +193,8 @@ async def assign_employee_salary(
     if not current_user.company_id:
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="User must belong to a company")
 
-    structure = await create_initial_salary(
-        current_user.company_id, employee_id, current_user, payload,
-    )
+    salary_user_id = await resolve_salary_employee_user_id(current_user.company_id, employee_id)
+    structure = await create_initial_salary(current_user.company_id, salary_user_id, current_user, payload)
     return {"success": True, "data": serialize_structure(structure)}
 
 
@@ -201,9 +208,8 @@ async def revise_employee_salary(
     if not current_user.company_id:
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="User must belong to a company")
 
-    structure = await create_salary_revision(
-        current_user.company_id, employee_id, current_user, payload,
-    )
+    salary_user_id = await resolve_salary_employee_user_id(current_user.company_id, employee_id)
+    structure = await create_salary_revision(current_user.company_id, salary_user_id, current_user, payload)
     return {"success": True, "data": serialize_structure(structure)}
 
 
@@ -226,9 +232,8 @@ async def get_payroll_salary_snapshot(
     except ValueError:
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid date format. Expected YYYY-MM-DD.")
 
-    snapshot = await get_salary_snapshot_for_payroll(
-        current_user.company_id, employee_id, target_date,
-    )
+    salary_user_id = await resolve_salary_employee_user_id(current_user.company_id, employee_id)
+    snapshot = await get_salary_snapshot_for_payroll(current_user.company_id, salary_user_id, target_date)
     if not snapshot:
         return {"success": True, "data": None, "message": "No salary structure found for this date"}
 

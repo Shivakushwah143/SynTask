@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { FileText, Loader2, Pencil, Plus, RefreshCw, Settings2, X } from 'lucide-react'
 
 import { Button, ConfirmDialog, EmptyState, Modal, PageHeader, inputClassName } from '../../../../components/ui'
-import { hrDocumentsApi } from '../../../../api/hrDocuments'
+import { hrDocumentsApi, normalizeDocumentTypesResponse } from '../../../../api/hrDocuments'
 import { OWNER_SCOPE_LABELS, OWNER_SCOPE_OPTIONS, VISIBILITY_LABELS, VISIBILITY_OPTIONS } from '../utils/documents'
 
 const selectClassName = inputClassName
@@ -34,7 +34,7 @@ export default function DocumentTypesSettingsPage() {
   const [deactivateLoading, setDeactivateLoading] = useState(false)
 
   const query = useQuery(['hr-document-types', 'settings'], () => hrDocumentsApi.listTypes({ include_inactive: true }))
-  const types = query.data?.data?.data || query.data?.data || []
+  const types = normalizeDocumentTypesResponse(query.data)
 
   const invalidate = () => queryClient.invalidateQueries(['hr-document-types'])
 

@@ -98,6 +98,31 @@ async def get_salary_history(
     }).sort("effective_from", -1).to_list()
 
 
+async def resolve_salary_employee_user_id(company_id: str, employee_or_profile_id: str) -> str:
+    """Resolve the Salary identity to EmployeeProfile.user_id.
+
+    SalaryStructure.employee_id is intentionally keyed by the employee's User id
+    (`EmployeeProfile.user_id`). Older UI paths may still pass the
+    EmployeeProfile document id; resolving here preserves compatibility while
+    keeping one storage/query contract.
+    """
+    profile = await EmployeeProfile.find_one({
+        "company_id": company_id,
+        "user_id": employee_or_profile_id,
+    })
+    if profile:
+        return str(profile.user_id)
+
+    try:
+        profile = await EmployeeProfile.get(employee_or_profile_id)
+    except Exception:
+        profile = None
+    if profile and profile.company_id == company_id:
+        return str(profile.user_id)
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee profile not found")
+
+
 # =============================================================================
 # Calculation helpers
 # =============================================================================

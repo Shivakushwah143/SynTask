@@ -102,7 +102,7 @@ async def list_document_types_endpoint(
     company_id = _company_id(current_user)
     await ensure_default_document_types(company_id, actor_id=str(current_user.id))
     items = await list_document_types(company_id, active_only=not include_inactive, include_inactive=include_inactive)
-    return [serialize_document_type(item) for item in items]
+    return [await serialize_document_type(item) for item in items]
 
 
 @router.post("/document-types", status_code=status.HTTP_201_CREATED, response_model=HRDocumentTypeResponse)
@@ -111,7 +111,7 @@ async def create_document_type_endpoint(
     current_user: User = Depends(require_hr_document_manage),
 ):
     doc_type = await create_document_type(_company_id(current_user), current_user, payload.model_dump())
-    return serialize_document_type(doc_type)
+    return await serialize_document_type(doc_type)
 
 
 @router.patch("/document-types/{document_type_id}", response_model=HRDocumentTypeResponse)
@@ -123,7 +123,7 @@ async def update_document_type_endpoint(
     doc_type = await update_document_type(
         _company_id(current_user), document_type_id, current_user, payload.model_dump(exclude_unset=True)
     )
-    return serialize_document_type(doc_type)
+    return await serialize_document_type(doc_type)
 
 
 @router.delete("/document-types/{document_type_id}", response_model=HRDocumentTypeResponse)
@@ -133,7 +133,7 @@ async def deactivate_document_type_endpoint(
 ):
     """Soft-deactivate a document type; historical documents keep their reference."""
     doc_type = await deactivate_document_type(_company_id(current_user), document_type_id, current_user)
-    return serialize_document_type(doc_type)
+    return await serialize_document_type(doc_type)
 
 
 # =============================================================================

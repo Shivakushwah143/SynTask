@@ -31,6 +31,7 @@ from app.services.hr_document_service import (
     deactivate_document_type,
     ensure_default_document_types,
     get_document,
+    list_document_types,
     list_documents,
     missing_required_documents,
     parse_expiry_date,
@@ -553,6 +554,40 @@ async def test_ensure_default_document_types_idempotent(monkeypatch, tmp_path):
     created_again = await ensure_default_document_types("company-1")
     assert created_again == 0
     assert len(FakeHRDocumentType._all) == len(svc.DEFAULT_DOCUMENT_TYPES)
+
+
+@pytest.mark.asyncio
+async def test_list_document_types_active_only_and_empty(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    active = await list_document_types("company-1")
+    assert {item.code for item in active} == {"pan", "bank_document"}
+
+    FakeHRDocumentType._all = [item for item in FakeHRDocumentType._all if item.company_id != "company-1"]
+    empty = await list_document_types("company-1")
+    assert empty == []
+
+
+@pytest.mark.asyncio
+async def test_list_document_types_company_isolation(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    company_1 = await list_document_types("company-1", include_inactive=True, active_only=False)
+    company_2 = await list_document_types("company-2", include_inactive=True, active_only=False)
+
+    assert {item.company_id for item in company_1} == {"company-1"}
+    assert {item.code for item in company_1} == {"pan", "bank_document", "inactive"}
+    assert {item.company_id for item in company_2} == {"company-2"}
+    assert {item.code for item in company_2} == {"offer_letter"}
+
+
+@pytest.mark.asyncio
+async def test_hr_department_user_can_list_document_types(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    hr_user = _make_hr_department_user()
+
+    assert await svc.has_hr_directory_view(hr_user) is True
+    types = await list_document_types(hr_user.company_id)
+    assert {item.code for item in types} == {"pan", "bank_document"}
 
 
 # =============================================================================

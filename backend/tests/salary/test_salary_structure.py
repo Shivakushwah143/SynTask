@@ -37,6 +37,7 @@ from app.services.salary_structure_service import (
     get_salary_history,
     get_salary_snapshot_for_payroll,
     get_upcoming_salary,
+    resolve_salary_employee_user_id,
     serialize_structure,
 )
 
@@ -323,6 +324,51 @@ class TestSalarySerialization:
         result = serialize_structure(structure, "upcoming")
         assert result["status_label"] == "upcoming"
         assert result["total_earnings"] == 55000.0
+
+
+class TestSalaryIdentity:
+    """Salary uses EmployeeProfile.user_id even when a profile id is supplied."""
+
+    @pytest.mark.asyncio
+    async def test_resolves_user_id_identity(self):
+        profile = MagicMock()
+        profile.user_id = "user-1"
+
+        with patch("app.services.salary_structure_service.EmployeeProfile.find_one", new_callable=AsyncMock) as find_one:
+            find_one.return_value = profile
+
+            resolved = await resolve_salary_employee_user_id("company-1", "user-1")
+
+        assert resolved == "user-1"
+        find_one.assert_awaited_once_with({"company_id": "company-1", "user_id": "user-1"})
+
+    @pytest.mark.asyncio
+    async def test_resolves_profile_id_to_user_id(self):
+        profile = MagicMock()
+        profile.company_id = "company-1"
+        profile.user_id = "user-1"
+
+        with patch("app.services.salary_structure_service.EmployeeProfile.find_one", new_callable=AsyncMock) as find_one, \
+             patch("app.services.salary_structure_service.EmployeeProfile.get", new_callable=AsyncMock) as get_profile:
+            find_one.return_value = None
+            get_profile.return_value = profile
+
+            resolved = await resolve_salary_employee_user_id("company-1", "profile-1")
+
+        assert resolved == "user-1"
+        get_profile.assert_awaited_once_with("profile-1")
+
+    @pytest.mark.asyncio
+    async def test_resolve_missing_profile_raises_404(self):
+        with patch("app.services.salary_structure_service.EmployeeProfile.find_one", new_callable=AsyncMock) as find_one, \
+             patch("app.services.salary_structure_service.EmployeeProfile.get", new_callable=AsyncMock) as get_profile:
+            find_one.return_value = None
+            get_profile.return_value = None
+
+            with pytest.raises(Exception) as exc:
+                await resolve_salary_employee_user_id("company-1", "missing")
+
+        assert getattr(exc.value, "status_code", None) == 404
 
 
 # =============================================================================

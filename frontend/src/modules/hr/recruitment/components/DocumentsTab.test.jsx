@@ -26,6 +26,14 @@ vi.mock('../../../../api/hrDocuments', () => ({
     download: vi.fn(),
     downloadVersion: vi.fn(),
   },
+  normalizeDocumentTypesResponse: (response) => {
+    const payload = response?.data ?? response
+    if (Array.isArray(payload)) return payload
+    if (Array.isArray(payload?.data)) return payload.data
+    if (Array.isArray(payload?.data?.data)) return payload.data.data
+    if (Array.isArray(payload?.items)) return payload.items
+    return []
+  },
   buildDocumentFormData: (payload) => {
     const data = new FormData()
     data.append('file', payload.file)
@@ -179,6 +187,30 @@ describe('DocumentsTab', () => {
         expect.objectContaining({ document_type_id: 'type-2' }),
       ),
     )
+  })
+
+  it('handles an empty document type list without crashing the dropdown', async () => {
+    hrDocumentsApi.listTypes.mockResolvedValue({ data: [] })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Filters/i }))
+
+    await waitFor(() => expect(screen.getByText(/No active document types are configured/)).toBeInTheDocument())
+    expect(screen.getByRole('option', { name: /No document types available/i })).toBeInTheDocument()
+  })
+
+  it('shows a document type loading error instead of mapping a bad response', async () => {
+    hrDocumentsApi.listTypes.mockRejectedValue(new Error('forbidden'))
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Filters/i }))
+
+    await waitFor(() => expect(screen.getByText(/Unable to load document types/)).toBeInTheDocument())
+    expect(screen.getByRole('option', { name: /Document types unavailable/i })).toBeInTheDocument()
   })
 
   it('previews a PDF through the authorized endpoint', async () => {

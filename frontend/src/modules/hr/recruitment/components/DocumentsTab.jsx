@@ -22,7 +22,7 @@ import {
 } from 'lucide-react'
 
 import { Button, ConfirmDialog, EmptyState, Modal, inputClassName } from '../../../../components/ui'
-import { hrDocumentsApi, hrDocumentFiles, buildDocumentFormData } from '../../../../api/hrDocuments'
+import { hrDocumentsApi, hrDocumentFiles, buildDocumentFormData, normalizeDocumentTypesResponse } from '../../../../api/hrDocuments'
 import {
   EXPIRY_STATES,
   VISIBILITY_OPTIONS,
@@ -129,8 +129,10 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
   const typesQuery = useQuery(['hr-document-types'], () => hrDocumentsApi.listTypes(), {
     staleTime: 5 * 60 * 1000,
   })
-  const types = typesQuery.data?.data?.data || typesQuery.data?.data || []
+  const types = normalizeDocumentTypesResponse(typesQuery.data)
   const activeTypes = types.filter((type) => type.active !== false)
+  const typeLoadError = typesQuery.isError
+  const noTypesAvailable = !typesQuery.isLoading && !typeLoadError && activeTypes.length === 0
 
   // Only HR/view users see the “missing required” banner — employee self-service
   // would be rejected by the backend's directory-view requirement.
@@ -140,7 +142,8 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
     { enabled: Boolean(employeeId && canManage) }
   )
   const missingCount = missingQuery.data?.data?.count || 0
-  const missingNames = missingQuery.data?.data?.missing?.map((item) => item.name) || []
+  const missingDocuments = missingQuery.data?.data?.missing || []
+  const missingNames = missingDocuments.map((item) => item.name) || []
 
   const documents = query.data?.data?.items || []
   const total = query.data?.data?.total || 0
@@ -377,11 +380,18 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
           <label className="space-y-1.5">
             <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">Document Type</span>
             <select className={selectClassName} aria-label="Filter by document type" value={documentTypeId} onChange={(event) => { setDocumentTypeId(event.target.value); setPage(1) }}>
-              <option value="">All types</option>
+              <option value="">
+                {typesQuery.isLoading ? 'Loading types...' : typeLoadError ? 'Document types unavailable' : noTypesAvailable ? 'No document types available' : 'All types'}
+              </option>
               {activeTypes.map((type) => (
                 <option key={type.id} value={type.id}>{type.name}</option>
               ))}
             </select>
+            {typeLoadError ? (
+              <p className="text-xs text-red-600 dark:text-red-400">Unable to load document types. Retry before filtering or uploading.</p>
+            ) : noTypesAvailable ? (
+              <p className="text-xs text-gray-500 dark:text-gray-400">No active document types are configured for this company.</p>
+            ) : null}
           </label>
           <label className="space-y-1.5">
             <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">Expiry State</span>
@@ -562,6 +572,9 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
         onClose={() => setShowUpload(false)}
         onUpload={handleUpload}
         documentTypes={types}
+        documentTypesLoading={typesQuery.isLoading}
+        documentTypesError={typeLoadError ? 'Unable to load document types' : null}
+        requiredDocuments={missingDocuments}
       />
 
       {/* ── Preview modal ─────────────────────────────────────────────────── */}
@@ -747,4 +760,3 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
     </div>
   )
 }
-

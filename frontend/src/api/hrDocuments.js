@@ -1,5 +1,14 @@
 import api from './axios'
 
+export function normalizeDocumentTypesResponse(response) {
+  const payload = response?.data ?? response
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.data)) return payload.data.data
+  if (Array.isArray(payload?.items)) return payload.items
+  return []
+}
+
 /**
  * Phase 2 HRMS — HR Document Management API client.
  * All calls go to the real /hr backend endpoints (no mock data).

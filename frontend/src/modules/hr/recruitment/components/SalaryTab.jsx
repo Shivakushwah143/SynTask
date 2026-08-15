@@ -16,6 +16,8 @@ const formatDate = (d) => {
   return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+const unwrapSalaryPayload = (response) => response?.data?.data || response?.data || response || {}
+
 const SalaryTab = ({ employeeId, canManage = false, onAssign, onRevise }) => {
   const [current, setCurrent] = useState(null)
   const [upcoming, setUpcoming] = useState(null)
@@ -32,12 +34,18 @@ const SalaryTab = ({ employeeId, canManage = false, onAssign, onRevise }) => {
         salaryAPI.getEmployeeSalary(employeeId),
         salaryAPI.getEmployeeSalaryHistory(employeeId),
       ])
-      setCurrent(salaryRes.data?.current || null)
-      setUpcoming(salaryRes.data?.upcoming || null)
-      setHistory(historyRes.data || [])
+      const salaryData = unwrapSalaryPayload(salaryRes)
+      const historyData = unwrapSalaryPayload(historyRes)
+      setCurrent(salaryData.current || null)
+      setUpcoming(salaryData.upcoming || null)
+      setHistory(Array.isArray(historyData) ? historyData : [])
     } catch (err) {
       if (err?.response?.status === 403) {
         setError('You do not have permission to view salary')
+      } else if (err?.response?.status === 404) {
+        setCurrent(null)
+        setUpcoming(null)
+        setHistory([])
       } else {
         setError(err?.response?.data?.detail || 'Failed to load salary')
       }
