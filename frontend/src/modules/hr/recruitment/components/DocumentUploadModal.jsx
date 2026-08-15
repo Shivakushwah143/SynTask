@@ -8,6 +8,13 @@ import { VISIBILITY_OPTIONS, VISIBILITY_LABELS } from '../utils/documents'
 
 const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx']
 const BASIC_DOCUMENT_TYPE_CODES = ['resume', 'aadhaar', 'pan', 'joining_document', 'bank_document']
+const FALLBACK_BASIC_TYPES = [
+  { id: 'resume', code: 'resume', name: 'Resume', active: true, required: true, expiry_supported: false, default_visibility: 'employee_visible' },
+  { id: 'aadhaar', code: 'aadhaar', name: 'Aadhaar Card', active: true, required: true, expiry_supported: true, default_visibility: 'employee_visible' },
+  { id: 'pan', code: 'pan', name: 'PAN Card', active: true, required: true, expiry_supported: false, default_visibility: 'employee_visible' },
+  { id: 'joining_document', code: 'joining_document', name: 'Joining Document', active: true, required: true, expiry_supported: false, default_visibility: 'employee_visible' },
+  { id: 'bank_document', code: 'bank_document', name: 'Bank Document', active: true, required: true, expiry_supported: false, default_visibility: 'hr_only' },
+]
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB — mirrors backend settings.MAX_UPLOAD_SIZE
 
 /**
@@ -16,7 +23,8 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB — mirrors backend settings.MAX
  * prevents duplicate submission, and resets on close.
  */
 export default function DocumentUploadModal({ open, onClose, onUpload, defaultTypeId, documentTypes, documentTypesLoading = false, documentTypesError = null, requiredDocuments = [] }) {
-  const types = normalizeDocumentTypesResponse(documentTypes)
+  const loadedTypes = normalizeDocumentTypesResponse(documentTypes)
+  const types = loadedTypes.length > 0 ? loadedTypes : (documentTypesError ? FALLBACK_BASIC_TYPES : [])
   const activeTypes = types.filter((type) => type.active !== false)
   const requiredTypeIds = new Set((requiredDocuments || []).map((item) => item.document_type_id).filter(Boolean))
   const sortBasicFirst = (a, b) => {
@@ -67,7 +75,6 @@ export default function DocumentUploadModal({ open, onClose, onUpload, defaultTy
   const validate = () => {
     const next = {}
     if (documentTypesLoading) next.document_type_id = 'Document types are still loading'
-    else if (documentTypesError) next.document_type_id = 'Document types could not be loaded'
     else if (activeTypes.length === 0) next.document_type_id = 'No active document types are configured'
     else if (!document_type_id) next.document_type_id = 'Please select a document type'
     if (!file) {
@@ -178,7 +185,7 @@ export default function DocumentUploadModal({ open, onClose, onUpload, defaultTy
             >
               <option value="">Select type…</option>
               {documentTypesLoading ? <option value="">Loading types...</option> : null}
-              {documentTypesError ? <option value="">Document types unavailable</option> : null}
+              {documentTypesError && loadedTypes.length === 0 ? <option value="">Using basic document types</option> : null}
               {!documentTypesLoading && !documentTypesError && activeTypes.length === 0 ? <option value="">No active types available</option> : null}
               {!documentTypesLoading && !documentTypesError && activeTypes.length > 0 && filteredTypes.length === 0 ? <option value="">No matching types</option> : null}
               {filteredTypes.map((type) => (
@@ -188,7 +195,7 @@ export default function DocumentUploadModal({ open, onClose, onUpload, defaultTy
               ))}
             </select>
             {errors.document_type_id ? <p className="text-xs text-red-600">{errors.document_type_id}</p> : null}
-            {documentTypesError ? <p className="text-xs text-red-600">{documentTypesError}</p> : null}
+            {documentTypesError ? <p className="text-xs text-amber-600 dark:text-amber-300">Showing basic document types. Upload resolves them on the backend.</p> : null}
             {!documentTypesLoading && !documentTypesError && activeTypes.length === 0 ? (
               <p className="text-xs text-gray-500 dark:text-gray-400">No active document types are configured for this company.</p>
             ) : null}

@@ -735,7 +735,7 @@ async def _claim_leave(
         update["$push"] = {
             "approval_history": history_entry(history_action, actor_id or "", comment=comment)
         }
-    result = await LeaveRequest.collection.update_one(
+    result = await LeaveRequest.get_pymongo_collection().update_one(
         {"_id": ObjectId(leave_id), "status": {"$in": from_status_values}},
         update,
     )
@@ -746,7 +746,7 @@ async def _claim_leave(
 
 async def _revert_approval(leave_id: str, pending_with: list[str]) -> None:
     """Revert an approval claim (balance commit failed) so the request stays actionable."""
-    await LeaveRequest.collection.update_one(
+    await LeaveRequest.get_pymongo_collection().update_one(
         {"_id": ObjectId(leave_id), "status": LeaveStatus.APPROVED.value},
         {
             "$set": {

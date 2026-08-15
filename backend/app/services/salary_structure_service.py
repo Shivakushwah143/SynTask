@@ -66,7 +66,7 @@ async def get_effective_salary_structure(
             {"effective_to": None},
             {"effective_to": {"$gt": start_dt}},
         ],
-    }).sort("effective_from", -1).to_list()
+    }).sort("-effective_from").to_list()
 
     return structures[0] if structures else None
 
@@ -84,7 +84,7 @@ async def get_upcoming_salary(company_id: str, employee_id: str) -> Optional[Sal
         "employee_id": employee_id,
         "effective_from": {"$gt": now},
         "status": SalaryStatus.ACTIVE.value,
-    }).sort("effective_from", 1).limit(1).to_list()
+    }).sort("effective_from").limit(1).to_list()
     return structures[0] if structures else None
 
 
@@ -95,7 +95,7 @@ async def get_salary_history(
     return await SalaryStructure.find({
         "company_id": company_id,
         "employee_id": employee_id,
-    }).sort("effective_from", -1).to_list()
+    }).sort("-effective_from").to_list()
 
 
 async def resolve_salary_employee_user_id(company_id: str, employee_or_profile_id: str) -> str:

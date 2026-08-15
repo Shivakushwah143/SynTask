@@ -155,13 +155,17 @@ class FakeCursor:
     async def count(self):
         return len(self._docs)
 
-    async def to_list(self):
+    async def to_list(self, length=None):
         docs = list(self._docs)
         if self._sort_spec:
             key = self._sort_spec[0]
             direction = self._sort_spec[1] if len(self._sort_spec) > 1 else 1
+            if isinstance(key, str) and key.startswith("-"):
+                key = key[1:]
+                direction = -1
             docs.sort(key=lambda doc: _norm(_get_path(doc, key)) or 0, reverse=(direction == -1))
-        return docs[self._skip_n:][: self._limit_n] if self._limit_n else docs[self._skip_n:]
+        docs = docs[self._skip_n:][: self._limit_n] if self._limit_n else docs[self._skip_n:]
+        return docs[:length] if length is not None else docs
 
 
 class FakeCollection:
@@ -235,6 +239,10 @@ class FakeModel:
     @classmethod
     def find(cls, query):
         return FakeCursor([doc for doc in cls._all if _matches(query, doc)])
+
+    @classmethod
+    def get_pymongo_collection(cls):
+        return cls.collection
 
 
 class FakeHRDocumentType(FakeModel):

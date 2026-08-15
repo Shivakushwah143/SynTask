@@ -33,7 +33,7 @@ async def list_holidays(
             "$gte": datetime(year, 1, 1),
             "$lte": datetime(year, 12, 31, 23, 59, 59),
         }
-    return await Holiday.find(query).sort("date", 1).to_list()
+    return await Holiday.find(query).sort("date").to_list()
 
 
 async def get_holiday(company_id: str, holiday_id: str) -> Optional[Holiday]:

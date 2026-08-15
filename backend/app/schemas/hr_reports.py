@@ -104,11 +104,11 @@ class PayrollSummary(BaseModel):
 
 class HRDashboardResponse(BaseModel):
     """Complete HR Dashboard response."""
-    employee_summary: EmployeeSummary = Field(default_factory=EmployeeSummary)
-    attendance_today: AttendanceTodaySummary = Field(default_factory=AttendanceTodaySummary)
-    leave_summary: LeaveSummary = Field(default_factory=LeaveSummary)
-    document_summary: DocumentSummary = Field(default_factory=DocumentSummary)
-    lifecycle_summary: LifecycleSummary = Field(default_factory=LifecycleSummary)
+    employee_summary: Optional[EmployeeSummary] = None
+    attendance_today: Optional[AttendanceTodaySummary] = None
+    leave_summary: Optional[LeaveSummary] = None
+    document_summary: Optional[DocumentSummary] = None
+    lifecycle_summary: Optional[LifecycleSummary] = None
     recruitment_summary: Optional[RecruitmentSummary] = None  # Only if user has recruitment access
     payroll_summary: Optional[PayrollSummary] = None  # Only if user has payroll access
     attention_items: List[AttentionItem] = Field(default_factory=list)

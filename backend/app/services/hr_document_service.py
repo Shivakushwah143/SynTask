@@ -265,6 +265,8 @@ async def _resolve_owner(
 
 async def _resolve_document_type(company_id: str, document_type_id: str, *, owner_type: str) -> HRDocumentType:
     doc_type = await HRDocumentType.get(document_type_id)
+    if not doc_type:
+        doc_type = await HRDocumentType.find_one({"company_id": company_id, "code": document_type_id})
     if not doc_type or doc_type.company_id != company_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document type not found")
     if not doc_type.active:
@@ -424,7 +426,7 @@ async def list_document_types(company_id: str, *, active_only: bool = True, incl
     query: dict = {"company_id": company_id}
     if active_only and not include_inactive:
         query["active"] = True
-    return await HRDocumentType.find(query).sort("name", 1).to_list()
+    return await HRDocumentType.find(query).sort("name").to_list()
 
 
 async def create_document_type(company_id: str, actor: User, data: dict) -> HRDocumentType:
@@ -612,7 +614,7 @@ async def _build_list_context(company_id: str, documents: list[HRDocument]) -> d
                 {"$match": {"document_id": {"$in": doc_ids}}},
                 {"$group": {"_id": "$document_id", "count": {"$sum": 1}}},
             ]
-            for row in await HRDocumentVersion.collection.aggregate(pipeline).to_list():
+            for row in await HRDocumentVersion.get_pymongo_collection().aggregate(pipeline).to_list(length=None):
                 version_counts[str(row["_id"])] = row["count"]
 
     return {
@@ -729,7 +731,7 @@ async def list_documents(
     total = await HRDocument.find(query).count()
     documents = (
         await HRDocument.find(query)
-        .sort("created_at", -1)
+        .sort("-created_at")
         .skip((page - 1) * page_size)
         .limit(page_size)
         .to_list()
@@ -766,6 +768,7 @@ async def upload_document(
     if not await has_hr_manage(actor):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to upload documents")
 
+    await ensure_default_document_types(company_id, actor_id=str(actor.id))
     owner, owner_key = await _resolve_owner(company_id, employee_id=employee_id, candidate_id=candidate_id)
     doc_type = await _resolve_document_type(company_id, document_type_id, owner_type=owner["owner_type"])
 
@@ -886,7 +889,7 @@ async def replace_document(
     stored = await _store_hr_file(file)
 
     # Atomic increment keeps version numbers safe under concurrent replacements.
-    updated = await HRDocument.collection.find_one_and_update(
+    updated = await HRDocument.get_pymongo_collection().find_one_and_update(
         {"_id": ObjectId(str(document.id)), "company_id": company_id},
         {"$inc": {"current_version_number": 1}},
         return_document=ReturnDocument.AFTER,
@@ -961,7 +964,7 @@ async def list_versions(company_id: str, document_id: str, actor: User) -> list[
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
     await _require_document_access(company_id, document, actor)
 
-    versions = await HRDocumentVersion.find({"company_id": company_id, "document_id": document_id}).sort("version_number", -1).to_list()
+    versions = await HRDocumentVersion.find({"company_id": company_id, "document_id": document_id}).sort("-version_number").to_list()
     uploader_ids = {v.uploaded_by for v in versions if v.uploaded_by}
     users = await _resolve_names_batch(company_id, uploader_ids)
 

@@ -7,11 +7,13 @@ Verifies:
 - Payroll reports require payroll.view.
 - The manager/lead report scope is resolved server-side.
 """
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.api.v1.endpoints.hr_dashboard import router as hr_dashboard_router
+from app.models.department import DepartmentType
+from app.models.user import UserRole
 
 
 def _capability_gates(route):
@@ -132,3 +134,85 @@ async def test_manager_without_team_gets_empty_scope():
         scope = await mod._report_scope_user_ids(manager)
 
     assert scope == []
+
+
+@pytest.mark.asyncio
+async def test_dashboard_capability_uses_department_capability_source(monkeypatch):
+    from app.api.v1.endpoints import hr_dashboard as mod
+
+    user = MagicMock()
+    user.role = UserRole.MANAGER
+    user.company_id = "company-1"
+    user.department_id = "dept-1"
+
+    department = MagicMock()
+    department.company_id = "company-1"
+    department.deleted_at = None
+    department.department_type = DepartmentType.HR
+
+    monkeypatch.setattr(mod.Department, "get", AsyncMock(return_value=department))
+    get_caps = AsyncMock(return_value=["employee_management.view"])
+    monkeypatch.setattr(mod, "get_capabilities_for_role", get_caps)
+
+    assert await mod._has_capability(user, "employee_management.view") is True
+    get_caps.assert_awaited_once_with(DepartmentType.HR, UserRole.MANAGER, "company-1")
+
+
+@pytest.mark.asyncio
+async def test_dashboard_capability_denies_cross_company_department(monkeypatch):
+    from app.api.v1.endpoints import hr_dashboard as mod
+
+    user = MagicMock()
+    user.role = UserRole.MANAGER
+    user.company_id = "company-1"
+    user.department_id = "dept-1"
+
+    department = MagicMock()
+    department.company_id = "company-2"
+    department.deleted_at = None
+    department.department_type = DepartmentType.HR
+
+    monkeypatch.setattr(mod.Department, "get", AsyncMock(return_value=department))
+    get_caps = AsyncMock(return_value=["employee_management.view"])
+    monkeypatch.setattr(mod, "get_capabilities_for_role", get_caps)
+
+    assert await mod._has_capability(user, "employee_management.view") is False
+    get_caps.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_hr_dashboard_endpoint_does_not_read_user_capabilities(monkeypatch):
+    from app.api.v1.endpoints import hr_dashboard as mod
+    from app.services import hr_reporting_service as reporting
+
+    user = MagicMock(spec=["id", "role", "company_id", "department_id"])
+    user.id = "mgr-1"
+    user.role = UserRole.MANAGER
+    user.company_id = "company-1"
+    user.department_id = None
+
+    monkeypatch.setattr(reporting, "get_attention_items", AsyncMock(return_value=[]))
+    monkeypatch.setattr(reporting, "get_recruitment_summary", AsyncMock(return_value={
+        "open_jobs": 0,
+        "candidates": 0,
+        "interviews_today": 0,
+        "offers_pending": 0,
+    }))
+
+    response = await mod.get_hr_dashboard(user)
+
+    assert response.attention_items == []
+
+
+@pytest.mark.asyncio
+async def test_my_hr_summary_endpoint_success(monkeypatch):
+    from app.api.v1.endpoints import ess
+
+    user = MagicMock()
+    user.company_id = "company-1"
+
+    monkeypatch.setattr(ess, "build_my_summary", AsyncMock(return_value={"profile": {"id": "profile-1"}}))
+
+    response = await ess.my_hr_summary(user)
+
+    assert response == {"success": True, "data": {"profile": {"id": "profile-1"}}}

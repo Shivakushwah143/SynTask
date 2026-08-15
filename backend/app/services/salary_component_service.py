@@ -81,7 +81,7 @@ async def list_components(
         query["active"] = True
     if component_type:
         query["component_type"] = component_type
-    return await SalaryComponent.find(query).sort("display_order", 1).to_list()
+    return await SalaryComponent.find(query).sort("display_order").to_list()
 
 
 async def get_component(company_id: str, component_id: str) -> Optional[SalaryComponent]:

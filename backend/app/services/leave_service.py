@@ -459,7 +459,7 @@ async def active_leave_types(company_id: str, *, include_inactive: bool = False)
     query: Dict[str, Any] = {"company_id": company_id}
     if not include_inactive:
         query["active"] = True
-    return await LeaveTypeConfig.find(query).sort("name", 1).to_list()
+    return await LeaveTypeConfig.find(query).sort("name").to_list()
 
 
 async def get_leave_type_config(company_id: str, leave_type_id: str) -> Optional[LeaveTypeConfig]:
@@ -626,7 +626,7 @@ async def reconcile_balance(company_id: str, employee_id: str, leave_type_id: st
         if not bal:
             return
     for _ in range(10):
-        updated = await LeaveBalance.collection.find_one_and_update(
+        updated = await LeaveBalance.get_pymongo_collection().find_one_and_update(
             {"_id": bal.id, "version": bal.version},
             {"$set": {"used": used, "pending": pending, "updated_at": utc_now()}, "$inc": {"version": 1}},
             return_document=ReturnDocument.AFTER,
@@ -687,7 +687,7 @@ async def reserve_balance_units(company_id: str, employee_id: str, leave_type_id
         available = round(bal.allocated - bal.used - bal.pending, 4)
         if available + 1e-9 < units:
             return False
-        updated = await LeaveBalance.collection.find_one_and_update(
+        updated = await LeaveBalance.get_pymongo_collection().find_one_and_update(
             {"_id": bal.id, "version": bal.version},
             {"$set": {"pending": round(bal.pending + units, 4), "updated_at": utc_now()}, "$inc": {"version": 1}},
             return_document=ReturnDocument.AFTER,
@@ -709,7 +709,7 @@ async def commit_balance_units(company_id: str, employee_id: str, leave_type_id:
             continue
         if round(bal.allocated - bal.used - bal.pending, 4) + 1e-9 < 0:
             return False
-        updated = await LeaveBalance.collection.find_one_and_update(
+        updated = await LeaveBalance.get_pymongo_collection().find_one_and_update(
             {"_id": bal.id, "version": bal.version},
             {
                 "$set": {
@@ -735,7 +735,7 @@ async def release_balance_units(company_id: str, employee_id: str, leave_type_id
         if not bal:
             return True
         new_pending = max(0.0, round(bal.pending - units, 4))
-        updated = await LeaveBalance.collection.find_one_and_update(
+        updated = await LeaveBalance.get_pymongo_collection().find_one_and_update(
             {"_id": bal.id, "version": bal.version},
             {"$set": {"pending": new_pending, "updated_at": utc_now()}, "$inc": {"version": 1}},
             return_document=ReturnDocument.AFTER,
@@ -754,7 +754,7 @@ async def reverse_used_units(company_id: str, employee_id: str, leave_type_id: s
         if not bal:
             return True
         new_used = max(0.0, round(bal.used - units, 4))
-        updated = await LeaveBalance.collection.find_one_and_update(
+        updated = await LeaveBalance.get_pymongo_collection().find_one_and_update(
             {"_id": bal.id, "version": bal.version},
             {"$set": {"used": new_used, "updated_at": utc_now()}, "$inc": {"version": 1}},
             return_document=ReturnDocument.AFTER,
@@ -781,7 +781,7 @@ async def adjust_allocation(
     if new_allocated < 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Allocation cannot be negative")
     for _ in range(10):
-        updated = await LeaveBalance.collection.find_one_and_update(
+        updated = await LeaveBalance.get_pymongo_collection().find_one_and_update(
             {"_id": bal.id, "version": bal.version},
             {
                 "$set": {"allocated": round(new_allocated, 4), "updated_at": utc_now()},
@@ -867,7 +867,7 @@ async def mark_leave_days_on_attendance(
     if not marker:
         return
     for day in _date_range_days(start_date, end_date):
-        await Attendance.collection.update_one(
+        await Attendance.get_pymongo_collection().update_one(
             {"company_id": company_id, "employee_id": employee_id, "date": day.strftime("%Y-%m-%d")},
             {
                 "$set": {"leave_status": marker, "updated_at": utc_now()},

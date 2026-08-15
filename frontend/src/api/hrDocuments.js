@@ -15,7 +15,7 @@ export function normalizeDocumentTypesResponse(response) {
  */
 export const hrDocumentsApi = {
   // ── Document types ────────────────────────────────────────────────────────
-  listTypes: (params) => api.get('/hr/document-types', { params }),
+  listTypes: (params) => api.get('/hr/document-types', { params, suppressGlobalToast: true }),
   createType: (payload) => api.post('/hr/document-types', payload),
   updateType: (id, payload) => api.patch(`/hr/document-types/${id}`, payload),
   deactivateType: (id) => api.delete(`/hr/document-types/${id}`),

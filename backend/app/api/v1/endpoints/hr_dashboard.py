@@ -27,6 +27,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import get_current_user, require_capability
+from app.models.capability import get_capabilities_for_role
+from app.models.department import Department
 from app.models.user import User, UserRole
 
 logger = logging.getLogger(__name__)
@@ -44,8 +46,35 @@ def _role(user: User) -> str:
     return user.role.value if hasattr(user.role, "value") else str(user.role)
 
 
-def _has_capability(user: User, capability: str) -> bool:
-    return capability in set(user.capabilities or [])
+def _role_enum(user: User) -> UserRole:
+    role = getattr(user, "role", None)
+    if isinstance(role, UserRole):
+        return role
+    try:
+        return UserRole.from_legacy(str(role))
+    except Exception:
+        return UserRole.EMPLOYEE
+
+
+async def _has_capability(user: User, capability: str) -> bool:
+    """Return dashboard section access from authoritative department capabilities."""
+    role = _role_enum(user)
+    if role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}:
+        return True
+
+    department_id = getattr(user, "department_id", None)
+    if not department_id:
+        return False
+    department = await Department.get(department_id)
+    if not department or department.company_id != user.company_id or department.deleted_at is not None:
+        return False
+
+    allowed = await get_capabilities_for_role(
+        department.department_type,
+        role,
+        user.company_id,
+    )
+    return capability in set(allowed or [])
 
 
 async def _report_scope_user_ids(current_user: User) -> Optional[List[str]]:
@@ -122,25 +151,25 @@ async def get_hr_dashboard(
     document_summary = None
     lifecycle_summary = None
 
-    if _is_company_admin(current_user) or _has_capability(current_user, "employee_management.view"):
+    if _is_company_admin(current_user) or await _has_capability(current_user, "employee_management.view"):
         try:
             employee_summary = EmployeeSummary(**await get_employee_summary(company_id))
         except Exception as e:
             logger.warning("Employee summary failed (non-critical): %s", e)
 
-    if _is_company_admin(current_user) or _has_capability(current_user, "attendance_policy.view"):
+    if _is_company_admin(current_user) or await _has_capability(current_user, "attendance_policy.view"):
         try:
             attendance_today = AttendanceTodaySummary(**await get_attendance_today_summary(company_id))
         except Exception as e:
             logger.warning("Attendance summary failed (non-critical): %s", e)
 
-    if _is_company_admin(current_user) or _has_capability(current_user, "leave_management.view"):
+    if _is_company_admin(current_user) or await _has_capability(current_user, "leave_management.view"):
         try:
             leave_summary = LeaveSummary(**await get_leave_summary(company_id))
         except Exception as e:
             logger.warning("Leave summary failed (non-critical): %s", e)
 
-    if _is_company_admin(current_user) or _has_capability(current_user, "employee_lifecycle.view"):
+    if _is_company_admin(current_user) or await _has_capability(current_user, "employee_lifecycle.view"):
         try:
             lifecycle_summary = LifecycleSummary(**await get_lifecycle_summary(company_id))
         except Exception as e:
@@ -161,7 +190,7 @@ async def get_hr_dashboard(
 
     # Attention items — permission-filtered so unauthorized counts never leak.
     attention_items = await get_attention_items(company_id)
-    has_payroll_view = _is_company_admin(current_user) or _has_capability(current_user, "payroll.view")
+    has_payroll_view = _is_company_admin(current_user) or await _has_capability(current_user, "payroll.view")
     if not has_payroll_view:
         attention_items = [item for item in attention_items if item.get("type") != "payroll_blocked"]
     # Only show attention items for modules the user can actually see.

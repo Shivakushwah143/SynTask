@@ -79,6 +79,28 @@ def _make_component(
     return comp
 
 
+class _StrictBeanieQuery:
+    """Test double for Beanie query sort API used by Salary services."""
+
+    def __init__(self, result=None):
+        self.result = result if result is not None else []
+        self.sort_args = None
+        self.limit_value = None
+
+    def sort(self, *args):
+        if len(args) != 1 or not isinstance(args[0], str):
+            raise TypeError("Wrong argument type")
+        self.sort_args = args
+        return self
+
+    def limit(self, value):
+        self.limit_value = value
+        return self
+
+    async def to_list(self):
+        return self.result
+
+
 # =============================================================================
 # Component Tests
 # =============================================================================
@@ -108,6 +130,16 @@ class TestSalaryComponentService:
         assert result["calculation_type"] == "percentage"
         assert result["percentage_rate"] == 40.0
         assert result["base_component_id"] == "comp-1"
+
+    @pytest.mark.asyncio
+    async def test_list_components_uses_supported_beanie_sort(self):
+        query = _StrictBeanieQuery()
+
+        with patch("app.services.salary_component_service.SalaryComponent.find", return_value=query):
+            result = await list_components("company-1")
+
+        assert result == []
+        assert query.sort_args == ("display_order",)
 
 
 # =============================================================================
@@ -369,6 +401,41 @@ class TestSalaryIdentity:
                 await resolve_salary_employee_user_id("company-1", "missing")
 
         assert getattr(exc.value, "status_code", None) == 404
+
+
+class TestSalaryBeanieSortCompatibility:
+    """Salary lookups use the supported Beanie sort call shape."""
+
+    @pytest.mark.asyncio
+    async def test_effective_salary_uses_descending_string_sort(self):
+        query = _StrictBeanieQuery()
+
+        with patch("app.services.salary_structure_service.SalaryStructure.find", return_value=query):
+            result = await get_effective_salary_structure("company-1", "user-1", date(2026, 8, 15))
+
+        assert result is None
+        assert query.sort_args == ("-effective_from",)
+
+    @pytest.mark.asyncio
+    async def test_upcoming_salary_uses_ascending_string_sort(self):
+        query = _StrictBeanieQuery()
+
+        with patch("app.services.salary_structure_service.SalaryStructure.find", return_value=query):
+            result = await get_upcoming_salary("company-1", "user-1")
+
+        assert result is None
+        assert query.sort_args == ("effective_from",)
+        assert query.limit_value == 1
+
+    @pytest.mark.asyncio
+    async def test_salary_history_uses_descending_string_sort(self):
+        query = _StrictBeanieQuery()
+
+        with patch("app.services.salary_structure_service.SalaryStructure.find", return_value=query):
+            result = await get_salary_history("company-1", "user-1")
+
+        assert result == []
+        assert query.sort_args == ("-effective_from",)
 
 
 # =============================================================================
