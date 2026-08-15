@@ -1379,7 +1379,7 @@ const Dashboard = () => {
                         tickLine={false}
                         axisLine={false}
                         tick={{ fontSize: 11, fill: '#9ca3af' }}
-                        label={{ value: taskDuePriorityData?.[0]?.count !== undefined ? 'Tasks' : 'Days remaining', angle: -90, position: 'insideLeft', style: { fill: '#9ca3af', fontSize: 11 } }}
+                        label={{ value: taskDuePriorityData?.[0]?.count !== undefined ? 'Tasks' : 'Days remaining', angle: -90, position: 'insideLeft', style: { fill: 'var(--color-app-text-muted)', fontSize: 11 } }}
                       />
                       <ChartTooltip labelFormatter={(_, point) => point.name} valueFormatter={(value, key) => key === 'daysRemaining' ? `${value} day${value === 1 ? '' : 's'}` : value} />
                       <Bar dataKey={taskDuePriorityData?.[0]?.count !== undefined ? 'count' : 'daysRemaining'} name={taskDuePriorityData?.[0]?.count !== undefined ? 'Tasks' : 'Days Remaining'} radius={[6, 6, 0, 0]} maxBarSize={44} className="cursor-pointer">
