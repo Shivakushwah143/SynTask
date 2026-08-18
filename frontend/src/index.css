@@ -54,18 +54,23 @@
   }
 
   :root {
-    --color-app-bg: #F3F0E9;
-    --color-app-bg-solid: #F3F0E9;
-    --color-app-surface: #FAF8F3;
-    --color-app-surface-muted: #F0EDE6;
-    --color-app-surface-subtle: #F7F4EE;
-    --color-app-header: #F8F6F1;
-    --color-app-input: #F7F4EE;
-    --color-app-row: #F7F4EE;
-    --color-app-border: #DED8CC;
+    /* Light theme — soft warm sand + cream palette, deliberately NOT bright
+       white. The page background is a calm sand tone, cards are warm off-white,
+       inputs stay white so fields read clearly against tinted surfaces, borders
+       are visible but subtle, and secondary/muted text keep a clear hierarchy
+       while staying WCAG AA readable. */
+    --color-app-bg: #EDE7DB;
+    --color-app-bg-solid: #EDE7DB;
+    --color-app-surface: #F8F4EC;
+    --color-app-surface-muted: #EDE6D8;
+    --color-app-surface-subtle: #F4EFE4;
+    --color-app-header: #F7F3EA;
+    --color-app-input: #FFFFFF;
+    --color-app-row: #F2EDE2;
+    --color-app-border: #D1C8B3;
     --color-app-text: #20242C;
-    --color-app-text-secondary: #667085;
-    --color-app-text-muted: #667085;
+    --color-app-text-secondary: #525B69;
+    --color-app-text-muted: #606C78;
     --radius-sm: 0.75rem;
     --radius-md: 1rem;
     --radius-lg: 1rem;
@@ -76,7 +81,7 @@
     --shadow-lg: 0 18px 36px -28px rgb(63 49 37 / 0.22);
     --focus-ring: 0 0 0 2px rgb(229 106 31 / 0.22);
     --select-accent: #e56a1f;
-    --select-option-bg: #F0EDE6;
+    --select-option-bg: #EDE6D8;
     --select-option-text: #20242C;
     --icon-scale-primary: 1.2;
   }
@@ -187,6 +192,14 @@
   :where([class~='flex'], [class~='grid']) > * {
     min-width: 0;
   }
+}
+
+/* Chart axis ticks/labels should follow the theme's muted text color instead of
+   the light gray fills recharts defaults to (near-invisible on light surfaces). */
+.recharts-cartesian-axis-tick text,
+.recharts-cartesian-axis-tick-value,
+.recharts-cartesian-axis-label {
+  fill: var(--color-app-text-muted);
 }
 
 /* Keep chart feedback consistent across mouse, pen, and touch interactions. */
@@ -436,21 +449,15 @@
     background-color: var(--color-app-surface-muted);
   }
 
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50,
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50\/60,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50\/80,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50\/90,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-100\/80,
-  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-100\/90 {
-    background-color: color-mix(in srgb, var(--color-app-surface-muted) 96%, transparent);
-  }
-
-  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50,
-  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50\/60 {
-    background-color: var(--color-app-input);
-  }
-
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-100\/90,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-slate-50,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-slate-100 {
-    background-color: var(--color-app-input);
+    background-color: var(--color-app-surface-muted);
   }
 
   :where(html.dark, html[data-theme='dark']) .bg-gray-100,
@@ -691,6 +698,31 @@
     color: var(--color-app-text-muted);
   }
 
+  :where(html:not(.dark):not([data-theme='dark'])) .text-slate-700,
+  :where(html:not(.dark):not([data-theme='dark'])) .text-slate-600 {
+    color: var(--color-app-text-secondary);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .text-slate-500,
+  :where(html:not(.dark):not([data-theme='dark'])) .text-slate-400,
+  :where(html:not(.dark):not([data-theme='dark'])) .text-slate-300 {
+    color: var(--color-app-text-muted);
+  }
+
+  /* Placeholders must stay readable on light surfaces. */
+  :where(html:not(.dark):not([data-theme='dark'])) .placeholder\:text-gray-400::placeholder,
+  :where(html:not(.dark):not([data-theme='dark'])) .placeholder\:text-gray-500::placeholder,
+  :where(html:not(.dark):not([data-theme='dark'])) .placeholder\:text-slate-400::placeholder {
+    color: var(--color-app-text-muted) !important;
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+  :where(html:not(.dark):not([data-theme='dark'])) .divide-gray-200 > :not([hidden]) ~ :not([hidden]),
+  :where(html:not(.dark):not([data-theme='dark'])) .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+  :where(html:not(.dark):not([data-theme='dark'])) .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+    border-color: theme('colors.surface.border');
+  }
+
   :where(html.dark, html[data-theme='dark']) .text-blue-700,
   :where(html.dark, html[data-theme='dark']) .text-blue-800 {
     color: theme('colors.primary.200');
@@ -826,6 +858,12 @@
   :where(html.dark, html[data-theme='dark']) .dark\:hover\:bg-gray-800:hover,
   :where(html.dark, html[data-theme='dark']) .dark\:hover\:bg-gray-950:hover {
     background-color: var(--color-app-surface-subtle);
+  }
+
+  /* Always-dark surfaces (e.g. the app sidebar rail) keep their intended light
+     text in light mode — global light-mode gray overrides must not dim them. */
+  :where(html:not(.dark):not([data-theme='dark'])) .syntask-dark-rail :is(.text-gray-300, .text-gray-400, .text-gray-500):not(:hover):not(:focus) {
+    color: #d1d5db;
   }
 }
 

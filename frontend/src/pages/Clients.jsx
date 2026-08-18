@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, ChevronDown, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2, Sparkles, ShieldCheck } from 'lucide-react'
+import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2, Sparkles, ShieldCheck } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { Button, CreatableSelectField, EmptyState, FormField, LoadingSpinner, Modal, PhoneInput, SkeletonTable, inputClassName } from '../components/ui'
@@ -115,6 +115,14 @@ const Clients = () => {
   const [leads, setLeads] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [columnFilters, setColumnFilters] = useState({
+    type: '',
+    projects: '',
+    budget: '',
+    start_date: '',
+    delivery_date: '',
+  })
   const [formData, setFormData] = useState({ ...EMPTY_CLIENT_FORM })
   const [formErrors, setFormErrors] = useState({})
   const [editingClient, setEditingClient] = useState(null)
@@ -571,15 +579,6 @@ const Clients = () => {
     return Object.keys(nextErrors).length === 0
   }
 
-  const filteredClients = clients.filter(client => {
-    const matchesSearch = !searchQuery ||
-      client.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.company_name?.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = !statusFilter || client.status === statusFilter
-    return matchesSearch && matchesStatus
-  })
-
   const getTotalBudget = (client) => {
     if (client.projects && client.projects.length > 0) {
       return client.projects.reduce((sum, proj) => sum + (proj.budget || 0), 0)
@@ -630,6 +629,95 @@ const Clients = () => {
     }
     return null
   }
+
+  const getStartDateText = (client) => {
+    if (client.start_date) return timeService.formatDateOnly(client.start_date)
+    const startDate = getEarliestStartDate(client)
+    return startDate ? format(startDate, 'MMM d, yyyy') : '-'
+  }
+
+  const getDeliveryDateText = (client) => {
+    if (client.delivery_date) return timeService.formatDateOnly(client.delivery_date)
+    const deliveryDate = getLatestDeliveryDate(client)
+    return deliveryDate ? format(deliveryDate, 'MMM d, yyyy') : '-'
+  }
+
+  const getStartDateValue = (client) => {
+    if (client.start_date) {
+      const match = String(client.start_date).match(/^(\d{4}-\d{2}-\d{2})/)
+      if (match) return match[1]
+    }
+    const startDate = getEarliestStartDate(client)
+    return startDate ? format(startDate, 'yyyy-MM-dd') : ''
+  }
+
+  const getDeliveryDateValue = (client) => {
+    if (client.delivery_date) {
+      const match = String(client.delivery_date).match(/^(\d{4}-\d{2}-\d{2})/)
+      if (match) return match[1]
+    }
+    const deliveryDate = getLatestDeliveryDate(client)
+    return deliveryDate ? format(deliveryDate, 'yyyy-MM-dd') : ''
+  }
+
+  const updateColumnFilter = (key, value) => {
+    setColumnFilters((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const activeColumnFilterCount = Object.values(columnFilters).filter(Boolean).length + (statusFilter ? 1 : 0)
+
+  const clearColumnFilters = () => {
+    setColumnFilters({
+      type: '',
+      projects: '',
+      budget: '',
+      start_date: '',
+      delivery_date: '',
+    })
+    setStatusFilter('')
+  }
+
+  const filteredClients = clients.filter(client => {
+    const q = (value) => (value ?? '').toString().toLowerCase()
+    const matchesSearch = !searchQuery ||
+      q(client.name).includes(searchQuery.toLowerCase()) ||
+      q(client.email).includes(searchQuery.toLowerCase()) ||
+      q(client.company_name).includes(searchQuery.toLowerCase()) ||
+      q(client.contact).includes(searchQuery.toLowerCase())
+
+    const matchesStatus = !statusFilter || (client.status || 'active') === statusFilter
+
+    const cf = columnFilters
+    const matchesType = !cf.type || (client.client_type || '') === cf.type
+
+    const totalProjects = client.total_projects ?? client.project_ids?.length ?? 0
+    const matchesProjects = (() => {
+      if (!cf.projects) return true
+      if (cf.projects === '0') return totalProjects === 0
+      if (cf.projects === '1-5') return totalProjects >= 1 && totalProjects <= 5
+      if (cf.projects === '6-10') return totalProjects >= 6 && totalProjects <= 10
+      if (cf.projects === '10+') return totalProjects > 10
+      return true
+    })()
+
+    const budgetValue = client.budget > 0 ? Number(client.budget) : getTotalBudget(client)
+    const matchesBudget = (() => {
+      if (!cf.budget) return true
+      if (budgetValue <= 0) return false
+      if (cf.budget === 'lt-50000') return budgetValue < 50000
+      if (cf.budget === '50000-100000') return budgetValue >= 50000 && budgetValue < 100000
+      if (cf.budget === '100000-500000') return budgetValue >= 100000 && budgetValue < 500000
+      if (cf.budget === '500000-1000000') return budgetValue >= 500000 && budgetValue < 1000000
+      if (cf.budget === 'gt-1000000') return budgetValue >= 1000000
+      return true
+    })()
+
+    const matchesStartDate = !cf.start_date || getStartDateValue(client) === cf.start_date
+    const matchesDeliveryDate = !cf.delivery_date || getDeliveryDateValue(client) === cf.delivery_date
+
+    return matchesSearch && matchesStatus && matchesType &&
+      matchesProjects && matchesBudget && matchesStartDate && matchesDeliveryDate
+  })
 
   const activeCount = useMemo(() => clients.filter(c => (c.status || 'active') === 'active').length, [clients])
   const totalPortfolioBudget = useMemo(() => clients.reduce((sum, c) => sum + getTotalBudget(c), 0), [clients])
@@ -693,22 +781,107 @@ const Clients = () => {
               className="w-full rounded-lg border border-gray-200 bg-gray-50/50 pl-9 pr-3 py-2 text-xs font-medium text-gray-900 shadow-sm transition placeholder:text-gray-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-800/50 dark:text-white dark:focus:bg-gray-800"
             />
           </div>
-          <div className="relative flex items-center">
-            <Filter className="absolute left-3 h-4 w-4 text-gray-400 pointer-events-none z-10" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-9 w-full sm:w-auto rounded-lg border border-gray-200 bg-white pl-9 pr-8 text-xs font-semibold text-gray-700 shadow-sm transition hover:border-indigo-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-600 cursor-pointer appearance-none"
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowFilters((prev) => !prev)}
+              className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                showFilters || activeColumnFilterCount > 0
+                  ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300'
+                  : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-600'
+              }`}
             >
-              <option value="">All Statuses</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="on_hold">On Hold</option>
-              <option value="archived">Archived</option>
-            </select>
-            <ChevronDown className="absolute right-3 h-4 w-4 text-gray-400 pointer-events-none" />
+              <Filter className="h-4 w-4" />
+              <span>Filters</span>
+              {activeColumnFilterCount > 0 && (
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-600 px-1.5 text-[10px] font-bold text-white">
+                  {activeColumnFilterCount}
+                </span>
+              )}
+            </button>
+            {activeColumnFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={clearColumnFilters}
+                title="Clear all filters"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-sm transition hover:border-rose-300 hover:text-rose-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-rose-700 dark:hover:text-rose-400"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
+
+        {showFilters && (
+          <div className="mt-3 border-t border-gray-200/80 pt-3 dark:border-gray-800">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <FormField label="Type">
+                <select value={columnFilters.type} onChange={(e) => updateColumnFilter('type', e.target.value)} className={inputClassName}>
+                  <option value="">All types</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="one_time">One Time</option>
+                </select>
+              </FormField>
+              <FormField label="Projects">
+                <select value={columnFilters.projects} onChange={(e) => updateColumnFilter('projects', e.target.value)} className={inputClassName}>
+                  <option value="">Any count</option>
+                  <option value="0">0</option>
+                  <option value="1-5">1 – 5</option>
+                  <option value="6-10">6 – 10</option>
+                  <option value="10+">More than 10</option>
+                </select>
+              </FormField>
+              <FormField label="Budget">
+                <select value={columnFilters.budget} onChange={(e) => updateColumnFilter('budget', e.target.value)} className={inputClassName}>
+                  <option value="">Any amount</option>
+                  <option value="lt-50000">Under ₹50,000</option>
+                  <option value="50000-100000">₹50,000 – ₹1,00,000</option>
+                  <option value="100000-500000">₹1,00,000 – ₹5,00,000</option>
+                  <option value="500000-1000000">₹5,00,000 – ₹10,00,000</option>
+                  <option value="gt-1000000">Above ₹10,00,000</option>
+                </select>
+              </FormField>
+              <FormField label="Start date">
+                <input type="date" value={columnFilters.start_date} onChange={(e) => updateColumnFilter('start_date', e.target.value)} className={inputClassName} />
+              </FormField>
+              <FormField label="Delivery date">
+                <input type="date" value={columnFilters.delivery_date} onChange={(e) => updateColumnFilter('delivery_date', e.target.value)} className={inputClassName} />
+              </FormField>
+              <FormField label="Status">
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClassName}>
+                  <option value="">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="on_hold">On Hold</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </FormField>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {activeColumnFilterCount > 0
+                  ? `${activeColumnFilterCount} filter${activeColumnFilterCount > 1 ? 's' : ''} active`
+                  : 'No filters applied'}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={clearColumnFilters}
+                  className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  Clear all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFilters(false)}
+                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Clients Table / Cards Container */}
@@ -800,16 +973,10 @@ const Clients = () => {
                       {client.budget > 0 ? `₹${Number(client.budget).toLocaleString()}` : getTotalBudget(client) > 0 ? `₹${getTotalBudget(client).toLocaleString()}` : '-'}
                     </td>
                     <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
-                      {client.start_date ? timeService.formatDateOnly(client.start_date) : (() => {
-                        const startDate = getEarliestStartDate(client)
-                        return startDate ? format(startDate, 'MMM d, yyyy') : '-'
-                      })()}
+                      {getStartDateText(client)}
                     </td>
                     <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
-                      {client.delivery_date ? timeService.formatDateOnly(client.delivery_date) : (() => {
-                        const deliveryDate = getLatestDeliveryDate(client)
-                        return deliveryDate ? format(deliveryDate, 'MMM d, yyyy') : '-'
-                      })()}
+                      {getDeliveryDateText(client)}
                     </td>
                     <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
                       {(isCompanyAdmin || isLead) ? (
