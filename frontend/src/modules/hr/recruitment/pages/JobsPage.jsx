@@ -268,7 +268,7 @@ export default function JobsPage() {
         </div>
       )
     },
-  ], [statusMutation]);
+  ], [actionMutation, statusMutation]);
 
   return (
     <div className="space-y-4 p-4 md:p-5">
@@ -394,7 +394,7 @@ export default function JobsPage() {
             </div>
           ) : isError ? (
             <div className="flex h-96 flex-col items-center justify-center gap-4">
-              <AlertCircle className="h-12 w-12 text-rose-500" />
+              <XCircle className="h-12 w-12 text-rose-500" />
               <p className="text-gray-600 dark:text-gray-400">
                 {query.error?.response?.data?.detail || "Could not load jobs"}
               </p>

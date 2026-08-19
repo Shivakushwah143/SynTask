@@ -24,6 +24,7 @@ AI ranking is decision support only. Scoring excludes protected attributes and s
 - `GET /api/v1/recruitment/jobs/{job_id}/candidate-rankings`
 - `GET /api/v1/recruitment/candidates/{candidate_id}/job-score/{job_id}`
 - `POST /api/v1/recruitment/jobs/{job_id}/shortlist`
+- `POST /api/v1/recruitment/jobs/{job_id}/status` — validated lifecycle transition (draft, pending_approval, approved, published, paused, closed, archived); re-selecting the current status is a no-op, invalid transitions return 400
 - `POST /api/v1/recruitment/interviews/availability`
 - `POST /api/v1/recruitment/interviews/propose-slots`
 - `POST /api/v1/recruitment/interviews/schedule`
