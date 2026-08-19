@@ -515,6 +515,17 @@ class JobService:
         return await JobService.transition_job(job, JobLifecycleStatus.PUBLISHED, actor_id)
 
     @staticmethod
+    async def set_status(job: RecruitmentJob, target_status: JobLifecycleStatus, actor_id: str) -> RecruitmentJob:
+        """Set a job's lifecycle status through a validated transition.
+
+        Setting the status to the current value is a no-op (idempotent) so the
+        UI status dropdown can safely re-select the active status.
+        """
+        if job.lifecycle_status == target_status:
+            return job
+        return await JobService.transition_job(job, target_status, actor_id)
+
+    @staticmethod
     async def pause_job(job: RecruitmentJob, actor_id: str) -> RecruitmentJob:
         """Pause a published job."""
         return await JobService.transition_job(job, JobLifecycleStatus.PAUSED, actor_id)

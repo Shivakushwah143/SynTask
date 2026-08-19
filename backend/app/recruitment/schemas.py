@@ -82,6 +82,12 @@ class JobUpdate(BaseModel):
     publish_options: Optional[dict] = None
 
 
+# Job Status Transition Schema
+class JobStatusUpdate(BaseModel):
+    """Request body for a validated lifecycle status transition."""
+    status: JobLifecycleStatus
+
+
 # Job Response Schema
 class JobResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

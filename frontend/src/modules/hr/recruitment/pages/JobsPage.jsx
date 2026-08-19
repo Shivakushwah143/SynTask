@@ -1,39 +1,30 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
+import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
-import { 
-  Archive, 
-  Copy, 
-  Eye, 
-  Plus, 
-  Send,
+import {
+  Archive,
   Briefcase,
-  Users,
   Calendar,
-  Building2,
-  MapPin,
-  Clock,
-  Filter,
-  Search,
-  AlertCircle,
-  RefreshCw,
-  ArrowUpDown,
-  FileText,
   CheckCircle,
+  Copy,
+  Eye,
+  FileText,
+  Filter,
+  MapPin,
+  Plus,
+  RefreshCw,
   XCircle,
-  Clock as ClockIcon
 } from "lucide-react";
 
 import { recruitmentApi } from "../../../../api/recruitment";
 import { departmentsAPI } from "../../../../api/departments";
-import { Button, PageHeader } from "../../../../components/ui";
+import { Button } from "../../../../components/ui";
 import { JOB_STATUSES, EMPLOYMENT_TYPES, WORK_MODES } from "../constants";
-import { JobDialog } from "../dialogs/RecruitmentDialogs";
-import { RecruitmentDrawer } from "../components/RecruitmentDrawer";
+import { JobDialog, ConfirmActionDialog } from "../dialogs/RecruitmentDialogs";
 import { RecruitmentFilters } from "../components/RecruitmentFilters";
 import { RecruitmentTable } from "../components/RecruitmentTable";
-import { StatusBadge } from "../components/StatusBadge";
-import { ConfirmActionDialog } from "../dialogs/RecruitmentDialogs";
+import { JobStatusDropdown } from "../components/JobStatusDropdown";
 import { compactParams, fmtDate, idOf, labelize, toArray } from "../utils/data";
 
 // ============================================================
@@ -95,18 +86,11 @@ export default function JobsPage() {
   const [filters, setFilters] = useState({});
   const [dialogJob, setDialogJob] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [drawerJob, setDrawerJob] = useState(null);
   const [archiveJob, setArchiveJob] = useState(null);
-  const [selectedRankings, setSelectedRankings] = useState([]);
   
   const params = compactParams({ page, page_size: 20, search, ...filters });
   const query = useQuery(["recruitment", "jobs", params], () => recruitmentApi.getJobs(params), { keepPreviousData: true });
   const departmentsQuery = useQuery(["recruitment", "departments"], () => departmentsAPI.listDepartments(), { retry: 1 });
-  const rankingsQuery = useQuery(
-    ["recruitment", "rankings", idOf(drawerJob)],
-    () => recruitmentApi.getCandidateRankings(idOf(drawerJob)),
-    { enabled: !!drawerJob }
-  );
   
   const jobs = toArray(query.data);
   const departments = Array.isArray(departmentsQuery.data) ? departmentsQuery.data : departmentsQuery.data?.departments || [];
@@ -138,7 +122,6 @@ export default function JobsPage() {
       onSuccess: (_, variables) => {
         const messages = {
           archiveJob: "Job archived successfully! 📦",
-          publishJob: "Job published successfully! 🚀",
           duplicateJob: "Job duplicated successfully! 📋"
         };
         toast.success(messages[variables.action] || "Job updated");
@@ -150,25 +133,18 @@ export default function JobsPage() {
       }
     }
   );
-  const extractRequirementsMutation = useMutation((id) => recruitmentApi.extractJobRequirements(id), {
-    onSuccess: () => toast.success("Requirements extracted"),
-    onError: (error) => toast.error(error?.response?.data?.detail || "Failed to extract requirements"),
-  });
-  const scoreCandidatesMutation = useMutation((id) => recruitmentApi.scoreCandidates(id), {
-    onSuccess: () => {
-      toast.success("Candidates scored");
-      rankingsQuery.refetch();
-    },
-    onError: (error) => toast.error(error?.response?.data?.detail || "Failed to score candidates"),
-  });
-  const shortlistMutation = useMutation((candidateIds) => recruitmentApi.shortlistCandidates(idOf(drawerJob), { candidate_ids: candidateIds, reason: "Reviewed ranking and shortlisted by HR" }), {
-    onSuccess: () => {
-      toast.success("Candidates shortlisted");
-      setSelectedRankings([]);
-      rankingsQuery.refetch();
-    },
-    onError: (error) => toast.error(error?.response?.data?.detail || "Failed to shortlist candidates"),
-  });
+  const statusMutation = useMutation(
+    ({ id, status }) => recruitmentApi.setJobStatus(id, status),
+    {
+      onSuccess: () => {
+        toast.success("Job status updated successfully! 🎉");
+        invalidate();
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || "Failed to update job status");
+      }
+    }
+  );
   
   const confirmArchiveJob = () => {
     if (!archiveJob) return;
@@ -191,23 +167,28 @@ export default function JobsPage() {
   }, [jobs]);
 
   const columns = useMemo(() => [
-    { 
-      key: "title", 
-      header: "Job", 
+    {
+      key: "title",
+      header: "Job",
       render: (job) => (
-        <button 
-          type="button" 
-          className="font-semibold text-indigo-600 transition hover:text-indigo-700 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300" 
-          onClick={() => setDrawerJob(job)}
+        <Link
+          to={`/hr/recruitment/jobs/${idOf(job)}`}
+          className="font-semibold text-indigo-600 transition hover:text-indigo-700 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300"
         >
           {job.title}
-        </button>
-      ) 
+        </Link>
+      )
     },
-    { 
-      key: "status", 
-      header: "Status", 
-      render: (job) => <StatusBadge status={job.lifecycle_status || job.status} /> 
+    {
+      key: "status",
+      header: "Status",
+      render: (job) => (
+        <JobStatusDropdown
+          job={job}
+          onChange={(status) => statusMutation.mutate({ id: idOf(job), status })}
+          loading={statusMutation.isLoading && statusMutation.variables?.id === idOf(job)}
+        />
+      )
     },
     { 
       key: "location", 
@@ -243,63 +224,51 @@ export default function JobsPage() {
       header: "Actions", 
       render: (job) => (
         <div className="flex gap-1">
-          <Button 
-            type="button" 
-            size="sm" 
-            variant="ghost" 
-            className="text-gray-500 transition hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400"
-            onClick={() => setDrawerJob(job)}
+          <Link
+            to={`/hr/recruitment/jobs/${idOf(job)}`}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition hover:bg-surface-muted hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400"
+            title="View job details"
+            aria-label={`View ${job.title || "job"}`}
           >
             <Eye className="h-4 w-4" />
-            <span className="sr-only">View</span>
-          </Button>
-          <Button 
-            type="button" 
-            size="sm" 
-            variant="ghost" 
+          </Link>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
             className="text-gray-500 transition hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400"
             onClick={() => { setDialogJob(job); setDialogOpen(true); }}
           >
             <FileText className="h-4 w-4" />
             <span className="sr-only">Edit</span>
           </Button>
-          <Button 
-            type="button" 
-            size="sm" 
-            variant="ghost" 
-            className="text-gray-500 transition hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400"
-            onClick={() => actionMutation.mutate({ id: idOf(job), action: "publishJob" })}
-          >
-            <Send className="h-4 w-4" />
-            <span className="sr-only">Publish</span>
-          </Button>
-          <Button 
-            type="button" 
-            size="sm" 
-            variant="ghost" 
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
             className="text-gray-500 transition hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
             onClick={() => actionMutation.mutate({ id: idOf(job), action: "duplicateJob" })}
           >
             <Copy className="h-4 w-4" />
             <span className="sr-only">Duplicate</span>
           </Button>
-          <Button 
-            type="button" 
-            size="sm" 
-            variant="ghost" 
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
             className="text-gray-500 transition hover:text-rose-600 dark:text-gray-400 dark:hover:text-rose-400"
-            disabled={actionMutation.isLoading} 
-            onClick={() => setArchiveJob(job)} 
-            title="Archive job" 
+            disabled={actionMutation.isLoading}
+            onClick={() => setArchiveJob(job)}
+            title="Archive job"
             aria-label={`Archive ${job.title || "job"}`}
           >
             <Archive className="h-4 w-4" />
             <span className="sr-only">Archive</span>
           </Button>
         </div>
-      ) 
+      )
     },
-  ], [actionMutation]);
+  ], [statusMutation]);
 
   return (
     <div className="space-y-4 p-4 md:p-5">
@@ -476,142 +445,6 @@ export default function JobsPage() {
         onConfirm={confirmArchiveJob}
         loading={actionMutation.isLoading}
       />
-
-      {/* ============================================================ */}
-      {/* JOB DRAWER - Details */}
-      {/* ============================================================ */}
-      <RecruitmentDrawer 
-        open={!!drawerJob} 
-        title={drawerJob?.title} 
-        description="Job details" 
-        onClose={() => setDrawerJob(null)}
-      >
-        {drawerJob ? (
-          <div className="space-y-5">
-            <div className="flex items-center justify-between">
-              <StatusBadge status={drawerJob.lifecycle_status || drawerJob.status} />
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                Created {fmtDate(drawerJob.created_at || drawerJob.createdAt)}
-              </span>
-            </div>
-            
-            <div>
-              <h4 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Description</h4>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                {drawerJob.description || "No description provided"}
-              </p>
-            </div>
-
-            <div>
-              <h4 className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">Details</h4>
-              <div className="grid gap-3 md:grid-cols-2">
-                {[
-                  { key: "location", label: "Location", icon: MapPin },
-                  { key: "employment_type", label: "Employment Type", icon: Briefcase },
-                  { key: "work_mode", label: "Work Mode", icon: ClockIcon },
-                  { key: "experience_min", label: "Min Experience", icon: Clock },
-                  { key: "experience_max", label: "Max Experience", icon: Clock },
-                  { key: "salary_min", label: "Min Salary", icon: Users },
-                  { key: "salary_max", label: "Max Salary", icon: Users },
-                  { key: "department", label: "Department", icon: Building2 },
-                ].map(({ key, label, icon: Icon }) => (
-                  <div 
-                    key={key} 
-                    className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <Icon className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-                    </div>
-                    <p className="mt-1 font-medium text-gray-900 dark:text-white">
-                      {drawerJob[key] ? labelize(drawerJob[key]) : "—"}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {drawerJob.requirements && (
-              <div>
-                <h4 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Requirements</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {drawerJob.requirements}
-                </p>
-              </div>
-            )}
-
-            {drawerJob.benefits && (
-              <div>
-                <h4 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Benefits</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {drawerJob.benefits}
-                </p>
-              </div>
-            )}
-
-            <div className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Candidate Ranking</h4>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">AI ranking is decision support only. Human review is required.</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => extractRequirementsMutation.mutate(idOf(drawerJob))} disabled={extractRequirementsMutation.isLoading}>
-                    <FileText className="h-4 w-4" /> Extract
-                  </Button>
-                  <Button size="sm" onClick={() => scoreCandidatesMutation.mutate(idOf(drawerJob))} disabled={scoreCandidatesMutation.isLoading}>
-                    <ArrowUpDown className="h-4 w-4" /> Score
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => shortlistMutation.mutate(selectedRankings)} disabled={!selectedRankings.length || shortlistMutation.isLoading}>
-                    <CheckCircle className="h-4 w-4" /> Shortlist
-                  </Button>
-                </div>
-              </div>
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="text-left text-xs uppercase text-gray-500">
-                    <tr>
-                      <th className="py-2 pr-3"></th>
-                      <th className="py-2 pr-3">Candidate</th>
-                      <th className="py-2 pr-3">Score</th>
-                      <th className="py-2 pr-3">Required</th>
-                      <th className="py-2 pr-3">Experience</th>
-                      <th className="py-2 pr-3">Recommendation</th>
-                      <th className="py-2 pr-3">Missing</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(rankingsQuery.data?.items || []).map((row) => {
-                      const candidateId = idOf(row.candidate) || row.score?.candidate_id;
-                      const score = row.score?.score || {};
-                      return (
-                        <tr key={candidateId} className="border-t border-gray-100 dark:border-gray-800">
-                          <td className="py-2 pr-3">
-                            <input type="checkbox" checked={selectedRankings.includes(candidateId)} onChange={(e) => setSelectedRankings((current) => e.target.checked ? [...current, candidateId] : current.filter((id) => id !== candidateId))} />
-                          </td>
-                          <td className="py-2 pr-3 font-medium text-gray-900 dark:text-white">{row.candidate?.full_name || candidateId}</td>
-                          <td className="py-2 pr-3">{score.overall_score ?? "-"}</td>
-                          <td className="py-2 pr-3">{score.required_skills_score ?? "-"}</td>
-                          <td className="py-2 pr-3">{score.experience_score ?? "-"}</td>
-                          <td className="py-2 pr-3">{labelize(score.recommendation || "not scored")}</td>
-                          <td className="py-2 pr-3 text-xs text-rose-600">{(score.missing_required_skills || []).join(", ") || "-"}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {!rankingsQuery.data?.items?.length ? (
-                  <p className="py-6 text-center text-sm text-gray-500">No ranking results yet. Extract requirements, then score candidates.</p>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-center py-12">
-            <p className="text-sm text-gray-500 dark:text-gray-400">No job selected</p>
-          </div>
-        )}
-      </RecruitmentDrawer>
     </div>
   );
 }

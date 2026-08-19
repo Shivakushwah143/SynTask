@@ -101,6 +101,7 @@ const HRDepartment = lazy(() => import('./pages/hr/HRDepartment'))
 const RecruitmentDashboard = lazy(() => import('./pages/hr/recruitment/RecruitmentDashboard'))
 const CandidateInterviewScreen = lazy(() => import('./pages/hr/recruitment/CandidateInterviewScreen'))
 const RecruitmentJobsPage = lazy(() => import('./modules/hr/recruitment/pages/JobsPage'))
+const RecruitmentJobDetailPage = lazy(() => import('./modules/hr/recruitment/pages/JobDetailPage'))
 const RecruitmentInboxPage = lazy(() => import('./modules/hr/recruitment/pages/InboxPage'))
 const RecruitmentCandidatesPage = lazy(() => import('./modules/hr/recruitment/pages/CandidatesPage'))
 const RecruitmentResumePoolPage = lazy(() => import('./modules/hr/recruitment/pages/ResumePoolPage'))
@@ -330,6 +331,7 @@ function App() {
             <Route path="recruitment">
               <Route index element={withBoundary(<RecruitmentDashboard />)} />
               <Route path="jobs" element={withBoundary(<RecruitmentJobsPage />)} />
+              <Route path="jobs/:jobId" element={withBoundary(<RecruitmentJobDetailPage />)} />
               <Route path="inbox" element={withBoundary(<RecruitmentInboxPage />)} />
               <Route path="candidates" element={withBoundary(<RecruitmentCandidatesPage />)} />
               <Route path="employees" element={withBoundary(<RecruitmentEmployeesPage />)} />

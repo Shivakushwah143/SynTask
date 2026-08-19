@@ -53,6 +53,7 @@ AI ranking is decision support only. Scoring excludes protected attributes and s
 
 - `/hr/recruitment/candidates`: resume upload, parse status, extracted profile, normalized skills, reprocess.
 - `/hr/recruitment/jobs`: requirements extraction, candidate scoring, ranking table, shortlist.
+- `/hr/recruitment/jobs/:jobId`: dedicated job detail page with status dropdown, analytics counters, full details, and candidate ranking.
 - `/hr/recruitment/offers`: offer editor, approval actions, preview, PDF generation, send.
 - `/public/offers/:token`: candidate offer view, PDF download, accept/reject.
 

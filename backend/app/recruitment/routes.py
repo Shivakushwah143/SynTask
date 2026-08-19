@@ -48,7 +48,7 @@ from app.recruitment.schemas import (ApplicationApplyResponse, ApplicationStatus
                                      InterviewCancelRequest,
                                      InterviewDecisionRequest, JobCreate,
                                      JobFilter, JobListResponse, JobResponse,
-                                     JobSort, JobUpdate, KeywordMatchResponse,
+                                     JobSort, JobStatusUpdate, JobUpdate, KeywordMatchResponse,
                                      OfferCreate,
                                      OfferUpdate, PublicJobListResponse,
                                      PublicJobResponse, ResumePoolResponse)
@@ -300,6 +300,20 @@ async def restore_job(job_id: str, user: User = Depends(require_job_update)):
     """Restore an archived job."""
     job = await JobService.get_job(job_id, company(user))
     job = await JobService.restore_job(job, str(user.id))
+    return serialize_job(job)
+
+
+# Set Job Status (validated lifecycle transition)
+@router.post("/jobs/{job_id}/status", response_model=JobResponse)
+async def set_job_status(job_id: str, payload: JobStatusUpdate, user: User = Depends(require_job_update)):
+    """Set a job's lifecycle status through a validated transition.
+
+    Accepts any lifecycle status (draft, pending_approval, approved, published,
+    paused, closed, archived). Invalid transitions return a 400 with a clear
+    message; re-selecting the current status is a no-op.
+    """
+    job = await JobService.get_job(job_id, company(user))
+    job = await JobService.set_status(job, payload.status, str(user.id))
     return serialize_job(job)
 
 

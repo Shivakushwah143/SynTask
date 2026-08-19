@@ -11,6 +11,7 @@ export const recruitmentApi = {
   pauseJob: (id) => api.post(`/recruitment/jobs/${id}/pause`),
   archiveJob: (id) => api.post(`/recruitment/jobs/${id}/archive`),
   duplicateJob: (id) => api.post(`/recruitment/jobs/${id}/duplicate`),
+  setJobStatus: (id, status) => api.post(`/recruitment/jobs/${id}/status`, { status }),
   getInbox: (params) => api.get("/recruitment/inbox", { params }),
   getInboxItem: (id) => api.get(`/recruitment/inbox/${id}`),
   importInbox: (payload) => api.post("/recruitment/inbox/import", payload),
