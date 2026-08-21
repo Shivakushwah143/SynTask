@@ -329,7 +329,6 @@ class PublicJobResponse(BaseModel):
     created_at: datetime
 
 
-
 # Public Job List Response (for pagination)
 class PublicJobListResponse(BaseModel):
     items: list[PublicJobResponse]
@@ -337,6 +336,14 @@ class PublicJobListResponse(BaseModel):
     page: int
     page_size: int
     has_next: bool
+
+
+class PublicCareerCompanyResponse(BaseModel):
+    name: str
+    slug: str
+    industry: Optional[str] = None
+    location: Optional[str] = None
+    job_count: int
 
 
 # Career Portal Settings

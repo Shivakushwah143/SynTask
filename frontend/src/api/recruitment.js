@@ -3,6 +3,7 @@ import api from "./axios";
 export const recruitmentApi = {
   getDashboard: (params) => api.get("/recruitment/dashboard", { params }),
   getJobDashboard: () => api.get("/recruitment/jobs/dashboard"),
+  getCareerPage: () => api.get("/recruitment/career-page"),
   getJobs: (params) => api.get("/recruitment/jobs", { params }),
   getJob: (id) => api.get(`/recruitment/jobs/${id}`),
   createJob: (payload) => api.post("/recruitment/jobs", payload),
@@ -104,9 +105,10 @@ export const publicOffersApi = {
 };
 
 export const careersApi = {
-  getPortal: (params) => api.get("/careers", { params }),
-  getJobs: (params) => api.get("/careers/jobs", { params }),
-  getJob: (slug, params) => api.get(`/careers/jobs/${slug}`, { params }),
-  apply: (jobId, payload, params) => api.post(`/careers/jobs/${jobId}/apply`, payload, { params }),
-  track: (trackingCode, params) => api.get(`/careers/applications/${trackingCode}`, { params }),
+  getCompanies: () => api.get("/careers", { allowUnauthenticated: true }),
+  getPortal: (companySlug, params) => api.get(`/careers/${companySlug}`, { params, allowUnauthenticated: true }),
+  getJobs: (companySlug, params) => api.get(`/careers/${companySlug}/jobs`, { params, allowUnauthenticated: true }),
+  getJob: (companySlug, slug, params) => api.get(`/careers/${companySlug}/jobs/${slug}`, { params, allowUnauthenticated: true }),
+  apply: (companySlug, jobId, payload) => api.post(`/careers/${companySlug}/jobs/${jobId}/apply`, payload, { allowUnauthenticated: true }),
+  track: (trackingCode, params) => api.get(`/careers/applications/${trackingCode}`, { params, allowUnauthenticated: true }),
 };

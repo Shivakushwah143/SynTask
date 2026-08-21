@@ -828,6 +828,7 @@ class JobDiscoveryService:
         query = {
             "company_id": company_id,
             "lifecycle_status": JobLifecycleStatus.PUBLISHED,
+            "visibility": JobVisibility.PUBLIC,
             "deleted_at": None,
         }
 
@@ -897,6 +898,7 @@ class JobDiscoveryService:
             "slug": slug,
             "company_id": company_id,
             "lifecycle_status": JobLifecycleStatus.PUBLISHED,
+            "visibility": JobVisibility.PUBLIC,
             "deleted_at": None
         })
 
@@ -908,6 +910,9 @@ class JobDiscoveryService:
         # Check if job is published
         if job.lifecycle_status != JobLifecycleStatus.PUBLISHED:
             errors.append("Job is not currently accepting applications")
+
+        if getattr(job, "visibility", None) != JobVisibility.PUBLIC:
+            errors.append("Job is not publicly available")
 
         # Check deadline
         if job.application_deadline and job.application_deadline < utc_now():
@@ -925,6 +930,39 @@ class JobDiscoveryService:
 
 class CareerPortalService:
     """Service for Career Portal operations."""
+
+    @staticmethod
+    def company_slug(company: Company) -> str:
+        """Build stable public career slug from company name and id suffix."""
+        base = slugify(company.name or "company") or "company"
+        suffix = str(company.id)[-6:] if getattr(company, "id", None) else ""
+        return f"{base}-{suffix}" if suffix else base
+
+    @staticmethod
+    async def list_companies_with_public_jobs() -> list[dict]:
+        """List companies that currently have published public jobs."""
+        jobs = await RecruitmentJob.find({
+            "lifecycle_status": JobLifecycleStatus.PUBLISHED,
+            "visibility": JobVisibility.PUBLIC,
+            "deleted_at": None,
+        }).to_list()
+        counts: dict[str, int] = {}
+        for job in jobs:
+            counts[job.company_id] = counts.get(job.company_id, 0) + 1
+
+        companies = []
+        for company_id, job_count in counts.items():
+            company = await Company.get(company_id)
+            if not company:
+                continue
+            companies.append({
+                "name": company.name,
+                "slug": CareerPortalService.company_slug(company),
+                "industry": company.industry,
+                "location": ", ".join([v for v in [company.city, company.state, company.country] if v]),
+                "job_count": job_count,
+            })
+        return sorted(companies, key=lambda item: item["name"].lower())
 
     @staticmethod
     async def resolve_company_id(company_id: Optional[str] = None, domain: Optional[str] = None, host: Optional[str] = None) -> str:
@@ -952,6 +990,15 @@ class CareerPortalService:
         raise HTTPException(status_code=404, detail="Career portal not found")
 
     @staticmethod
+    async def resolve_company_slug(company_slug: str) -> str:
+        """Resolve public company slug without exposing database ids in URLs."""
+        companies = await Company.find({}).to_list()
+        for company in companies:
+            if CareerPortalService.company_slug(company) == company_slug:
+                return str(company.id)
+        raise HTTPException(status_code=404, detail="Career portal not found")
+
+    @staticmethod
     async def get_portal_settings(company_id: str) -> dict:
         """Get career portal settings for a company."""
         company = await Company.get(company_id)
@@ -960,6 +1007,7 @@ class CareerPortalService:
 
         return {
             "company_name": company.name,
+            "company_slug": CareerPortalService.company_slug(company),
             "logo_url": getattr(company, "logo_url", None),
             "banner_url": getattr(company, "banner_url", None),
             "primary_color": getattr(company, "primary_color", None),
@@ -969,6 +1017,18 @@ class CareerPortalService:
             "hiring_process": getattr(company, "hiring_process", None),
             "is_active": getattr(company, "careers_portal_active", True),
         }
+
+
+class CompanySlugService:
+    """Compatibility wrapper for public career company slugs."""
+
+    @staticmethod
+    def slug_for(company: Company) -> str:
+        return CareerPortalService.company_slug(company)
+
+    @staticmethod
+    async def resolve_by_slug(company_slug: str) -> str:
+        return await CareerPortalService.resolve_company_slug(company_slug)
 
 
 class ApplicationService:

@@ -712,6 +712,12 @@ Suspended tenant enforcement occurs in `get_current_user`: non-superadmin users 
 | 429 | Rate limited | SlowAPI auth limits exceeded |
 | 500 | Internal error | Unhandled server-side failure |
 
+## Public Careers
+
+Public recruitment career endpoints do not require authentication. `GET /api/v1/careers` returns companies that currently have published, public jobs. `GET /api/v1/careers/{company_slug}` returns one company's career portal settings, and `GET /api/v1/careers/{company_slug}/jobs` plus `GET /api/v1/careers/{company_slug}/jobs/{job_slug}` return only that company's jobs where `lifecycle_status=published`, `visibility=public`, and `deleted_at=null`. Anonymous applications post to `/api/v1/careers/{company_slug}/jobs/{job_id}/apply`; the backend resolves the company from the slug and rejects cross-company, draft, paused, closed, archived, deleted, private, or expired jobs.
+
+Authenticated HR users can call `GET /api/v1/recruitment/career-page` to get their own company's public career route for verification. The endpoint is tenant-scoped by `current_user.company_id`; public listing/application endpoints never depend on `current_user`.
+
 ## Pagination
 List endpoints commonly use `skip` and `limit`; default page size is configured in `Settings.DEFAULT_PAGE_SIZE` and max size is `Settings.MAX_PAGE_SIZE`.
 

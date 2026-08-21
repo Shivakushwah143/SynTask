@@ -101,6 +101,7 @@ Repository search on 2026-07-18 found the following:
 | Employee | Complete work | Owned, assigned, participating or shared resources; task subagent support |
 | Client/signatory | Complete constrained external actions | Token/portal-scoped actions only |
 | Candidate | Discover/apply for jobs | Public careers and candidate-owned tracking |
+| Anonymous careers visitor | Browse published vacancies by company and apply | Public `/careers` directory and company-specific career pages require no login, expose only public published jobs, and resolve tenants by stable company slug rather than user session or database id. |
 
 Access is the intersection of authentication, active status, company, enabled module, role, hierarchy, ownership, membership, project authorization, mailbox/calendar consent where applicable, and capability. Backend enforcement is mandatory.
 

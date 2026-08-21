@@ -5,25 +5,18 @@ import { JOB_STATUSES } from "../constants";
 import { StatusBadge } from "./StatusBadge";
 import { labelize } from "../utils/data";
 
-/**
- * Dropdown that lets a user change a job's lifecycle status.
- * Shows every embedded lifecycle status (draft, pending_approval, approved,
- * published, paused, closed, archived) and calls `onChange(status)` on select.
- *
- * The menu is rendered through a portal to document.body so it is never
- * clipped by the table's overflow container.
- */
 export function JobStatusDropdown({ job, onChange, disabled = false, loading = false }) {
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState({});
   const triggerRef = useRef(null);
+  const menuRef = useRef(null);
   const current = job?.lifecycle_status || job?.status || "draft";
 
   const positionMenu = () => {
     const trigger = triggerRef.current;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
-    const menuWidth = 208; // w-52
+    const menuWidth = 208;
     const estimatedHeight = 300;
     const spaceBelow = window.innerHeight - rect.bottom;
     const openUp = spaceBelow < estimatedHeight && rect.top > spaceBelow;
@@ -41,7 +34,12 @@ export function JobStatusDropdown({ job, onChange, disabled = false, loading = f
   useEffect(() => {
     if (!open) return;
     const handleClickOutside = (event) => {
-      if (triggerRef.current && !triggerRef.current.contains(event.target)) {
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(event.target) &&
+        menuRef.current &&
+        !menuRef.current.contains(event.target)
+      ) {
         setOpen(false);
       }
     };
@@ -83,7 +81,7 @@ export function JobStatusDropdown({ job, onChange, disabled = false, loading = f
         {loading ? (
           <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Updating…
+            Updating...
           </span>
         ) : (
           <StatusBadge status={current} />
@@ -94,6 +92,7 @@ export function JobStatusDropdown({ job, onChange, disabled = false, loading = f
       {open &&
         createPortal(
           <div
+            ref={menuRef}
             role="listbox"
             style={menuStyle}
             className="fixed z-[100] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"

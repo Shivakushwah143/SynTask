@@ -262,6 +262,8 @@ function App() {
         <Route path="/msa/sign/:token" element={<PublicRouteAllowAuth><MSASign /></PublicRouteAllowAuth>} />
         */}
         <Route path="/careers" element={withBoundary(<CareersLandingPage />)} />
+        <Route path="/careers/:companySlug" element={withBoundary(<CareersLandingPage />)} />
+        <Route path="/careers/:companySlug/jobs/:slug" element={withBoundary(<CareerJobDetailsPage />)} />
         <Route path="/careers/jobs/:slug" element={withBoundary(<CareerJobDetailsPage />)} />
         <Route path="/careers/track" element={withBoundary(<CareerTrackingPage />)} />
         <Route path="/public/offers/:token" element={withBoundary(<CandidateOfferPage />)} />

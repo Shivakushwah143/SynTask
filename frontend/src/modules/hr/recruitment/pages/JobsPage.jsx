@@ -87,10 +87,12 @@ export default function JobsPage() {
   const [dialogJob, setDialogJob] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [archiveJob, setArchiveJob] = useState(null);
+  const [updatingStatusJobId, setUpdatingStatusJobId] = useState(null);
   
   const params = compactParams({ page, page_size: 20, search, ...filters });
   const query = useQuery(["recruitment", "jobs", params], () => recruitmentApi.getJobs(params), { keepPreviousData: true });
   const departmentsQuery = useQuery(["recruitment", "departments"], () => departmentsAPI.listDepartments(), { retry: 1 });
+  const careerPageQuery = useQuery(["recruitment", "career-page"], () => recruitmentApi.getCareerPage(), { retry: 1 });
   
   const jobs = toArray(query.data);
   const departments = Array.isArray(departmentsQuery.data) ? departmentsQuery.data : departmentsQuery.data?.departments || [];
@@ -136,13 +138,19 @@ export default function JobsPage() {
   const statusMutation = useMutation(
     ({ id, status }) => recruitmentApi.setJobStatus(id, status),
     {
+      onMutate: ({ id }) => {
+        setUpdatingStatusJobId(id);
+      },
       onSuccess: () => {
         toast.success("Job status updated successfully! 🎉");
         invalidate();
       },
       onError: (error) => {
         toast.error(error?.response?.data?.detail || "Failed to update job status");
-      }
+      },
+      onSettled: () => {
+        setUpdatingStatusJobId(null);
+      },
     }
   );
   
@@ -186,7 +194,7 @@ export default function JobsPage() {
         <JobStatusDropdown
           job={job}
           onChange={(status) => statusMutation.mutate({ id: idOf(job), status })}
-          loading={statusMutation.isLoading && statusMutation.variables?.id === idOf(job)}
+          loading={updatingStatusJobId === idOf(job)}
         />
       )
     },
@@ -268,7 +276,7 @@ export default function JobsPage() {
         </div>
       )
     },
-  ], [actionMutation, statusMutation]);
+  ], [actionMutation, statusMutation, updatingStatusJobId]);
 
   return (
     <div className="space-y-4 p-4 md:p-5">
@@ -288,6 +296,15 @@ export default function JobsPage() {
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
+              <Link
+                to={careerPageQuery.data?.path || "/careers"}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-white/15 px-3 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/25"
+              >
+                <Eye className="h-4 w-4" />
+                View Career Page
+              </Link>
               <button 
                 onClick={() => { setDialogJob(null); setDialogOpen(true); }}
                 className="inline-flex h-9 items-center gap-2 rounded-lg bg-white px-3 text-xs font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50"
