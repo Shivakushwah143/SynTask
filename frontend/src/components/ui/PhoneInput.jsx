@@ -39,7 +39,7 @@ export function PhoneInput({
   onPhoneNumberChange,
   required = false,
   disabled = false,
-  placeholder = '9876543210',
+  placeholder = 'Enter mobile number',
   error,
 }) {
   const isCombinedControlled = value !== undefined

@@ -9,6 +9,13 @@ import { ErrorState, LoadingState, EmptyRecruitmentState } from "../components/S
 import { StatusBadge } from "../components/StatusBadge";
 import { toArray, idOf } from "../utils/data";
 
+const errorMessage = (error, fallback = "Request failed") => {
+  const detail = error?.response?.data?.detail || error?.response?.data?.message || error?.message;
+  if (Array.isArray(detail)) return detail.map((item) => item?.msg || item?.message || String(item)).join(", ");
+  if (detail && typeof detail === "object") return detail.msg || detail.message || fallback;
+  return detail || fallback;
+};
+
 export function CareersLandingPage() {
   const { companySlug } = useParams();
   const [search, setSearch] = useState("");
@@ -23,6 +30,9 @@ export function CareersLandingPage() {
       <div className="min-h-screen bg-surface-muted p-4 sm:p-8 dark:bg-black">
         <div className="mx-auto max-w-6xl">
           <PageHeader title="Careers" description="Choose a company to view current openings." />
+          <div className="mb-5">
+            <Link to="/careers/track"><Button variant="secondary">Track application</Button></Link>
+          </div>
           {companiesQuery.isLoading ? <LoadingState /> : companiesQuery.isError ? <ErrorState onRetry={() => companiesQuery.refetch()} /> : companies.length === 0 ? <EmptyRecruitmentState title="No published jobs" description="Companies with open roles will appear here." /> : (
             <div className="grid gap-4 md:grid-cols-2">
               {companies.map((company) => (
@@ -45,7 +55,10 @@ export function CareersLandingPage() {
     <div className="min-h-screen bg-surface-muted p-4 sm:p-8 dark:bg-black">
       <div className="mx-auto max-w-6xl">
         <PageHeader title={`Careers at ${portalQuery.data?.company_name || "this company"}`} description="Explore open roles and apply with your resume." />
-        <input className="mb-5 w-full rounded-2xl border border-surface-border bg-white px-4 py-3 text-sm dark:border-gray-800 dark:bg-gray-950" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search jobs" />
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row">
+          <input className="w-full rounded-2xl border border-surface-border bg-white px-4 py-3 text-sm dark:border-gray-800 dark:bg-gray-950" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search jobs" />
+          <Link to="/careers/track" className="shrink-0"><Button variant="secondary">Track application</Button></Link>
+        </div>
         {jobsQuery.isLoading || portalQuery.isLoading ? <LoadingState /> : jobsQuery.isError || portalQuery.isError ? <ErrorState onRetry={() => { portalQuery.refetch(); jobsQuery.refetch(); }} /> : jobs.length === 0 ? <EmptyRecruitmentState title="No published jobs" description="Check again later." /> : (
           <div className="grid gap-4 md:grid-cols-2">
             {jobs.map((job) => (
@@ -70,6 +83,7 @@ export function CareerJobDetailsPage() {
       setTrackingCredentials({ code: res?.tracking_code || res?.trackingCode, pin: res?.tracking_pin || res?.trackingPin });
       toast.success("Application submitted");
     },
+    onError: (error) => toast.error(errorMessage(error, "Failed to submit application")),
   });
   const job = jobQuery.data;
   return (
@@ -79,14 +93,22 @@ export function CareerJobDetailsPage() {
           <EmptyRecruitmentState title="Application submitted" description="Keep these credentials safe. The PIN is shown only once." />
           <div className="grid gap-3 rounded-lg border border-surface-border bg-surface-muted p-4 text-sm dark:border-gray-800 dark:bg-gray-900 md:grid-cols-2">
             <div><p className="text-xs font-semibold uppercase text-text-muted">Tracking ID</p><p className="mt-1 font-mono text-lg font-bold text-text-primary">{trackingCredentials.code}</p></div>
-            <div><p className="text-xs font-semibold uppercase text-text-muted">Tracking PIN</p><p className="mt-1 font-mono text-lg font-bold text-text-primary">{trackingCredentials.pin}</p></div>
+            <div><p className="text-xs font-semibold uppercase text-text-muted">Temporary password</p><p className="mt-1 font-mono text-lg font-bold text-text-primary">{trackingCredentials.pin}</p></div>
           </div>
-          <Link to={`/careers/track?code=${encodeURIComponent(trackingCredentials.code || "")}`}><Button>Track application</Button></Link>
+          <div className="flex flex-wrap gap-3 print:hidden">
+            <Link to={`/careers/track?code=${encodeURIComponent(trackingCredentials.code || "")}`}><Button>Track application</Button></Link>
+            <Button type="button" variant="secondary" onClick={() => window.print()}>Print credentials</Button>
+          </div>
         </div>
       ) : <>
         <PageHeader title={job?.title || "Job"} description={`${job?.location || "Location"} · ${job?.employment_type || "Employment"}`} />
         <p className="mb-6 whitespace-pre-wrap text-sm text-text-muted">{job?.description || "No description provided."}</p>
-        <ApplyForm jobId={idOf(job)} loading={apply.isLoading} onSubmit={(jobId, data) => apply.mutate({ jobId, data })} />
+        <ApplyForm
+          jobId={idOf(job)}
+          loading={apply.isLoading}
+          error={apply.isError ? errorMessage(apply.error, "Failed to submit application") : ""}
+          onSubmit={(jobId, data) => apply.mutate({ jobId, data })}
+        />
       </>}
     </div></div>
   );
@@ -104,10 +126,10 @@ export function CareerTrackingPage() {
   return (
     <div className="min-h-screen bg-surface-muted p-4 sm:p-8 dark:bg-black">
       <div className="mx-auto max-w-2xl rounded-lg bg-white p-6 shadow-card dark:bg-gray-950">
-        <PageHeader title="Application Tracking" description="Enter your Tracking ID and PIN." />
+        <PageHeader title="Application Tracking" description="Enter your Tracking ID and temporary password." />
         <form className="mb-6 grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submit}>
           <input className="rounded-lg border border-surface-border px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-900" value={form.code} onChange={(event) => setForm((value) => ({ ...value, code: event.target.value }))} placeholder="Tracking ID" />
-          <input className="rounded-lg border border-surface-border px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-900" value={form.pin} onChange={(event) => setForm((value) => ({ ...value, pin: event.target.value }))} placeholder="Tracking PIN" />
+          <input className="rounded-lg border border-surface-border px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-900" value={form.pin} onChange={(event) => setForm((value) => ({ ...value, pin: event.target.value }))} placeholder="Temporary password" />
           <Button type="submit" disabled={!form.code.trim() || !form.pin.trim() || query.isLoading}>Track</Button>
         </form>
         {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState onRetry={() => query.refetch()} /> : query.data ? (
@@ -126,7 +148,7 @@ export function CareerTrackingPage() {
               ))}
             </ol>
           </div>
-        ) : <EmptyRecruitmentState title="Tracking credentials required" description="Use the Tracking ID and PIN shown after application submission." />}
+        ) : <EmptyRecruitmentState title="Tracking credentials required" description="Use the Tracking ID and temporary password shown after application submission." />}
       </div>
     </div>
   );

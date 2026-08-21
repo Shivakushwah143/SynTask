@@ -532,6 +532,7 @@ async def apply_to_company_job(
     job_id: str,
     full_name: str = Form(...),
     email: str = Form(...),
+    date_of_birth: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     current_company: Optional[str] = Form(None),
     experience_years: float = Form(0),
@@ -559,6 +560,7 @@ async def apply_to_company_job(
     data = ApplicationApplyRequest(
         full_name=full_name,
         email=email,
+        date_of_birth=date_of_birth,
         phone=phone,
         current_company=current_company,
         experience_years=experience_years,
@@ -581,6 +583,7 @@ async def apply_to_job(
     company_domain: Optional[str] = Query(None),
     full_name: str = Form(...),
     email: str = Form(...),
+    date_of_birth: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     current_company: Optional[str] = Form(None),
     experience_years: float = Form(0),
@@ -617,6 +620,7 @@ async def apply_to_job(
     data = ApplicationApplyRequest(
         full_name=full_name,
         email=email,
+        date_of_birth=date_of_birth,
         phone=phone,
         current_company=current_company,
         experience_years=experience_years,

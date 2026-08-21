@@ -363,6 +363,7 @@ class CareerPortalSettings(BaseModel):
 class ApplicationApplyRequest(BaseModel):
     full_name: str = Field(min_length=2, max_length=160)
     email: EmailStr
+    date_of_birth: Optional[str] = None
     phone: Optional[str] = None
     current_company: Optional[str] = None
     experience_years: float = Field(default=0, ge=0)
@@ -380,6 +381,7 @@ class ApplicationApplyResponse(BaseModel):
     application_id: str
     tracking_code: str
     tracking_pin: Optional[str] = None
+    temporary_user_id: Optional[str] = None
     job_id: str
     job_title: str
     candidate_email: str

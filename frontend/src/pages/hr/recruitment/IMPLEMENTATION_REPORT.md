@@ -288,7 +288,7 @@ applied_at, updated_at, deleted_at
 
 ## 9. Candidates Workspace — All Tabs on Live Data (new)
 
-The main Candidates page (`/hr/recruitment/candidates`) was previously showing placeholder "data will render here" for most tabs. It is now fully wired to the backend **workspace** endpoint (`GET /recruitment/candidates/{id}`), which returns `{candidate, applications, resumes, timeline, notes, attachments}`.
+The Candidates workspace is fully wired to the backend **workspace** endpoint (`GET /recruitment/candidates/{id}`), which returns `{candidate, applications, resumes, timeline, notes, attachments}`. The list remains at `/hr/recruitment/candidates`; selecting a candidate opens the dedicated detail page `/hr/recruitment/candidates/:candidateId` instead of a narrow drawer, while preserving the same tabs and actions.
 
 ### 9.1 What was fixed / enabled
 

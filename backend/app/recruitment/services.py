@@ -14,7 +14,7 @@ from app.core.security import get_password_hash, verify_password
 from app.models.company import Company
 from app.models.department import Department
 from app.models.user import User, UserRole, UserStatus
-from app.recruitment.models import (Application, Candidate, CandidateStatus,
+from app.recruitment.models import (Application, Candidate, CandidateJobScore, CandidatePortalCredential, CandidateStatus,
                                     CandidateNote, ImportStatus,
                                     InterviewDecision, InterviewFeedback,
                                     InterviewFeedbackStatus,
@@ -353,6 +353,11 @@ class RecruitmentService:
             application.status = target
             application.updated_at = utc_now()
             await application.save()
+        if target in {CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN, CandidateStatus.ARCHIVED, CandidateStatus.JOINED, CandidateStatus.EMPLOYEE}:
+            await CandidatePortalCredential.find({
+                "company_id": candidate.company_id,
+                "candidate_id": str(candidate.id),
+            }).delete()
         await record(candidate.company_id, "CandidateMoved", actor_id, candidate_id=str(candidate.id), payload={"from": old.value, "to": target.value})
         return candidate
 
@@ -658,9 +663,14 @@ class TrackingCodeService:
     @staticmethod
     async def verify_public_tracking(tracking_code: str, tracking_secret: str) -> Application:
         application = await Application.find_one({"tracking_code": tracking_code, "deleted_at": None})
-        if not application or not application.tracking_secret_hash:
+        credential = await CandidatePortalCredential.find_one({
+            "tracking_code": tracking_code,
+            "active": True,
+        })
+        secret_hash = credential.secret_hash if credential else getattr(application, "tracking_secret_hash", None)
+        if not application or not secret_hash:
             raise HTTPException(status_code=404, detail="Application not found")
-        if not verify_password((tracking_secret or "").strip().upper(), application.tracking_secret_hash):
+        if not verify_password((tracking_secret or "").strip().upper(), secret_hash):
             raise HTTPException(status_code=404, detail="Application not found")
         return application
 
@@ -1099,6 +1109,7 @@ class ApplicationService:
                 source="portal",
                 email=normalized_email,
                 full_name=data.full_name,
+                date_of_birth=data.date_of_birth,
                 phone=data.phone,
                 current_company=data.current_company,
                 experience_years=data.experience_years,
@@ -1115,12 +1126,16 @@ class ApplicationService:
         else:
             # Update existing candidate with resume if they don't have one
             candidate = await Candidate.get(candidate_id)
+            if candidate and data.date_of_birth and not candidate.date_of_birth:
+                candidate.date_of_birth = data.date_of_birth
+                await candidate.save()
             if candidate and not candidate.resume_id:
                 candidate.resume_id = resume_result.resume_id
                 await candidate.save()
 
         # Generate tracking code
         tracking_code = await TrackingCodeService.generate_tracking_code(company_id)
+        tracking_secret = TrackingCodeService.generate_tracking_secret()
 
         # Create application
         if await ApplicationRepository.find_existing(company_id, candidate_id, str(job.id)):
@@ -1138,6 +1153,15 @@ class ApplicationService:
             tracking_secret_created_at=utc_now(),
         )
         await application.insert()
+        credential = CandidatePortalCredential(
+            company_id=company_id,
+            candidate_id=candidate_id,
+            application_id=str(application.id),
+            job_id=str(job.id),
+            tracking_code=tracking_code,
+            secret_hash=get_password_hash(tracking_secret),
+        )
+        await credential.insert()
         await JobRepository.update_counters(str(job.id), "total_applications", 1)
 
         await record(
@@ -1173,6 +1197,7 @@ class ApplicationService:
             application_id=tracking_code,
             tracking_code=tracking_code,
             tracking_pin=tracking_secret,
+            temporary_user_id=tracking_code,
             job_id=str(job.id),
             job_title=job.title,
             candidate_email=normalized_email,
@@ -1626,6 +1651,10 @@ class CandidateWorkspaceService:
         candidate.status = CandidateStatus.ARCHIVED
         candidate.updated_at = utc_now()
         await candidate.save()
+        await CandidatePortalCredential.find({
+            "company_id": company_id,
+            "candidate_id": candidate_id,
+        }).delete()
         await record(company_id, "CandidateArchived", actor_id, candidate_id=candidate_id)
         return candidate
 

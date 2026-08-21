@@ -186,6 +186,7 @@ class Candidate(Document):
     source: str = "portal"
     full_name: str
     email: Indexed(str)
+    date_of_birth: Optional[str] = None
     phone: Optional[str] = None
     current_company: Optional[str] = None
     experience_years: float = 0
@@ -206,6 +207,26 @@ class Candidate(Document):
     class Settings:
         name = "recruitment_candidates"
         indexes = [IndexModel([("company_id", ASCENDING), ("email", ASCENDING)], unique=True), IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)])]
+
+
+class CandidatePortalCredential(Document):
+    """Temporary public tracking credential for one candidate application."""
+    company_id: Indexed(str)
+    candidate_id: Indexed(str)
+    application_id: Indexed(str)
+    job_id: Indexed(str)
+    tracking_code: Indexed(str, unique=True)
+    secret_hash: str
+    active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: Optional[datetime] = None
+
+    class Settings:
+        name = "recruitment_candidate_portal_credentials"
+        indexes = [
+            IndexModel([("company_id", ASCENDING), ("candidate_id", ASCENDING), ("active", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("application_id", ASCENDING)], unique=True),
+        ]
 
 
 class Application(Document):

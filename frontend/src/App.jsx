@@ -336,6 +336,7 @@ function App() {
               <Route path="jobs/:jobId" element={withBoundary(<RecruitmentJobDetailPage />)} />
               <Route path="inbox" element={withBoundary(<RecruitmentInboxPage />)} />
               <Route path="candidates" element={withBoundary(<RecruitmentCandidatesPage />)} />
+              <Route path="candidates/:candidateId" element={withBoundary(<RecruitmentCandidatesPage />)} />
               <Route path="employees" element={withBoundary(<RecruitmentEmployeesPage />)} />
               <Route path="employees/:employeeId" element={withBoundary(<EmployeeDetailPage />)} />
               <Route path="resume-pool" element={withBoundary(<RecruitmentResumePoolPage />)} />

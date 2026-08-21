@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
+import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { 
   Archive, 
@@ -453,6 +454,8 @@ const AssignmentTabContent = ({ candidate, onAssign, onAssignJob }) => {
 // ============================================================
 export default function CandidatesPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { candidateId: routeCandidateId } = useParams();
   const canManageHrDocuments = useCanManageHrDocuments();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -465,32 +468,37 @@ export default function CandidatesPage() {
   const [resumeUploadMode, setResumeUploadMode] = useState(false);
   
   const params = compactParams({ page, page_size: 20, search, ...filters });
+  const selectedId = routeCandidateId || idOf(selected);
+  const closeCandidate = () => {
+    setSelected(null);
+    if (routeCandidateId) navigate("/hr/recruitment/candidates");
+  };
   const query = useQuery(["recruitment", "candidates", params], () => recruitmentApi.getCandidates(params), { keepPreviousData: true });
-  const detail = useQuery(["recruitment", "candidate", idOf(selected)], () => recruitmentApi.getCandidate(idOf(selected)), { enabled: !!selected });
-  const timeline = useQuery(["recruitment", "candidateTimeline", idOf(selected)], () => recruitmentApi.getCandidateTimeline(idOf(selected)), { enabled: !!selected });
+  const detail = useQuery(["recruitment", "candidate", selectedId], () => recruitmentApi.getCandidate(selectedId), { enabled: !!selectedId });
+  const timeline = useQuery(["recruitment", "candidateTimeline", selectedId], () => recruitmentApi.getCandidateTimeline(selectedId), { enabled: !!selectedId });
   const interviews = useQuery(
-    ["recruitment", "candidateInterviews", idOf(selected)],
-    () => recruitmentApi.getInterviews({ candidate_id: idOf(selected), page_size: 20 }),
-    { enabled: !!selected }
+    ["recruitment", "candidateInterviews", selectedId],
+    () => recruitmentApi.getInterviews({ candidate_id: selectedId, page_size: 20 }),
+    { enabled: !!selectedId }
   );
   
   const invalidate = () => qc.invalidateQueries(["recruitment", "candidates"]);
   const reprocessResume = useMutation((resumeId) => recruitmentApi.processResume(resumeId, true), {
     onSuccess: () => {
       toast.success("Resume reprocessed");
-      qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]);
+      qc.invalidateQueries(["recruitment", "candidate", selectedId]);
     },
     onError: (error) => toast.error(error?.response?.data?.detail || "Failed to reprocess resume"),
   });
   
   const assign = useMutation(
-    (payload) => recruitmentApi.assignCandidate(idOf(selected), payload), 
+    (payload) => recruitmentApi.assignCandidate(selectedId, payload), 
     { 
       onSuccess: () => { 
         toast.success("Recruiter assigned successfully! 👤"); 
         setAssignOpen(false); 
         invalidate(); 
-        qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]);
+        qc.invalidateQueries(["recruitment", "candidate", selectedId]);
       },
       onError: (error) => {
         toast.error(error?.response?.data?.detail || "Failed to assign recruiter");
@@ -499,20 +507,20 @@ export default function CandidatesPage() {
   );
 
   const assignJob = useMutation(
-    (payload) => recruitmentApi.assignJobToCandidate(idOf(selected), payload),
+    (payload) => recruitmentApi.assignJobToCandidate(selectedId, payload),
     {
       onSuccess: (response) => {
         const data = response?.data;
         if (data?.hired) {
           toast.success(`${candidate?.full_name || candidate?.fullName || "Candidate"} hired as ${data.designation || data.job_title} — moved to Employees 🎉`);
-          setSelected(null);
+          closeCandidate();
         } else {
           toast.success(`${candidate?.full_name || candidate?.fullName || "Candidate"} assigned to ${data?.job_title || "job"} 🎯`);
         }
         setAssignJobOpen(false);
         invalidate();
         qc.invalidateQueries(["recruitment", "employees"]);
-        qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]);
+        qc.invalidateQueries(["recruitment", "candidate", selectedId]);
       },
       onError: (error) => {
         toast.error(error?.response?.data?.detail || "Failed to assign job");
@@ -526,7 +534,7 @@ export default function CandidatesPage() {
       onSuccess: () => { 
         toast.success("Candidate archived successfully! 📦"); 
         invalidate(); 
-        setSelected(null);
+        closeCandidate();
       },
       onError: (error) => {
         toast.error(error?.response?.data?.detail || "Failed to archive candidate");
@@ -535,13 +543,13 @@ export default function CandidatesPage() {
   );
   
   const addNote = useMutation(
-    (body) => recruitmentApi.addCandidateNote(idOf(selected), { body }), 
+    (body) => recruitmentApi.addCandidateNote(selectedId, { body }), 
     { 
       onSuccess: () => { 
         toast.success("Note added successfully! 📝"); 
         setNote(""); 
-        qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]); 
-        qc.invalidateQueries(["recruitment", "candidateTimeline", idOf(selected)]);
+        qc.invalidateQueries(["recruitment", "candidate", selectedId]); 
+        qc.invalidateQueries(["recruitment", "candidateTimeline", selectedId]);
       },
       onError: (error) => {
         toast.error(error?.response?.data?.detail || "Failed to add note");
@@ -555,18 +563,18 @@ export default function CandidatesPage() {
   const handleFileChange = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file || !selected) return;
+    if (!file || !selectedId) return;
     setUploading(true);
     try {
       if (resumeUploadMode) {
-        await recruitmentApi.uploadCandidateResume(idOf(selected), file);
+        await recruitmentApi.uploadCandidateResume(selectedId, file);
         toast.success("Resume uploaded and parsed");
       } else {
-        await recruitmentApi.addCandidateAttachment(idOf(selected), file);
+        await recruitmentApi.addCandidateAttachment(selectedId, file);
         toast.success("Attachment added successfully");
       }
-      qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]);
-      qc.invalidateQueries(["recruitment", "candidateTimeline", idOf(selected)]);
+      qc.invalidateQueries(["recruitment", "candidate", selectedId]);
+      qc.invalidateQueries(["recruitment", "candidateTimeline", selectedId]);
     } catch (error) {
       toast.error(error?.response?.data?.detail || "Failed to upload file");
     } finally {
@@ -581,7 +589,7 @@ export default function CandidatesPage() {
     const phone = candidate?.phone || "";
     const location = candidate?.location || "";
     const skills = Array.isArray(candidate?.skills) ? candidate.skills.join(", ") : candidate?.skills || "";
-    const link = `${window.location.origin}/hr/recruitment/candidates`;
+    const link = `${window.location.origin}/hr/recruitment/candidates/${selectedId || ""}`;
     const text = [
       `${name}`,
       email && `Email: ${email}`,
@@ -616,7 +624,7 @@ export default function CandidatesPage() {
       render: (row) => (
         <button 
           className="font-semibold text-indigo-600 transition hover:text-indigo-700 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300" 
-          onClick={() => { setSelected(row); setActiveTab("overview"); }}
+          onClick={() => { setActiveTab("overview"); navigate(`/hr/recruitment/candidates/${idOf(row)}`); }}
         >
           {row.full_name || row.fullName || row.name || "Candidate"}
         </button>
@@ -670,12 +678,14 @@ export default function CandidatesPage() {
         </div>
       ) 
     },
-  ], [archive]);
+  ], [archive, navigate]);
 
   const candidate = detail.data?.candidate || selected;
 
   return (
     <div className="space-y-4 p-4 md:p-5">
+      {!routeCandidateId ? (
+      <>
       {/* ============================================================ */}
       {/* HERO SECTION - Gradient with Glassmorphism */}
       {/* ============================================================ */}
@@ -824,15 +834,18 @@ export default function CandidatesPage() {
           )}
         </div>
       </div>
+      </>
+      ) : null}
 
       {/* ============================================================ */}
       {/* CANDIDATE DRAWER */}
       {/* ============================================================ */}
       <RecruitmentDrawer 
-        open={!!selected} 
+        open={!!selectedId} 
         title={candidate?.full_name || candidate?.fullName || "Candidate"} 
         description={candidate?.email || "No email provided"} 
-        onClose={() => setSelected(null)}
+        onClose={closeCandidate}
+        mode={routeCandidateId ? "page" : "drawer"}
       >
         <div className="grid gap-6 lg:grid-cols-[1fr_240px]">
           {/* Main Content */}
@@ -936,7 +949,7 @@ export default function CandidatesPage() {
             {/* HR Documents Tab (Phase 2) — combines resume + structured HR docs */}
             {activeTab === "documents" && (
               <DocumentsTab
-                candidateId={idOf(selected)}
+                candidateId={selectedId}
                 ownerName={candidate?.full_name || candidate?.fullName || "this candidate"}
                 canManage={canManageHrDocuments}
               />
