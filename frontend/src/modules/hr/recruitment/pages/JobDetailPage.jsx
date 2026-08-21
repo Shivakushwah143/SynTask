@@ -12,12 +12,14 @@ import {
   CheckCircle,
   Clock,
   Copy,
+  Download,
   FileText,
   Globe,
   ListChecks,
   MapPin,
   Pencil,
   Target,
+  UserX,
   Users,
   Wallet,
 } from "lucide-react";
@@ -68,6 +70,23 @@ const ProseBlock = ({ title, children }) => {
   );
 };
 
+const fileUrl = (value) => {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith("/uploads/")) return `/api/v1${value}`;
+  if (value.startsWith("/api/")) return value;
+  return value;
+};
+
+const CANDIDATE_ACTIONS = [
+  { status: "screening", label: "Screening" },
+  { status: "shortlisted", label: "Shortlist" },
+  { status: "interview_1", label: "Interview" },
+  { status: "offer_sent", label: "Offer" },
+  { status: "joined", label: "Joined" },
+  { status: "withdrawn", label: "Withdraw" },
+];
+
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
@@ -95,6 +114,11 @@ export default function JobDetailPage() {
     () => recruitmentApi.getCandidateRankings(jobId),
     { enabled: !!jobId }
   );
+  const applicationsQuery = useQuery(
+    ["recruitment", "jobApplications", jobId],
+    () => recruitmentApi.getJobApplications(jobId),
+    { enabled: !!jobId, retry: 1 }
+  );
 
   const job = jobQuery.data;
   const departments = Array.isArray(departmentsQuery.data)
@@ -104,7 +128,11 @@ export default function JobDetailPage() {
 
   const invalidate = () => {
     qc.invalidateQueries(["recruitment", "job", jobId]);
+    qc.invalidateQueries(["recruitment", "jobApplications", jobId]);
     qc.invalidateQueries(["recruitment", "jobs"]);
+    qc.invalidateQueries(["recruitment", "candidates"]);
+    qc.invalidateQueries(["recruitment", "dashboard"]);
+    qc.invalidateQueries(["recruitment", "rankings", jobId]);
   };
 
   const statusMutation = useMutation(
@@ -172,6 +200,20 @@ export default function JobDetailPage() {
         rankingsQuery.refetch();
       },
       onError: (error) => toast.error(error?.response?.data?.detail || "Failed to shortlist candidates"),
+    }
+  );
+  const candidateActionMutation = useMutation(
+    ({ candidateId, action, status }) => {
+      if (action === "reject") return recruitmentApi.rejectCandidate(candidateId);
+      if (action === "archive") return recruitmentApi.archiveCandidate(candidateId);
+      return recruitmentApi.moveCandidate(candidateId, status);
+    },
+    {
+      onSuccess: () => {
+        toast.success("Candidate updated");
+        invalidate();
+      },
+      onError: (error) => toast.error(error?.response?.data?.detail || "Candidate action failed"),
     }
   );
 
@@ -432,6 +474,71 @@ export default function JobDetailPage() {
             </p>
           ) : null}
         </div>
+      </SectionCard>
+
+      <SectionCard icon={Users} title="Applied Candidates">
+        {applicationsQuery.isLoading ? (
+          <div className="flex justify-center py-8"><div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" /></div>
+        ) : applicationsQuery.isError ? (
+          <div className="py-8 text-center">
+            <p className="mb-3 text-sm text-rose-600">{applicationsQuery.error?.response?.data?.detail || "Could not load applied candidates"}</p>
+            <Button variant="secondary" size="sm" onClick={() => applicationsQuery.refetch()}>Retry</Button>
+          </div>
+        ) : (applicationsQuery.data?.items || []).length ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <tr>
+                  <th className="py-2 pr-3">Candidate</th>
+                  <th className="py-2 pr-3">Applied</th>
+                  <th className="py-2 pr-3">Stage</th>
+                  <th className="py-2 pr-3">Resume</th>
+                  <th className="py-2 pr-3">Recruiter</th>
+                  <th className="py-2 pr-3">Score</th>
+                  <th className="py-2 pr-3">Interview / Offer</th>
+                  <th className="py-2 pr-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(applicationsQuery.data?.items || []).map((item) => {
+                  const candidate = item.candidate || {};
+                  const candidateId = idOf(candidate);
+                  const resumeHref = fileUrl(item.resume?.url);
+                  const busy = candidateActionMutation.isLoading && candidateActionMutation.variables?.candidateId === candidateId;
+                  return (
+                    <tr key={item.application_id} className="border-t border-gray-100 align-top dark:border-gray-800">
+                      <td className="py-3 pr-3">
+                        <Link to="/hr/recruitment/candidates" className="font-semibold text-indigo-600 hover:underline dark:text-indigo-400">{candidate.full_name || candidate.fullName || candidate.email || candidateId}</Link>
+                        <p className="text-xs text-gray-500">{candidate.email}</p>
+                        <p className="font-mono text-[11px] text-gray-400">{item.tracking_code}</p>
+                      </td>
+                      <td className="py-3 pr-3">{fmtDate(item.applied_at)}</td>
+                      <td className="py-3 pr-3"><StatusBadge status={item.status || candidate.status} /></td>
+                      <td className="py-3 pr-3">{resumeHref ? <a className="inline-flex items-center gap-1 text-indigo-600 hover:underline dark:text-indigo-400" href={resumeHref} target="_blank" rel="noreferrer"><Download className="h-3.5 w-3.5" /> Resume</a> : "—"}</td>
+                      <td className="py-3 pr-3">{item.recruiter?.name || "Unassigned"}</td>
+                      <td className="py-3 pr-3">{item.score?.score?.overall_score ?? "—"}{item.score?.recommendation ? <p className="text-xs text-gray-500">{labelize(item.score.recommendation)}</p> : null}</td>
+                      <td className="py-3 pr-3">
+                        <p>{item.interview ? labelize(item.interview.status || "scheduled") : "No interview"}</p>
+                        <p className="text-xs text-gray-500">{item.offer ? `Offer: ${labelize(item.offer.status)}` : "No offer"}</p>
+                      </td>
+                      <td className="min-w-64 py-3 pr-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {CANDIDATE_ACTIONS.map((action) => (
+                            <Button key={action.status} size="sm" variant="secondary" disabled={busy} onClick={() => candidateActionMutation.mutate({ candidateId, status: action.status })}>{action.label}</Button>
+                          ))}
+                          <Button size="sm" variant="secondary" disabled={busy} onClick={() => candidateActionMutation.mutate({ candidateId, action: "reject" })}><UserX className="h-3.5 w-3.5" /> Reject</Button>
+                          <Button size="sm" variant="secondary" disabled={busy} onClick={() => candidateActionMutation.mutate({ candidateId, action: "archive" })}>Archive</Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">No candidates have applied for this job yet.</p>
+        )}
       </SectionCard>
 
       {/* ============================================================ */}

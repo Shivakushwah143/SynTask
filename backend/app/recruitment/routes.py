@@ -140,6 +140,11 @@ class SyncStatusResponse(BaseModel):
     resolved_company_name: Optional[str] = None
 
 
+class PublicTrackingRequest(BaseModel):
+    tracking_code: str
+    tracking_pin: str
+
+
 # =============================================================================
 # Job Engine API Endpoints (Phase 2)
 # =============================================================================
@@ -254,6 +259,12 @@ async def list_jobs(
         page_size=page_size,
         has_next=(page * page_size) < total,
     )
+
+
+@router.get("/jobs/{job_id}/applications")
+async def list_job_applications(job_id: str, user: User = Depends(require_candidate_view)):
+    """List candidates who applied to one job."""
+    return {"items": await CandidateWorkspaceService.list_for_job(company(user), job_id)}
 
 
 # Get Job by ID
@@ -625,19 +636,24 @@ async def apply_to_job(
 async def get_application_status(
     tracking_code: str,
     request: Request,
+    tracking_pin: Optional[str] = Query(None),
     company_id: Optional[str] = Query(None),
     company_domain: Optional[str] = Query(None),
 ):
     """Get application status by tracking code."""
+    if tracking_pin:
+        return await ApplicationService.get_public_application_status(tracking_code, tracking_pin)
     if company_id or company_domain:
         resolved_company_id = await CareerPortalService.resolve_company_id(company_id, company_domain, request.headers.get("host"))
     else:
-        application = await Application.find_one({"tracking_code": tracking_code, "deleted_at": None})
-        if not application:
-            raise HTTPException(status_code=404, detail="Application not found")
-        resolved_company_id = application.company_id
+        raise HTTPException(status_code=401, detail="Tracking PIN is required")
 
     return await ApplicationService.get_application_status(tracking_code, resolved_company_id)
+
+
+@careers_router.post("/applications/track", response_model=ApplicationStatusResponse)
+async def track_application(payload: PublicTrackingRequest):
+    return await ApplicationService.get_public_application_status(payload.tracking_code, payload.tracking_pin)
 
 
 # Legacy endpoints for backward compatibility

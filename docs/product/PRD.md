@@ -102,6 +102,7 @@ Repository search on 2026-07-18 found the following:
 | Client/signatory | Complete constrained external actions | Token/portal-scoped actions only |
 | Candidate | Discover/apply for jobs | Public careers and candidate-owned tracking |
 | Anonymous careers visitor | Browse published vacancies by company and apply | Public `/careers` directory and company-specific career pages require no login, expose only public published jobs, and resolve tenants by stable company slug rather than user session or database id. |
+| Candidate with submitted application | Track own hiring progress without employee login | Application submission returns a tracking ID and one-time PIN. Public tracking requires both values and shows only public-safe progress milestones, not HR notes or internal record ids. |
 
 Access is the intersection of authentication, active status, company, enabled module, role, hierarchy, ownership, membership, project authorization, mailbox/calendar consent where applicable, and capability. Backend enforcement is mandatory.
 

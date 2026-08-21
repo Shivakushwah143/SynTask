@@ -10,7 +10,7 @@ from fastapi import HTTPException, UploadFile, status
 from pathlib import Path
 from slugify import slugify
 
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash, verify_password
 from app.models.company import Company
 from app.models.department import Department
 from app.models.user import User, UserRole, UserStatus
@@ -148,6 +148,8 @@ class RecruitmentService:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Candidate is already assigned to this job")
 
         tracking_code = await TrackingCodeService.generate_tracking_code(company_id)
+        tracking_secret = TrackingCodeService.generate_tracking_secret()
+        tracking_secret = TrackingCodeService.generate_tracking_secret()
         application = Application(
             company_id=company_id,
             candidate_id=candidate_id,
@@ -155,6 +157,8 @@ class RecruitmentService:
             source=source or "manual",
             status=CandidateStatus.NEW,
             tracking_code=tracking_code,
+            tracking_secret_hash=get_password_hash(tracking_secret),
+            tracking_secret_created_at=utc_now(),
         )
         await application.insert()
         await JobRepository.update_counters(job_id, "total_applications", 1)
@@ -182,8 +186,9 @@ class RecruitmentService:
         if hired:
             message = f"{candidate.full_name} hired as {designation or job.title} — moved to Employees"
         return {
-            "application_id": str(application.id),
+            "application_id": tracking_code,
             "tracking_code": tracking_code,
+            "tracking_pin": tracking_secret,
             "candidate_id": candidate_id,
             "candidate_name": candidate.full_name,
             "job_id": job_id,
@@ -343,6 +348,11 @@ class RecruitmentService:
         old = candidate.status
         candidate.status, candidate.updated_at = target, utc_now()
         await candidate.save()
+        applications = await ApplicationRepository.list_for_candidate(candidate.company_id, str(candidate.id))
+        for application in applications:
+            application.status = target
+            application.updated_at = utc_now()
+            await application.save()
         await record(candidate.company_id, "CandidateMoved", actor_id, candidate_id=str(candidate.id), payload={"from": old.value, "to": target.value})
         return candidate
 
@@ -631,6 +641,12 @@ class TrackingCodeService:
         raise HTTPException(status_code=500, detail="Unable to generate tracking code")
 
     @staticmethod
+    def generate_tracking_secret() -> str:
+        """Generate one-time candidate tracking PIN shown only after apply."""
+        alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        return "-".join("".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(2))
+
+    @staticmethod
     async def get_by_tracking_code(tracking_code: str, company_id: str) -> Optional[Application]:
         """Get application by tracking code."""
         return await Application.find_one({
@@ -638,6 +654,15 @@ class TrackingCodeService:
             "company_id": company_id,
             "deleted_at": None
         })
+
+    @staticmethod
+    async def verify_public_tracking(tracking_code: str, tracking_secret: str) -> Application:
+        application = await Application.find_one({"tracking_code": tracking_code, "deleted_at": None})
+        if not application or not application.tracking_secret_hash:
+            raise HTTPException(status_code=404, detail="Application not found")
+        if not verify_password((tracking_secret or "").strip().upper(), application.tracking_secret_hash):
+            raise HTTPException(status_code=404, detail="Application not found")
+        return application
 
 
 class DuplicateDetectionService:
@@ -1109,6 +1134,8 @@ class ApplicationService:
             status=CandidateStatus.NEW,
             current_resume_id=resume_result.resume_id,
             tracking_code=tracking_code,
+            tracking_secret_hash=get_password_hash(tracking_secret),
+            tracking_secret_created_at=utc_now(),
         )
         await application.insert()
         await JobRepository.update_counters(str(job.id), "total_applications", 1)
@@ -1143,8 +1170,9 @@ class ApplicationService:
         )
 
         return ApplicationApplyResponse(
-            application_id=str(application.id),
+            application_id=tracking_code,
             tracking_code=tracking_code,
+            tracking_pin=tracking_secret,
             job_id=str(job.id),
             job_title=job.title,
             candidate_email=normalized_email,
@@ -1153,25 +1181,54 @@ class ApplicationService:
         )
 
     @staticmethod
-    async def get_application_status(tracking_code: str, company_id: str) -> ApplicationStatusResponse:
-        """Get application status by tracking code."""
-        application = await TrackingCodeService.get_by_tracking_code(tracking_code, company_id)
+    @staticmethod
+    def public_tracking_steps(status_value: str) -> list[dict]:
+        steps = [
+            ("new", "Application Received"),
+            ("screening", "Screening"),
+            ("shortlisted", "Shortlisted"),
+            ("interview_1", "Interview"),
+            ("offer_sent", "Offer"),
+            ("joined", "Joined"),
+        ]
+        aliases = {"interview_2": "interview_1", "offer_accepted": "offer_sent", "employee": "joined"}
+        terminal = {"rejected": "Rejected", "withdrawn": "Withdrawn", "archived": "Archived"}
+        normalized = aliases.get(status_value, status_value)
+        active_index = next((index for index, (key, _) in enumerate(steps) if key == normalized), 0)
+        timeline = []
+        for index, (key, label) in enumerate(steps):
+            state = "completed" if index < active_index else "current" if index == active_index else "pending"
+            timeline.append({"key": key, "label": label, "state": state})
+        if status_value in terminal:
+            timeline.append({"key": status_value, "label": terminal[status_value], "state": "current"})
+        return timeline
 
+    @staticmethod
+    async def get_application_status(tracking_code: str, company_id: str, application: Optional[Application] = None) -> ApplicationStatusResponse:
+        """Get public-safe application status."""
+        application = application or await TrackingCodeService.get_by_tracking_code(tracking_code, company_id)
         if not application:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Application not found"
-            )
-
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
         job = await RecruitmentJob.get(application.job_id)
+        status_value = application.status.value if hasattr(application.status, "value") else str(application.status)
+        timeline = ApplicationService.public_tracking_steps(status_value)
+        current_step = next((step["label"] for step in timeline if step["state"] == "current"), timeline[0]["label"])
 
         return ApplicationStatusResponse(
             tracking_code=application.tracking_code,
             job_title=job.title if job else "Unknown",
-            status=application.status.value,
+            status=status_value,
+            status_label=status_value.replace("_", " ").title(),
+            current_step=current_step,
+            timeline=timeline,
             applied_at=application.applied_at,
             last_updated=application.updated_at,
         )
+
+    @staticmethod
+    async def get_public_application_status(tracking_code: str, tracking_secret: str) -> ApplicationStatusResponse:
+        application = await TrackingCodeService.verify_public_tracking(tracking_code, tracking_secret)
+        return await ApplicationService.get_application_status(application.tracking_code, application.company_id, application)
 
 
 # =============================================================================
@@ -1595,6 +1652,45 @@ class CandidateWorkspaceService:
         missing = [skill for skill in required if skill.lower() not in candidate_skills]
         percentage = round((len(matched) / len(required)) * 100, 2) if required else 100.0
         return {"matchedSkills": matched, "missingSkills": missing, "matchPercentage": percentage}
+
+    @staticmethod
+    async def list_for_job(company_id: str, job_id: str) -> list[dict]:
+        job = await JobService.get_job(job_id, company_id)
+        applications = await Application.find({"company_id": company_id, "job_id": str(job.id), "deleted_at": None}).sort("-applied_at").to_list()
+        items = []
+        for application in applications:
+            candidate = await Candidate.get(application.candidate_id)
+            if not candidate or candidate.company_id != company_id or candidate.deleted_at is not None:
+                continue
+            resume = None
+            resume_id = application.current_resume_id or candidate.resume_id
+            if resume_id:
+                resume_doc = await Resume.get(resume_id)
+                if resume_doc and resume_doc.company_id == company_id and resume_doc.deleted_at is None:
+                    resume = {"id": str(resume_doc.id), "filename": resume_doc.original_filename, "url": resume_doc.storage_url, "mime_type": resume_doc.mime_type}
+            recruiter = None
+            recruiter_id = application.assigned_recruiter_id or candidate.assigned_recruiter_id
+            if recruiter_id:
+                recruiter_user = await User.get(recruiter_id)
+                if recruiter_user and recruiter_user.company_id == company_id:
+                    recruiter = {"id": str(recruiter_user.id), "name": f"{recruiter_user.first_name or ''} {recruiter_user.last_name or ''}".strip() or recruiter_user.email, "email": recruiter_user.email}
+            score_doc = await CandidateJobScore.find_one({"company_id": company_id, "candidate_id": str(candidate.id), "job_id": str(job.id), "deleted_at": None})
+            score = {"id": str(score_doc.id), "score": score_doc.score, "recommendation": score_doc.score.get("recommendation")} if score_doc else None
+            latest_interview = await Interview.find({"company_id": company_id, "candidate_id": str(candidate.id), "job_id": str(job.id), "deleted_at": None}).sort("-schedule_at").first_or_none()
+            offer = await Offer.find_one({"company_id": company_id, "candidate_id": str(candidate.id), "job_id": str(job.id), "deleted_at": None})
+            items.append({
+                "application_id": str(application.id),
+                "tracking_code": application.tracking_code,
+                "applied_at": application.applied_at,
+                "status": application.status.value if hasattr(application.status, "value") else str(application.status),
+                "candidate": CandidateWorkspaceService.candidate_payload(candidate),
+                "resume": resume,
+                "recruiter": recruiter,
+                "score": score,
+                "interview": InterviewService.payload(latest_interview) if latest_interview else None,
+                "offer": {"id": str(offer.id), "status": offer.status, "offer_number": offer.offer_number} if offer else None,
+            })
+        return items
 
 
 class CandidateAssignmentService:

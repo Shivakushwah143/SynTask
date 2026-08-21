@@ -379,6 +379,7 @@ class ApplicationApplyRequest(BaseModel):
 class ApplicationApplyResponse(BaseModel):
     application_id: str
     tracking_code: str
+    tracking_pin: Optional[str] = None
     job_id: str
     job_title: str
     candidate_email: str
@@ -393,6 +394,9 @@ class ApplicationStatusResponse(BaseModel):
     tracking_code: str
     job_title: str
     status: str
+    status_label: str
+    current_step: str
+    timeline: list[dict]
     applied_at: datetime
     last_updated: datetime
 

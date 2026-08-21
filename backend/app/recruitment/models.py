@@ -218,6 +218,8 @@ class Application(Document):
     assigned_recruiter_id: Optional[str] = None
     current_resume_id: Optional[str] = None
     tracking_code: Indexed(str, unique=True)
+    tracking_secret_hash: Optional[str] = None
+    tracking_secret_created_at: Optional[datetime] = None
     applied_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     deleted_at: Optional[datetime] = None

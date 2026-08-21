@@ -4,6 +4,8 @@ Database: `alphanexis_task_management`
 
 This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **58 unique MongoDB collection names** across **63 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
 
+Recruitment models under `backend/app/recruitment/models.py` also define tenant-scoped collections. `recruitment_applications` stores candidate job applications with `company_id`, `candidate_id`, `job_id`, `status`, globally unique `tracking_code`, hashed `tracking_secret_hash`, `tracking_secret_created_at`, `applied_at`, `updated_at`, and `deleted_at`. Public candidate tracking verifies `tracking_code` plus PIN against the hash and never exposes the hash or MongoDB id.
+
 ## Collection Summary
 
 | Collection | Model Class(es) | Purpose |

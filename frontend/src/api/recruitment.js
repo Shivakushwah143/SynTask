@@ -6,6 +6,7 @@ export const recruitmentApi = {
   getCareerPage: () => api.get("/recruitment/career-page"),
   getJobs: (params) => api.get("/recruitment/jobs", { params }),
   getJob: (id) => api.get(`/recruitment/jobs/${id}`),
+  getJobApplications: (id) => api.get(`/recruitment/jobs/${id}/applications`),
   createJob: (payload) => api.post("/recruitment/jobs", payload),
   updateJob: (id, payload) => api.patch(`/recruitment/jobs/${id}`, payload),
   publishJob: (id) => api.post(`/recruitment/jobs/${id}/publish`),
@@ -27,6 +28,8 @@ export const recruitmentApi = {
   convertCandidate: (id, payload) => api.post(`/recruitment/candidates/${id}/convert`, payload),
   updateCandidate: (id, payload) => api.patch(`/recruitment/candidates/${id}`, payload),
   assignCandidate: (id, payload) => api.post(`/recruitment/candidates/${id}/assign`, payload),
+  moveCandidate: (id, status) => api.post(`/recruitment/candidates/${id}/move`, { status }),
+  rejectCandidate: (id, reason = "Rejected from job details") => api.post(`/recruitment/candidates/${id}/reject`, { reason }),
   archiveCandidate: (id) => api.post(`/recruitment/candidates/${id}/archive`),
   restoreCandidate: (id) => api.post(`/recruitment/candidates/${id}/restore`),
   addCandidateNote: (id, payload) => api.post(`/recruitment/candidates/${id}/note`, payload),
@@ -110,5 +113,5 @@ export const careersApi = {
   getJobs: (companySlug, params) => api.get(`/careers/${companySlug}/jobs`, { params, allowUnauthenticated: true }),
   getJob: (companySlug, slug, params) => api.get(`/careers/${companySlug}/jobs/${slug}`, { params, allowUnauthenticated: true }),
   apply: (companySlug, jobId, payload) => api.post(`/careers/${companySlug}/jobs/${jobId}/apply`, payload, { allowUnauthenticated: true }),
-  track: (trackingCode, params) => api.get(`/careers/applications/${trackingCode}`, { params, allowUnauthenticated: true }),
+  track: (trackingCode, trackingPin) => api.post("/careers/applications/track", { tracking_code: trackingCode, tracking_pin: trackingPin }, { allowUnauthenticated: true }),
 };

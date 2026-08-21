@@ -716,7 +716,11 @@ Suspended tenant enforcement occurs in `get_current_user`: non-superadmin users 
 
 Public recruitment career endpoints do not require authentication. `GET /api/v1/careers` returns companies that currently have published, public jobs. `GET /api/v1/careers/{company_slug}` returns one company's career portal settings, and `GET /api/v1/careers/{company_slug}/jobs` plus `GET /api/v1/careers/{company_slug}/jobs/{job_slug}` return only that company's jobs where `lifecycle_status=published`, `visibility=public`, and `deleted_at=null`. Anonymous applications post to `/api/v1/careers/{company_slug}/jobs/{job_id}/apply`; the backend resolves the company from the slug and rejects cross-company, draft, paused, closed, archived, deleted, private, or expired jobs.
 
+Successful anonymous applications return `tracking_code` and a one-time `tracking_pin`. The `application_id` field in this public response is the tracking code, not a MongoDB id. Candidates track progress with `POST /api/v1/careers/applications/track` and body `{ "tracking_code": "...", "tracking_pin": "..." }`. The response is public-safe: job title, current status label, and a human-readable timeline only. Private HR notes, internal database ids, and cross-tenant data are not exposed. `GET /api/v1/careers/applications/{tracking_code}` is retained for compatibility but requires `tracking_pin` as a query parameter.
+
 Authenticated HR users can call `GET /api/v1/recruitment/career-page` to get their own company's public career route for verification. The endpoint is tenant-scoped by `current_user.company_id`; public listing/application endpoints never depend on `current_user`.
+
+Authenticated HR users can call `GET /api/v1/recruitment/jobs/{job_id}/applications` to list applied candidates for a job. The endpoint uses `current_user.company_id`, requires recruitment candidate view permission, and returns candidate summary, application date/status, resume link, recruiter summary, score summary when available, and interview/offer summaries when available. Candidate lifecycle actions continue to use existing `/api/v1/recruitment/candidates/{candidate_id}/move`, `/reject`, and `/archive` endpoints.
 
 ## Pagination
 List endpoints commonly use `skip` and `limit`; default page size is configured in `Settings.DEFAULT_PAGE_SIZE` and max size is `Settings.MAX_PAGE_SIZE`.
