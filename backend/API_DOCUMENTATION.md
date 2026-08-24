@@ -230,8 +230,8 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 | POST | `/api/v1/companies/register` | `register_company` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/companies/{company_id}` | `delete_company` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/companies/{company_id}` | `get_company` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/companies/{company_id}/approve` | `approve_company` | Uses router/endpoint dependencies where configured. |
-| PATCH | `/api/v1/companies/{company_id}/status` | `update_company_status` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/companies/{company_id}/approve` | `approve_company` | Canonical first-time approval. Validates pending company, prevents duplicate company admin/subscription, creates first Company Admin, assigns selected subscription/plan, provisions modules, sets `approved_by`/`approved_at`, activates company, and attempts existing welcome email. Partial admin/subscription creation is rolled back on provisioning failure. |
+| PATCH | `/api/v1/companies/{company_id}/status` | `update_company_status` | Super Admin lifecycle status update. Valid transitions are pending to cancelled, active to suspended, and suspended to active. Invalid transitions return HTTP 409 with `invalid_company_status_transition`. |
 
 ### Components
 
@@ -686,8 +686,9 @@ The Super Admin UI exposes three distinct sidebar entries: `/super-admin/compani
 | GET | `/api/v1/superadmin/tenants/subscription-overview` | `subscription_overview` | Lists tenant plan, purchase date, next billing date, amount, status, and user count. |
 | GET | `/api/v1/superadmin/tenants/{company_id}/users` | `list_company_users` | Lists users for one tenant company. |
 | POST | `/api/v1/superadmin/tenants/{company_id}/users/{user_id}/reset-password` | `reset_user_password` | Stores a hashed reset token, sends reset email, and writes audit log. |
-| POST | `/api/v1/superadmin/tenants/{company_id}/suspend` | `suspend_tenant` | Suspends tenant with reason, notes, optional admin notification, and audit log. |
-| POST | `/api/v1/superadmin/tenants/{company_id}/activate` | `activate_tenant` | Reactivates tenant and clears subscription suspension state. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/approve` | `approve_tenant` | Deprecated. Returns HTTP 410; use `/api/v1/companies/{company_id}/approve` for first-time approval and admin provisioning. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/suspend` | `suspend_tenant` | Suspends active tenants only; invalid current statuses return HTTP 409 without changing status. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/activate` | `activate_tenant` | Reactivates suspended tenants only and clears subscription suspension state; invalid current statuses return HTTP 409 without changing status. |
 | POST | `/api/v1/superadmin/tenants/{company_id}/assign-plan` | `assign_plan_to_tenant` | Assigns a plan and billing cycle, with optional custom user limit. |
 | GET | `/api/v1/superadmin/billing/revenue/analytics` | `get_revenue_analytics` | Supports `period=7d\|30d\|90d\|1y` plus legacy date range query. |
 | GET | `/api/v1/superadmin/billing/invoices` | `list_invoices` | Lists invoice-like billing transactions with company name and sent status. |

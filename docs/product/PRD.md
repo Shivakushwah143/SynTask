@@ -144,6 +144,8 @@ Implemented capabilities:
 - Companies, Tenants, and Clients appear as separate Super Admin sidebar options with their respective existing pages and actions.
 - Company list and tenant detail show user counts, subscription state, plan limits, usage, and feature flags.
 - Super Admin can add a company from the dashboard, Companies page, or Tenants page through the existing company registration form and approval/admin setup flow.
+- Company lifecycle actions are status-safe in tenant Table and Grid views: pending companies expose Approve and Reject, active companies expose Suspend, suspended companies expose Reactivate, and cancelled companies expose no lifecycle action. Bulk lifecycle actions are available only for compatible same-status selections.
+- First-time company approval uses `/api/v1/companies/{company_id}/approve` as the canonical provisioning flow. It validates pending status, creates the first company admin, associates the admin with the company, creates the selected subscription/plan, provisions enabled modules, sets `approved_by` and `approved_at`, activates the company, and attempts the existing welcome email. `/api/v1/superadmin/tenants/{company_id}/approve` is deprecated.
 - Super Admin can list tenant users and trigger a password reset email for a selected user. Reset tokens are stored hashed and expire through the existing reset-password flow.
 - Super Admin can suspend a tenant with reason, notes, and optional admin notification. Suspended non-superadmin users receive a `403` response with `account_suspended`; login shows a suspension support message. Super Admin can reactivate suspended tenants.
 - Super Admin can create and edit subscription plans with monthly/yearly price, user/project/storage limits, enabled modules, and feature labels.
@@ -159,6 +161,8 @@ Acceptance criteria:
 - Given a Super Admin session, when `/super-admin/tenants` loads, then company rows include user counts and suspended tenants have visible suspended status.
 - Given a Super Admin session, when the sidebar renders, then Companies, Tenants, and Clients all appear as distinct options.
 - Given Super Admin clicks Add Company from dashboard, Companies, or Tenants, then the existing company creation form opens and posts to the current company registration backend.
+- Given a pending company, when Super Admin approves from the Tenants page, then the admin setup form is required and canonical company approval creates the admin and subscription before the company becomes active.
+- Given invalid lifecycle calls such as pending suspend, cancelled activate, or active reactivate, then UI controls are unavailable and backend APIs return a 4xx error without changing company status.
 - Given a tenant user row, when Super Admin confirms reset password, then a reset token is stored and an email send is attempted.
 - Given a suspended tenant, when a company user logs in, then API access is denied with `account_suspended` and the frontend shows a support message.
 - Given invoice data, when Super Admin generates an invoice, then a billing transaction is created and appears in invoice list.

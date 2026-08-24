@@ -78,11 +78,62 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle, trend 
 }
 
 // Tenant Card Component for Grid View
-const TenantCard = ({ tenant, onSuspend, onActivate, isActivating, isSuspending }) => {
+function tenantStatus(tenant) {
+  return String(tenant?.status || '').toLowerCase()
+}
+
+function lifecycleActionsFor(tenant) {
+  const status = tenantStatus(tenant)
+  return {
+    canApprove: status === 'pending',
+    canReject: status === 'pending',
+    canSuspend: status === 'active',
+    canReactivate: status === 'suspended',
+    isTerminal: status === 'cancelled',
+  }
+}
+
+const LifecycleActions = ({ tenant, onApprove, onReject, onSuspend, onReactivate, loading = {} }) => {
+  const actions = lifecycleActionsFor(tenant)
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {actions.canApprove ? (
+        <Button size="sm" loading={loading.approve} onClick={() => onApprove(tenant)} className="gap-1">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          Approve
+        </Button>
+      ) : null}
+      {actions.canReject ? (
+        <Button size="sm" variant="danger" loading={loading.reject} onClick={() => onReject(tenant)} className="gap-1">
+          <XCircle className="h-3.5 w-3.5" />
+          Reject
+        </Button>
+      ) : null}
+      {actions.canSuspend ? (
+        <Button size="sm" variant="danger" loading={loading.suspend} onClick={() => onSuspend(tenant)} className="gap-1">
+          <Lock className="h-3.5 w-3.5" />
+          Suspend
+        </Button>
+      ) : null}
+      {actions.canReactivate ? (
+        <Button size="sm" variant="secondary" loading={loading.reactivate} onClick={() => onReactivate(getId(tenant))} className="gap-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400">
+          <Unlock className="h-3.5 w-3.5" />
+          Reactivate
+        </Button>
+      ) : null}
+      {!actions.canApprove && !actions.canReject && !actions.canSuspend && !actions.canReactivate ? (
+        <span className="text-xs text-gray-400 dark:text-gray-500">{actions.isTerminal ? 'No action' : 'No valid action'}</span>
+      ) : null}
+    </div>
+  )
+}
+
+const TenantCard = ({ tenant, onApprove, onReject, onSuspend, onReactivate, loading }) => {
   const statusColor = {
     active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
     pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
     suspended: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+    cancelled: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
     inactive: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
   }
 
@@ -90,6 +141,7 @@ const TenantCard = ({ tenant, onSuspend, onActivate, isActivating, isSuspending 
     active: CheckCircle2,
     pending: Clock,
     suspended: XCircle,
+    cancelled: XCircle,
     inactive: AlertTriangle,
   }
 
@@ -116,41 +168,20 @@ const TenantCard = ({ tenant, onSuspend, onActivate, isActivating, isSuspending 
               </span>
               {tenant.plan && (
                 <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                  {tenant.plan}
+                  {typeof tenant.plan === 'object' ? tenant.plan.name : tenant.plan}
                 </span>
               )}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <Link to={`/super-admin/tenants/${getId(tenant)}`}>
+          {/* <Link to={`/super-admin/tenants/${getId(tenant)}`}>
             <Button variant="secondary" size="sm" className="gap-1">
               <Eye className="h-3.5 w-3.5" />
               View
             </Button>
-          </Link>
-          {tenant.status === 'suspended' ? (
-            <Button 
-              size="sm" 
-              variant="secondary" 
-              loading={isActivating} 
-              onClick={() => onActivate(getId(tenant))}
-              className="gap-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
-            >
-              <Unlock className="h-3.5 w-3.5" />
-              Activate
-            </Button>
-          ) : (
-            <Button 
-              size="sm" 
-              variant="danger" 
-              onClick={() => onSuspend(tenant)}
-              className="gap-1"
-            >
-              <Lock className="h-3.5 w-3.5" />
-              Suspend
-            </Button>
-          )}
+          </Link> */}
+          <LifecycleActions tenant={tenant} onApprove={onApprove} onReject={onReject} onSuspend={onSuspend} onReactivate={onReactivate} loading={loading} />
         </div>
       </div>
 
@@ -165,7 +196,7 @@ const TenantCard = ({ tenant, onSuspend, onActivate, isActivating, isSuspending 
         <div className="rounded-lg bg-gray-50 p-2.5 text-center dark:bg-gray-900/50">
           <CreditCard className="mx-auto h-4 w-4 text-gray-400" />
           <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-            {tenant.plan || 'Free'}
+            {typeof tenant.plan === 'object' ? tenant.plan.name : tenant.plan || 'Free'}
           </p>
           <p className="text-[10px] text-gray-500 dark:text-gray-400">Plan</p>
         </div>
@@ -315,13 +346,34 @@ export default function TenantManagement() {
     }
   )
 
+  const bulkReject = useMutation(
+    (ids) => Promise.all(ids.map(id => companiesAPI.updateCompanyStatus(id, 'cancelled'))),
+    {
+      onSuccess: () => {
+        toast.success(`${selectedTenants.length} tenants rejected`);
+        setSelectedTenants([]);
+        setShowBulkActions(false);
+        queryClient.invalidateQueries('superadmin-tenants');
+      },
+      onError: (error) => toast.error(error?.response?.data?.detail || 'Failed to bulk reject tenants')
+    }
+  )
+
   // Calculate stats
   const totalTenants = tenants.length
-  const activeTenants = tenants.filter(t => t.status === 'active').length
-  const pendingTenants = tenants.filter(t => t.status === 'pending').length
-  const suspendedTenants = tenants.filter(t => t.status === 'suspended').length
+  const activeTenants = tenants.filter(t => tenantStatus(t) === 'active').length
+  const pendingTenants = tenants.filter(t => tenantStatus(t) === 'pending').length
+  const suspendedTenants = tenants.filter(t => tenantStatus(t) === 'suspended').length
   const riskyTenants = tenants.filter((tenant) => riskScore(tenant) > 0).length
   const totalUsers = tenants.reduce((sum, t) => sum + (t.user_count ?? t.current_users ?? 0), 0)
+  const selectedRows = tenants.filter((tenant) => selectedTenants.includes(getId(tenant)))
+  const selectedStatuses = new Set(selectedRows.map((tenant) => tenantStatus(tenant)))
+  const selectedPendingIds = selectedRows.filter((tenant) => tenantStatus(tenant) === 'pending').map((tenant) => getId(tenant))
+  const selectedActiveIds = selectedRows.filter((tenant) => tenantStatus(tenant) === 'active').map((tenant) => getId(tenant))
+  const selectedSuspendedIds = selectedRows.filter((tenant) => tenantStatus(tenant) === 'suspended').map((tenant) => getId(tenant))
+  const canBulkReject = selectedStatuses.size === 1 && selectedStatuses.has('pending')
+  const canBulkSuspend = selectedStatuses.size === 1 && selectedStatuses.has('active')
+  const canBulkReactivate = selectedStatuses.size === 1 && selectedStatuses.has('suspended')
 
   const handleExport = () => {
     const headers = ['Company', 'Status', 'Plan', 'Users', 'Created', 'Risk Score']
@@ -373,6 +425,8 @@ export default function TenantManagement() {
     setSelectedCompany(company)
     setShowApproveModal(true)
   }
+
+  const handleRejectTenant = (tenant) => rejectTenant.mutate(getId(tenant))
 
   const handleApproveSubmit = (event) => {
     event.preventDefault()
@@ -479,65 +533,16 @@ export default function TenantManagement() {
     { 
       key: 'actions', 
       header: '', 
-      render: (row) => {
-        const status = String(row.status || '').toLowerCase()
-        const pending = status === 'pending'
-        const active = status === 'active'
-        const suspended = status === 'suspended'
-        return (
-          <div className="flex flex-wrap gap-1.5">
-            {pending ? (
-              <>
-                <Button
-                  size="sm"
-                  loading={approveCompany.isLoading}
-                  onClick={() => handleApproveClick(row)}
-                  className="gap-1"
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Approve
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  loading={rejectTenant.isLoading}
-                  onClick={() => rejectTenant.mutate(getId(row))}
-                  className="gap-1"
-                >
-                  <XCircle className="h-3.5 w-3.5" />
-                  Reject
-                </Button>
-              </>
-            ) : null}
-            {active ? (
-              <Button
-                size="sm"
-                variant="danger"
-                onClick={() => setSuspendTarget(row)}
-                className="gap-1"
-              >
-                <Lock className="h-3.5 w-3.5" />
-                Suspend
-              </Button>
-            ) : null}
-            {suspended ? (
-              <Button 
-                size="sm" 
-                variant="secondary" 
-                loading={activate.isLoading} 
-                onClick={() => activate.mutate(getId(row))}
-                className="gap-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
-              >
-                <Unlock className="h-3.5 w-3.5" />
-                Activate
-              </Button>
-            ) : null}
-            {!pending && !active && !suspended ? (
-              <span className="text-xs text-gray-400 dark:text-gray-500">No action</span>
-            ) : null}
-          </div>
-        )
-      } 
+      render: (row) => (
+        <LifecycleActions
+          tenant={row}
+          onApprove={handleApproveClick}
+          onReject={handleRejectTenant}
+          onSuspend={setSuspendTarget}
+          onReactivate={activate.mutate}
+          loading={{ approve: approveCompany.isLoading, reject: rejectTenant.isLoading, suspend: suspend.isLoading, reactivate: activate.isLoading }}
+        />
+      )
     },
   ]
 
@@ -637,32 +642,56 @@ export default function TenantManagement() {
               {selectedTenants.length} tenant{selectedTenants.length !== 1 ? 's' : ''} selected
             </span>
             <div className="flex flex-wrap gap-2">
-              <Button 
-                size="sm" 
-                variant="secondary" 
-                onClick={() => {
-                  setShowBulkActions(true)
-                  bulkActivate.mutate(selectedTenants)
-                }}
-                loading={bulkActivate.isLoading}
-                className="gap-1.5 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
-              >
-                <Unlock className="h-4 w-4" />
-                Activate All
-              </Button>
-              <Button 
-                size="sm" 
-                variant="danger" 
-                onClick={() => {
-                  setShowBulkActions(true)
-                  bulkSuspend.mutate(selectedTenants)
-                }}
-                loading={bulkSuspend.isLoading}
-                className="gap-1.5"
-              >
-                <Lock className="h-4 w-4" />
-                Suspend All
-              </Button>
+              {canBulkReject ? (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => {
+                    setShowBulkActions(true)
+                    bulkReject.mutate(selectedPendingIds)
+                  }}
+                  loading={bulkReject.isLoading}
+                  className="gap-1.5"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Reject Selected
+                </Button>
+              ) : null}
+              {canBulkReactivate ? (
+                <Button 
+                  size="sm" 
+                  variant="secondary" 
+                  onClick={() => {
+                    setShowBulkActions(true)
+                    bulkActivate.mutate(selectedSuspendedIds)
+                  }}
+                  loading={bulkActivate.isLoading}
+                  className="gap-1.5 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                >
+                  <Unlock className="h-4 w-4" />
+                  Reactivate Selected
+                </Button>
+              ) : null}
+              {canBulkSuspend ? (
+                <Button 
+                  size="sm" 
+                  variant="danger" 
+                  onClick={() => {
+                    setShowBulkActions(true)
+                    bulkSuspend.mutate(selectedActiveIds)
+                  }}
+                  loading={bulkSuspend.isLoading}
+                  className="gap-1.5"
+                >
+                  <Lock className="h-4 w-4" />
+                  Suspend Selected
+                </Button>
+              ) : null}
+              {!canBulkReject && !canBulkReactivate && !canBulkSuspend ? (
+                <Button size="sm" variant="secondary" disabled className="gap-1.5">
+                  Mixed or terminal statuses
+                </Button>
+              ) : null}
               <Button 
                 size="sm" 
                 variant="secondary" 
@@ -749,10 +778,11 @@ export default function TenantManagement() {
               <TenantCard
                 key={getId(tenant)}
                 tenant={tenant}
+                onApprove={handleApproveClick}
+                onReject={handleRejectTenant}
                 onSuspend={setSuspendTarget}
-                onActivate={activate.mutate}
-                isActivating={activate.isLoading}
-                isSuspending={suspend.isLoading}
+                onReactivate={activate.mutate}
+                loading={{ approve: approveCompany.isLoading, reject: rejectTenant.isLoading, suspend: suspend.isLoading, reactivate: activate.isLoading }}
               />
             ))}
           </div>
