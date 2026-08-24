@@ -61,19 +61,20 @@ const SuperAdminLayout = () => {
     },
     {
       name: 'Companies',
-      href: '/super-admin/companies',
-      icon: Building2
-    },
-    {
-      name: 'Tenants',
+      // href: '/super-admin/companies',
       href: '/super-admin/tenants',
-      icon: BarChart3
-    },
-    {
-      name: 'Clients',
-      href: '/super-admin/clients',
       icon: Building2
     },
+    // {
+    //   name: 'Tenants',
+    //   href: '/super-admin/tenants',
+    //   icon: BarChart3
+    // },
+    // {
+    //   name: 'Clients',
+    //   href: '/super-admin/clients',
+    //   icon: Building2
+    // },
     {
       name: 'Billing & Revenue',
       href: '/super-admin/billing',

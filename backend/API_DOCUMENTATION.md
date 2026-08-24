@@ -540,6 +540,16 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | GET | `/api/v1/superadmin/plans/{plan_id}` | `get_plan` | Uses router/endpoint dependencies where configured. |
 | PUT | `/api/v1/superadmin/plans/{plan_id}` | `update_plan` | Uses router/endpoint dependencies where configured. |
 
+### Departments
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/departments/` | `list_departments` | Company-scoped department list for Admin, Sub Admin, Manager, Lead, and Super Admin. Super Admin sessions without a selected company return an empty list instead of a company-resolution error. |
+| GET | `/api/v1/departments/{department_ref}` | `get_department` | Company-scoped single department lookup by Mongo id or exact department name. Cross-company access is rejected as not found; Super Admin without company context gets 404 instead of an unhandled error. |
+| POST | `/api/v1/departments/` | `create_department` | Company admin only; requires `company_id` on the actor. |
+| PUT | `/api/v1/departments/{department_id}` | `update_department` | Company admin only and same-company department only. |
+| DELETE | `/api/v1/departments/{department_id}` | `delete_department` | Company admin only and same-company department only; blocks deletion while active users or tasks still reference the department. |
+
 ### Super Admin - Tenants
 
 | Method | Path | Handler | Notes |
