@@ -153,6 +153,47 @@ const Clients = () => {
   const [documentFile, setDocumentFile] = useState(null)
   const [documentName, setDocumentName] = useState('')
   const [updatingStatusId, setUpdatingStatusId] = useState(null)
+  const [openStatusMenuId, setOpenStatusMenuId] = useState(null)
+
+  useEffect(() => {
+    const handleDocumentMouseDown = (event) => {
+      if (!event.target.closest('[data-status-menu-root]')) {
+        setOpenStatusMenuId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleDocumentMouseDown)
+    return () => document.removeEventListener('mousedown', handleDocumentMouseDown)
+  }, [])
+
+  const statusMeta = {
+    active: {
+      label: 'Active',
+      chipClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
+      optionClass: 'text-emerald-700 dark:text-emerald-300',
+      dotClass: 'bg-emerald-500',
+    },
+    on_hold: {
+      label: 'On Hold',
+      chipClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
+      optionClass: 'text-amber-700 dark:text-amber-300',
+      dotClass: 'bg-amber-500',
+    },
+    inactive: {
+      label: 'Inactive',
+      chipClass: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300',
+      optionClass: 'text-rose-700 dark:text-rose-300',
+      dotClass: 'bg-rose-500',
+    },
+    archived: {
+      label: 'Archived',
+      chipClass: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+      optionClass: 'text-gray-700 dark:text-gray-300',
+      dotClass: 'bg-gray-500',
+    },
+  }
+
+  const statusOptions = ['active', 'on_hold', 'inactive', 'archived']
+  const getStatusMeta = (status) => statusMeta[status] || statusMeta.active
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isLead = isLeadRole(user?.role)
@@ -980,40 +1021,55 @@ const Clients = () => {
                     </td>
                     <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
                       {(isCompanyAdmin || isLead) ? (
-                        <select
-                          value={client.status || 'active'}
-                          onChange={(e) => handleStatusChange(client.id, e.target.value)}
-                          disabled={updatingStatusId === client.id}
-                          className={`text-xs rounded-full px-2.5 py-1 border-0 font-semibold cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-60 transition ${client.status === 'active'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                            : client.status === 'inactive'
-                              ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                              : client.status === 'on_hold'
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                                : client.status === 'archived'
-                                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
-                                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                            }`}
-                        >
-                          <option value="active">Active</option>
-                          <option value="inactive">Inactive</option>
-                          <option value="on_hold">On Hold</option>
-                          <option value="archived">Archived</option>
-                        </select>
+                        <div className="relative inline-block" data-status-menu-root>
+                          <button
+                            type="button"
+                            disabled={updatingStatusId === client.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setOpenStatusMenuId((current) => (current === client.id ? null : client.id))
+                            }}
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-60 ${getStatusMeta(client.status || 'active').chipClass}`}
+                            aria-haspopup="menu"
+                            aria-expanded={openStatusMenuId === client.id}
+                          >
+                            <span className={`h-1.5 w-1.5 rounded-full ${getStatusMeta(client.status || 'active').dotClass}`}></span>
+                            <span>{getStatusMeta(client.status || 'active').label}</span>
+                            <span className="text-[10px]">v</span>
+                          </button>
+
+                          {openStatusMenuId === client.id ? (
+                            <div className="absolute right-0 z-20 mt-1 w-32 rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                              {statusOptions.map((status) => {
+                                const meta = getStatusMeta(status)
+                                const selected = (client.status || 'active') === status
+                                return (
+                                  <button
+                                    key={status}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setOpenStatusMenuId(null)
+                                      if (!selected) {
+                                        handleStatusChange(client.id, status)
+                                      }
+                                    }}
+                                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-semibold transition ${meta.optionClass} ${selected ? 'bg-indigo-50 dark:bg-indigo-950/40' : 'hover:bg-gray-50 dark:hover:bg-gray-800/80'}`}
+                                    role="menuitem"
+                                  >
+                                    <span className={`h-1.5 w-1.5 rounded-full ${meta.dotClass}`}></span>
+                                    <span>{meta.label}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
                       ) : (
                         <span
-                          className={`text-xs px-2.5 py-1 rounded-full font-semibold ${client.status === 'active'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                            : client.status === 'inactive'
-                              ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                              : client.status === 'on_hold'
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                                : client.status === 'archived'
-                                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
-                                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                            }`}
+                          className={`text-xs px-2.5 py-1 rounded-full font-semibold ${getStatusMeta(client.status || 'active').chipClass}`}
                         >
-                          {client.status || 'active'}
+                          {getStatusMeta(client.status || 'active').label}
                         </span>
                       )}
                     </td>
