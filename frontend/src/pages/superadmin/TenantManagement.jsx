@@ -31,6 +31,7 @@ import {
   RefreshCw,
   Download,
   Plus,
+  Globe2,
   ChevronDown,
   ChevronRight,
   DollarSign,
@@ -39,7 +40,7 @@ import {
 } from 'lucide-react'
 import { superadminApi } from '../../api/superadmin'
 import { companiesAPI } from '../../api/companies'
-import { Badge, Button, EmptyState, inputClassName, Modal, PageHeader, SkeletonTable, Table } from '../../components/ui'
+import { Badge, Button, EmptyState, FormField, inputClassName, Modal, PageHeader, PhoneInput, SkeletonTable, Table } from '../../components/ui'
 import { timeService } from '@/services/timeService'
 import { asArray, getId } from '../phase4Utils'
 
@@ -211,6 +212,7 @@ export default function TenantManagement() {
   const [suspendForm, setSuspendForm] = useState({ reason: 'payment_failed', notes: '', notify_admin: true })
   const [selectedTenants, setSelectedTenants] = useState([])
   const [showBulkActions, setShowBulkActions] = useState(false)
+  const [showRegisterModal, setShowRegisterModal] = useState(false)
   
   const { data, isLoading, isError, refetch } = useQuery(
     ['superadmin-tenants', search], 
@@ -254,6 +256,18 @@ export default function TenantManagement() {
         queryClient.invalidateQueries('superadmin-tenants')
       },
       onError: (error) => toast.error(error?.response?.data?.detail || 'Failed to reject tenant')
+    }
+  )
+
+  const registerCompany = useMutation(
+    (companyData) => companiesAPI.registerCompany(companyData),
+    {
+      onSuccess: () => {
+        toast.success('Company added. Awaiting approval.')
+        setShowRegisterModal(false)
+        queryClient.invalidateQueries('superadmin-tenants')
+      },
+      onError: (error) => toast.error(error?.response?.data?.detail || 'Failed to add company')
     }
   )
 
@@ -324,6 +338,17 @@ export default function TenantManagement() {
     setSelectedTenants(prev => 
       prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
     )
+  }
+
+  const handleRegisterSubmit = (event) => {
+    event.preventDefault()
+    const formData = new FormData(event.target)
+    registerCompany.mutate({
+      name: formData.get('name'),
+      email: formData.get('email'),
+      phone: formData.get('phone'),
+      website: formData.get('website'),
+    })
   }
 
   const columns = [
@@ -497,12 +522,10 @@ export default function TenantManagement() {
               <ShieldAlert className="h-4 w-4" />
               {riskyTenants} risky
             </div>
-            <Link to="/super-admin/companies?create=1">
-              <Button size="sm" className="gap-1.5">
-                <Plus className="h-4 w-4" />
-                Add Company
-              </Button>
-            </Link>
+            <Button size="sm" onClick={() => setShowRegisterModal(true)} className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              Add Company
+            </Button>
           </div>
         </div>
       </div>
@@ -735,6 +758,64 @@ export default function TenantManagement() {
           <p className="text-sm text-gray-500 dark:text-gray-400">Try adjusting your search or filters.</p>
         </div>
       )}
+
+      <Modal
+        isOpen={showRegisterModal}
+        onClose={() => setShowRegisterModal(false)}
+        title="Add company"
+        description="Create a tenant record. Approval and admin setup can happen after review."
+        size="lg"
+      >
+        <form onSubmit={handleRegisterSubmit} className="space-y-6">
+          <div className="rounded-2xl border border-primary-100 bg-primary-50/70 p-4 dark:border-primary-900/50 dark:bg-primary-950/20">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-white p-2 text-primary-600 shadow-sm dark:bg-[var(--color-app-surface)]">
+                <Building2 className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-[var(--color-app-text)]">Company profile</p>
+                <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-[var(--color-app-text-muted)]">
+                  Use official business contact details so billing, approvals, and tenant ownership stay clear.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Company name" required className="sm:col-span-2">
+              <div className="relative">
+                <Building2 className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                <input type="text" name="name" required className={`${inputClassName} pl-11`} placeholder="TechCorp Inc." />
+              </div>
+            </FormField>
+            <FormField label="Email" required>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                <input type="email" name="email" required className={`${inputClassName} pl-11`} placeholder="contact@techcorp.com" />
+              </div>
+            </FormField>
+            <FormField label="Phone" required>
+              <PhoneInput name="phone" required />
+            </FormField>
+            <FormField label="Website (optional)" helperText="Include https:// for best results." className="sm:col-span-2">
+              <div className="relative">
+                <Globe2 className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                <input type="url" name="website" className={`${inputClassName} pl-11`} placeholder="https://techcorp.com" />
+              </div>
+            </FormField>
+          </div>
+
+          <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-5 dark:border-[var(--color-app-border)] sm:flex-row sm:justify-end">
+            <Button type="button" variant="secondary" onClick={() => setShowRegisterModal(false)} disabled={registerCompany.isLoading}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={registerCompany.isLoading} loadingText="Registering">
+              <Plus className="h-4 w-4" />
+              Add Company
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Suspend Modal */}
       <Modal
