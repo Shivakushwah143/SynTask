@@ -12,6 +12,7 @@ import {
   Calendar, 
   Clock, 
   AlertTriangle,
+  Check,
   CheckCircle2,
   XCircle,
   Eye,
@@ -32,6 +33,8 @@ import {
   Download,
   Plus,
   Globe2,
+  ShieldCheck,
+  User,
   ChevronDown,
   ChevronRight,
   DollarSign,
@@ -40,7 +43,7 @@ import {
 } from 'lucide-react'
 import { superadminApi } from '../../api/superadmin'
 import { companiesAPI } from '../../api/companies'
-import { Badge, Button, EmptyState, FormField, inputClassName, Modal, PageHeader, PhoneInput, SkeletonTable, Table } from '../../components/ui'
+import { Badge, Button, EmptyState, FormField, inputClassName, Modal, PageHeader, PasswordInput, PhoneInput, SkeletonTable, Table } from '../../components/ui'
 import { timeService } from '@/services/timeService'
 import { asArray, getId } from '../phase4Utils'
 
@@ -213,6 +216,8 @@ export default function TenantManagement() {
   const [selectedTenants, setSelectedTenants] = useState([])
   const [showBulkActions, setShowBulkActions] = useState(false)
   const [showRegisterModal, setShowRegisterModal] = useState(false)
+  const [showApproveModal, setShowApproveModal] = useState(false)
+  const [selectedCompany, setSelectedCompany] = useState(null)
   
   const { data, isLoading, isError, refetch } = useQuery(
     ['superadmin-tenants', search], 
@@ -268,6 +273,19 @@ export default function TenantManagement() {
         queryClient.invalidateQueries('superadmin-tenants')
       },
       onError: (error) => toast.error(error?.response?.data?.detail || 'Failed to add company')
+    }
+  )
+
+  const approveCompany = useMutation(
+    ({ companyId, adminData }) => companiesAPI.approveCompany(companyId, adminData),
+    {
+      onSuccess: () => {
+        toast.success('Company approved and admin created')
+        setShowApproveModal(false)
+        setSelectedCompany(null)
+        queryClient.invalidateQueries('superadmin-tenants')
+      },
+      onError: (error) => toast.error(error?.response?.data?.detail || 'Failed to approve company')
     }
   )
 
@@ -348,6 +366,27 @@ export default function TenantManagement() {
       email: formData.get('email'),
       phone: formData.get('phone'),
       website: formData.get('website'),
+    })
+  }
+
+  const handleApproveClick = (company) => {
+    setSelectedCompany(company)
+    setShowApproveModal(true)
+  }
+
+  const handleApproveSubmit = (event) => {
+    event.preventDefault()
+    if (!selectedCompany) return
+    const formData = new FormData(event.target)
+    approveCompany.mutate({
+      companyId: getId(selectedCompany),
+      adminData: {
+        admin_first_name: formData.get('admin_first_name'),
+        admin_last_name: formData.get('admin_last_name'),
+        admin_email: formData.get('admin_email'),
+        admin_password: formData.get('admin_password'),
+        subscription_plan: formData.get('subscription_plan') || 'free',
+      }
     })
   }
 
@@ -451,8 +490,8 @@ export default function TenantManagement() {
               <>
                 <Button
                   size="sm"
-                  loading={activate.isLoading}
-                  onClick={() => activate.mutate(getId(row))}
+                  loading={approveCompany.isLoading}
+                  onClick={() => handleApproveClick(row)}
                   className="gap-1"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" />
@@ -815,6 +854,101 @@ export default function TenantManagement() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={showApproveModal && Boolean(selectedCompany)}
+        onClose={() => {
+          setShowApproveModal(false)
+          setSelectedCompany(null)
+        }}
+        title="Approve company"
+        description={selectedCompany ? `Create company admin for ${selectedCompany.name || selectedCompany.company_name}.` : ''}
+        size="lg"
+      >
+        {selectedCompany ? (
+          <form onSubmit={handleApproveSubmit} className="space-y-6">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-white p-2 text-emerald-600 shadow-sm dark:bg-[var(--color-app-surface)]">
+                  <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-[var(--color-app-text)]">
+                    {selectedCompany.name || selectedCompany.company_name}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-[var(--color-app-text-muted)]">
+                    Approval activates tenant access and creates first company admin.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField label="Admin first name" required>
+                <div className="relative">
+                  <User className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <input type="text" name="admin_first_name" required className={`${inputClassName} pl-11`} placeholder="John" />
+                </div>
+              </FormField>
+
+              <FormField label="Admin last name" required>
+                <div className="relative">
+                  <User className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <input type="text" name="admin_last_name" required className={`${inputClassName} pl-11`} placeholder="Doe" />
+                </div>
+              </FormField>
+
+              <FormField label="Admin email" required>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <input type="email" name="admin_email" required className={`${inputClassName} pl-11`} placeholder="admin@company.com" />
+                </div>
+              </FormField>
+
+              <FormField label="Admin password" required>
+                <PasswordInput
+                  name="admin_password"
+                  required
+                  minLength={8}
+                  className={inputClassName}
+                  placeholder="Min 8 characters"
+                  toggleLabel="admin password"
+                />
+              </FormField>
+
+              <FormField label="Subscription plan" className="sm:col-span-2">
+                <div className="relative">
+                  <CreditCard className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <select name="subscription_plan" className={`${inputClassName} pl-11`}>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="free">Free</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="basic">Basic</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="professional">Professional</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="enterprise">Enterprise</option>
+                  </select>
+                </div>
+              </FormField>
+            </div>
+
+            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-5 dark:border-[var(--color-app-border)] sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setShowApproveModal(false)
+                  setSelectedCompany(null)
+                }}
+                disabled={approveCompany.isLoading}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" loading={approveCompany.isLoading} loadingText="Approving">
+                <Check className="h-4 w-4" />
+                Approve & Create Admin
+              </Button>
+            </div>
+          </form>
+        ) : null}
       </Modal>
 
       {/* Suspend Modal */}
