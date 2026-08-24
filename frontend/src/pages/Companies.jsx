@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import { Building2, Check, CreditCard, Globe2, Mail, Plus, RefreshCw, ShieldCheck, User, X } from 'lucide-react'
 import { companiesAPI } from '../api/companies'
@@ -9,6 +10,7 @@ import { timeService } from '@/services/timeService'
 
 const Companies = () => {
   const { confirm } = useConfirmation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [companies, setCompanies] = useState([])
   const [totalCompanies, setTotalCompanies] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -63,6 +65,13 @@ const Companies = () => {
   useEffect(() => {
     fetchCompanies()
   }, [])
+
+  useEffect(() => {
+    if (searchParams.get('create') === '1') {
+      setShowRegisterModal(true)
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   // Handle approve click
   const handleApproveClick = (company) => {
@@ -262,7 +271,7 @@ const Companies = () => {
           className="btn btn-primary flex items-center"
         >
           <Plus className="h-5 w-5 mr-2" />
-          Register Company
+          Add Company
         </button>
       </div>
 
@@ -277,7 +286,7 @@ const Companies = () => {
               className="btn btn-primary inline-flex items-center"
             >
               <Plus className="h-5 w-5 mr-2" />
-              Register First Company
+              Add First Company
             </button>
           </div>
         ) : (
@@ -348,11 +357,11 @@ const Companies = () => {
         </div>
       ) : null}
 
-      {/* Register Company Modal */}
+      {/* Add Company Modal */}
       <Modal
         isOpen={showRegisterModal}
         onClose={() => setShowRegisterModal(false)}
-        title="Register company"
+        title="Add company"
         description="Create a tenant record. Approval and admin setup can happen after review."
         size="lg"
       >
@@ -421,7 +430,7 @@ const Companies = () => {
             </Button>
             <Button type="submit" loading={submitting} loadingText="Registering">
               <Plus className="h-4 w-4" />
-              Register Company
+              Add Company
             </Button>
           </div>
         </form>

@@ -137,11 +137,13 @@ Global time acceptance: browser timezone is detected on first login when no pref
 
 Status: Implemented baseline as of 2026-07-23.
 
-Super Admin can manage subscribed clients from the `/super-admin` workspace. Backend enforcement uses `get_current_super_admin` on all superadmin routes. Tenant-owned data remains company-scoped; cross-tenant client users are retrieved only by explicit Super Admin tenant endpoints.
+Super Admin can manage platform companies, tenant operations, and CRM Clients from separate `/super-admin` sidebar entries. `/super-admin/companies` opens the existing Companies page and company creation form, `/super-admin/tenants` opens tenant operations, and `/super-admin/clients` opens the existing CRM Clients page. Backend enforcement uses `get_current_super_admin` on all superadmin routes. Tenant-owned data remains company-scoped; cross-tenant client users are retrieved only by explicit Super Admin tenant endpoints.
 
 Implemented capabilities:
 
-- Client list and tenant detail show user counts, subscription state, plan limits, usage, and feature flags.
+- Companies, Tenants, and Clients appear as separate Super Admin sidebar options with their respective existing pages and actions.
+- Company list and tenant detail show user counts, subscription state, plan limits, usage, and feature flags.
+- Super Admin can add a company from the dashboard, Companies page, or Tenants page through the existing company registration form and approval/admin setup flow.
 - Super Admin can list tenant users and trigger a password reset email for a selected user. Reset tokens are stored hashed and expire through the existing reset-password flow.
 - Super Admin can suspend a tenant with reason, notes, and optional admin notification. Suspended non-superadmin users receive a `403` response with `account_suspended`; login shows a suspension support message. Super Admin can reactivate suspended tenants.
 - Super Admin can create and edit subscription plans with monthly/yearly price, user/project/storage limits, enabled modules, and feature labels.
@@ -155,6 +157,8 @@ Implemented capabilities:
 Acceptance criteria:
 
 - Given a Super Admin session, when `/super-admin/tenants` loads, then company rows include user counts and suspended tenants have visible suspended status.
+- Given a Super Admin session, when the sidebar renders, then Companies, Tenants, and Clients all appear as distinct options.
+- Given Super Admin clicks Add Company from dashboard, Companies, or Tenants, then the existing company creation form opens and posts to the current company registration backend.
 - Given a tenant user row, when Super Admin confirms reset password, then a reset token is stored and an email send is attempted.
 - Given a suspended tenant, when a company user logs in, then API access is denied with `account_suspended` and the frontend shows a support message.
 - Given invoice data, when Super Admin generates an invoice, then a billing transaction is created and appears in invoice list.

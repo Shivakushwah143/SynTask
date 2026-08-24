@@ -679,6 +679,8 @@ The existing Celery beat schedule evaluates enabled tenant configurations hourly
 
 All routes require `get_current_super_admin`.
 
+The Super Admin UI exposes three distinct sidebar entries: `/super-admin/companies` for the existing platform Companies page and Add Company form, `/super-admin/tenants` for tenant operations backed by the superadmin tenant APIs below, and `/super-admin/clients` for the existing CRM Clients page. The Tenants page also links Add Company to the existing Companies form. These routes do not merge platform Company records with CRM Client records.
+
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | GET | `/api/v1/superadmin/tenants/subscription-overview` | `subscription_overview` | Lists tenant plan, purchase date, next billing date, amount, status, and user count. |

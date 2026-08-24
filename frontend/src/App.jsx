@@ -390,6 +390,7 @@ function App() {
           <Route path="billing" element={withBoundary(<BillingRevenue />)} />
           <Route path="feature-flags" element={withBoundary(<FeatureFlagsPage />)} />
           <Route path="companies" element={withBoundary(<Companies />)} />
+          <Route path="clients" element={withBoundary(<Clients />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="activity" element={withBoundary(<ActivityLog />)} />
           <Route path="settings" element={withBoundary(<Settings />)} />

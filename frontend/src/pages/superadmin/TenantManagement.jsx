@@ -30,6 +30,7 @@ import {
   Unlock,
   RefreshCw,
   Download,
+  Plus,
   ChevronDown,
   ChevronRight,
   DollarSign,
@@ -37,6 +38,7 @@ import {
   LineChart
 } from 'lucide-react'
 import { superadminApi } from '../../api/superadmin'
+import { companiesAPI } from '../../api/companies'
 import { Badge, Button, EmptyState, inputClassName, Modal, PageHeader, SkeletonTable, Table } from '../../components/ui'
 import { timeService } from '@/services/timeService'
 import { asArray, getId } from '../phase4Utils'
@@ -53,17 +55,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle, trend 
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
+    <div className="group rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
-          <Icon className="h-4 w-4" />
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <div className={`rounded-md bg-gradient-to-r ${colors[color]} p-1.5 text-white shadow-sm`}>
+          <Icon className="h-3.5 w-3.5" />
         </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
       {trend && (
-        <div className={`mt-2 inline-flex items-center gap-1 text-xs font-medium ${trend > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+        <div className={`mt-1 inline-flex items-center gap-1 text-[11px] font-medium ${trend > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
           {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}%
         </div>
       )}
@@ -244,6 +246,17 @@ export default function TenantManagement() {
     }
   )
 
+  const rejectTenant = useMutation(
+    (id) => companiesAPI.updateCompanyStatus(id, 'cancelled'),
+    {
+      onSuccess: () => {
+        toast.success('Tenant rejected')
+        queryClient.invalidateQueries('superadmin-tenants')
+      },
+      onError: (error) => toast.error(error?.response?.data?.detail || 'Failed to reject tenant')
+    }
+  )
+
   const bulkActivate = useMutation(
     (ids) => Promise.all(ids.map(id => superadminApi.activateTenant(id))),
     {
@@ -403,15 +416,46 @@ export default function TenantManagement() {
       key: 'actions', 
       header: '', 
       render: (row) => {
-        const suspended = String(row.status || '').toLowerCase() === 'suspended'
+        const status = String(row.status || '').toLowerCase()
+        const pending = status === 'pending'
+        const active = status === 'active'
+        const suspended = status === 'suspended'
         return (
-          <div className="flex gap-1.5">
-            <Link to={`/super-admin/tenants/${getId(row)}`}>
-              <Button size="sm" variant="secondary" className="gap-1">
-                <Eye className="h-3.5 w-3.5" />
-                View
+          <div className="flex flex-wrap gap-1.5">
+            {pending ? (
+              <>
+                <Button
+                  size="sm"
+                  loading={activate.isLoading}
+                  onClick={() => activate.mutate(getId(row))}
+                  className="gap-1"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  loading={rejectTenant.isLoading}
+                  onClick={() => rejectTenant.mutate(getId(row))}
+                  className="gap-1"
+                >
+                  <XCircle className="h-3.5 w-3.5" />
+                  Reject
+                </Button>
+              </>
+            ) : null}
+            {active ? (
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => setSuspendTarget(row)}
+                className="gap-1"
+              >
+                <Lock className="h-3.5 w-3.5" />
+                Suspend
               </Button>
-            </Link>
+            ) : null}
             {suspended ? (
               <Button 
                 size="sm" 
@@ -423,17 +467,10 @@ export default function TenantManagement() {
                 <Unlock className="h-3.5 w-3.5" />
                 Activate
               </Button>
-            ) : (
-              <Button 
-                size="sm" 
-                variant="danger" 
-                onClick={() => setSuspendTarget(row)}
-                className="gap-1"
-              >
-                <Lock className="h-3.5 w-3.5" />
-                Suspend
-              </Button>
-            )}
+            ) : null}
+            {!pending && !active && !suspended ? (
+              <span className="text-xs text-gray-400 dark:text-gray-500">No action</span>
+            ) : null}
           </div>
         )
       } 
@@ -441,33 +478,37 @@ export default function TenantManagement() {
   ]
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <Building2 className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-wider text-indigo-200">Super Admin</p>
-                <h1 className="text-2xl font-bold md:text-3xl">Tenant Management</h1>
-                <p className="mt-1 text-indigo-100">Review, activate, and suspend tenant companies.</p>
-              </div>
+    <div className="space-y-4 p-3 md:p-4">
+      {/* Header */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-indigo-100 p-2 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
+              <Building2 className="h-5 w-5" />
             </div>
-            <div className="flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm">
+            <div>
+              <p className="text-xs font-semibold uppercase text-indigo-600 dark:text-indigo-300">Super Admin</p>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white">Tenant Management</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Review, activate, and suspend tenant companies.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
               <ShieldAlert className="h-4 w-4" />
-              {riskyTenants} risky tenant{riskyTenants === 1 ? '' : 's'}
+              {riskyTenants} risky
             </div>
+            <Link to="/super-admin/companies?create=1">
+              <Button size="sm" className="gap-1.5">
+                <Plus className="h-4 w-4" />
+                Add Company
+              </Button>
+            </Link>
           </div>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <StatCard
           label="Total Tenants"
           value={totalTenants}
@@ -498,35 +539,31 @@ export default function TenantManagement() {
           color="rose"
           subtitle="Restricted"
         />
-      </div>
-
-      {/* Additional Stats Row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Users</span>
-            <Users className="h-4 w-4 text-indigo-500" />
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Total Users</span>
+            <Users className="h-3.5 w-3.5 text-indigo-500" />
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{totalUsers}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Across all tenants</p>
+          <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{totalUsers}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">All tenants</p>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Avg Users/Tenant</span>
-            <BarChart3 className="h-4 w-4 text-indigo-500" />
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Avg Users</span>
+            <BarChart3 className="h-3.5 w-3.5 text-indigo-500" />
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+          <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">
             {totalTenants > 0 ? Math.round(totalUsers / totalTenants) : 0}
           </p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Average team size</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">Per tenant</p>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Risk Score</span>
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Risk</span>
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{riskyTenants}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Tenants needing attention</p>
+          <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{riskyTenants}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">Need attention</p>
         </div>
       </div>
 
