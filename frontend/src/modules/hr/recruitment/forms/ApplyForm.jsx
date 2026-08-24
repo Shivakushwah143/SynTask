@@ -31,7 +31,7 @@ export function ApplyForm({ jobId, onSubmit, loading, error }) {
         <FormField label="Experience years"><input className={inputClassName} type="number" value={form.experience_years} onChange={(e) => setField("experience_years", e.target.value)} /></FormField>
       </div>
       <FormField label="Skills" helperText="Comma separated"><input className={inputClassName} value={form.skills} onChange={(e) => setField("skills", e.target.value)} /></FormField>
-      <FormField label="Resume" error={errors.resume} required><input className={inputClassName} type="file" accept=".pdf,.doc,.docx" onChange={(e) => setField("resume", e.target.files?.[0] || null)} /></FormField>
+      <FormField label="Resume" error={errors.resume} required><input className={inputClassName} type="file" accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,image/jpeg,image/png" onChange={(e) => setField("resume", e.target.files?.[0] || null)} /></FormField>
       {error ? <p className="text-sm font-medium text-red-600" role="alert">{error}</p> : null}
       <Button type="button" loading={loading} disabled={!jobId} onClick={() => formRef.current?.requestSubmit()}>Submit application</Button>
     </form>

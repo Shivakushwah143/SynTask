@@ -198,6 +198,7 @@ class Candidate(Document):
     status: CandidateStatus = CandidateStatus.NEW
     assigned_recruiter_id: Optional[str] = None
     resume_id: Optional[str] = None
+    resume_url: Optional[str] = None
     rejection_reason: Optional[str] = None
     employee_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -522,6 +523,7 @@ class OfferAccessToken(Document):
     offer_id: Indexed(str)
     candidate_id: Indexed(str)
     token_hash: Indexed(str, unique=True)
+    access_token_encrypted: Optional[str] = None
     expires_at: datetime
     revoked_at: Optional[datetime] = None
     last_viewed_at: Optional[datetime] = None

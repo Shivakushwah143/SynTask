@@ -249,6 +249,8 @@ class InterviewResponse(BaseModel):
     status: InterviewLifecycleStatus
     feedback_status: InterviewFeedbackStatus
     decision: Optional[InterviewDecision] = None
+    feedback: Optional[str] = None
+    result: Optional[str] = None
     notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -395,12 +397,33 @@ class ApplicationStatusResponse(BaseModel):
 
     tracking_code: str
     job_title: str
+    company_name: Optional[str] = None
+    candidate: dict = Field(default_factory=dict)
+    job: dict = Field(default_factory=dict)
+    resume: Optional[dict] = None
     status: str
     status_label: str
     current_step: str
     timeline: list[dict]
+    stage_details: list[dict] = Field(default_factory=list)
+    interviews: list[dict] = Field(default_factory=list)
+    offers: list[dict] = Field(default_factory=list)
     applied_at: datetime
     last_updated: datetime
+
+
+class PublicTrackingProfileUpdate(BaseModel):
+    tracking_code: str = Field(min_length=1)
+    tracking_pin: str = Field(min_length=1)
+    full_name: Optional[str] = Field(default=None, min_length=2, max_length=160)
+    phone: Optional[str] = None
+    current_company: Optional[str] = None
+    experience_years: Optional[float] = Field(default=None, ge=0)
+    expected_salary: Optional[float] = Field(default=None, ge=0)
+    notice_period: Optional[str] = None
+    location: Optional[str] = None
+    education: Optional[str] = None
+    skills: Optional[list[str]] = None
 
 
 

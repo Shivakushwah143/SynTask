@@ -4,7 +4,7 @@
 
 Implemented recruitment workflow foundations:
 
-- Resume upload, validation, text extraction for PDF/DOCX/TXT, parsed profile storage, skill normalization, and deterministic candidate scoring.
+- Resume upload, validation, text extraction for PDF/DOCX/TXT, legacy DOC storage, parsed profile storage, skill normalization, and deterministic candidate scoring. Duplicate resume uploads are linked back to the candidate workspace through the candidate's current resume reference so the Resume tab remains visible after deduplication.
 - Interview availability suggestions, stale-slot recheck, Teams-oriented interview metadata, and Microsoft connection status endpoints.
 - Offer draft, approval history, backend PDF generation, secure offer token, public view/accept/reject, and audit timeline.
 

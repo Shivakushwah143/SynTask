@@ -84,6 +84,11 @@ export const recruitmentApi = {
   rejectOfferApproval: (id, payload) => api.post(`/recruitment/offers/${id}/reject-approval`, payload),
   previewOffer: (id) => api.post(`/recruitment/offers/${id}/preview`),
   generateOfferPdf: (id) => api.post(`/recruitment/offers/${id}/generate-pdf`),
+  uploadOfferLetter: (id, file) => {
+    const data = new FormData();
+    data.append("file", file);
+    return api.post(`/recruitment/offers/${id}/upload-letter`, data);
+  },
   sendOffer: (id) => api.post(`/recruitment/offers/${id}/send`),
   withdrawOffer: (id, payload) => api.post(`/recruitment/offers/${id}/withdraw`, payload),
   resendOffer: (id) => api.post(`/recruitment/offers/${id}/resend`),
@@ -99,11 +104,11 @@ export const recruitmentApi = {
 };
 
 export const publicOffersApi = {
-  getOffer: (token) => api.get(`/public/offers/${token}`),
-  requestOtp: (token) => api.post(`/public/offers/${token}/request-otp`),
-  verifyOtp: (token, payload) => api.post(`/public/offers/${token}/verify-otp`, payload),
-  accept: (token, payload) => api.post(`/public/offers/${token}/accept`, payload),
-  reject: (token, payload) => api.post(`/public/offers/${token}/reject`, payload),
+  getOffer: (token) => api.get(`/public/offers/${token}`, { allowUnauthenticated: true, skipAuthRefresh: true }),
+  requestOtp: (token) => api.post(`/public/offers/${token}/request-otp`, undefined, { allowUnauthenticated: true, skipAuthRefresh: true }),
+  verifyOtp: (token, payload) => api.post(`/public/offers/${token}/verify-otp`, payload, { allowUnauthenticated: true, skipAuthRefresh: true }),
+  accept: (token, payload) => api.post(`/public/offers/${token}/accept`, payload, { allowUnauthenticated: true, skipAuthRefresh: true }),
+  reject: (token, payload) => api.post(`/public/offers/${token}/reject`, payload, { allowUnauthenticated: true, skipAuthRefresh: true }),
   pdfUrl: (token) => `/api/v1/public/offers/${token}/pdf`,
 };
 
@@ -114,4 +119,12 @@ export const careersApi = {
   getJob: (companySlug, slug, params) => api.get(`/careers/${companySlug}/jobs/${slug}`, { params, allowUnauthenticated: true }),
   apply: (companySlug, jobId, payload) => api.post(`/careers/${companySlug}/jobs/${jobId}/apply`, payload, { allowUnauthenticated: true }),
   track: (trackingCode, trackingPin) => api.post("/careers/applications/track", { tracking_code: trackingCode, tracking_pin: trackingPin }, { allowUnauthenticated: true }),
+  updateTrackedProfile: (payload) => api.patch("/careers/applications/track/profile", payload, { allowUnauthenticated: true }),
+  uploadTrackedResume: (trackingCode, trackingPin, resume) => {
+    const data = new FormData();
+    data.append("tracking_code", trackingCode);
+    data.append("tracking_pin", trackingPin);
+    data.append("resume", resume);
+    return api.post("/careers/applications/track/resume", data, { allowUnauthenticated: true });
+  },
 };

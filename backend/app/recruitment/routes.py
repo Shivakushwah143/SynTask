@@ -1,8 +1,9 @@
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -52,6 +53,7 @@ from app.recruitment.schemas import (ApplicationApplyResponse, ApplicationStatus
                                      JobSort, JobStatusUpdate, JobUpdate, KeywordMatchResponse,
                                      OfferCreate,
                                      OfferUpdate, PublicCareerCompanyResponse,
+                                     PublicTrackingProfileUpdate,
                                      PublicJobListResponse,
                                      PublicJobResponse, ResumePoolResponse)
 from app.recruitment.services import (ApplicationService, CareerPortalService,
@@ -70,6 +72,8 @@ from app.recruitment.services import (ApplicationService, CareerPortalService,
                                       RecruitmentReportService,
                                       RecruitmentService, ResumePoolService,
                                       record)
+from app.services.cloudinary_storage import CloudinaryStorage
+from app.services.file_service import FileService
 
 router = APIRouter()
 careers_router = APIRouter()
@@ -660,6 +664,16 @@ async def track_application(payload: PublicTrackingRequest):
     return await ApplicationService.get_public_application_status(payload.tracking_code, payload.tracking_pin)
 
 
+@careers_router.patch("/applications/track/profile", response_model=ApplicationStatusResponse)
+async def update_tracked_application_profile(payload: PublicTrackingProfileUpdate):
+    return await ApplicationService.update_public_candidate_profile(payload.tracking_code, payload.tracking_pin, payload)
+
+
+@careers_router.post("/applications/track/resume", response_model=ApplicationStatusResponse)
+async def upload_tracked_application_resume(tracking_code: str = Form(...), tracking_pin: str = Form(...), resume: UploadFile = File(...)):
+    return await ApplicationService.upload_public_resume(tracking_code, tracking_pin, resume)
+
+
 # Legacy endpoints for backward compatibility
 @careers_router.get("/jobs/legacy")
 async def public_jobs_legacy(skip: int = 0, limit: int = 50):
@@ -932,6 +946,47 @@ async def resume_status(resume_id: str, user: User = Depends(require_candidate_v
         "started_at": resume.processing_started_at,
         "completed_at": resume.processing_completed_at,
     }
+
+
+@router.get("/resumes/{resume_id}/file")
+async def open_resume_file(resume_id: str, download: bool = False, user: User = Depends(require_candidate_view)):
+    resume = await TenantRepository.get(Resume, resume_id, company(user))
+    if not resume or resume.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    if resume.storage_public_id:
+        signed_url = CloudinaryStorage.signed_url(
+            resume.storage_public_id,
+            resume.storage_resource_type or "auto",
+            resume.storage_delivery_type or "authenticated",
+            attachment=download,
+            storage_url=resume.storage_url,
+        )
+        if signed_url:
+            return RedirectResponse(signed_url)
+
+    storage_url = resume.storage_url or ""
+    if not storage_url.startswith("/uploads/"):
+        if storage_url.startswith("http://") or storage_url.startswith("https://"):
+            separator = "&" if "?" in storage_url else "?"
+            return RedirectResponse(storage_url + (f"{separator}fl_attachment" if download else ""))
+        raise HTTPException(status_code=404, detail="Stored resume file not found")
+
+    relative_path = storage_url.removeprefix("/uploads/").replace("\\", "/")
+    uploads_root = FileService.resolve_upload_dir().resolve()
+    file_path = (uploads_root / relative_path).resolve()
+    try:
+        file_path.relative_to(uploads_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid resume path") from exc
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Stored resume file not found")
+    return FileResponse(
+        file_path,
+        media_type=resume.mime_type,
+        filename=resume.original_filename,
+        content_disposition_type="attachment" if download else "inline",
+    )
 
 
 @router.get("/resumes/{resume_id}/parsed-profile")
@@ -1298,6 +1353,11 @@ async def generate_offer_pdf(offer_id: str, user: User = Depends(require_recruit
     return await OfferWorkflowService.generate_pdf(company(user), str(user.id), offer_id)
 
 
+@router.post("/offers/{offer_id}/upload-letter")
+async def upload_offer_letter(offer_id: str, file: UploadFile = File(...), user: User = Depends(require_recruitment_manager)):
+    return await OfferWorkflowService.upload_letter(company(user), str(user.id), offer_id, file)
+
+
 @router.post("/offers/{offer_id}/send")
 async def send_offer(offer_id: str, user: User = Depends(require_recruitment_manager)):
     return await OfferWorkflowService.send(company(user), str(user.id), offer_id)
@@ -1515,4 +1575,7 @@ async def public_offer_pdf(secure_token: str):
     offer, _ = await OfferWorkflowService.public_offer(secure_token)
     if not offer.immutable_pdf_path:
         raise HTTPException(status_code=404, detail="Offer PDF not generated")
-    return FileResponse(offer.immutable_pdf_path, media_type="application/pdf", filename=f"{offer.offer_number or 'offer'}.pdf")
+    suffix = Path(offer.immutable_pdf_path).suffix.lower()
+    media_type = "image/jpeg" if suffix in {".jpg", ".jpeg"} else "image/png" if suffix == ".png" else "application/pdf"
+    filename = f"{offer.offer_number or 'offer'}{suffix or '.pdf'}"
+    return FileResponse(offer.immutable_pdf_path, media_type=media_type, filename=filename)

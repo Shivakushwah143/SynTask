@@ -32,6 +32,7 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
+  Copy,
   Download,
   Video,
   Clock as ClockIcon
@@ -190,6 +191,12 @@ const fileUrl = (value) => {
   return value;
 };
 
+const resumeFileUrl = (resume, download = false) => {
+  const resumeId = idOf(resume);
+  if (resumeId) return `/api/v1/recruitment/resumes/${resumeId}/file${download ? "?download=true" : ""}`;
+  return fileUrl(resume?.resume_url || resume?.resumeUrl || resume?.storage_url);
+};
+
 // ============================================================
 // RESUME TAB CONTENT
 // ============================================================
@@ -227,15 +234,25 @@ const ResumeTabContent = ({ resumes, onReprocess, loading }) => {
               >
                 <RefreshCw className="h-3.5 w-3.5" /> Reprocess
               </button>
-            {resume.storage_url && (
-              <a
-                href={fileUrl(resume.storage_url)}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                <Download className="h-3.5 w-3.5" /> Open
-              </a>
+            {(idOf(resume) || resume.storage_url) && (
+              <>
+                <a
+                  href={resumeFileUrl(resume)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  <Eye className="h-3.5 w-3.5" /> Preview
+                </a>
+                <a
+                  href={resumeFileUrl(resume, true)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  <Download className="h-3.5 w-3.5" /> Download
+                </a>
+              </>
             )}
             </div>
           </div>
@@ -662,11 +679,11 @@ export default function CandidatesPage() {
       render: (row) => (
         <div className="flex gap-1">
           <button
-            onClick={() => { setSelected(row); setAssignOpen(true); }}
+            onClick={() => navigate(`/hr/recruitment/candidates/${idOf(row)}`)}
             className="rounded-lg p-1.5 text-gray-500 transition hover:bg-indigo-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-indigo-900/30 dark:hover:text-indigo-400"
-            aria-label="Assign recruiter"
+            aria-label="Open candidate"
           >
-            <UserPlus className="h-4 w-4" />
+            <Eye className="h-4 w-4" />
           </button>
           <button
             onClick={() => archive.mutate(idOf(row))}
@@ -681,6 +698,18 @@ export default function CandidatesPage() {
   ], [archive, navigate]);
 
   const candidate = detail.data?.candidate || selected;
+  const temporaryIds = toArray(detail.data?.applications)
+    .map((app) => ({ code: app.tracking_code, job: app.job_title || app.job_id || "Application" }))
+    .filter((item) => item.code);
+
+  const copyTemporaryId = async (code) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      toast.success("Temporary ID copied");
+    } catch (error) {
+      toast.error("Could not copy temporary ID");
+    }
+  };
 
   return (
     <div className="space-y-4 p-4 md:p-5">
@@ -841,7 +870,7 @@ export default function CandidatesPage() {
       {/* CANDIDATE DRAWER */}
       {/* ============================================================ */}
       <RecruitmentDrawer 
-        open={!!selectedId} 
+        open={!!routeCandidateId} 
         title={candidate?.full_name || candidate?.fullName || "Candidate"} 
         description={candidate?.email || "No email provided"} 
         onClose={closeCandidate}
@@ -860,6 +889,37 @@ export default function CandidatesPage() {
                   <span className="text-xs text-gray-500 dark:text-gray-400">
                     Updated {fmtDateTime(candidate?.updated_at || candidate?.updatedAt)}
                   </span>
+                </div>
+
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4 dark:border-indigo-900/50 dark:bg-indigo-950/20">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-300">Candidate Temporary ID</p>
+                      <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Used by the candidate to track their public application.</p>
+                    </div>
+                  </div>
+                  {temporaryIds.length ? (
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      {temporaryIds.map((item) => (
+                        <div key={item.code} className="flex items-center justify-between gap-3 rounded-lg border border-indigo-100 bg-white px-3 py-2 dark:border-indigo-900/50 dark:bg-gray-900">
+                          <div className="min-w-0">
+                            <p className="truncate text-xs text-gray-500 dark:text-gray-400">{item.job}</p>
+                            <p className="font-mono text-sm font-semibold text-gray-900 dark:text-white">{item.code}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyTemporaryId(item.code)}
+                            className="rounded-lg p-1.5 text-indigo-600 transition hover:bg-indigo-100 dark:text-indigo-300 dark:hover:bg-indigo-900/40"
+                            aria-label="Copy temporary ID"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 rounded-lg border border-dashed border-indigo-200 px-3 py-2 text-sm text-gray-500 dark:border-indigo-900 dark:text-gray-400">No temporary ID has been generated for this candidate yet.</p>
+                  )}
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
@@ -988,7 +1048,7 @@ export default function CandidatesPage() {
                 />
                 <QuickActionButton 
                   icon={Upload}
-                  label="Upload Resume"
+                  label={candidate?.resume_id || toArray(detail.data?.resumes).length ? "Replace Resume" : "Upload Resume"}
                   onClick={() => { setResumeUploadMode(true); fileInputRef.current?.click(); }}
                   loading={uploading && resumeUploadMode}
                 />
