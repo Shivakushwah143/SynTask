@@ -169,6 +169,7 @@ export default function NewLanding() {
               <a className="hover:text-black flex items-center gap-1" href="#demo-preview">Live Demo</a>
               <a className="hover:text-black" href="#roi-calc">ROI Calculator</a>
               <a className="hover:text-black" href="#pricing">Pricing</a>
+              <Link className="hover:text-black" to="/careers">Careers</Link>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -196,6 +197,7 @@ export default function NewLanding() {
           <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#features">Features</a>
           <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#demo-preview">Live Demo</a>
           <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#pricing">Pricing</a>
+          <Link className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" to="/careers">Careers</Link>
           <hr className="border-gray-100 dark:border-slate-800" />
           <Link className="flex items-center gap-2 hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" to="/login">
             Login
@@ -2246,7 +2248,7 @@ export default function NewLanding() {
             <h4 className="font-bold text-sm mb-6">Company</h4>
             <ul className="space-y-4 text-gray-500 dark:text-gray-400 text-sm">
               <li><a className="hover:text-syn-orange" href="#">About Us</a></li>
-              <li><a className="hover:text-syn-orange" href="#">Careers</a></li>
+              <li><Link className="hover:text-syn-orange" to="/careers">Careers</Link></li>
               <li><a className="hover:text-syn-orange" href="#">Partners</a></li>
               <li><a className="hover:text-syn-orange" href="#">Contact Us</a></li>
             </ul>

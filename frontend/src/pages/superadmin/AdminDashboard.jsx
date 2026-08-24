@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useQuery } from 'react-query'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Building2, CreditCard, ShieldAlert, TrendingUp, Users } from 'lucide-react'
+import { ArrowRight, Building2, CreditCard, Plus, ShieldAlert, TrendingUp, Users } from 'lucide-react'
 import { superadminApi } from '../../api/superadmin'
 import { Button, PageHeader, SkeletonCard } from '../../components/ui'
 import { asArray, formatMoney } from '../phase4Utils'
@@ -25,11 +25,20 @@ export default function AdminDashboard() {
         description="Tenant, usage, and billing overview."
         actions={
           <div className="flex flex-wrap gap-2">
+            <Link to="/super-admin/companies?create=1">
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                Add Company
+              </Button>
+            </Link>
+            <Link to="/super-admin/companies">
+              <Button variant="secondary">Companies</Button>
+            </Link>
             <Link to="/super-admin/tenants">
               <Button variant="secondary">Review Tenants</Button>
             </Link>
             <Link to="/super-admin/usage">
-              <Button>View Usage</Button>
+              <Button variant="secondary">View Usage</Button>
             </Link>
           </div>
         }

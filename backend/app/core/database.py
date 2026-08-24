@@ -116,7 +116,7 @@ from app.integrations.google_workspace.models import (
     GoogleWorkspaceCalendarEvent,
 )
 from app.recruitment.models import (
-    Application, Candidate, CandidateJobScore, CandidateNote, CandidateSkillExtraction,
+    Application, Candidate, CandidateJobScore, CandidateNote, CandidatePortalCredential, CandidateSkillExtraction,
     CandidateTimeline, Interview, InterviewFeedback, JobRequirementProfile,
     MicrosoftOAuthState, MicrosoftRecruitmentConnection, Offer, OfferAccessToken,
     OfferTemplate, RecruitmentAttachment, RecruitmentAudit, RecruitmentEmailDelivery,
@@ -308,6 +308,7 @@ async def init_db():
                 GoogleWorkspaceCalendarEvent,
                 RecruitmentJob,
                 Candidate,
+                CandidatePortalCredential,
                 Application,
                 Resume,
                 ResumeParsedProfile,

@@ -198,6 +198,11 @@ async def approve_company(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Company is not pending approval"
         )
+    if company.admin_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Company already has an admin"
+        )
     
     # Check if admin email already exists
     existing_user = await User.find_one({"email": admin_email})
@@ -206,18 +211,28 @@ async def approve_company(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Admin email already exists"
         )
+    existing_company_admin = await User.find_one({"company_id": company_id, "role": "admin"})
+    if existing_company_admin:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Company already has an admin user"
+        )
     
     parsed_modules = normalize_modules(modules or [], require_tasks_projects=False)
     active_module = parsed_modules[0] if parsed_modules else "task"
     
     plan_doc = None
-    if plan_id and plan_id.strip():
-        plan_doc = await SubscriptionPlanDoc.get(plan_id.strip())
+    effective_plan_id = plan_id or getattr(company, "requested_plan_id", None)
+    if effective_plan_id and effective_plan_id.strip():
+        plan_doc = await SubscriptionPlanDoc.get(effective_plan_id.strip())
         if not plan_doc or getattr(plan_doc, "deleted", False):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Subscription plan not found"
             )
+        plan_status = getattr(plan_doc, "status", None)
+        if getattr(plan_status, "value", plan_status) != "active":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subscription plan is not active")
         parsed_modules = normalize_modules(list(plan_doc.enabled_modules) if getattr(plan_doc, "enabled_modules", None) else [], require_tasks_projects=False)
         active_module = parsed_modules[0] if parsed_modules else "task"
     
@@ -247,48 +262,71 @@ async def approve_company(
     else:
         admin = User(**user_data)
     
-    await admin.insert()
-    
-    # Update company
-    company.status = CompanyStatus.ACTIVE
-    company.admin_id = str(admin.id)
-    company.approved_at = utc_now()
-    company.approved_by = str(current_user.id)
-    await company.save()
-    
     billing_cycle_val = (billing_cycle or company.requested_billing_cycle or "monthly").strip().lower()
     if billing_cycle_val not in ("monthly", "yearly", "annual"):
         billing_cycle_val = "monthly"
     if billing_cycle_val == "annual":
         billing_cycle_val = "yearly"
     
-    if plan_doc:
-        amount = plan_doc.price_monthly if billing_cycle_val == "monthly" else plan_doc.price_yearly
-        start_date = utc_now()
-        sub = CompanySubscription(
-            company_id=company_id,
-            plan_id=str(plan_doc.id),
-            status=CompanySubscriptionStatus.TRIAL if (getattr(plan_doc, "has_trial", False) and getattr(plan_doc, "trial_days", 0)) else CompanySubscriptionStatus.ACTIVE,
-            billing_cycle=billing_cycle_val,
-            amount=amount,
-            currency=getattr(plan_doc, "currency", "INR"),
-            start_date=start_date,
-            end_date=None,
-            enabled_modules=list(plan_doc.enabled_modules) if getattr(plan_doc, "enabled_modules", None) else ["task"],
-            payment_method="manual",
-        )
-        await sub.insert()
-    else:
-        plan_to_use = subscription_plan or company.requested_plan or SubscriptionPlan.FREE
-        payment_method = company.payment_method_preference
-        subscription = Subscription(
-            company_id=company_id,
-            plan=plan_to_use,
-            status=SubscriptionStatus.TRIAL,
-            billing_cycle=billing_cycle_val,
-            payment_method=payment_method,
-        )
-        await subscription.insert()
+    created_admin = None
+    created_subscription = None
+    try:
+        await admin.insert()
+        created_admin = admin
+        if plan_doc:
+            existing_subscription = await CompanySubscription.find_one(CompanySubscription.company_id == company_id)
+            if existing_subscription:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Company already has a subscription")
+            amount = plan_doc.price_monthly if billing_cycle_val == "monthly" else plan_doc.price_yearly
+            start_date = utc_now()
+            sub = CompanySubscription(
+                company_id=company_id,
+                plan_id=str(plan_doc.id),
+                status=CompanySubscriptionStatus.TRIAL if (getattr(plan_doc, "has_trial", False) and getattr(plan_doc, "trial_days", 0)) else CompanySubscriptionStatus.ACTIVE,
+                billing_cycle=billing_cycle_val,
+                amount=amount,
+                currency=getattr(plan_doc, "currency", "INR"),
+                start_date=start_date,
+                end_date=None,
+                enabled_modules=list(plan_doc.enabled_modules) if getattr(plan_doc, "enabled_modules", None) else ["task"],
+                payment_method="manual",
+            )
+            await sub.insert()
+            created_subscription = sub
+        else:
+            existing_subscription = await Subscription.find_one(Subscription.company_id == company_id)
+            if existing_subscription:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Company already has a subscription")
+            plan_to_use = subscription_plan or company.requested_plan or SubscriptionPlan.FREE
+            payment_method = company.payment_method_preference
+            subscription = Subscription(
+                company_id=company_id,
+                plan=plan_to_use,
+                status=SubscriptionStatus.TRIAL,
+                billing_cycle=billing_cycle_val,
+                payment_method=payment_method,
+            )
+            await subscription.insert()
+            created_subscription = subscription
+
+        company.status = CompanyStatus.ACTIVE
+        company.admin_id = str(admin.id)
+        company.approved_at = utc_now()
+        company.approved_by = str(current_user.id)
+        company.updated_at = utc_now()
+        await company.save()
+    except HTTPException:
+        if created_subscription:
+            await created_subscription.delete()
+        if created_admin:
+            await created_admin.delete()
+        raise
+    except Exception:
+        if created_subscription:
+            await created_subscription.delete()
+        if created_admin:
+            await created_admin.delete()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Company approval provisioning failed")
     
     # Queue welcome email to the new Company Admin
     try:
@@ -326,6 +364,23 @@ async def update_company_status(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Company not found"
+        )
+    current_status = company.status
+    valid_transitions = {
+        CompanyStatus.PENDING: {CompanyStatus.CANCELLED},
+        CompanyStatus.ACTIVE: {CompanyStatus.SUSPENDED},
+        CompanyStatus.SUSPENDED: {CompanyStatus.ACTIVE},
+        CompanyStatus.CANCELLED: set(),
+    }
+    if new_status not in valid_transitions.get(current_status, set()):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "detail": "Invalid company status transition",
+                "code": "invalid_company_status_transition",
+                "from": current_status.value if hasattr(current_status, "value") else current_status,
+                "to": new_status.value if hasattr(new_status, "value") else new_status,
+            },
         )
     
     company.status = new_status

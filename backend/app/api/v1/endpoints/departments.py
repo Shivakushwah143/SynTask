@@ -25,13 +25,17 @@ def _can_read_departments(user: User) -> bool:
     return user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]
 
 
+def _is_super_admin(user: User) -> bool:
+    return user.role == UserRole.SUPER_ADMIN
+
+
 async def _require_department_read_access(current_user: User = Depends(get_current_user)) -> User:
     if not _can_read_departments(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Department access required",
         )
-    if not current_user.company_id:
+    if not current_user.company_id and not _is_super_admin(current_user):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User must belong to a company",
@@ -82,6 +86,9 @@ def _serialize_department(department: Department, manager_name: str | None = Non
 
 @router.get("/")
 async def list_departments(current_user: User = Depends(_require_department_read_access)):
+    if not current_user.company_id:
+        return []
+
     departments = await Department.find(
         Department.company_id == current_user.company_id,
         Department.deleted_at == None,  # noqa: E711
@@ -107,6 +114,39 @@ async def list_departments(current_user: User = Depends(_require_department_read
         )
         for department in departments
     ]
+
+
+@router.get("/{department_ref}")
+async def get_department(
+    department_ref: str,
+    current_user: User = Depends(_require_department_read_access),
+):
+    if not current_user.company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
+
+    department = None
+    if ObjectId.is_valid(department_ref):
+        candidate = await Department.get(department_ref)
+        if candidate and candidate.company_id == current_user.company_id and candidate.deleted_at is None:
+            department = candidate
+
+    if department is None:
+        department = await Department.find_one(
+            Department.company_id == current_user.company_id,
+            Department.name == department_ref,
+            Department.deleted_at == None,  # noqa: E711
+        )
+
+    if not department:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
+
+    manager_name = None
+    if department.manager_id and ObjectId.is_valid(department.manager_id):
+        manager = await User.get(department.manager_id)
+        if manager and manager.company_id == current_user.company_id:
+            manager_name = manager.full_name()
+
+    return _serialize_department(department, manager_name)
 
 
 @router.post("/")

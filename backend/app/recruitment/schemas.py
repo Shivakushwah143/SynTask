@@ -82,6 +82,12 @@ class JobUpdate(BaseModel):
     publish_options: Optional[dict] = None
 
 
+# Job Status Transition Schema
+class JobStatusUpdate(BaseModel):
+    """Request body for a validated lifecycle status transition."""
+    status: JobLifecycleStatus
+
+
 # Job Response Schema
 class JobResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -243,6 +249,8 @@ class InterviewResponse(BaseModel):
     status: InterviewLifecycleStatus
     feedback_status: InterviewFeedbackStatus
     decision: Optional[InterviewDecision] = None
+    feedback: Optional[str] = None
+    result: Optional[str] = None
     notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -323,7 +331,6 @@ class PublicJobResponse(BaseModel):
     created_at: datetime
 
 
-
 # Public Job List Response (for pagination)
 class PublicJobListResponse(BaseModel):
     items: list[PublicJobResponse]
@@ -331,6 +338,14 @@ class PublicJobListResponse(BaseModel):
     page: int
     page_size: int
     has_next: bool
+
+
+class PublicCareerCompanyResponse(BaseModel):
+    name: str
+    slug: str
+    industry: Optional[str] = None
+    location: Optional[str] = None
+    job_count: int
 
 
 # Career Portal Settings
@@ -350,6 +365,7 @@ class CareerPortalSettings(BaseModel):
 class ApplicationApplyRequest(BaseModel):
     full_name: str = Field(min_length=2, max_length=160)
     email: EmailStr
+    date_of_birth: Optional[str] = None
     phone: Optional[str] = None
     current_company: Optional[str] = None
     experience_years: float = Field(default=0, ge=0)
@@ -366,6 +382,8 @@ class ApplicationApplyRequest(BaseModel):
 class ApplicationApplyResponse(BaseModel):
     application_id: str
     tracking_code: str
+    tracking_pin: Optional[str] = None
+    temporary_user_id: Optional[str] = None
     job_id: str
     job_title: str
     candidate_email: str
@@ -379,9 +397,33 @@ class ApplicationStatusResponse(BaseModel):
 
     tracking_code: str
     job_title: str
+    company_name: Optional[str] = None
+    candidate: dict = Field(default_factory=dict)
+    job: dict = Field(default_factory=dict)
+    resume: Optional[dict] = None
     status: str
+    status_label: str
+    current_step: str
+    timeline: list[dict]
+    stage_details: list[dict] = Field(default_factory=list)
+    interviews: list[dict] = Field(default_factory=list)
+    offers: list[dict] = Field(default_factory=list)
     applied_at: datetime
     last_updated: datetime
+
+
+class PublicTrackingProfileUpdate(BaseModel):
+    tracking_code: str = Field(min_length=1)
+    tracking_pin: str = Field(min_length=1)
+    full_name: Optional[str] = Field(default=None, min_length=2, max_length=160)
+    phone: Optional[str] = None
+    current_company: Optional[str] = None
+    experience_years: Optional[float] = Field(default=None, ge=0)
+    expected_salary: Optional[float] = Field(default=None, ge=0)
+    notice_period: Optional[str] = None
+    location: Optional[str] = None
+    education: Optional[str] = None
+    skills: Optional[list[str]] = None
 
 
 

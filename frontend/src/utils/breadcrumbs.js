@@ -72,11 +72,15 @@ export const buildBreadcrumbTrail = (pathname, search = '') => {
     const isCompanyWorkspace = segments.length === 3 && segments[0] === 'crm' && segments[1] === 'companies'
     const isTaskDetail = segments.length === 4 && segments[0] === 'projects' && segments[2] === 'tasks'
     const isDirectTaskDetail = segments.length === 2 && segments[0] === 'tasks'
+    const isRecruitmentJobDetail = segments.length === 4 && segments[0] === 'hr' && segments[1] === 'recruitment' && segments[2] === 'jobs'
+    const isRecruitmentCandidateDetail = segments.length === 4 && segments[0] === 'hr' && segments[1] === 'recruitment' && segments[2] === 'candidates'
 
     if (isLeadWorkspace) trail.push('Lead')
     else if (isCompanyWorkspace) trail.push('Company')
     else if (isTaskDetail) trail.push('Tasks', 'Task Detail')
     else if (isDirectTaskDetail) trail.push('Task Detail')
+    else if (isRecruitmentJobDetail) trail.push('Job Detail')
+    else if (isRecruitmentCandidateDetail) trail.push('Candidate Detail')
     else if (!context.matchedExact) {
       // Other sub-pages (e.g. /projects/:id/board): append labelled remainder.
       const matchedDepth = context.itemPath.split('/').filter(Boolean).length
@@ -103,10 +107,14 @@ export const buildBreadcrumbTrail = (pathname, search = '') => {
   const isCompanyWorkspace = segments.length === 3 && segments[0] === 'crm' && segments[1] === 'companies'
   const isTaskDetail = segments.length === 4 && segments[0] === 'projects' && segments[2] === 'tasks'
   const isDirectTaskDetail = segments.length === 2 && segments[0] === 'tasks'
+  const isRecruitmentJobDetail = segments.length === 4 && segments[0] === 'hr' && segments[1] === 'recruitment' && segments[2] === 'jobs'
+  const isRecruitmentCandidateDetail = segments.length === 4 && segments[0] === 'hr' && segments[1] === 'recruitment' && segments[2] === 'candidates'
   if (isLeadWorkspace) displaySegments = [displaySegments[0], displaySegments[1], 'Lead']
   else if (isCompanyWorkspace) displaySegments = [displaySegments[0], displaySegments[1], 'Company']
   else if (isTaskDetail) displaySegments = ['Projects', displaySegments[1], 'Tasks', 'Task Detail']
   else if (isDirectTaskDetail) displaySegments = ['Tasks', 'Task Detail']
+  else if (isRecruitmentJobDetail) displaySegments = ['People', 'Recruitment', 'Job Openings', 'Job Detail']
+  else if (isRecruitmentCandidateDetail) displaySegments = ['People', 'Recruitment', 'Candidates', 'Candidate Detail']
 
   if (displaySegments[0] === 'CRM' || displaySegments[0] === 'HR') displaySegments = displaySegments.slice(1)
   return ['Home', ...displaySegments]

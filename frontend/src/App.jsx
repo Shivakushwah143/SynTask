@@ -101,6 +101,7 @@ const HRDepartment = lazy(() => import('./pages/hr/HRDepartment'))
 const RecruitmentDashboard = lazy(() => import('./pages/hr/recruitment/RecruitmentDashboard'))
 const CandidateInterviewScreen = lazy(() => import('./pages/hr/recruitment/CandidateInterviewScreen'))
 const RecruitmentJobsPage = lazy(() => import('./modules/hr/recruitment/pages/JobsPage'))
+const RecruitmentJobDetailPage = lazy(() => import('./modules/hr/recruitment/pages/JobDetailPage'))
 const RecruitmentInboxPage = lazy(() => import('./modules/hr/recruitment/pages/InboxPage'))
 const RecruitmentCandidatesPage = lazy(() => import('./modules/hr/recruitment/pages/CandidatesPage'))
 const RecruitmentResumePoolPage = lazy(() => import('./modules/hr/recruitment/pages/ResumePoolPage'))
@@ -261,6 +262,8 @@ function App() {
         <Route path="/msa/sign/:token" element={<PublicRouteAllowAuth><MSASign /></PublicRouteAllowAuth>} />
         */}
         <Route path="/careers" element={withBoundary(<CareersLandingPage />)} />
+        <Route path="/careers/:companySlug" element={withBoundary(<CareersLandingPage />)} />
+        <Route path="/careers/:companySlug/jobs/:slug" element={withBoundary(<CareerJobDetailsPage />)} />
         <Route path="/careers/jobs/:slug" element={withBoundary(<CareerJobDetailsPage />)} />
         <Route path="/careers/track" element={withBoundary(<CareerTrackingPage />)} />
         <Route path="/public/offers/:token" element={withBoundary(<CandidateOfferPage />)} />
@@ -330,8 +333,10 @@ function App() {
             <Route path="recruitment">
               <Route index element={withBoundary(<RecruitmentDashboard />)} />
               <Route path="jobs" element={withBoundary(<RecruitmentJobsPage />)} />
+              <Route path="jobs/:jobId" element={withBoundary(<RecruitmentJobDetailPage />)} />
               <Route path="inbox" element={withBoundary(<RecruitmentInboxPage />)} />
               <Route path="candidates" element={withBoundary(<RecruitmentCandidatesPage />)} />
+              <Route path="candidates/:candidateId" element={withBoundary(<RecruitmentCandidatesPage />)} />
               <Route path="employees" element={withBoundary(<RecruitmentEmployeesPage />)} />
               <Route path="employees/:employeeId" element={withBoundary(<EmployeeDetailPage />)} />
               <Route path="resume-pool" element={withBoundary(<RecruitmentResumePoolPage />)} />
@@ -385,6 +390,7 @@ function App() {
           <Route path="billing" element={withBoundary(<BillingRevenue />)} />
           <Route path="feature-flags" element={withBoundary(<FeatureFlagsPage />)} />
           <Route path="companies" element={withBoundary(<Companies />)} />
+          <Route path="clients" element={withBoundary(<Clients />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="activity" element={withBoundary(<ActivityLog />)} />
           <Route path="settings" element={withBoundary(<Settings />)} />

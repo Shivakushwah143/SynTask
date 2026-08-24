@@ -97,6 +97,7 @@ def serve_upload_file(root: Path, relative_path: str, download_name: str | None 
         filename=download_name or file_path.name,
         media_type=content_type,
         headers=headers,
+        content_disposition_type="inline",
     )
 
 

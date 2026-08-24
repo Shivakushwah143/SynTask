@@ -2,7 +2,9 @@
 
 Database: `alphanexis_task_management`
 
-This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **58 unique MongoDB collection names** across **63 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
+This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **59 unique MongoDB collection names** across **64 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
+
+Recruitment models under `backend/app/recruitment/models.py` also define tenant-scoped collections. `recruitment_candidates` stores public applicant profile data including `date_of_birth` when submitted. `recruitment_applications` stores candidate job applications with `company_id`, `candidate_id`, `job_id`, `status`, globally unique `tracking_code`, hashed `tracking_secret_hash`, `tracking_secret_created_at`, `applied_at`, `updated_at`, and `deleted_at`. `recruitment_candidate_portal_credentials` is a temporary public tracking credential collection keyed by `company_id`, `candidate_id`, `application_id`, `job_id`, and `tracking_code`; it stores only `secret_hash`, never the temporary password. Public candidate tracking verifies `tracking_code` plus PIN against a temporary credential hash and never exposes the hash or MongoDB id. `recruitment_offer_access_tokens` stores tenant-scoped offer access records with a token hash and optional encrypted raw token used to render public offer links in candidate tracking; public offer routes still verify the token hash and expiry before exposing offer details. Terminal candidate states remove temporary credential documents while retaining recruitment audit/application records.
 
 ## Collection Summary
 
@@ -34,6 +36,7 @@ This document is generated from Beanie `Document` models under `backend/app/mode
 | `pages` | Page | Page persistence collection. |
 | `payment_webhooks` | PaymentWebhook | Payment webhook audit records. |
 | `projects` | Project | Project metadata, board columns, files, and settings. |
+| `recruitment_candidate_portal_credentials` | CandidatePortalCredential | Temporary public applicant tracking credentials; stores hashes only and is deleted on terminal candidate lifecycle states. |
 | `sales_business_categories` | BusinessCategory | BusinessCategory persistence collection. |
 | `sales_categories` | SalesCategory | Sales product/contact category master data. |
 | `sales_channels` | SalesChannel | Sales channel master data. |

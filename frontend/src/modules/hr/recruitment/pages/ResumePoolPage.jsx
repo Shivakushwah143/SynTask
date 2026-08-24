@@ -43,7 +43,9 @@ const apiBase = import.meta.env.VITE_API_URL || "/api/v1";
 // UTILITY FUNCTIONS
 // ============================================================
 const getResumeUrl = (row) => {
-  const url = row.storage_url || row.storageUrl || row.file_url || row.fileUrl;
+  const resumeId = row.id || row._id;
+  if (resumeId) return `/api/v1/recruitment/resumes/${resumeId}/file`;
+  const url = row.resume_url || row.resumeUrl || row.storage_url || row.storageUrl || row.file_url || row.fileUrl;
   if (!url) return "";
   if (/^https?:\/\//i.test(url)) return url;
   if (url.startsWith("/api/v1/")) return url;

@@ -230,8 +230,8 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 | POST | `/api/v1/companies/register` | `register_company` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/companies/{company_id}` | `delete_company` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/companies/{company_id}` | `get_company` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/companies/{company_id}/approve` | `approve_company` | Uses router/endpoint dependencies where configured. |
-| PATCH | `/api/v1/companies/{company_id}/status` | `update_company_status` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/companies/{company_id}/approve` | `approve_company` | Canonical first-time approval. Validates pending company, prevents duplicate company admin/subscription, creates first Company Admin, assigns selected subscription/plan, provisions modules, sets `approved_by`/`approved_at`, activates company, and attempts existing welcome email. Partial admin/subscription creation is rolled back on provisioning failure. |
+| PATCH | `/api/v1/companies/{company_id}/status` | `update_company_status` | Super Admin lifecycle status update. Valid transitions are pending to cancelled, active to suspended, and suspended to active. Invalid transitions return HTTP 409 with `invalid_company_status_transition`. |
 
 ### Components
 
@@ -540,6 +540,16 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | GET | `/api/v1/superadmin/plans/{plan_id}` | `get_plan` | Uses router/endpoint dependencies where configured. |
 | PUT | `/api/v1/superadmin/plans/{plan_id}` | `update_plan` | Uses router/endpoint dependencies where configured. |
 
+### Departments
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/departments/` | `list_departments` | Company-scoped department list for Admin, Sub Admin, Manager, Lead, and Super Admin. Super Admin sessions without a selected company return an empty list instead of a company-resolution error. |
+| GET | `/api/v1/departments/{department_ref}` | `get_department` | Company-scoped single department lookup by Mongo id or exact department name. Cross-company access is rejected as not found; Super Admin without company context gets 404 instead of an unhandled error. |
+| POST | `/api/v1/departments/` | `create_department` | Company admin only; requires `company_id` on the actor. |
+| PUT | `/api/v1/departments/{department_id}` | `update_department` | Company admin only and same-company department only. |
+| DELETE | `/api/v1/departments/{department_id}` | `delete_department` | Company admin only and same-company department only; blocks deletion while active users or tasks still reference the department. |
+
 ### Super Admin - Tenants
 
 | Method | Path | Handler | Notes |
@@ -679,13 +689,16 @@ The existing Celery beat schedule evaluates enabled tenant configurations hourly
 
 All routes require `get_current_super_admin`.
 
+The Super Admin UI exposes three distinct sidebar entries: `/super-admin/companies` for the existing platform Companies page and Add Company form, `/super-admin/tenants` for tenant operations backed by the superadmin tenant APIs below, and `/super-admin/clients` for the existing CRM Clients page. The Tenants page also links Add Company to the existing Companies form. These routes do not merge platform Company records with CRM Client records.
+
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | GET | `/api/v1/superadmin/tenants/subscription-overview` | `subscription_overview` | Lists tenant plan, purchase date, next billing date, amount, status, and user count. |
 | GET | `/api/v1/superadmin/tenants/{company_id}/users` | `list_company_users` | Lists users for one tenant company. |
 | POST | `/api/v1/superadmin/tenants/{company_id}/users/{user_id}/reset-password` | `reset_user_password` | Stores a hashed reset token, sends reset email, and writes audit log. |
-| POST | `/api/v1/superadmin/tenants/{company_id}/suspend` | `suspend_tenant` | Suspends tenant with reason, notes, optional admin notification, and audit log. |
-| POST | `/api/v1/superadmin/tenants/{company_id}/activate` | `activate_tenant` | Reactivates tenant and clears subscription suspension state. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/approve` | `approve_tenant` | Deprecated. Returns HTTP 410; use `/api/v1/companies/{company_id}/approve` for first-time approval and admin provisioning. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/suspend` | `suspend_tenant` | Suspends active tenants only; invalid current statuses return HTTP 409 without changing status. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/activate` | `activate_tenant` | Reactivates suspended tenants only and clears subscription suspension state; invalid current statuses return HTTP 409 without changing status. |
 | POST | `/api/v1/superadmin/tenants/{company_id}/assign-plan` | `assign_plan_to_tenant` | Assigns a plan and billing cycle, with optional custom user limit. |
 | GET | `/api/v1/superadmin/billing/revenue/analytics` | `get_revenue_analytics` | Supports `period=7d\|30d\|90d\|1y` plus legacy date range query. |
 | GET | `/api/v1/superadmin/billing/invoices` | `list_invoices` | Lists invoice-like billing transactions with company name and sent status. |
@@ -711,6 +724,18 @@ Suspended tenant enforcement occurs in `get_current_user`: non-superadmin users 
 | 422 | Validation error | Request body/query does not match Pydantic schema |
 | 429 | Rate limited | SlowAPI auth limits exceeded |
 | 500 | Internal error | Unhandled server-side failure |
+
+## Public Careers
+
+Public recruitment career endpoints do not require authentication. `GET /api/v1/careers` returns companies that currently have published, public jobs and links visitors to `/careers/track` for existing applications. `GET /api/v1/careers/{company_slug}` returns one company's career portal settings, and `GET /api/v1/careers/{company_slug}/jobs` plus `GET /api/v1/careers/{company_slug}/jobs/{job_slug}` return only that company's jobs where `lifecycle_status=published`, `visibility=public`, and `deleted_at=null`. Anonymous applications post multipart form data to `/api/v1/careers/{company_slug}/jobs/{job_id}/apply`; the form includes `full_name`, `email`, `date_of_birth`, optional profile fields, and `resume`. The backend resolves the company from the slug and rejects cross-company, draft, paused, closed, archived, deleted, private, or expired jobs.
+
+Successful anonymous applications return `tracking_code`, `temporary_user_id`, and a one-time random `tracking_pin` shown on screen for printing. The `application_id` and `temporary_user_id` fields in this public response are tracking identifiers, not MongoDB ids. The server stores only hashes for temporary tracking secrets in `recruitment_candidate_portal_credentials` and `recruitment_applications`; predictable DOB-derived passwords are not used. Candidates track progress with `POST /api/v1/careers/applications/track` and body `{ "tracking_code": "...", "tracking_pin": "..." }`. The response is public-safe: company/job basics, candidate-owned profile fields, current resume metadata, current status label, human-readable timeline, public-safe stage detail feed, scheduled interview summaries, and offer status summaries. Sent offer summaries include an `offer_url` only when a valid tenant-scoped public offer token exists; candidates open that URL without employee login to view/download the offer letter and accept or reject it. Candidates can update their public profile with `PATCH /api/v1/careers/applications/track/profile` using the same tracking credentials, and can replace the application resume with multipart `POST /api/v1/careers/applications/track/resume`. Private HR notes, internal database ids, scores, recruiter-only data, and cross-tenant data are not exposed. Temporary portal credential documents are removed when the candidate reaches terminal lifecycle states such as rejected, withdrawn, archived, joined, or employee. `GET /api/v1/careers/applications/{tracking_code}` is retained for compatibility but requires `tracking_pin` as a query parameter.
+
+Authenticated HR users can call `GET /api/v1/recruitment/career-page` to get their own company's public career route for verification. The endpoint is tenant-scoped by `current_user.company_id`; public listing/application endpoints never depend on `current_user`.
+
+Authenticated HR users can call `GET /api/v1/recruitment/jobs/{job_id}/applications` to list applied candidates for a job. The endpoint uses `current_user.company_id`, requires recruitment candidate view permission, and returns candidate summary, application date/status, resume link, recruiter summary, score summary when available, all same-job interview rounds, the latest interview summary, and the latest offer summary when available. Candidate lifecycle actions continue to use existing `/api/v1/recruitment/candidates/{candidate_id}/move`, `/reject`, and `/archive` endpoints; interview scheduling/result and offer creation/send use existing `/api/v1/recruitment/interviews` and `/api/v1/recruitment/offers` workflow APIs. HR can upload an already prepared offer letter with multipart `POST /api/v1/recruitment/offers/{offer_id}/upload-letter`; accepted files are PDF, JPG, JPEG, and PNG, tenant-scoped to the offer's company, and stored on the existing immutable offer-file fields used by secure public offer viewing.
+
+Recruitment resumes are stored in `recruitment_resumes` with `storage_url` plus Cloudinary metadata when Cloudinary is enabled. Resume upload accepts PDF, DOC, DOCX, TXT, JPG, JPEG, and PNG files; document/text formats can be parsed, while image resumes are stored and previewed without text extraction. The linked `recruitment_candidates.resume_url` mirrors the current resume document URL for candidate-detail consumers while `resume_id` remains the canonical relation. Recruitment resume uploads use browser-openable Cloudinary delivery URLs for PDF preview. HR resume links should open `GET /api/v1/recruitment/resumes/{resume_id}/file`, which re-checks tenant authorization and returns either the local uploaded file, the stored Cloudinary URL, or a correctly path-signed Cloudinary delivery URL for older authenticated assets. Add `?download=true` to force attachment/download behavior. Shared uploaded-file serving returns inline content disposition so local PDFs preview in-browser instead of always downloading.
 
 ## Pagination
 List endpoints commonly use `skip` and `limit`; default page size is configured in `Settings.DEFAULT_PAGE_SIZE` and max size is `Settings.MAX_PAGE_SIZE`.
