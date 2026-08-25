@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
+import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { 
   Archive, 
@@ -31,6 +32,7 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
+  Copy,
   Download,
   Video,
   Clock as ClockIcon
@@ -77,15 +79,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
+    <div className="group rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+      <div className="flex items-center gap-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-r ${colors[color]} text-white shadow-sm`}>
           <Icon className="h-4 w-4" />
         </div>
+        <div className="min-w-0 flex-1">
+          <span className="block truncate text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">{label}</span>
+          <p className="truncate text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="truncate text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
+        </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -94,15 +98,15 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
 // SECTION HEADER COMPONENT
 // ============================================================
 const SectionHeader = ({ icon: Icon, title, description, action }) => (
-  <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+  <div className="border-b border-gray-200 bg-gray-50/70 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/70">
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-          <Icon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+          <Icon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
         </div>
         <div>
-          <h2 className="font-bold text-gray-900 dark:text-white">{title}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">{title}</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{description}</p>
         </div>
       </div>
       {action}
@@ -187,6 +191,12 @@ const fileUrl = (value) => {
   return value;
 };
 
+const resumeFileUrl = (resume, download = false) => {
+  const resumeId = idOf(resume);
+  if (resumeId) return `/api/v1/recruitment/resumes/${resumeId}/file${download ? "?download=true" : ""}`;
+  return fileUrl(resume?.resume_url || resume?.resumeUrl || resume?.storage_url);
+};
+
 // ============================================================
 // RESUME TAB CONTENT
 // ============================================================
@@ -224,15 +234,25 @@ const ResumeTabContent = ({ resumes, onReprocess, loading }) => {
               >
                 <RefreshCw className="h-3.5 w-3.5" /> Reprocess
               </button>
-            {resume.storage_url && (
-              <a
-                href={fileUrl(resume.storage_url)}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                <Download className="h-3.5 w-3.5" /> Open
-              </a>
+            {(idOf(resume) || resume.storage_url) && (
+              <>
+                <a
+                  href={resumeFileUrl(resume)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  <Eye className="h-3.5 w-3.5" /> Preview
+                </a>
+                <a
+                  href={resumeFileUrl(resume, true)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  <Download className="h-3.5 w-3.5" /> Download
+                </a>
+              </>
             )}
             </div>
           </div>
@@ -451,6 +471,8 @@ const AssignmentTabContent = ({ candidate, onAssign, onAssignJob }) => {
 // ============================================================
 export default function CandidatesPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { candidateId: routeCandidateId } = useParams();
   const canManageHrDocuments = useCanManageHrDocuments();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -463,32 +485,37 @@ export default function CandidatesPage() {
   const [resumeUploadMode, setResumeUploadMode] = useState(false);
   
   const params = compactParams({ page, page_size: 20, search, ...filters });
+  const selectedId = routeCandidateId || idOf(selected);
+  const closeCandidate = () => {
+    setSelected(null);
+    if (routeCandidateId) navigate("/hr/recruitment/candidates");
+  };
   const query = useQuery(["recruitment", "candidates", params], () => recruitmentApi.getCandidates(params), { keepPreviousData: true });
-  const detail = useQuery(["recruitment", "candidate", idOf(selected)], () => recruitmentApi.getCandidate(idOf(selected)), { enabled: !!selected });
-  const timeline = useQuery(["recruitment", "candidateTimeline", idOf(selected)], () => recruitmentApi.getCandidateTimeline(idOf(selected)), { enabled: !!selected });
+  const detail = useQuery(["recruitment", "candidate", selectedId], () => recruitmentApi.getCandidate(selectedId), { enabled: !!selectedId });
+  const timeline = useQuery(["recruitment", "candidateTimeline", selectedId], () => recruitmentApi.getCandidateTimeline(selectedId), { enabled: !!selectedId });
   const interviews = useQuery(
-    ["recruitment", "candidateInterviews", idOf(selected)],
-    () => recruitmentApi.getInterviews({ candidate_id: idOf(selected), page_size: 20 }),
-    { enabled: !!selected }
+    ["recruitment", "candidateInterviews", selectedId],
+    () => recruitmentApi.getInterviews({ candidate_id: selectedId, page_size: 20 }),
+    { enabled: !!selectedId }
   );
   
   const invalidate = () => qc.invalidateQueries(["recruitment", "candidates"]);
   const reprocessResume = useMutation((resumeId) => recruitmentApi.processResume(resumeId, true), {
     onSuccess: () => {
       toast.success("Resume reprocessed");
-      qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]);
+      qc.invalidateQueries(["recruitment", "candidate", selectedId]);
     },
     onError: (error) => toast.error(error?.response?.data?.detail || "Failed to reprocess resume"),
   });
   
   const assign = useMutation(
-    (payload) => recruitmentApi.assignCandidate(idOf(selected), payload), 
+    (payload) => recruitmentApi.assignCandidate(selectedId, payload), 
     { 
       onSuccess: () => { 
         toast.success("Recruiter assigned successfully! 👤"); 
         setAssignOpen(false); 
         invalidate(); 
-        qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]);
+        qc.invalidateQueries(["recruitment", "candidate", selectedId]);
       },
       onError: (error) => {
         toast.error(error?.response?.data?.detail || "Failed to assign recruiter");
@@ -497,20 +524,20 @@ export default function CandidatesPage() {
   );
 
   const assignJob = useMutation(
-    (payload) => recruitmentApi.assignJobToCandidate(idOf(selected), payload),
+    (payload) => recruitmentApi.assignJobToCandidate(selectedId, payload),
     {
       onSuccess: (response) => {
         const data = response?.data;
         if (data?.hired) {
           toast.success(`${candidate?.full_name || candidate?.fullName || "Candidate"} hired as ${data.designation || data.job_title} — moved to Employees 🎉`);
-          setSelected(null);
+          closeCandidate();
         } else {
           toast.success(`${candidate?.full_name || candidate?.fullName || "Candidate"} assigned to ${data?.job_title || "job"} 🎯`);
         }
         setAssignJobOpen(false);
         invalidate();
         qc.invalidateQueries(["recruitment", "employees"]);
-        qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]);
+        qc.invalidateQueries(["recruitment", "candidate", selectedId]);
       },
       onError: (error) => {
         toast.error(error?.response?.data?.detail || "Failed to assign job");
@@ -524,7 +551,7 @@ export default function CandidatesPage() {
       onSuccess: () => { 
         toast.success("Candidate archived successfully! 📦"); 
         invalidate(); 
-        setSelected(null);
+        closeCandidate();
       },
       onError: (error) => {
         toast.error(error?.response?.data?.detail || "Failed to archive candidate");
@@ -533,13 +560,13 @@ export default function CandidatesPage() {
   );
   
   const addNote = useMutation(
-    (body) => recruitmentApi.addCandidateNote(idOf(selected), { body }), 
+    (body) => recruitmentApi.addCandidateNote(selectedId, { body }), 
     { 
       onSuccess: () => { 
         toast.success("Note added successfully! 📝"); 
         setNote(""); 
-        qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]); 
-        qc.invalidateQueries(["recruitment", "candidateTimeline", idOf(selected)]);
+        qc.invalidateQueries(["recruitment", "candidate", selectedId]); 
+        qc.invalidateQueries(["recruitment", "candidateTimeline", selectedId]);
       },
       onError: (error) => {
         toast.error(error?.response?.data?.detail || "Failed to add note");
@@ -553,18 +580,18 @@ export default function CandidatesPage() {
   const handleFileChange = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file || !selected) return;
+    if (!file || !selectedId) return;
     setUploading(true);
     try {
       if (resumeUploadMode) {
-        await recruitmentApi.uploadCandidateResume(idOf(selected), file);
+        await recruitmentApi.uploadCandidateResume(selectedId, file);
         toast.success("Resume uploaded and parsed");
       } else {
-        await recruitmentApi.addCandidateAttachment(idOf(selected), file);
+        await recruitmentApi.addCandidateAttachment(selectedId, file);
         toast.success("Attachment added successfully");
       }
-      qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]);
-      qc.invalidateQueries(["recruitment", "candidateTimeline", idOf(selected)]);
+      qc.invalidateQueries(["recruitment", "candidate", selectedId]);
+      qc.invalidateQueries(["recruitment", "candidateTimeline", selectedId]);
     } catch (error) {
       toast.error(error?.response?.data?.detail || "Failed to upload file");
     } finally {
@@ -579,7 +606,7 @@ export default function CandidatesPage() {
     const phone = candidate?.phone || "";
     const location = candidate?.location || "";
     const skills = Array.isArray(candidate?.skills) ? candidate.skills.join(", ") : candidate?.skills || "";
-    const link = `${window.location.origin}/hr/recruitment/candidates`;
+    const link = `${window.location.origin}/hr/recruitment/candidates/${selectedId || ""}`;
     const text = [
       `${name}`,
       email && `Email: ${email}`,
@@ -614,7 +641,7 @@ export default function CandidatesPage() {
       render: (row) => (
         <button 
           className="font-semibold text-indigo-600 transition hover:text-indigo-700 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300" 
-          onClick={() => { setSelected(row); setActiveTab("overview"); }}
+          onClick={() => { setActiveTab("overview"); navigate(`/hr/recruitment/candidates/${idOf(row)}`); }}
         >
           {row.full_name || row.fullName || row.name || "Candidate"}
         </button>
@@ -652,11 +679,11 @@ export default function CandidatesPage() {
       render: (row) => (
         <div className="flex gap-1">
           <button
-            onClick={() => { setSelected(row); setAssignOpen(true); }}
+            onClick={() => navigate(`/hr/recruitment/candidates/${idOf(row)}`)}
             className="rounded-lg p-1.5 text-gray-500 transition hover:bg-indigo-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-indigo-900/30 dark:hover:text-indigo-400"
-            aria-label="Assign recruiter"
+            aria-label="Open candidate"
           >
-            <UserPlus className="h-4 w-4" />
+            <Eye className="h-4 w-4" />
           </button>
           <button
             onClick={() => archive.mutate(idOf(row))}
@@ -668,45 +695,57 @@ export default function CandidatesPage() {
         </div>
       ) 
     },
-  ], [archive]);
+  ], [archive, navigate]);
 
   const candidate = detail.data?.candidate || selected;
+  const temporaryIds = toArray(detail.data?.applications)
+    .map((app) => ({ code: app.tracking_code, job: app.job_title || app.job_id || "Application" }))
+    .filter((item) => item.code);
+
+  const copyTemporaryId = async (code) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      toast.success("Temporary ID copied");
+    } catch (error) {
+      toast.error("Could not copy temporary ID");
+    }
+  };
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-5">
+      {!routeCandidateId ? (
+      <>
       {/* ============================================================ */}
       {/* HERO SECTION - Gradient with Glassmorphism */}
       {/* ============================================================ */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-sky-600 via-cyan-600 to-teal-600 p-6 text-white shadow-xl md:p-8">
-        {/* Decorative blur circles */}
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
-        
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-sky-700 via-cyan-700 to-teal-700 px-4 py-3 text-white shadow-sm">
         <div className="relative z-10">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <Users className="h-6 w-6" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="rounded-lg bg-white/15 p-2 backdrop-blur-sm">
+                <Users className="h-5 w-5" />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Candidates</h1>
-                <p className="mt-1 text-indigo-100">
-                  Tabbed candidate workspace with timeline, notes, resume, attachments and assignment.
-                </p>
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-bold md:text-xl">Candidates</h1>
+                <p className="truncate text-xs text-cyan-100">Candidate workspace, timeline, resume and assignment.</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex shrink-0 flex-wrap gap-2">
               <button 
                 onClick={() => query.refetch()}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-white/15 px-3 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/25"
               >
                 <RefreshCw className="h-4 w-4" />
                 Refresh
               </button>
               <a 
+<<<<<<< HEAD
                 href="/hr/employees"
                 className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow transition hover:bg-indigo-50"
+=======
+                href="/hr/recruitment/employees"
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-white px-3 text-xs font-semibold text-sky-700 shadow-sm transition hover:bg-indigo-50"
+>>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
               >
                 <UserCheck className="h-4 w-4" />
                 View Employees
@@ -719,7 +758,7 @@ export default function CandidatesPage() {
       {/* ============================================================ */}
       {/* STAT CARDS - 4 Cards with Gradients */}
       {/* ============================================================ */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard 
           label="Total Candidates" 
           value={stats.total} 
@@ -753,7 +792,7 @@ export default function CandidatesPage() {
       {/* ============================================================ */}
       {/* FILTERS SECTION */}
       {/* ============================================================ */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <SectionHeader 
           icon={Filter}
           title="Filters & Search"
@@ -768,7 +807,7 @@ export default function CandidatesPage() {
             </button>
           }
         />
-        <div className="p-4">
+        <div className="p-3">
           <RecruitmentFilters
             search={search}
             onSearch={(v) => { setSearch(v); setPage(1); }}
@@ -786,13 +825,13 @@ export default function CandidatesPage() {
       {/* ============================================================ */}
       {/* CANDIDATES TABLE */}
       {/* ============================================================ */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <SectionHeader 
           icon={Users}
           title="All Candidates"
           description={`${stats.total} candidate${stats.total !== 1 ? 's' : ''} found`}
         />
-        <div className="p-4">
+        <div className="p-3">
           {query.isLoading ? (
             <div className="flex h-96 items-center justify-center">
               <div className="flex flex-col items-center gap-3">
@@ -828,15 +867,18 @@ export default function CandidatesPage() {
           )}
         </div>
       </div>
+      </>
+      ) : null}
 
       {/* ============================================================ */}
       {/* CANDIDATE DRAWER */}
       {/* ============================================================ */}
       <RecruitmentDrawer 
-        open={!!selected} 
+        open={!!routeCandidateId} 
         title={candidate?.full_name || candidate?.fullName || "Candidate"} 
         description={candidate?.email || "No email provided"} 
-        onClose={() => setSelected(null)}
+        onClose={closeCandidate}
+        mode={routeCandidateId ? "page" : "drawer"}
       >
         <div className="grid gap-6 lg:grid-cols-[1fr_240px]">
           {/* Main Content */}
@@ -851,6 +893,37 @@ export default function CandidatesPage() {
                   <span className="text-xs text-gray-500 dark:text-gray-400">
                     Updated {fmtDateTime(candidate?.updated_at || candidate?.updatedAt)}
                   </span>
+                </div>
+
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4 dark:border-indigo-900/50 dark:bg-indigo-950/20">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-300">Candidate Temporary ID</p>
+                      <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Used by the candidate to track their public application.</p>
+                    </div>
+                  </div>
+                  {temporaryIds.length ? (
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      {temporaryIds.map((item) => (
+                        <div key={item.code} className="flex items-center justify-between gap-3 rounded-lg border border-indigo-100 bg-white px-3 py-2 dark:border-indigo-900/50 dark:bg-gray-900">
+                          <div className="min-w-0">
+                            <p className="truncate text-xs text-gray-500 dark:text-gray-400">{item.job}</p>
+                            <p className="font-mono text-sm font-semibold text-gray-900 dark:text-white">{item.code}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyTemporaryId(item.code)}
+                            className="rounded-lg p-1.5 text-indigo-600 transition hover:bg-indigo-100 dark:text-indigo-300 dark:hover:bg-indigo-900/40"
+                            aria-label="Copy temporary ID"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 rounded-lg border border-dashed border-indigo-200 px-3 py-2 text-sm text-gray-500 dark:border-indigo-900 dark:text-gray-400">No temporary ID has been generated for this candidate yet.</p>
+                  )}
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
@@ -940,7 +1013,7 @@ export default function CandidatesPage() {
             {/* HR Documents Tab (Phase 2) — combines resume + structured HR docs */}
             {activeTab === "documents" && (
               <DocumentsTab
-                candidateId={idOf(selected)}
+                candidateId={selectedId}
                 ownerName={candidate?.full_name || candidate?.fullName || "this candidate"}
                 canManage={canManageHrDocuments}
               />
@@ -972,7 +1045,7 @@ export default function CandidatesPage() {
                 />
                 <QuickActionButton 
                   icon={Upload}
-                  label="Upload Resume"
+                  label={candidate?.resume_id || toArray(detail.data?.resumes).length ? "Replace Resume" : "Upload Resume"}
                   onClick={() => { setResumeUploadMode(true); fileInputRef.current?.click(); }}
                   loading={uploading && resumeUploadMode}
                 />

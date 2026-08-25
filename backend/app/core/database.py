@@ -75,6 +75,7 @@ from app.models.sales_product import SalesProduct
 from app.models.sales_contact import SalesContact, ContactSharing
 from app.models.sales_lead_file import SalesLeadFile
 from app.models.sales_prospect import SalesProspect
+from app.models.sales_discovery_audit import SalesAudit, SalesDiscovery
 from app.models.sales_lead_note import SalesLeadNote
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.sales_import_job import SalesImportJob
@@ -124,7 +125,7 @@ from app.integrations.google_workspace.models import (
     GoogleWorkspaceCalendarEvent,
 )
 from app.recruitment.models import (
-    Application, Candidate, CandidateJobScore, CandidateNote, CandidateSkillExtraction,
+    Application, Candidate, CandidateJobScore, CandidateNote, CandidatePortalCredential, CandidateSkillExtraction,
     CandidateTimeline, Interview, InterviewFeedback, JobRequirementProfile,
     MicrosoftOAuthState, MicrosoftRecruitmentConnection, Offer, OfferAccessToken,
     OfferTemplate, RecruitmentAttachment, RecruitmentAudit, RecruitmentEmailDelivery,
@@ -277,6 +278,8 @@ async def init_db():
                 ContactSharing,
                 SalesLeadFile,
                 SalesProspect,
+                SalesDiscovery,
+                SalesAudit,
                 SalesLeadNote,
                 SalesPipelineHistory,
                 SalesImportJob,
@@ -327,6 +330,7 @@ async def init_db():
                 GoogleWorkspaceCalendarEvent,
                 RecruitmentJob,
                 Candidate,
+                CandidatePortalCredential,
                 Application,
                 Resume,
                 ResumeParsedProfile,

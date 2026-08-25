@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from pydantic import BaseModel, field_validator
 
 from app.api.dependencies import get_current_user
 from app.crm import documents
@@ -33,6 +33,19 @@ class CRMDocumentPayload(BaseModel):
     confidentiality: Optional[str] = None
     termination: Optional[str] = None
     clauses: list[str] = []
+
+    @field_validator("valid_until", mode="before")
+    @classmethod
+    def parse_date_input(cls, value):
+        if value in (None, ""):
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, date):
+            return datetime.combine(value, time.min)
+        if isinstance(value, str) and len(value) == 10:
+            return datetime.combine(date.fromisoformat(value), time.min)
+        return value
 
 
 class SendPayload(BaseModel):
@@ -109,8 +122,8 @@ async def create_contract_from_document(lead_id: str, document_id: str, current_
 @router.post("/leads/{lead_id}/documents/upload")
 async def upload_lead_document_pdf(
     lead_id: str,
-    document_type: str = "contract",
-    title: Optional[str] = None,
+    document_type: Optional[str] = Form(None),
+    title: Optional[str] = Form(None),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):

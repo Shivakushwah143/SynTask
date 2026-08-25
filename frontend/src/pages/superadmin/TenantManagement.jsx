@@ -12,6 +12,7 @@ import {
   Calendar, 
   Clock, 
   AlertTriangle,
+  Check,
   CheckCircle2,
   XCircle,
   Eye,
@@ -30,6 +31,10 @@ import {
   Unlock,
   RefreshCw,
   Download,
+  Plus,
+  Globe2,
+  ShieldCheck,
+  User,
   ChevronDown,
   ChevronRight,
   DollarSign,
@@ -37,7 +42,8 @@ import {
   LineChart
 } from 'lucide-react'
 import { superadminApi } from '../../api/superadmin'
-import { Badge, Button, EmptyState, inputClassName, Modal, PageHeader, SkeletonTable, Table } from '../../components/ui'
+import { companiesAPI } from '../../api/companies'
+import { Badge, Button, EmptyState, FormField, inputClassName, Modal, PageHeader, PasswordInput, PhoneInput, SkeletonTable, Table } from '../../components/ui'
 import { timeService } from '@/services/timeService'
 import { asArray, getId } from '../phase4Utils'
 
@@ -53,17 +59,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle, trend 
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
+    <div className="group rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
-          <Icon className="h-4 w-4" />
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <div className={`rounded-md bg-gradient-to-r ${colors[color]} p-1.5 text-white shadow-sm`}>
+          <Icon className="h-3.5 w-3.5" />
         </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
       {trend && (
-        <div className={`mt-2 inline-flex items-center gap-1 text-xs font-medium ${trend > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+        <div className={`mt-1 inline-flex items-center gap-1 text-[11px] font-medium ${trend > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
           {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}%
         </div>
       )}
@@ -72,11 +78,62 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle, trend 
 }
 
 // Tenant Card Component for Grid View
-const TenantCard = ({ tenant, onSuspend, onActivate, isActivating, isSuspending }) => {
+function tenantStatus(tenant) {
+  return String(tenant?.status || '').toLowerCase()
+}
+
+function lifecycleActionsFor(tenant) {
+  const status = tenantStatus(tenant)
+  return {
+    canApprove: status === 'pending',
+    canReject: status === 'pending',
+    canSuspend: status === 'active',
+    canReactivate: status === 'suspended',
+    isTerminal: status === 'cancelled',
+  }
+}
+
+const LifecycleActions = ({ tenant, onApprove, onReject, onSuspend, onReactivate, loading = {} }) => {
+  const actions = lifecycleActionsFor(tenant)
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {actions.canApprove ? (
+        <Button size="sm" loading={loading.approve} onClick={() => onApprove(tenant)} className="gap-1">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          Approve
+        </Button>
+      ) : null}
+      {actions.canReject ? (
+        <Button size="sm" variant="danger" loading={loading.reject} onClick={() => onReject(tenant)} className="gap-1">
+          <XCircle className="h-3.5 w-3.5" />
+          Reject
+        </Button>
+      ) : null}
+      {actions.canSuspend ? (
+        <Button size="sm" variant="danger" loading={loading.suspend} onClick={() => onSuspend(tenant)} className="gap-1">
+          <Lock className="h-3.5 w-3.5" />
+          Suspend
+        </Button>
+      ) : null}
+      {actions.canReactivate ? (
+        <Button size="sm" variant="secondary" loading={loading.reactivate} onClick={() => onReactivate(getId(tenant))} className="gap-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400">
+          <Unlock className="h-3.5 w-3.5" />
+          Reactivate
+        </Button>
+      ) : null}
+      {!actions.canApprove && !actions.canReject && !actions.canSuspend && !actions.canReactivate ? (
+        <span className="text-xs text-gray-400 dark:text-gray-500">{actions.isTerminal ? 'No action' : 'No valid action'}</span>
+      ) : null}
+    </div>
+  )
+}
+
+const TenantCard = ({ tenant, onApprove, onReject, onSuspend, onReactivate, loading }) => {
   const statusColor = {
     active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
     pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
     suspended: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+    cancelled: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
     inactive: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
   }
 
@@ -84,6 +141,7 @@ const TenantCard = ({ tenant, onSuspend, onActivate, isActivating, isSuspending 
     active: CheckCircle2,
     pending: Clock,
     suspended: XCircle,
+    cancelled: XCircle,
     inactive: AlertTriangle,
   }
 
@@ -110,41 +168,20 @@ const TenantCard = ({ tenant, onSuspend, onActivate, isActivating, isSuspending 
               </span>
               {tenant.plan && (
                 <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                  {tenant.plan}
+                  {typeof tenant.plan === 'object' ? tenant.plan.name : tenant.plan}
                 </span>
               )}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <Link to={`/super-admin/tenants/${getId(tenant)}`}>
+          {/* <Link to={`/super-admin/tenants/${getId(tenant)}`}>
             <Button variant="secondary" size="sm" className="gap-1">
               <Eye className="h-3.5 w-3.5" />
               View
             </Button>
-          </Link>
-          {tenant.status === 'suspended' ? (
-            <Button 
-              size="sm" 
-              variant="secondary" 
-              loading={isActivating} 
-              onClick={() => onActivate(getId(tenant))}
-              className="gap-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
-            >
-              <Unlock className="h-3.5 w-3.5" />
-              Activate
-            </Button>
-          ) : (
-            <Button 
-              size="sm" 
-              variant="danger" 
-              onClick={() => onSuspend(tenant)}
-              className="gap-1"
-            >
-              <Lock className="h-3.5 w-3.5" />
-              Suspend
-            </Button>
-          )}
+          </Link> */}
+          <LifecycleActions tenant={tenant} onApprove={onApprove} onReject={onReject} onSuspend={onSuspend} onReactivate={onReactivate} loading={loading} />
         </div>
       </div>
 
@@ -159,7 +196,7 @@ const TenantCard = ({ tenant, onSuspend, onActivate, isActivating, isSuspending 
         <div className="rounded-lg bg-gray-50 p-2.5 text-center dark:bg-gray-900/50">
           <CreditCard className="mx-auto h-4 w-4 text-gray-400" />
           <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-            {tenant.plan || 'Free'}
+            {typeof tenant.plan === 'object' ? tenant.plan.name : tenant.plan || 'Free'}
           </p>
           <p className="text-[10px] text-gray-500 dark:text-gray-400">Plan</p>
         </div>
@@ -209,6 +246,9 @@ export default function TenantManagement() {
   const [suspendForm, setSuspendForm] = useState({ reason: 'payment_failed', notes: '', notify_admin: true })
   const [selectedTenants, setSelectedTenants] = useState([])
   const [showBulkActions, setShowBulkActions] = useState(false)
+  const [showRegisterModal, setShowRegisterModal] = useState(false)
+  const [showApproveModal, setShowApproveModal] = useState(false)
+  const [selectedCompany, setSelectedCompany] = useState(null)
   
   const { data, isLoading, isError, refetch } = useQuery(
     ['superadmin-tenants', search], 
@@ -244,6 +284,42 @@ export default function TenantManagement() {
     }
   )
 
+  const rejectTenant = useMutation(
+    (id) => companiesAPI.updateCompanyStatus(id, 'cancelled'),
+    {
+      onSuccess: () => {
+        toast.success('Tenant rejected')
+        queryClient.invalidateQueries('superadmin-tenants')
+      },
+      onError: (error) => toast.error(error?.response?.data?.detail || 'Failed to reject tenant')
+    }
+  )
+
+  const registerCompany = useMutation(
+    (companyData) => companiesAPI.registerCompany(companyData),
+    {
+      onSuccess: () => {
+        toast.success('Company added. Awaiting approval.')
+        setShowRegisterModal(false)
+        queryClient.invalidateQueries('superadmin-tenants')
+      },
+      onError: (error) => toast.error(error?.response?.data?.detail || 'Failed to add company')
+    }
+  )
+
+  const approveCompany = useMutation(
+    ({ companyId, adminData }) => companiesAPI.approveCompany(companyId, adminData),
+    {
+      onSuccess: () => {
+        toast.success('Company approved and admin created')
+        setShowApproveModal(false)
+        setSelectedCompany(null)
+        queryClient.invalidateQueries('superadmin-tenants')
+      },
+      onError: (error) => toast.error(error?.response?.data?.detail || 'Failed to approve company')
+    }
+  )
+
   const bulkActivate = useMutation(
     (ids) => Promise.all(ids.map(id => superadminApi.activateTenant(id))),
     {
@@ -270,13 +346,34 @@ export default function TenantManagement() {
     }
   )
 
+  const bulkReject = useMutation(
+    (ids) => Promise.all(ids.map(id => companiesAPI.updateCompanyStatus(id, 'cancelled'))),
+    {
+      onSuccess: () => {
+        toast.success(`${selectedTenants.length} tenants rejected`);
+        setSelectedTenants([]);
+        setShowBulkActions(false);
+        queryClient.invalidateQueries('superadmin-tenants');
+      },
+      onError: (error) => toast.error(error?.response?.data?.detail || 'Failed to bulk reject tenants')
+    }
+  )
+
   // Calculate stats
   const totalTenants = tenants.length
-  const activeTenants = tenants.filter(t => t.status === 'active').length
-  const pendingTenants = tenants.filter(t => t.status === 'pending').length
-  const suspendedTenants = tenants.filter(t => t.status === 'suspended').length
+  const activeTenants = tenants.filter(t => tenantStatus(t) === 'active').length
+  const pendingTenants = tenants.filter(t => tenantStatus(t) === 'pending').length
+  const suspendedTenants = tenants.filter(t => tenantStatus(t) === 'suspended').length
   const riskyTenants = tenants.filter((tenant) => riskScore(tenant) > 0).length
   const totalUsers = tenants.reduce((sum, t) => sum + (t.user_count ?? t.current_users ?? 0), 0)
+  const selectedRows = tenants.filter((tenant) => selectedTenants.includes(getId(tenant)))
+  const selectedStatuses = new Set(selectedRows.map((tenant) => tenantStatus(tenant)))
+  const selectedPendingIds = selectedRows.filter((tenant) => tenantStatus(tenant) === 'pending').map((tenant) => getId(tenant))
+  const selectedActiveIds = selectedRows.filter((tenant) => tenantStatus(tenant) === 'active').map((tenant) => getId(tenant))
+  const selectedSuspendedIds = selectedRows.filter((tenant) => tenantStatus(tenant) === 'suspended').map((tenant) => getId(tenant))
+  const canBulkReject = selectedStatuses.size === 1 && selectedStatuses.has('pending')
+  const canBulkSuspend = selectedStatuses.size === 1 && selectedStatuses.has('active')
+  const canBulkReactivate = selectedStatuses.size === 1 && selectedStatuses.has('suspended')
 
   const handleExport = () => {
     const headers = ['Company', 'Status', 'Plan', 'Users', 'Created', 'Risk Score']
@@ -311,6 +408,40 @@ export default function TenantManagement() {
     setSelectedTenants(prev => 
       prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
     )
+  }
+
+  const handleRegisterSubmit = (event) => {
+    event.preventDefault()
+    const formData = new FormData(event.target)
+    registerCompany.mutate({
+      name: formData.get('name'),
+      email: formData.get('email'),
+      phone: formData.get('phone'),
+      website: formData.get('website'),
+    })
+  }
+
+  const handleApproveClick = (company) => {
+    setSelectedCompany(company)
+    setShowApproveModal(true)
+  }
+
+  const handleRejectTenant = (tenant) => rejectTenant.mutate(getId(tenant))
+
+  const handleApproveSubmit = (event) => {
+    event.preventDefault()
+    if (!selectedCompany) return
+    const formData = new FormData(event.target)
+    approveCompany.mutate({
+      companyId: getId(selectedCompany),
+      adminData: {
+        admin_first_name: formData.get('admin_first_name'),
+        admin_last_name: formData.get('admin_last_name'),
+        admin_email: formData.get('admin_email'),
+        admin_password: formData.get('admin_password'),
+        subscription_plan: formData.get('subscription_plan') || 'free',
+      }
+    })
   }
 
   const columns = [
@@ -402,72 +533,49 @@ export default function TenantManagement() {
     { 
       key: 'actions', 
       header: '', 
-      render: (row) => {
-        const suspended = String(row.status || '').toLowerCase() === 'suspended'
-        return (
-          <div className="flex gap-1.5">
-            <Link to={`/super-admin/tenants/${getId(row)}`}>
-              <Button size="sm" variant="secondary" className="gap-1">
-                <Eye className="h-3.5 w-3.5" />
-                View
-              </Button>
-            </Link>
-            {suspended ? (
-              <Button 
-                size="sm" 
-                variant="secondary" 
-                loading={activate.isLoading} 
-                onClick={() => activate.mutate(getId(row))}
-                className="gap-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
-              >
-                <Unlock className="h-3.5 w-3.5" />
-                Activate
-              </Button>
-            ) : (
-              <Button 
-                size="sm" 
-                variant="danger" 
-                onClick={() => setSuspendTarget(row)}
-                className="gap-1"
-              >
-                <Lock className="h-3.5 w-3.5" />
-                Suspend
-              </Button>
-            )}
-          </div>
-        )
-      } 
+      render: (row) => (
+        <LifecycleActions
+          tenant={row}
+          onApprove={handleApproveClick}
+          onReject={handleRejectTenant}
+          onSuspend={setSuspendTarget}
+          onReactivate={activate.mutate}
+          loading={{ approve: approveCompany.isLoading, reject: rejectTenant.isLoading, suspend: suspend.isLoading, reactivate: activate.isLoading }}
+        />
+      )
     },
   ]
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <Building2 className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-wider text-indigo-200">Super Admin</p>
-                <h1 className="text-2xl font-bold md:text-3xl">Tenant Management</h1>
-                <p className="mt-1 text-indigo-100">Review, activate, and suspend tenant companies.</p>
-              </div>
+    <div className="space-y-4 p-3 md:p-4">
+      {/* Header */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-indigo-100 p-2 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
+              <Building2 className="h-5 w-5" />
             </div>
-            <div className="flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm">
+            <div>
+              <p className="text-xs font-semibold uppercase text-indigo-600 dark:text-indigo-300">Super Admin</p>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white">Tenant Management</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Review, activate, and suspend tenant companies.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
               <ShieldAlert className="h-4 w-4" />
-              {riskyTenants} risky tenant{riskyTenants === 1 ? '' : 's'}
+              {riskyTenants} risky
             </div>
+            <Button size="sm" onClick={() => setShowRegisterModal(true)} className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              Add Company
+            </Button>
           </div>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <StatCard
           label="Total Tenants"
           value={totalTenants}
@@ -498,35 +606,31 @@ export default function TenantManagement() {
           color="rose"
           subtitle="Restricted"
         />
-      </div>
-
-      {/* Additional Stats Row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Users</span>
-            <Users className="h-4 w-4 text-indigo-500" />
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Total Users</span>
+            <Users className="h-3.5 w-3.5 text-indigo-500" />
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{totalUsers}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Across all tenants</p>
+          <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{totalUsers}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">All tenants</p>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Avg Users/Tenant</span>
-            <BarChart3 className="h-4 w-4 text-indigo-500" />
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Avg Users</span>
+            <BarChart3 className="h-3.5 w-3.5 text-indigo-500" />
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+          <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">
             {totalTenants > 0 ? Math.round(totalUsers / totalTenants) : 0}
           </p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Average team size</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">Per tenant</p>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Risk Score</span>
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Risk</span>
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{riskyTenants}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Tenants needing attention</p>
+          <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{riskyTenants}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">Need attention</p>
         </div>
       </div>
 
@@ -538,32 +642,56 @@ export default function TenantManagement() {
               {selectedTenants.length} tenant{selectedTenants.length !== 1 ? 's' : ''} selected
             </span>
             <div className="flex flex-wrap gap-2">
-              <Button 
-                size="sm" 
-                variant="secondary" 
-                onClick={() => {
-                  setShowBulkActions(true)
-                  bulkActivate.mutate(selectedTenants)
-                }}
-                loading={bulkActivate.isLoading}
-                className="gap-1.5 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
-              >
-                <Unlock className="h-4 w-4" />
-                Activate All
-              </Button>
-              <Button 
-                size="sm" 
-                variant="danger" 
-                onClick={() => {
-                  setShowBulkActions(true)
-                  bulkSuspend.mutate(selectedTenants)
-                }}
-                loading={bulkSuspend.isLoading}
-                className="gap-1.5"
-              >
-                <Lock className="h-4 w-4" />
-                Suspend All
-              </Button>
+              {canBulkReject ? (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => {
+                    setShowBulkActions(true)
+                    bulkReject.mutate(selectedPendingIds)
+                  }}
+                  loading={bulkReject.isLoading}
+                  className="gap-1.5"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Reject Selected
+                </Button>
+              ) : null}
+              {canBulkReactivate ? (
+                <Button 
+                  size="sm" 
+                  variant="secondary" 
+                  onClick={() => {
+                    setShowBulkActions(true)
+                    bulkActivate.mutate(selectedSuspendedIds)
+                  }}
+                  loading={bulkActivate.isLoading}
+                  className="gap-1.5 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                >
+                  <Unlock className="h-4 w-4" />
+                  Reactivate Selected
+                </Button>
+              ) : null}
+              {canBulkSuspend ? (
+                <Button 
+                  size="sm" 
+                  variant="danger" 
+                  onClick={() => {
+                    setShowBulkActions(true)
+                    bulkSuspend.mutate(selectedActiveIds)
+                  }}
+                  loading={bulkSuspend.isLoading}
+                  className="gap-1.5"
+                >
+                  <Lock className="h-4 w-4" />
+                  Suspend Selected
+                </Button>
+              ) : null}
+              {!canBulkReject && !canBulkReactivate && !canBulkSuspend ? (
+                <Button size="sm" variant="secondary" disabled className="gap-1.5">
+                  Mixed or terminal statuses
+                </Button>
+              ) : null}
               <Button 
                 size="sm" 
                 variant="secondary" 
@@ -650,10 +778,11 @@ export default function TenantManagement() {
               <TenantCard
                 key={getId(tenant)}
                 tenant={tenant}
+                onApprove={handleApproveClick}
+                onReject={handleRejectTenant}
                 onSuspend={setSuspendTarget}
-                onActivate={activate.mutate}
-                isActivating={activate.isLoading}
-                isSuspending={suspend.isLoading}
+                onReactivate={activate.mutate}
+                loading={{ approve: approveCompany.isLoading, reject: rejectTenant.isLoading, suspend: suspend.isLoading, reactivate: activate.isLoading }}
               />
             ))}
           </div>
@@ -698,6 +827,159 @@ export default function TenantManagement() {
           <p className="text-sm text-gray-500 dark:text-gray-400">Try adjusting your search or filters.</p>
         </div>
       )}
+
+      <Modal
+        isOpen={showRegisterModal}
+        onClose={() => setShowRegisterModal(false)}
+        title="Add company"
+        description="Create a tenant record. Approval and admin setup can happen after review."
+        size="lg"
+      >
+        <form onSubmit={handleRegisterSubmit} className="space-y-6">
+          <div className="rounded-2xl border border-primary-100 bg-primary-50/70 p-4 dark:border-primary-900/50 dark:bg-primary-950/20">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-white p-2 text-primary-600 shadow-sm dark:bg-[var(--color-app-surface)]">
+                <Building2 className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-[var(--color-app-text)]">Company profile</p>
+                <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-[var(--color-app-text-muted)]">
+                  Use official business contact details so billing, approvals, and tenant ownership stay clear.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Company name" required className="sm:col-span-2">
+              <div className="relative">
+                <Building2 className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                <input type="text" name="name" required className={`${inputClassName} pl-11`} placeholder="TechCorp Inc." />
+              </div>
+            </FormField>
+            <FormField label="Email" required>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                <input type="email" name="email" required className={`${inputClassName} pl-11`} placeholder="contact@techcorp.com" />
+              </div>
+            </FormField>
+            <FormField label="Phone" required>
+              <PhoneInput name="phone" required />
+            </FormField>
+            <FormField label="Website (optional)" helperText="Include https:// for best results." className="sm:col-span-2">
+              <div className="relative">
+                <Globe2 className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                <input type="url" name="website" className={`${inputClassName} pl-11`} placeholder="https://techcorp.com" />
+              </div>
+            </FormField>
+          </div>
+
+          <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-5 dark:border-[var(--color-app-border)] sm:flex-row sm:justify-end">
+            <Button type="button" variant="secondary" onClick={() => setShowRegisterModal(false)} disabled={registerCompany.isLoading}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={registerCompany.isLoading} loadingText="Registering">
+              <Plus className="h-4 w-4" />
+              Add Company
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={showApproveModal && Boolean(selectedCompany)}
+        onClose={() => {
+          setShowApproveModal(false)
+          setSelectedCompany(null)
+        }}
+        title="Approve company"
+        description={selectedCompany ? `Create company admin for ${selectedCompany.name || selectedCompany.company_name}.` : ''}
+        size="lg"
+      >
+        {selectedCompany ? (
+          <form onSubmit={handleApproveSubmit} className="space-y-6">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-white p-2 text-emerald-600 shadow-sm dark:bg-[var(--color-app-surface)]">
+                  <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-[var(--color-app-text)]">
+                    {selectedCompany.name || selectedCompany.company_name}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-[var(--color-app-text-muted)]">
+                    Approval activates tenant access and creates first company admin.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField label="Admin first name" required>
+                <div className="relative">
+                  <User className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <input type="text" name="admin_first_name" required className={`${inputClassName} pl-11`} placeholder="John" />
+                </div>
+              </FormField>
+
+              <FormField label="Admin last name" required>
+                <div className="relative">
+                  <User className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <input type="text" name="admin_last_name" required className={`${inputClassName} pl-11`} placeholder="Doe" />
+                </div>
+              </FormField>
+
+              <FormField label="Admin email" required>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <input type="email" name="admin_email" required className={`${inputClassName} pl-11`} placeholder="admin@company.com" />
+                </div>
+              </FormField>
+
+              <FormField label="Admin password" required>
+                <PasswordInput
+                  name="admin_password"
+                  required
+                  minLength={8}
+                  className={inputClassName}
+                  placeholder="Min 8 characters"
+                  toggleLabel="admin password"
+                />
+              </FormField>
+
+              <FormField label="Subscription plan" className="sm:col-span-2">
+                <div className="relative">
+                  <CreditCard className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <select name="subscription_plan" className={`${inputClassName} pl-11`}>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="free">Free</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="basic">Basic</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="professional">Professional</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="enterprise">Enterprise</option>
+                  </select>
+                </div>
+              </FormField>
+            </div>
+
+            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-5 dark:border-[var(--color-app-border)] sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setShowApproveModal(false)
+                  setSelectedCompany(null)
+                }}
+                disabled={approveCompany.isLoading}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" loading={approveCompany.isLoading} loadingText="Approving">
+                <Check className="h-4 w-4" />
+                Approve & Create Admin
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
 
       {/* Suspend Modal */}
       <Modal

@@ -126,7 +126,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         `}
         style={{ '--sidebar-width': `${collapsed ? 76 : sidebarWidth}px` }}
       >
-        <div className="relative flex h-full flex-col overflow-visible border-r border-[#1a1a1a] bg-gradient-to-b from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a] text-white shadow-2xl">
+        <div className="syntask-dark-rail relative flex h-full flex-col overflow-visible border-r border-[#1a1a1a] bg-gradient-to-b from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a] text-white shadow-2xl">
 
           {/* Animated gradient border top - Rainbow effect */}
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 via-cyan-400 via-emerald-400 via-yellow-400 via-rose-400 to-purple-500 animate-gradient-x"></div>

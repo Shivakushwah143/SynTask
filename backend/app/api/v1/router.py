@@ -26,7 +26,9 @@ from app.api.v1.endpoints import crm_companies
 from app.api.v1.endpoints import crm_contacts
 from app.api.v1.endpoints import crm_activities
 from app.api.v1.endpoints import crm_deals
+from app.api.v1.endpoints import crm_discovery_audit
 from app.api.v1.endpoints import crm_documents
+from app.api.v1.endpoints import crm_negotiation
 from app.api.v1.endpoints import crm_notes
 from app.api.v1.endpoints import crm_pipeline
 from app.api.v1.endpoints import content_calendar
@@ -107,7 +109,7 @@ api_router.include_router(
     tasks.router,
     prefix="/tasks",
     tags=["Tasks"],
-    dependencies=[Depends(require_module("task"))]
+    dependencies=[Depends(require_module("tasks"))]
 )
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(notification_emails.router, prefix="/notifications", tags=["Notification Email"])
@@ -115,9 +117,9 @@ api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboar
 api_router.include_router(files.router, prefix="/files", tags=["Files"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(activity.router, prefix="/activity", tags=["Activity"])
-api_router.include_router(projects.router, prefix="/projects", tags=["Projects"], dependencies=[Depends(require_module("task"))])
-api_router.include_router(time_tracking.router, prefix="/time-tracking", tags=["Time Tracking"], dependencies=[Depends(require_module("task"))])
-api_router.include_router(workflows.router, prefix="/workflows", tags=["Workflows"], dependencies=[Depends(require_module("task"))])
+api_router.include_router(projects.router, prefix="/projects", tags=["Projects"], dependencies=[Depends(require_module("projects"))])
+api_router.include_router(time_tracking.router, prefix="/time-tracking", tags=["Time Tracking"], dependencies=[Depends(require_module("time_tracking"))])
+api_router.include_router(workflows.router, prefix="/workflows", tags=["Workflows"], dependencies=[Depends(require_module("automation_rules"))])
 api_router.include_router(automation.router, prefix="/automation", tags=["Automation"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(backlog.router, prefix="/backlog", tags=["Backlog"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"], dependencies=[Depends(require_module("task"))])
@@ -141,9 +143,9 @@ api_router.include_router(ledger.router, prefix="/ledger", tags=["Ledger"], depe
 api_router.include_router(meetings.router, prefix="/meetings", tags=["Meetings"])
 api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar"])
 api_router.include_router(time.router, prefix="/time", tags=["Time"])
-api_router.include_router(content_calendar.router, prefix="/content-calendar", tags=["Content Calendar"], dependencies=[Depends(require_module("task"))])
-api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=["Scheduled Jobs"])
-api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("task"))])
+api_router.include_router(content_calendar.router, prefix="/content-calendar", tags=["Content Calendar"], dependencies=[Depends(require_module("content_calendar"))])
+api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=["Scheduled Jobs"], dependencies=[Depends(require_module("scheduled_work"))])
+api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("time_tracking"))])
 api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])
 api_router.include_router(employees.router, prefix="/employees", tags=["Employees"])
 api_router.include_router(lifecycle.router, prefix="/employees", tags=["Employee Lifecycle"])
@@ -156,6 +158,7 @@ api_router.include_router(attendance_phase4.router, prefix="/attendance", tags=[
 api_router.include_router(attendance.ws_router, prefix="/attendance")
 api_router.include_router(timeline.router, prefix="/timeline", tags=["Timeline"])
 api_router.include_router(leaves.router, prefix="/leaves", tags=["Leaves"])
+<<<<<<< HEAD
 api_router.include_router(salary.router, prefix="/salary", tags=["Salary Structure"])
 api_router.include_router(payroll.router, prefix="/payroll", tags=["Payroll"])
 # Employee Self-Service (Phase 8): My HR overview aggregate. The module self
@@ -166,6 +169,9 @@ api_router.include_router(ess.router, prefix="/hr/me", tags=["Employee Self-Serv
 # mounted under /hr so dashboard lives at /hr/dashboard and reports at /hr/reports/*
 api_router.include_router(hr_dashboard.router, prefix="/hr", tags=["HR Dashboard & Reports"])
 api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"])
+=======
+api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"], dependencies=[Depends(require_module("daily_updates"))])
+>>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
 api_router.include_router(recruitment_router, prefix="/recruitment", tags=["Recruitment"], dependencies=[Depends(require_module("recruitment"))])
 api_router.include_router(careers_router, prefix="/careers", tags=["Careers"])
 api_router.include_router(public_router, prefix="/public", tags=["Public Recruitment"])
@@ -193,7 +199,9 @@ api_router.include_router(crm_companies.router, prefix="/crm/companies", tags=["
 api_router.include_router(crm_contacts.router, prefix="/crm/contacts", tags=["CRM Contacts"])
 api_router.include_router(crm_activities.router, prefix="/crm/activities", tags=["CRM Activities"])
 api_router.include_router(crm_deals.router, prefix="/crm", tags=["CRM Deals"])
+api_router.include_router(crm_discovery_audit.router, prefix="/crm", tags=["CRM Discovery Audit"])
 api_router.include_router(crm_documents.router, prefix="/crm", tags=["CRM Documents"])
+api_router.include_router(crm_negotiation.router, prefix="/crm", tags=["CRM Negotiation"])
 api_router.include_router(crm_notes.router, prefix="/crm", tags=["CRM Notes"])
 api_router.include_router(crm_pipeline.router, prefix="/crm/pipeline", tags=["CRM Pipeline"])
 api_router.include_router(sales_categories.router, prefix="/sales/categories", tags=["Sales Categories"], dependencies=sales_module_dependency)

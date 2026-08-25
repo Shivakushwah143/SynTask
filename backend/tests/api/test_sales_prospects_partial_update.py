@@ -135,3 +135,43 @@ def test_update_prospect_http_partial_update_preserves_absent_fields(monkeypatch
     assert response.status_code == 200
     assert response.json() == {"message": "Prospect updated successfully"}
     assert captured["payload"] == {"decision_maker": "Rahul Sharma"}
+
+
+def test_create_prospect_without_phone_is_allowed(monkeypatch):
+    """POST / with no phone must not 422 - phone is optional for lead creation.
+
+    Regression: reported 422 (Unprocessable Entity) on POST /api/v1/sales/prospects/
+    when the lead form was submitted with an empty mobile number. The endpoint
+    used to declare `phone: str = Form(...)` (required); a phone-less lead must
+    be created (LeadEngine supports it: the duplicate check skips without a
+    phone and the name falls back to "Unknown Lead").
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.api.dependencies import get_current_user
+
+    captured = {}
+
+    class FakeEngine:
+        @staticmethod
+        async def create_lead(current_user, payload):
+            captured["payload"] = payload
+            return {"id": "lead-1", "message": "Prospect created successfully"}
+
+    monkeypatch.setattr(sales_prospects, "LeadEngine", FakeEngine)
+
+    test_app = FastAPI()
+    test_app.include_router(sales_prospects.router)
+    test_app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id="manager-1", company_id="company-1", role=UserRole.MANAGER
+    )
+
+    client = TestClient(test_app)
+    # No phone key at all - exactly what the frontend sends for an empty mobile.
+    response = client.post("/", data={"first_name": "Test", "last_name": "Lead"})
+
+    # 200 (not 422) proves the missing phone no longer fails request validation.
+    assert response.status_code == 200
+    assert response.json()["id"] == "lead-1"
+    assert captured["payload"]["phone"] is None

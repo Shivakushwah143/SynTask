@@ -19,7 +19,7 @@ from app.core.hierarchy import (
 from app.api.dependencies import (
     get_current_user, get_current_super_admin,
     get_current_company_admin, get_current_company_admin_or_lead,
-    check_company_access
+    check_company_access, _module_access_allowed
 )
 from app.services.user_service import UserService
 from app.api.deps import Pagination20, PaginationParams
@@ -536,9 +536,11 @@ async def create_employee(
     first_name: str = Form(...),
     last_name: str = Form(...),
     lead_id: Optional[str] = Form(None),
+    reports_to: Optional[str] = Form(None),
     department_id: Optional[str] = Form(None),
     designation: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
+    modules: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
 
@@ -565,11 +567,26 @@ async def create_employee(
         )
 
     department_doc = await _resolve_department(current_user.company_id, department_id)
-    
+
+    # Reporting manager: explicit selection wins, otherwise default to the
+    # creator for Manager/Lead. Legacy lead_id stays in sync when the chosen
+    # reporting manager is a Lead.
     final_lead_id = None
-    reports_to_id = str(current_user.id) if current_user.role in [UserRole.MANAGER, UserRole.LEAD] else None
-    
+    reports_to_id = reports_to or (str(current_user.id) if current_user.role in [UserRole.MANAGER, UserRole.LEAD] else None)
+    if reports_to:
+        reports_to_user = await User.get(reports_to)
+        if not reports_to_user or reports_to_user.company_id != current_user.company_id:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Invalid reporting manager",
+            )
+        if reports_to_user.role == UserRole.LEAD:
+            final_lead_id = reports_to
+
     # Create Employee
+    # Permissions: normalize + privilege-limit the requested modules. When the
+    # creator sends none, the legacy employee defaults are preserved.
+    parsed_modules = _resolve_new_user_modules(current_user, _form_or_none(modules))
     employee = Employee(
         email=email,
         password_hash=get_password_hash(password),
@@ -582,8 +599,8 @@ async def create_employee(
         designation=designation,
         phone=phone,
         status=UserStatus.ACTIVE,
-        modules=["task", "attendance_leaves"],
-        active_module="task"
+        modules=parsed_modules,
+        active_module=parsed_modules[0] if parsed_modules else "task"
     )
     await UserService.update_hierarchy_ancestors(employee)
     await employee.insert()
@@ -752,9 +769,11 @@ async def update_user(
     phone: Optional[str] = Form(None),
     department_id: Optional[str] = Form(None),
     designation: Optional[str] = Form(None),
+    reports_to: Optional[str] = Form(None),
+    modules: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
-    """Update basic user profile fields"""
+    """Update basic user profile fields (and module permissions when provided)"""
     user = await User.get(user_id)
 
     if not user:
@@ -763,15 +782,11 @@ async def update_user(
             detail="User not found"
         )
 
-    # Access control
+    # Access control: company-scoped roles (Admin/Sub Admin/Manager/Lead per
+    # get_current_company_admin_or_lead) may update any user in their company.
+    # No creator/department/team restriction - a manager (or lead) can edit an
+    # employee regardless of who created them or which department they belong to.
     check_company_access(current_user, user.company_id)
-    if current_user.role == UserRole.LEAD:
-        # Leads can only update their own team employees
-        if user.role != UserRole.EMPLOYEE or user.lead_id != str(current_user.id):
-            raise HTTPException(
-                status_code=http_status.HTTP_403_FORBIDDEN,
-                detail="Leads can only edit their own team members"
-            )
 
     # Update fields if provided
     if first_name:
@@ -806,6 +821,30 @@ async def update_user(
                 assigned_by=current_user,
                 previous_department_name=previous_department_name,
             )
+    if reports_to is not None:
+        reports_to_value = reports_to or None
+        if reports_to_value:
+            reports_to_user = await User.get(reports_to_value)
+            if not reports_to_user or reports_to_user.company_id != current_user.company_id:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid reporting manager",
+                )
+            user.reports_to = reports_to_value
+            # Legacy: keep lead_id in sync when the reporting manager is a Lead.
+            # lead_id only exists on the Employee subclass, so guard for it.
+            if hasattr(user, "lead_id"):
+                user.lead_id = reports_to_value if reports_to_user.role == UserRole.LEAD else None
+        else:
+            user.reports_to = None
+            if hasattr(user, "lead_id"):
+                user.lead_id = None
+        await UserService.update_hierarchy_ancestors(user)
+    modules = _form_or_none(modules)
+    if modules is not None:
+        parsed_modules = normalize_modules(modules, require_tasks_projects=False)
+        user.modules = _restrict_modules_for_creator(current_user, parsed_modules)
+        user.active_module = user.modules[0] if user.modules else "task"
     user.updated_at = utc_now()
     await user.save()
 
@@ -813,10 +852,51 @@ async def update_user(
 
 
 
+def _form_or_none(value):
+    """FastAPI Form defaults bind a ``Form()`` sentinel on direct function
+    calls (e.g. unit tests); FastAPI injection always provides str or None.
+    Only ``None`` / ``str`` / ``list`` are valid module values, so anything
+    else (the sentinel) is treated as "not provided"."""
+    if value is None or isinstance(value, (str, list)):
+        return value
+    return None
+
+
 def _module_allowed_for_user(user: User, module_id: str) -> bool:
     if user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
         return True
     return module_id in (getattr(user, "modules", []) or [])
+
+
+def _restrict_modules_for_creator(creator: User, requested: List[str]) -> List[str]:
+    """Privilege-escalation guard for module assignment.
+
+    Admins and Super Admins may grant any catalog module. Every other creator
+    (Sub Admin / Manager / Lead / Employee) may only grant modules they are
+    allowed to access themselves (alias-aware, e.g. "task" covers
+    "tasks_projects"). If nothing the creator requested survives, fall back to
+    the modules the creator holds themselves, so the new account stays usable
+    without ever exceeding the creator's own authority.
+    """
+    if creator.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
+        return requested
+    creator_modules = getattr(creator, "modules", []) or []
+    restricted = [module for module in requested if _module_access_allowed(module, creator_modules)]
+    if not restricted:
+        restricted = list(creator_modules)
+    return restricted
+
+
+def _resolve_new_user_modules(creator: User, modules: Optional[str]) -> List[str]:
+    """Normalize + privilege-limit the module list for a newly created user.
+
+    ``None`` (creator did not send modules) keeps the legacy employee defaults
+    so existing callers/behavior are untouched.
+    """
+    if modules is None:
+        return ["task", "attendance_leaves"]
+    parsed = normalize_modules(modules, require_tasks_projects=False)
+    return _restrict_modules_for_creator(creator, parsed)
 # ==================== CREATE USER ENDPOINT ====================
 
 @router.post("/create-user")
@@ -879,12 +959,14 @@ async def create_user_hierarchical(
     # Determine company_id
     company_id = current_user.company_id if current_user.company_id else None
     
-    parsed_modules = normalize_modules(modules or [], require_tasks_projects=False)
+    parsed_modules = normalize_modules(_form_or_none(modules) or [], require_tasks_projects=False)
     if target_role == UserRole.SUB_ADMIN and not parsed_modules:
         parsed_modules = normalize_modules(["tasks_projects"], require_tasks_projects=False)
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
+        # Privilege-escalation guard: the creator can only grant modules they
+        # are allowed to access themselves (alias-aware). Admins are unrestricted.
+        parsed_modules = _restrict_modules_for_creator(current_user, parsed_modules)
     if current_user.role == UserRole.SUB_ADMIN:
-        allowed_modules = set(getattr(current_user, "modules", []) or [])
-        parsed_modules = [module for module in parsed_modules if module in allowed_modules]
         if target_role == UserRole.SUB_ADMIN:
             raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Sub-admins cannot create other sub-admins")
         if target_role == UserRole.MANAGER and not _module_allowed_for_user(current_user, "tasks_projects"):

@@ -212,7 +212,7 @@ const CandidatePopup = ({ isOpen, onClose, onSave, initialData = null }) => {
           <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center hover:border-indigo-400 transition-colors">
             <input
               type="file"
-              accept=".pdf,.doc,.docx"
+              accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,image/jpeg,image/png"
               onChange={handleFileUpload}
               className="hidden"
               id="resume-upload"
@@ -220,7 +220,7 @@ const CandidatePopup = ({ isOpen, onClose, onSave, initialData = null }) => {
             <label htmlFor="resume-upload" className="cursor-pointer">
               <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                {formData.resume ? formData.resume.name : "Click to upload resume (PDF, DOC, DOCX)"}
+                {formData.resume ? formData.resume.name : "Click to upload resume (PDF, DOC, DOCX, TXT, JPG, PNG)"}
               </p>
             </label>
           </div>

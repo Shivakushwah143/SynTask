@@ -2,7 +2,7 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, BadgeInfo, Bell, CalendarClock, CheckCircle2, Clock3, FileText, History, Layers3, Lock, Mail, MessageSquare, Pencil, Route, Save, Sparkles, StickyNote, Users, Video, Wand2, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BadgeInfo, Bell, CalendarClock, CheckCircle2, Clock3, FileText, History, Layers3, Lock, Mail, MessageSquare, Pencil, Plus, Route, Save, Sparkles, StickyNote, Trash2, Users, Video, Wand2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
@@ -22,17 +22,26 @@ import { LeadFilesTab } from './files'
 
 export const LEAD_TABS = [
   { key: 'overview', label: 'Overview' },
+  { key: 'discovery', label: 'Discovery' },
+  { key: 'audit', label: 'Audit' },
+  { key: 'proposal', label: 'Proposal' },
+  { key: 'negotiation', label: 'Negotiation' },
+  { key: 'agreement', label: 'Agreement' },
+  { key: 'documents', label: 'Documents' },
+  { key: 'timeline', label: 'Activity' },
   { key: 'notes', label: 'Notes' },
   { key: 'tasks', label: 'Tasks' },
   { key: 'meetings', label: 'Meetings' },
   { key: 'emails', label: 'Emails' },
   { key: 'files', label: 'Files' },
   { key: 'call_logs', label: 'Calls' },
-  { key: 'proposal', label: 'Proposal' },
-  { key: 'documents', label: 'Documents' },
+  { key: 'history', label: 'Stage History' },
   { key: 'ai', label: 'AI' },
 ]
-const PRIMARY_LEAD_TAB_KEYS = new Set(['overview', 'notes', 'tasks', 'meetings', 'emails'])
+const GLOBAL_LEAD_TAB_KEYS = new Set(['overview', 'documents', 'timeline', 'notes', 'tasks', 'meetings', 'emails', 'files', 'call_logs', 'history', 'ai'])
+const STAGE_LEAD_TAB_KEYS = new Set(['discovery', 'audit', 'proposal', 'negotiation', 'agreement'])
+const WORKSPACE_STAGE_ORDER = ['acquire', 'qualify', 'discovery', 'proposal', 'negotiation', 'agreement', 'won']
+const WORKSPACE_STAGE_MINIMUM = { discovery: 'discovery', audit: 'discovery', proposal: 'proposal', negotiation: 'negotiation', agreement: 'agreement' }
 
 const leadTone = (value) => {
   const key = String(value || '').toLowerCase()
@@ -139,13 +148,22 @@ export const buildLeadEditFields = (lead = {}, stages = [], users = []) => {
   ]
 }
 
-export const buildLeadOverviewSections = (lead = {}) => {
+const resolveUserIdName = (userId, users = []) => {
+  const rawId = String(userId || '').trim()
+  if (!rawId) return ''
+  const found = users.find((user) => String(user?.id || user?._id || user?.user_id || '').trim() === rawId)
+  return found ? formatUserName(found) : rawId
+}
+
+export const buildLeadOverviewSections = (lead = {}, users = []) => {
   const customFields = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
+  const referredByName = resolveUserIdName(lead?.referred_by, users)
   const contactItems = [
     { label: 'Contact', value: lead?.crm_contact_name || lead?.primary_contact || lead?.contact_name || lead?.prospect_name || '-' },
     { label: 'Email', value: lead?.email || '-' },
     { label: 'Phone', value: lead?.phone || '-' },
   ]
+  if (referredByName) contactItems.push({ label: 'Referred by', value: referredByName })
   const pipelineItems = [
     { label: 'Source', value: lead?.channel || '-' },
     { label: 'Inner status', value: getStageStatusLabel(lead?.current_stage, getLeadStageStatus(lead)) || '-' },
@@ -251,6 +269,8 @@ export const LeadWorkspace = memo(function LeadWorkspace({
   onRefresh,
   onSendEmail,
   onScheduleFollowUp,
+  onDeleteLead,
+  deletingLead = false,
   onSaveLead,
   isSaving = false,
   users = [],
@@ -275,6 +295,19 @@ export const LeadWorkspace = memo(function LeadWorkspace({
                 Schedule Follow-up
               </Button>
             ) : null}
+            {onDeleteLead ? (
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                loading={deletingLead}
+                loadingText="Deleting"
+                onClick={onDeleteLead}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </Button>
+            ) : null}
             <Button type="button" variant="secondary" size="sm" onClick={onBack}>
               <ArrowLeft className="h-4 w-4" />
               Back
@@ -290,7 +323,7 @@ export const LeadWorkspace = memo(function LeadWorkspace({
 
       <LeadJourneyTracker lead={lead} />
 
-      <LeadTabs activeTab={activeTab} onTabChange={onTabChange} />
+      <LeadTabs activeTab={activeTab} onTabChange={onTabChange} lead={lead} />
 
       <LeadWorkspaceLayout body={body} sidebar={sidebar} />
     </CRMPage>
@@ -547,69 +580,80 @@ function HeaderEditField({ label, value, onChange, type = 'text', placeholder, o
   )
 }
 
-export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange }) {
-  const primaryTabs = LEAD_TABS.filter((tab) => PRIMARY_LEAD_TAB_KEYS.has(tab.key))
-  const moreTabs = LEAD_TABS.filter((tab) => !PRIMARY_LEAD_TAB_KEYS.has(tab.key))
-  const activeMoreTab = moreTabs.find((tab) => tab.key === activeTab)
-  return (
-    <nav aria-label="Lead workspace sections" className="overflow-x-auto rounded-2xl border border-surface-border/80 bg-white/90 p-2 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
-      <div className="flex min-w-max items-center gap-2">
-        {primaryTabs.map((tab) => {
-          const isActive = activeTab === tab.key
-          const commonClass = `inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-            isActive
-              ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200'
-              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100'
-          }`
+const tabAvailability = (lead, tab) => {
+  const minimum = WORKSPACE_STAGE_MINIMUM[tab.key]
+  if (!minimum) return { locked: false }
+  const current = getCanonicalPipelineStageKey(lead?.current_stage || 'acquire')
+  const currentIndex = WORKSPACE_STAGE_ORDER.indexOf(current)
+  const requiredIndex = WORKSPACE_STAGE_ORDER.indexOf(minimum)
+  const locked = currentIndex >= 0 && requiredIndex >= 0 && currentIndex < requiredIndex
+  if (!locked) return { locked: false }
+  const messages = {
+    discovery: 'Complete Qualification before starting Discovery.',
+    audit: 'Complete Qualification before starting Audit.',
+    proposal: 'Complete Discovery before starting Proposal.',
+    negotiation: 'Complete Proposal before starting Negotiation.',
+    agreement: 'Complete Proposal and Negotiation before starting Agreement.',
+  }
+  return { locked: true, message: messages[tab.key] || 'Complete the earlier sales stage first.' }
+}
 
-          if (tab.disabled) {
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                className={`${commonClass} cursor-not-allowed opacity-60`}
-                aria-disabled="true"
-                title="Coming soon"
-              >
-                {tab.label}
-                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                  Soon
-                </span>
-              </button>
-            )
-          }
+export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange, lead }) {
+  const globalTabs = LEAD_TABS.filter((tab) => GLOBAL_LEAD_TAB_KEYS.has(tab.key))
+  const stageTabs = LEAD_TABS.filter((tab) => STAGE_LEAD_TAB_KEYS.has(tab.key))
+  const showLocked = (message) => toast(message)
+  const renderTab = (tab, { lockable = false } = {}) => {
+    const isActive = activeTab === tab.key
+    const availability = lockable ? tabAvailability(lead, tab) : { locked: false }
+    const commonClass = `inline-flex min-h-10 items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+      isActive
+        ? 'bg-primary-50 text-primary-700 ring-1 ring-primary-100 dark:bg-primary-950/60 dark:text-primary-200 dark:ring-primary-900/50'
+        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100'
+    }`
 
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => onTabChange?.(tab.key)}
-              aria-current={isActive ? 'page' : undefined}
-              className={commonClass}
-            >
-              {tab.label}
-            </button>
-          )
-        })}
-        <label className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-          activeMoreTab
-            ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200'
-            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100'
-        }`}
+    if (availability.locked || tab.disabled) {
+      return (
+        <button
+          key={tab.key}
+          type="button"
+          className={`${commonClass} cursor-not-allowed opacity-60`}
+          aria-disabled="true"
+          title={availability.message || 'Coming soon'}
+          onClick={() => showLocked(availability.message || 'Coming soon')}
         >
-          <span>More</span>
-          <select
-            className="bg-transparent text-sm font-medium outline-none"
-            value={activeMoreTab?.key || ''}
-            onChange={(event) => {
-              if (event.target.value) onTabChange?.(event.target.value)
-            }}
-            aria-label="More lead sections"
-          >
-            <option value="">Select</option>
-            {moreTabs.map((tab) => <option key={tab.key} value={tab.key}>{tab.label}</option>)}
-          </select>
-        </label>
+          {tab.label}
+          <Lock className="h-3.5 w-3.5" />
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+            Locked
+          </span>
+        </button>
+      )
+    }
+
+    return (
+      <button
+        key={tab.key}
+        type="button"
+        onClick={() => onTabChange?.(tab.key)}
+        aria-current={isActive ? 'page' : undefined}
+        className={commonClass}
+      >
+        {tab.label}
+      </button>
+    )
+  }
+
+  return (
+    <nav aria-label="Lead workspace sections" className="space-y-3">
+      <div className="overflow-x-auto rounded-2xl border border-surface-border/80 bg-white/90 p-2 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
+        <div className="flex min-w-max items-center gap-2">
+          {globalTabs.map((tab) => renderTab(tab))}
+        </div>
+      </div>
+      <div className="overflow-x-auto rounded-2xl border border-primary-100/80 bg-primary-50/45 p-2 shadow-sm dark:border-primary-900/50 dark:bg-primary-950/20">
+        <div className="flex min-w-max items-center gap-2">
+          {stageTabs.map((tab) => renderTab(tab, { lockable: true }))}
+        </div>
       </div>
     </nav>
   )
@@ -630,9 +674,11 @@ const buildLeadOverviewForm = (lead = {}) => ({
   next_follow_up_at: lead?.next_follow_up_at ? String(lead.next_follow_up_at).slice(0, 10) : '',
 })
 
-export const LeadOverview = memo(function LeadOverview({ lead, onSubmit, isSaving = false }) {
-  const sections = buildLeadOverviewSections(lead)
+export const LeadOverview = memo(function LeadOverview({ lead, onSubmit, isSaving = false, users = [] }) {
+  const sections = buildLeadOverviewSections(lead, users)
   const [isEditing, setIsEditing] = useState(false)
+  const [isAddingField, setIsAddingField] = useState(false)
+  const [newField, setNewField] = useState({ name: '', value: '' })
   const [form, setForm] = useState(() => buildLeadOverviewForm(lead))
 
   useEffect(() => {
@@ -648,17 +694,99 @@ export const LeadOverview = memo(function LeadOverview({ lead, onSubmit, isSavin
     setIsEditing(false)
   }
 
+  const handleAddField = () => {
+    const name = newField.name.trim()
+    const value = newField.value.trim()
+    if (!name) {
+      toast.error('Field name is required')
+      return
+    }
+    const existing = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
+    const nextCustomFields = { ...existing, [name]: value }
+    onSubmit?.({
+      custom_fields: JSON.stringify(nextCustomFields),
+    })
+    setNewField({ name: '', value: '' })
+    setIsAddingField(false)
+  }
+
+  const closeAddField = () => {
+    setNewField({ name: '', value: '' })
+    setIsAddingField(false)
+  }
+
   return (
     <CRMSection
       title="Lead overview"
       description="Balanced lead context grouped for quick scanning."
       actions={(
-        <Button type="button" variant="secondary" size="sm" onClick={() => setIsEditing((value) => !value)}>
-          <Pencil className="h-4 w-4" />
-          {isEditing ? 'Close edit' : 'Edit'}
-        </Button>
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setIsEditing(false)
+              setIsAddingField((value) => !value)
+            }}
+          >
+            <Plus className="h-4 w-4" />
+            Add field
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setIsAddingField(false)
+              setIsEditing((value) => !value)
+            }}
+          >
+            <Pencil className="h-4 w-4" />
+            {isEditing ? 'Close edit' : 'Edit'}
+          </Button>
+        </>
       )}
     >
+      {isAddingField ? (
+        <div className="mb-4 rounded-2xl border border-dashed border-primary-300/70 bg-primary-50/40 p-4 dark:border-primary-800 dark:bg-primary-950/20">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Add a custom field</p>
+            <button type="button" onClick={closeAddField} className="rounded-full p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800" aria-label="Close add field">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Missing a required field? Create it here — it is stored as a custom field on this lead.</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Field name</span>
+              <input
+                className={`${inputClassName} mt-2`}
+                placeholder="e.g. LinkedIn profile"
+                value={newField.name}
+                onChange={(event) => setNewField((state) => ({ ...state, name: event.target.value }))}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Value</span>
+              <input
+                className={`${inputClassName} mt-2`}
+                placeholder="e.g. linkedin.com/in/jane"
+                value={newField.value}
+                onChange={(event) => setNewField((state) => ({ ...state, value: event.target.value }))}
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={closeAddField}>
+              Cancel
+            </Button>
+            <Button type="button" variant="primary" size="sm" onClick={handleAddField}>
+              Save field
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {isEditing ? (
         <div className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-2">
@@ -776,7 +904,7 @@ function LeadEditField({ field, onChange }) {
   )
 }
 
-export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
+export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail, onStageMoved }) {
   const navigate = useNavigate()
   const activityPath = lead?.id ? `/crm/activities?entity_type=lead&entity_id=${lead.id}` : '/crm/activities'
   const { data: stagesData } = useQuery('crm-lead-edit-stages', salesApi.getStages)
@@ -797,6 +925,12 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   const gateRequirements = gate ? gate.requirements(lead) : []
   const gateReady = gate ? gateRequirements.every((req) => req.met) : false
   const isWonStage = currentStageKey === 'won'
+  const previousStage = useMemo(() => {
+    const index = LEAD_STAGE_STEPS.findIndex((stage) => getCanonicalPipelineStageKey(stage) === currentStageKey)
+    if (index <= 0) return null
+    const label = LEAD_STAGE_STEPS[index - 1]
+    return { key: getCanonicalPipelineStageKey(label), label }
+  }, [currentStageKey])
   const stageStatusOptions = getStageStatusOptions(currentStageKey)
   const stageStatusLabel = getStageStatusLabel(lead?.current_stage, getLeadStageStatus(lead))
   const [stageStatus, setStageStatus] = useState(() => getLeadStageStatus(lead))
@@ -873,6 +1007,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       await crmApi.updatePipelineStage(leadId, { stage: targetStageKey })
       toast.success('Lead stage updated')
       refreshWorkspace()
+      onStageMoved?.(targetStageKey)
       setRequirementsDialog(null)
     } catch (error) {
       const blocker = classifyTransitionFailure(error, 'Stage update failed')
@@ -950,8 +1085,21 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       await crmApi.updatePipelineStage(lead.id, { stage: gate.nextKey })
       toast.success('Lead stage updated')
       refreshWorkspace()
+      onStageMoved?.(gate.nextKey)
     } catch (error) {
       handleSidebarTransitionError(error, { mode: 'stage', targetStageKey: gate.nextKey })
+    }
+  }
+
+  const handleMoveToPreviousStage = async () => {
+    if (!previousStage?.key || !lead?.id) return
+    try {
+      await crmApi.updatePipelineStage(lead.id, { stage: previousStage.key })
+      toast.success(`Lead moved to ${previousStage.label}`)
+      refreshWorkspace()
+      onStageMoved?.(previousStage.key)
+    } catch (error) {
+      handleSidebarTransitionError(error, { mode: 'stage', targetStageKey: previousStage.key })
     }
   }
 
@@ -970,9 +1118,10 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   }, [lead])
 
   const stageMutation = useMutation((stage) => crmApi.updatePipelineStage(lead?.id, { stage }), {
-    onSuccess: () => {
+    onSuccess: (_data, stage) => {
       toast.success('Lead stage updated')
       refreshWorkspace()
+      onStageMoved?.(stage)
     },
     onError: (error) => handleSidebarTransitionError(error, {
       mode: 'stage',
@@ -1108,41 +1257,55 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       </LeadSidebarPanel>
 
       <LeadSidebarPanel title="Stage checklist" description="Requirements before the lead can move to the next stage.">
-        {gate ? (
-          <div className="space-y-2">
-            {gateRequirements.map((req) => (
-              <div key={req.label} className="flex items-start gap-2 rounded-xl border border-surface-border/70 bg-white/75 px-3 py-2 dark:border-gray-800 dark:bg-gray-900/70">
-                {req.met ? (
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                ) : (
-                  <X className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
-                )}
-                <span className={`text-sm ${req.met ? 'font-medium text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>
-                  {req.label}
-                </span>
-              </div>
-            ))}
+        <div className="space-y-2">
+          {gate ? (
+            <>
+              {gateRequirements.map((req) => (
+                <div key={req.label} className="flex items-start gap-2 rounded-xl border border-surface-border/70 bg-white/75 px-3 py-2 dark:border-gray-800 dark:bg-gray-900/70">
+                  {req.met ? (
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                  ) : (
+                    <X className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                  )}
+                  <span className={`text-sm ${req.met ? 'font-medium text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>
+                    {req.label}
+                  </span>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="primary"
+                className="mt-4 w-full justify-center shadow-sm"
+                onClick={handleMoveToNextStage}
+                title={gateReady ? `Move this lead to ${gate.nextLabel}` : gate.hint}
+              >
+                <ArrowRight className="h-4 w-4" />
+                Move to {gate.nextLabel}
+              </Button>
+              {!gateReady ? (
+                <p className="mt-2 text-xs leading-5 text-amber-600 dark:text-amber-400">{gate.hint}</p>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {isWonStage
+                ? 'Deal closed. Use the Won conversion panel below, then transfer to Clients.'
+                : 'This lead is at the end of the sales journey.'}
+            </p>
+          )}
+          {previousStage ? (
             <Button
               type="button"
-              variant="primary"
-              className="mt-4 w-full justify-center shadow-sm"
-              onClick={handleMoveToNextStage}
-              title={gateReady ? `Move this lead to ${gate.nextLabel}` : gate.hint}
+              variant="secondary"
+              className="mt-3 w-full justify-center"
+              onClick={handleMoveToPreviousStage}
+              title={`Move this lead back to ${previousStage.label}`}
             >
-              <ArrowRight className="h-4 w-4" />
-              Move to {gate.nextLabel}
+              <ArrowLeft className="h-4 w-4" />
+              Move back to {previousStage.label}
             </Button>
-            {!gateReady ? (
-              <p className="mt-2 text-xs leading-5 text-amber-600 dark:text-amber-400">{gate.hint}</p>
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {isWonStage
-              ? 'Deal closed. Use the Won conversion panel below, then transfer to Clients.'
-              : 'This lead is at the end of the sales journey.'}
-          </p>
-        )}
+          ) : null}
+        </div>
       </LeadSidebarPanel>
 
       <LeadSidebarPanel title="Pipeline edits" description="Ownership, stage and qualification fields.">

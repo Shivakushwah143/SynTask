@@ -10,12 +10,12 @@ from fastapi import HTTPException, UploadFile, status
 from pathlib import Path
 from slugify import slugify
 
-from app.core.security import get_password_hash
+from app.core.security import decrypt_sensitive_value, get_password_hash, verify_password
 from app.models.company import Company
 from app.models.department import Department
 from app.models.user import User, UserRole, UserStatus
-from app.recruitment.models import (Application, Candidate, CandidateStatus,
-                                    CandidateNote, ImportStatus,
+from app.recruitment.models import (Application, Candidate, CandidateJobScore, CandidatePortalCredential, CandidateStatus,
+                                    CandidateNote, CandidateTimeline, ImportStatus,
                                     InterviewDecision, InterviewFeedback,
                                     InterviewFeedbackStatus,
                                     InterviewLifecycleStatus,
@@ -23,7 +23,7 @@ from app.recruitment.models import (Application, Candidate, CandidateStatus,
                                     RecruitmentImportJob, Interview,
                                     JobAnalyticsCounters,
                                     JobEmploymentType, JobLifecycleStatus,
-                                    JobStatus, JobVisibility, JobWorkMode, Offer,
+                                    JobStatus, JobVisibility, JobWorkMode, Offer, OfferAccessToken,
                                     RecruitmentJob, Resume, ResumeParsedProfile,
                                     CandidateSkillExtraction)
 from app.recruitment.events import publish_recruitment_event
@@ -49,6 +49,7 @@ from app.recruitment.schemas import (ApplicationApplyRequest,
                                      InterviewRescheduleRequest,
                                      InterviewUpdate, JobCreate, JobFilter,
                                      JobUpdate,
+                                     PublicTrackingProfileUpdate,
                                      ResumeUploadResponse)
 from app.services.file_service import FileService
 from app.core.clock import utc_now
@@ -148,6 +149,8 @@ class RecruitmentService:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Candidate is already assigned to this job")
 
         tracking_code = await TrackingCodeService.generate_tracking_code(company_id)
+        tracking_secret = TrackingCodeService.generate_tracking_secret()
+        tracking_secret = TrackingCodeService.generate_tracking_secret()
         application = Application(
             company_id=company_id,
             candidate_id=candidate_id,
@@ -155,6 +158,8 @@ class RecruitmentService:
             source=source or "manual",
             status=CandidateStatus.NEW,
             tracking_code=tracking_code,
+            tracking_secret_hash=get_password_hash(tracking_secret),
+            tracking_secret_created_at=utc_now(),
         )
         await application.insert()
         await JobRepository.update_counters(job_id, "total_applications", 1)
@@ -182,8 +187,9 @@ class RecruitmentService:
         if hired:
             message = f"{candidate.full_name} hired as {designation or job.title} — moved to Employees"
         return {
-            "application_id": str(application.id),
+            "application_id": tracking_code,
             "tracking_code": tracking_code,
+            "tracking_pin": tracking_secret,
             "candidate_id": candidate_id,
             "candidate_name": candidate.full_name,
             "job_id": job_id,
@@ -343,6 +349,16 @@ class RecruitmentService:
         old = candidate.status
         candidate.status, candidate.updated_at = target, utc_now()
         await candidate.save()
+        applications = await ApplicationRepository.list_for_candidate(candidate.company_id, str(candidate.id))
+        for application in applications:
+            application.status = target
+            application.updated_at = utc_now()
+            await application.save()
+        if target in {CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN, CandidateStatus.ARCHIVED, CandidateStatus.JOINED, CandidateStatus.EMPLOYEE}:
+            await CandidatePortalCredential.find({
+                "company_id": candidate.company_id,
+                "candidate_id": str(candidate.id),
+            }).delete()
         await record(candidate.company_id, "CandidateMoved", actor_id, candidate_id=str(candidate.id), payload={"from": old.value, "to": target.value})
         return candidate
 
@@ -545,6 +561,17 @@ class JobService:
         return await JobService.transition_job(job, JobLifecycleStatus.PUBLISHED, actor_id)
 
     @staticmethod
+    async def set_status(job: RecruitmentJob, target_status: JobLifecycleStatus, actor_id: str) -> RecruitmentJob:
+        """Set a job's lifecycle status through a validated transition.
+
+        Setting the status to the current value is a no-op (idempotent) so the
+        UI status dropdown can safely re-select the active status.
+        """
+        if job.lifecycle_status == target_status:
+            return job
+        return await JobService.transition_job(job, target_status, actor_id)
+
+    @staticmethod
     async def pause_job(job: RecruitmentJob, actor_id: str) -> RecruitmentJob:
         """Pause a published job."""
         return await JobService.transition_job(job, JobLifecycleStatus.PAUSED, actor_id)
@@ -650,6 +677,12 @@ class TrackingCodeService:
         raise HTTPException(status_code=500, detail="Unable to generate tracking code")
 
     @staticmethod
+    def generate_tracking_secret() -> str:
+        """Generate one-time candidate tracking PIN shown only after apply."""
+        alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        return "-".join("".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(2))
+
+    @staticmethod
     async def get_by_tracking_code(tracking_code: str, company_id: str) -> Optional[Application]:
         """Get application by tracking code."""
         return await Application.find_one({
@@ -657,6 +690,20 @@ class TrackingCodeService:
             "company_id": company_id,
             "deleted_at": None
         })
+
+    @staticmethod
+    async def verify_public_tracking(tracking_code: str, tracking_secret: str) -> Application:
+        application = await Application.find_one({"tracking_code": tracking_code, "deleted_at": None})
+        credential = await CandidatePortalCredential.find_one({
+            "tracking_code": tracking_code,
+            "active": True,
+        })
+        secret_hash = credential.secret_hash if credential else getattr(application, "tracking_secret_hash", None)
+        if not application or not secret_hash:
+            raise HTTPException(status_code=404, detail="Application not found")
+        if not verify_password((tracking_secret or "").strip().upper(), secret_hash):
+            raise HTTPException(status_code=404, detail="Application not found")
+        return application
 
 
 class DuplicateDetectionService:
@@ -731,12 +778,14 @@ class ResumeStorageService:
     """Service for handling resume uploads."""
 
     # Allowed resume extensions
-    ALLOWED_RESUME_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt"}
+    ALLOWED_RESUME_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".jpg", ".jpeg", ".png"}
     ALLOWED_RESUME_MIME_TYPES = {
         "application/pdf",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "text/plain",
+        "image/jpeg",
+        "image/png",
     }
 
     # Max resume size (5MB)
@@ -782,6 +831,9 @@ class ResumeStorageService:
             "deleted_at": None
         })
         if existing_resume:
+            if candidate_id and not existing_resume.candidate_id:
+                existing_resume.candidate_id = candidate_id
+                await existing_resume.save()
             return ResumeUploadResponse(
                 resume_id=str(existing_resume.id),
                 storage_url=existing_resume.storage_url,
@@ -798,7 +850,7 @@ class ResumeStorageService:
             upload_dir=upload_dir,
             url_prefix="/uploads/resumes",
             scope="recruitment/resumes",
-            sensitive=True,
+            sensitive=False,
         )
 
         # Create resume record
@@ -847,6 +899,7 @@ class JobDiscoveryService:
         query = {
             "company_id": company_id,
             "lifecycle_status": JobLifecycleStatus.PUBLISHED,
+            "visibility": JobVisibility.PUBLIC,
             "deleted_at": None,
         }
 
@@ -916,6 +969,7 @@ class JobDiscoveryService:
             "slug": slug,
             "company_id": company_id,
             "lifecycle_status": JobLifecycleStatus.PUBLISHED,
+            "visibility": JobVisibility.PUBLIC,
             "deleted_at": None
         })
 
@@ -927,6 +981,9 @@ class JobDiscoveryService:
         # Check if job is published
         if job.lifecycle_status != JobLifecycleStatus.PUBLISHED:
             errors.append("Job is not currently accepting applications")
+
+        if getattr(job, "visibility", None) != JobVisibility.PUBLIC:
+            errors.append("Job is not publicly available")
 
         # Check deadline
         if job.application_deadline and job.application_deadline < utc_now():
@@ -944,6 +1001,39 @@ class JobDiscoveryService:
 
 class CareerPortalService:
     """Service for Career Portal operations."""
+
+    @staticmethod
+    def company_slug(company: Company) -> str:
+        """Build stable public career slug from company name and id suffix."""
+        base = slugify(company.name or "company") or "company"
+        suffix = str(company.id)[-6:] if getattr(company, "id", None) else ""
+        return f"{base}-{suffix}" if suffix else base
+
+    @staticmethod
+    async def list_companies_with_public_jobs() -> list[dict]:
+        """List companies that currently have published public jobs."""
+        jobs = await RecruitmentJob.find({
+            "lifecycle_status": JobLifecycleStatus.PUBLISHED,
+            "visibility": JobVisibility.PUBLIC,
+            "deleted_at": None,
+        }).to_list()
+        counts: dict[str, int] = {}
+        for job in jobs:
+            counts[job.company_id] = counts.get(job.company_id, 0) + 1
+
+        companies = []
+        for company_id, job_count in counts.items():
+            company = await Company.get(company_id)
+            if not company:
+                continue
+            companies.append({
+                "name": company.name,
+                "slug": CareerPortalService.company_slug(company),
+                "industry": company.industry,
+                "location": ", ".join([v for v in [company.city, company.state, company.country] if v]),
+                "job_count": job_count,
+            })
+        return sorted(companies, key=lambda item: item["name"].lower())
 
     @staticmethod
     async def resolve_company_id(company_id: Optional[str] = None, domain: Optional[str] = None, host: Optional[str] = None) -> str:
@@ -971,6 +1061,15 @@ class CareerPortalService:
         raise HTTPException(status_code=404, detail="Career portal not found")
 
     @staticmethod
+    async def resolve_company_slug(company_slug: str) -> str:
+        """Resolve public company slug without exposing database ids in URLs."""
+        companies = await Company.find({}).to_list()
+        for company in companies:
+            if CareerPortalService.company_slug(company) == company_slug:
+                return str(company.id)
+        raise HTTPException(status_code=404, detail="Career portal not found")
+
+    @staticmethod
     async def get_portal_settings(company_id: str) -> dict:
         """Get career portal settings for a company."""
         company = await Company.get(company_id)
@@ -979,6 +1078,7 @@ class CareerPortalService:
 
         return {
             "company_name": company.name,
+            "company_slug": CareerPortalService.company_slug(company),
             "logo_url": getattr(company, "logo_url", None),
             "banner_url": getattr(company, "banner_url", None),
             "primary_color": getattr(company, "primary_color", None),
@@ -990,8 +1090,46 @@ class CareerPortalService:
         }
 
 
+class CompanySlugService:
+    """Compatibility wrapper for public career company slugs."""
+
+    @staticmethod
+    def slug_for(company: Company) -> str:
+        return CareerPortalService.company_slug(company)
+
+    @staticmethod
+    async def resolve_by_slug(company_slug: str) -> str:
+        return await CareerPortalService.resolve_company_slug(company_slug)
+
+
 class ApplicationService:
     """Service for handling job applications."""
+
+    @staticmethod
+    async def public_offer_summary(offer: Offer) -> dict:
+        offer_url = None
+        access = await OfferAccessToken.find_one({
+            "company_id": offer.company_id,
+            "offer_id": str(offer.id),
+            "revoked_at": None,
+        })
+        if access and access.expires_at >= utc_now() and access.access_token_encrypted:
+            try:
+                offer_url = f"/public/offers/{decrypt_sensitive_value(access.access_token_encrypted)}"
+            except Exception:
+                offer_url = None
+        return {
+            "offer_number": offer.offer_number,
+            "job_title": offer.job_title,
+            "status": offer.status,
+            "joining_date": offer.joining_date,
+            "offer_expiry": offer.offer_expiry,
+            "sent_at": offer.sent_at,
+            "accepted_at": offer.accepted_at,
+            "rejected_at": offer.rejected_at,
+            "pdf_available": bool(offer.immutable_pdf_path),
+            "offer_url": offer_url,
+        }
 
     @staticmethod
     async def apply_to_job(
@@ -1033,6 +1171,7 @@ class ApplicationService:
                 source="portal",
                 email=normalized_email,
                 full_name=data.full_name,
+                date_of_birth=data.date_of_birth,
                 phone=data.phone,
                 current_company=data.current_company,
                 experience_years=data.experience_years,
@@ -1043,18 +1182,35 @@ class ApplicationService:
                 skills=data.skills,
                 status=CandidateStatus.NEW,
                 resume_id=resume_result.resume_id,
+                resume_url=resume_result.storage_url,
             )
             await candidate.insert()
             candidate_id = str(candidate.id)
         else:
             # Update existing candidate with resume if they don't have one
             candidate = await Candidate.get(candidate_id)
+            if candidate and data.date_of_birth and not candidate.date_of_birth:
+                candidate.date_of_birth = data.date_of_birth
+                await candidate.save()
             if candidate and not candidate.resume_id:
                 candidate.resume_id = resume_result.resume_id
+                candidate.resume_url = resume_result.storage_url
                 await candidate.save()
+            elif candidate and candidate.resume_id == resume_result.resume_id and candidate.resume_url != resume_result.storage_url:
+                candidate.resume_url = resume_result.storage_url
+                await candidate.save()
+
+        resume_doc = await Resume.get(resume_result.resume_id)
+        if resume_doc and resume_doc.company_id == company_id and resume_doc.candidate_id != candidate_id:
+            resume_doc.candidate_id = candidate_id
+            await resume_doc.save()
+        if candidate and candidate.resume_url != resume_result.storage_url:
+            candidate.resume_url = resume_result.storage_url
+            await candidate.save()
 
         # Generate tracking code
         tracking_code = await TrackingCodeService.generate_tracking_code(company_id)
+        tracking_secret = TrackingCodeService.generate_tracking_secret()
 
         # Create application
         if await ApplicationRepository.find_existing(company_id, candidate_id, str(job.id)):
@@ -1068,8 +1224,19 @@ class ApplicationService:
             status=CandidateStatus.NEW,
             current_resume_id=resume_result.resume_id,
             tracking_code=tracking_code,
+            tracking_secret_hash=get_password_hash(tracking_secret),
+            tracking_secret_created_at=utc_now(),
         )
         await application.insert()
+        credential = CandidatePortalCredential(
+            company_id=company_id,
+            candidate_id=candidate_id,
+            application_id=str(application.id),
+            job_id=str(job.id),
+            tracking_code=tracking_code,
+            secret_hash=get_password_hash(tracking_secret),
+        )
+        await credential.insert()
         await JobRepository.update_counters(str(job.id), "total_applications", 1)
 
         await record(
@@ -1102,8 +1269,10 @@ class ApplicationService:
         )
 
         return ApplicationApplyResponse(
-            application_id=str(application.id),
+            application_id=tracking_code,
             tracking_code=tracking_code,
+            tracking_pin=tracking_secret,
+            temporary_user_id=tracking_code,
             job_id=str(job.id),
             job_title=job.title,
             candidate_email=normalized_email,
@@ -1112,25 +1281,187 @@ class ApplicationService:
         )
 
     @staticmethod
-    async def get_application_status(tracking_code: str, company_id: str) -> ApplicationStatusResponse:
-        """Get application status by tracking code."""
-        application = await TrackingCodeService.get_by_tracking_code(tracking_code, company_id)
+    @staticmethod
+    def public_tracking_steps(status_value: str) -> list[dict]:
+        steps = [
+            ("new", "Application Received"),
+            ("screening", "Screening"),
+            ("shortlisted", "Shortlisted"),
+            ("interview_1", "Interview"),
+            ("offer_sent", "Offer"),
+            ("joined", "Joined"),
+        ]
+        aliases = {"interview_2": "interview_1", "offer_accepted": "offer_sent", "employee": "joined"}
+        terminal = {"rejected": "Rejected", "withdrawn": "Withdrawn", "archived": "Archived"}
+        normalized = aliases.get(status_value, status_value)
+        active_index = next((index for index, (key, _) in enumerate(steps) if key == normalized), 0)
+        timeline = []
+        for index, (key, label) in enumerate(steps):
+            state = "completed" if index < active_index else "current" if index == active_index else "pending"
+            timeline.append({"key": key, "label": label, "state": state})
+        if status_value in terminal:
+            timeline.append({"key": status_value, "label": terminal[status_value], "state": "current"})
+        return timeline
 
+    @staticmethod
+    async def get_application_status(tracking_code: str, company_id: str, application: Optional[Application] = None) -> ApplicationStatusResponse:
+        """Get public-safe application status."""
+        application = application or await TrackingCodeService.get_by_tracking_code(tracking_code, company_id)
         if not application:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Application not found"
-            )
-
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
         job = await RecruitmentJob.get(application.job_id)
+        company = await Company.get(company_id)
+        candidate = await TenantRepository.get(Candidate, application.candidate_id, company_id)
+        resume = None
+        if application.current_resume_id:
+            current_resume = await TenantRepository.get(Resume, application.current_resume_id, company_id)
+            if current_resume:
+                resume = {
+                    "filename": current_resume.original_filename,
+                    "mime_type": current_resume.mime_type,
+                    "size_bytes": current_resume.size_bytes,
+                    "uploaded_at": current_resume.uploaded_at,
+                    "processing_status": current_resume.processing_status,
+                }
+        status_value = application.status.value if hasattr(application.status, "value") else str(application.status)
+        timeline = ApplicationService.public_tracking_steps(status_value)
+        current_step = next((step["label"] for step in timeline if step["state"] == "current"), timeline[0]["label"])
+        stage_record_filter = {
+            "company_id": company_id,
+            "candidate_id": application.candidate_id,
+            "deleted_at": None,
+            "$or": [
+                {"application_id": str(application.id)},
+                {"job_id": application.job_id},
+            ],
+        }
+        interviews = await Interview.find(stage_record_filter).sort("schedule_at").to_list()
+        offers = await Offer.find(stage_record_filter).sort("-created_at").to_list()
+        timeline_events = await CandidateTimeline.find({
+            "company_id": company_id,
+            "candidate_id": application.candidate_id,
+            "$or": [
+                {"job_id": application.job_id},
+                {"job_id": None},
+                {"payload.application_id": str(application.id)},
+            ],
+        }).sort("created_at").to_list()
 
         return ApplicationStatusResponse(
             tracking_code=application.tracking_code,
             job_title=job.title if job else "Unknown",
-            status=application.status.value,
+            company_name=company.name if company else None,
+            candidate={
+                "full_name": candidate.full_name,
+                "email": candidate.email,
+                "phone": candidate.phone,
+                "current_company": candidate.current_company,
+                "experience_years": candidate.experience_years,
+                "expected_salary": candidate.expected_salary,
+                "notice_period": candidate.notice_period,
+                "location": candidate.location,
+                "education": candidate.education,
+                "skills": candidate.skills,
+            } if candidate else {},
+            job={
+                "title": job.title,
+                "location": job.location,
+                "employment_type": job.employment_type.value if hasattr(job.employment_type, "value") else str(job.employment_type),
+                "work_mode": job.work_mode.value if hasattr(job.work_mode, "value") else str(job.work_mode),
+            } if job else {},
+            resume=resume,
+            status=status_value,
+            status_label=status_value.replace("_", " ").title(),
+            current_step=current_step,
+            timeline=timeline,
+            stage_details=[{
+                "type": item.event_type,
+                "label": item.event_type.replace("_", " ").replace("-", " ").title(),
+                "created_at": item.created_at,
+                "job_id": item.job_id,
+                "details": {
+                    key: value for key, value in (item.payload or {}).items()
+                    if key in {"from", "to", "round", "schedule_at", "decision", "score", "reason", "offer_id", "tracking_code"}
+                },
+            } for item in timeline_events],
+            interviews=[{
+                "round": item.round,
+                "interview_type": item.interview_type,
+                "interview_mode": item.interview_mode,
+                "schedule_at": item.schedule_at,
+                "duration_minutes": item.duration_minutes,
+                "meeting_link": item.meeting_link,
+                "location": item.location,
+                "status": item.status.value if hasattr(item.status, "value") else str(item.status),
+                "result": item.result,
+                "decision": item.decision.value if getattr(item, "decision", None) and hasattr(item.decision, "value") else item.decision,
+            } for item in interviews],
+            offers=[await ApplicationService.public_offer_summary(item) for item in offers],
             applied_at=application.applied_at,
             last_updated=application.updated_at,
         )
+
+    @staticmethod
+    async def get_public_application_status(tracking_code: str, tracking_secret: str) -> ApplicationStatusResponse:
+        application = await TrackingCodeService.verify_public_tracking(tracking_code, tracking_secret)
+        return await ApplicationService.get_application_status(application.tracking_code, application.company_id, application)
+
+    @staticmethod
+    async def update_public_candidate_profile(tracking_code: str, tracking_secret: str, payload: PublicTrackingProfileUpdate) -> ApplicationStatusResponse:
+        application = await TrackingCodeService.verify_public_tracking(tracking_code, tracking_secret)
+        candidate = await TenantRepository.get(Candidate, application.candidate_id, application.company_id)
+        if not candidate:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+
+        updates = payload.model_dump(exclude_unset=True, exclude={"tracking_code", "tracking_pin"})
+        for field, value in updates.items():
+            setattr(candidate, field, value)
+        candidate.updated_at = utc_now()
+        await candidate.save()
+        application.updated_at = utc_now()
+        await application.save()
+        await record(
+            application.company_id,
+            "CandidateProfileUpdated",
+            None,
+            candidate_id=application.candidate_id,
+            job_id=application.job_id,
+            payload={"source": "public_tracking", "tracking_code": application.tracking_code},
+        )
+        return await ApplicationService.get_application_status(application.tracking_code, application.company_id, application)
+
+    @staticmethod
+    async def upload_public_resume(tracking_code: str, tracking_secret: str, file: UploadFile) -> ApplicationStatusResponse:
+        application = await TrackingCodeService.verify_public_tracking(tracking_code, tracking_secret)
+        candidate = await TenantRepository.get(Candidate, application.candidate_id, application.company_id)
+        if not candidate:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Resume file is empty")
+
+        result = await ResumeStorageService.upload_resume(
+            application.company_id,
+            content,
+            Path(file.filename or "resume").name,
+            candidate_id=application.candidate_id,
+        )
+        candidate.resume_id = result.resume_id
+        candidate.resume_url = result.storage_url
+        candidate.updated_at = utc_now()
+        await candidate.save()
+        application.current_resume_id = result.resume_id
+        application.updated_at = utc_now()
+        await application.save()
+        await record(
+            application.company_id,
+            "ResumeUploaded",
+            None,
+            candidate_id=application.candidate_id,
+            job_id=application.job_id,
+            payload={"source": "public_tracking", "resume_id": result.resume_id, "checksum": result.checksum},
+        )
+        return await ApplicationService.get_application_status(application.tracking_code, application.company_id, application)
 
 
 # =============================================================================
@@ -1487,6 +1818,15 @@ class CandidateWorkspaceService:
         candidate = await CandidateWorkspaceService.get_candidate(company_id, candidate_id)
         applications = await ApplicationRepository.list_for_candidate(company_id, candidate_id)
         resumes = await ResumeRepository.list_for_candidate(company_id, candidate_id)
+        seen_resume_ids = {str(resume.id) for resume in resumes}
+        linked_resume_ids = {candidate.resume_id, *(app.current_resume_id for app in applications)}
+        for resume_id in linked_resume_ids:
+            if not resume_id or resume_id in seen_resume_ids:
+                continue
+            resume = await TenantRepository.get(Resume, resume_id, company_id)
+            if resume:
+                resumes.append(resume)
+                seen_resume_ids.add(str(resume.id))
         resume_payloads = []
         for resume in resumes:
             payload = {**resume.model_dump(), "id": str(resume.id)}
@@ -1528,6 +1868,10 @@ class CandidateWorkspaceService:
         candidate.status = CandidateStatus.ARCHIVED
         candidate.updated_at = utc_now()
         await candidate.save()
+        await CandidatePortalCredential.find({
+            "company_id": company_id,
+            "candidate_id": candidate_id,
+        }).delete()
         await record(company_id, "CandidateArchived", actor_id, candidate_id=candidate_id)
         return candidate
 
@@ -1554,6 +1898,55 @@ class CandidateWorkspaceService:
         missing = [skill for skill in required if skill.lower() not in candidate_skills]
         percentage = round((len(matched) / len(required)) * 100, 2) if required else 100.0
         return {"matchedSkills": matched, "missingSkills": missing, "matchPercentage": percentage}
+
+    @staticmethod
+    async def list_for_job(company_id: str, job_id: str) -> list[dict]:
+        job = await JobService.get_job(job_id, company_id)
+        applications = await Application.find({"company_id": company_id, "job_id": str(job.id), "deleted_at": None}).sort("-applied_at").to_list()
+        items = []
+        for application in applications:
+            candidate = await Candidate.get(application.candidate_id)
+            if not candidate or candidate.company_id != company_id or candidate.deleted_at is not None:
+                continue
+            resume = None
+            resume_id = application.current_resume_id or candidate.resume_id
+            if resume_id:
+                resume_doc = await Resume.get(resume_id)
+                if resume_doc and resume_doc.company_id == company_id and resume_doc.deleted_at is None:
+                    resume = {
+                        "id": str(resume_doc.id),
+                        "filename": resume_doc.original_filename,
+                        "url": resume_doc.storage_url,
+                        "resume_url": resume_doc.storage_url,
+                        "mime_type": resume_doc.mime_type,
+                        "uploaded_at": resume_doc.uploaded_at,
+                        "processing_status": resume_doc.processing_status,
+                    }
+            recruiter = None
+            recruiter_id = application.assigned_recruiter_id or candidate.assigned_recruiter_id
+            if recruiter_id:
+                recruiter_user = await User.get(recruiter_id)
+                if recruiter_user and recruiter_user.company_id == company_id:
+                    recruiter = {"id": str(recruiter_user.id), "name": f"{recruiter_user.first_name or ''} {recruiter_user.last_name or ''}".strip() or recruiter_user.email, "email": recruiter_user.email}
+            score_doc = await CandidateJobScore.find_one({"company_id": company_id, "candidate_id": str(candidate.id), "job_id": str(job.id), "deleted_at": None})
+            score = {"id": str(score_doc.id), "score": score_doc.score, "recommendation": score_doc.score.get("recommendation")} if score_doc else None
+            interviews = await Interview.find({"company_id": company_id, "candidate_id": str(candidate.id), "job_id": str(job.id), "deleted_at": None}).sort("schedule_at").to_list()
+            latest_interview = interviews[-1] if interviews else None
+            offer = await Offer.find({"company_id": company_id, "candidate_id": str(candidate.id), "job_id": str(job.id), "deleted_at": None}).sort("-created_at").first_or_none()
+            items.append({
+                "application_id": str(application.id),
+                "tracking_code": application.tracking_code,
+                "applied_at": application.applied_at,
+                "status": application.status.value if hasattr(application.status, "value") else str(application.status),
+                "candidate": CandidateWorkspaceService.candidate_payload(candidate),
+                "resume": resume,
+                "recruiter": recruiter,
+                "score": score,
+                "interview": InterviewService.payload(latest_interview) if latest_interview else None,
+                "interviews": [InterviewService.payload(interview) for interview in interviews],
+                "offer": {"id": str(offer.id), "status": offer.status, "offer_number": offer.offer_number} if offer else None,
+            })
+        return items
 
 
 class CandidateAssignmentService:
@@ -1702,6 +2095,8 @@ class InterviewService:
             "status": interview.status,
             "feedback_status": interview.feedback_status,
             "decision": interview.decision,
+            "feedback": interview.feedback,
+            "result": interview.result,
             "notes": interview.notes,
             "created_at": interview.created_at,
             "updated_at": interview.updated_at,
@@ -1854,6 +2249,7 @@ class InterviewDecisionService:
         interview = await InterviewService.get_interview(company_id, interview_id)
         interview.decision = data.decision
         interview.notes = data.notes or interview.notes
+        interview.result = data.notes or (data.decision.value if data.decision else interview.result)
         interview.status = InterviewLifecycleStatus.COMPLETED if data.decision in {InterviewDecision.PASSED, InterviewDecision.FAILED, InterviewDecision.HOLD} else interview.status
         interview.updated_at = utc_now()
         await interview.save()

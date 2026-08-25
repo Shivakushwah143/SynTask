@@ -47,15 +47,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
+    <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-center gap-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-r ${colors[color]} text-white shadow-sm`}>
           <Icon className="h-4 w-4" />
         </div>
+        <div className="min-w-0">
+          <span className="truncate text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">{label}</span>
+          <p className="mt-0.5 truncate text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="truncate text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
+        </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -266,23 +268,21 @@ const LiveMonitor = () => {
   const offlineCount = employees.filter(e => e.status === 'Offline').length
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-5">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 p-6 text-white shadow-xl md:p-8">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-              <Users className="h-6 w-6" />
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 px-4 py-3 text-white shadow-sm">
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="rounded-lg bg-white/15 p-2 backdrop-blur-sm">
+              <Users className="h-5 w-5" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold md:text-3xl">Live Monitoring Dashboard</h1>
-              <p className="mt-1 text-indigo-100">Monitor active workspaces, status changes, and live camera or screen captures.</p>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-bold md:text-xl">Live Monitoring Dashboard</h1>
+              <p className="mt-0.5 truncate text-xs text-rose-100">Monitor active workspaces, status changes, and live camera or screen captures.</p>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <span className={`inline-flex items-center text-sm font-medium px-4 py-2 rounded-lg ${
+          <div className="flex flex-wrap gap-2">
+            <span className={`inline-flex h-9 items-center rounded-lg px-3 text-xs font-semibold ${
               isWsConnected
                 ? 'bg-emerald-500/30 text-emerald-100 backdrop-blur-sm'
                 : 'bg-rose-500/30 text-rose-100 backdrop-blur-sm'
@@ -292,7 +292,7 @@ const LiveMonitor = () => {
             </span>
             <button
               onClick={loadEmployees}
-              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-white/15 px-3 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/25"
             >
               <RefreshCw className="h-4 w-4" />
               Refresh
@@ -302,7 +302,7 @@ const LiveMonitor = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Total Employees"
           value={totalEmployees}
@@ -333,7 +333,7 @@ const LiveMonitor = () => {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3 flex-1 min-h-[500px]">
+      <div className="grid min-h-[500px] flex-1 gap-4 lg:grid-cols-3">
         {/* SIDEBAR: Employee Directory */}
         <div className="lg:col-span-1 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 flex flex-col overflow-hidden h-[640px]">
           <div className="space-y-3 mb-4">

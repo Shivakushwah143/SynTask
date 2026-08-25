@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, ChevronDown, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2, Sparkles, ShieldCheck } from 'lucide-react'
+import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2, Sparkles, ShieldCheck } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { Button, CreatableSelectField, EmptyState, FormField, LoadingSpinner, Modal, PhoneInput, SkeletonTable, inputClassName } from '../components/ui'
@@ -21,6 +21,61 @@ const getTotalBudget = (client) => {
     return client.projects.reduce((sum, p) => sum + (Number(p.budget) || 0), 0)
   }
   return 0
+}
+
+// Draft persistence: keep partially-filled client form values when the modal
+// closes (cross button, Escape, backdrop, or cancel) so the user does not have
+// to re-enter them when reopening. Cleared only after a successful create.
+const CLIENT_FORM_DRAFT_KEY = 'syntask_client_form_draft'
+
+const EMPTY_CLIENT_FORM = {
+  name: '',
+  email: '',
+  contact: '',
+  alternate_contact: '',
+  address: '',
+  city: '',
+  state: '',
+  country: '',
+  zip_code: '',
+  company_name: '',
+  industry: '',
+  assigned_to: '',
+  notes: '',
+  tags: '',
+  client_type: '',
+  budget: '',
+  start_date: '',
+  delivery_date: '',
+}
+
+const loadClientFormDraft = () => {
+  try {
+    const raw = sessionStorage.getItem(CLIENT_FORM_DRAFT_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? { ...EMPTY_CLIENT_FORM, ...parsed }
+      : null
+  } catch {
+    return null
+  }
+}
+
+const saveClientFormDraft = (data) => {
+  try {
+    sessionStorage.setItem(CLIENT_FORM_DRAFT_KEY, JSON.stringify(data))
+  } catch {
+    // Ignore storage failures; the form still works without persistence.
+  }
+}
+
+const clearClientFormDraft = () => {
+  try {
+    sessionStorage.removeItem(CLIENT_FORM_DRAFT_KEY)
+  } catch {
+    // Ignore storage failures.
+  }
 }
 
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
@@ -60,26 +115,15 @@ const Clients = () => {
   const [leads, setLeads] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    contact: '',
-    alternate_contact: '',
-    address: '',
-    city: '',
-    state: '',
-    country: '',
-    zip_code: '',
-    company_name: '',
-    industry: '',
-    assigned_to: '',
-    notes: '',
-    tags: '',
-    client_type: '',
+  const [showFilters, setShowFilters] = useState(false)
+  const [columnFilters, setColumnFilters] = useState({
+    type: '',
+    projects: '',
     budget: '',
     start_date: '',
     delivery_date: '',
   })
+  const [formData, setFormData] = useState({ ...EMPTY_CLIENT_FORM })
   const [formErrors, setFormErrors] = useState({})
   const [editingClient, setEditingClient] = useState(null)
   const [submitting, setSubmitting] = useState(false)
@@ -109,6 +153,47 @@ const Clients = () => {
   const [documentFile, setDocumentFile] = useState(null)
   const [documentName, setDocumentName] = useState('')
   const [updatingStatusId, setUpdatingStatusId] = useState(null)
+  const [openStatusMenuId, setOpenStatusMenuId] = useState(null)
+
+  useEffect(() => {
+    const handleDocumentMouseDown = (event) => {
+      if (!event.target.closest('[data-status-menu-root]')) {
+        setOpenStatusMenuId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleDocumentMouseDown)
+    return () => document.removeEventListener('mousedown', handleDocumentMouseDown)
+  }, [])
+
+  const statusMeta = {
+    active: {
+      label: 'Active',
+      chipClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
+      optionClass: 'text-emerald-700 dark:text-emerald-300',
+      dotClass: 'bg-emerald-500',
+    },
+    on_hold: {
+      label: 'On Hold',
+      chipClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
+      optionClass: 'text-amber-700 dark:text-amber-300',
+      dotClass: 'bg-amber-500',
+    },
+    inactive: {
+      label: 'Inactive',
+      chipClass: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300',
+      optionClass: 'text-rose-700 dark:text-rose-300',
+      dotClass: 'bg-rose-500',
+    },
+    archived: {
+      label: 'Archived',
+      chipClass: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+      optionClass: 'text-gray-700 dark:text-gray-300',
+      dotClass: 'bg-gray-500',
+    },
+  }
+
+  const statusOptions = ['active', 'on_hold', 'inactive', 'archived']
+  const getStatusMeta = (status) => statusMeta[status] || statusMeta.active
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isLead = isLeadRole(user?.role)
@@ -191,6 +276,7 @@ const Clients = () => {
 
       await clientsAPI.createClient(formDataObj)
       toast.success('Client created successfully')
+      clearClientFormDraft()
       setShowCreateModal(false)
       resetForm()
       loadClients()
@@ -491,29 +577,29 @@ const Clients = () => {
   }
 
   const resetForm = () => {
-    setFormData({
-      name: '',
-      email: '',
-      contact: '',
-      alternate_contact: '',
-      address: '',
-      city: '',
-      state: '',
-      country: '',
-      zip_code: '',
-      company_name: '',
-      industry: '',
-      assigned_to: '',
-      notes: '',
-      tags: '',
-      client_type: '',
-      budget: '',
-      start_date: '',
-      delivery_date: '',
-    })
+    setFormData({ ...EMPTY_CLIENT_FORM })
     setEditingClient(null)
     setFormErrors({})
     setClientFormStep(1)
+  }
+
+  // Opening the create modal restores any previously entered (unsaved) draft.
+  const openCreateModal = () => {
+    setEditingClient(null)
+    setClientFormStep(1)
+    setFormErrors({})
+    setFormData(loadClientFormDraft() || { ...EMPTY_CLIENT_FORM })
+    setShowCreateModal(true)
+  }
+
+  // Closing the modal (cross button, Escape, backdrop, or cancel) keeps the
+  // partially filled values as a draft so they survive reopening. Only a
+  // successful create clears the draft; edit-mode closes do not touch it.
+  const closeCreateModal = () => {
+    if (!editingClient) {
+      saveClientFormDraft(formData)
+    }
+    setShowCreateModal(false)
   }
 
   const updateClientField = (field, value) => {
@@ -533,15 +619,6 @@ const Clients = () => {
     setFormErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
   }
-
-  const filteredClients = clients.filter(client => {
-    const matchesSearch = !searchQuery ||
-      client.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.company_name?.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = !statusFilter || client.status === statusFilter
-    return matchesSearch && matchesStatus
-  })
 
   const getTotalBudget = (client) => {
     if (client.projects && client.projects.length > 0) {
@@ -594,6 +671,95 @@ const Clients = () => {
     return null
   }
 
+  const getStartDateText = (client) => {
+    if (client.start_date) return timeService.formatDateOnly(client.start_date)
+    const startDate = getEarliestStartDate(client)
+    return startDate ? format(startDate, 'MMM d, yyyy') : '-'
+  }
+
+  const getDeliveryDateText = (client) => {
+    if (client.delivery_date) return timeService.formatDateOnly(client.delivery_date)
+    const deliveryDate = getLatestDeliveryDate(client)
+    return deliveryDate ? format(deliveryDate, 'MMM d, yyyy') : '-'
+  }
+
+  const getStartDateValue = (client) => {
+    if (client.start_date) {
+      const match = String(client.start_date).match(/^(\d{4}-\d{2}-\d{2})/)
+      if (match) return match[1]
+    }
+    const startDate = getEarliestStartDate(client)
+    return startDate ? format(startDate, 'yyyy-MM-dd') : ''
+  }
+
+  const getDeliveryDateValue = (client) => {
+    if (client.delivery_date) {
+      const match = String(client.delivery_date).match(/^(\d{4}-\d{2}-\d{2})/)
+      if (match) return match[1]
+    }
+    const deliveryDate = getLatestDeliveryDate(client)
+    return deliveryDate ? format(deliveryDate, 'yyyy-MM-dd') : ''
+  }
+
+  const updateColumnFilter = (key, value) => {
+    setColumnFilters((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const activeColumnFilterCount = Object.values(columnFilters).filter(Boolean).length + (statusFilter ? 1 : 0)
+
+  const clearColumnFilters = () => {
+    setColumnFilters({
+      type: '',
+      projects: '',
+      budget: '',
+      start_date: '',
+      delivery_date: '',
+    })
+    setStatusFilter('')
+  }
+
+  const filteredClients = clients.filter(client => {
+    const q = (value) => (value ?? '').toString().toLowerCase()
+    const matchesSearch = !searchQuery ||
+      q(client.name).includes(searchQuery.toLowerCase()) ||
+      q(client.email).includes(searchQuery.toLowerCase()) ||
+      q(client.company_name).includes(searchQuery.toLowerCase()) ||
+      q(client.contact).includes(searchQuery.toLowerCase())
+
+    const matchesStatus = !statusFilter || (client.status || 'active') === statusFilter
+
+    const cf = columnFilters
+    const matchesType = !cf.type || (client.client_type || '') === cf.type
+
+    const totalProjects = client.total_projects ?? client.project_ids?.length ?? 0
+    const matchesProjects = (() => {
+      if (!cf.projects) return true
+      if (cf.projects === '0') return totalProjects === 0
+      if (cf.projects === '1-5') return totalProjects >= 1 && totalProjects <= 5
+      if (cf.projects === '6-10') return totalProjects >= 6 && totalProjects <= 10
+      if (cf.projects === '10+') return totalProjects > 10
+      return true
+    })()
+
+    const budgetValue = client.budget > 0 ? Number(client.budget) : getTotalBudget(client)
+    const matchesBudget = (() => {
+      if (!cf.budget) return true
+      if (budgetValue <= 0) return false
+      if (cf.budget === 'lt-50000') return budgetValue < 50000
+      if (cf.budget === '50000-100000') return budgetValue >= 50000 && budgetValue < 100000
+      if (cf.budget === '100000-500000') return budgetValue >= 100000 && budgetValue < 500000
+      if (cf.budget === '500000-1000000') return budgetValue >= 500000 && budgetValue < 1000000
+      if (cf.budget === 'gt-1000000') return budgetValue >= 1000000
+      return true
+    })()
+
+    const matchesStartDate = !cf.start_date || getStartDateValue(client) === cf.start_date
+    const matchesDeliveryDate = !cf.delivery_date || getDeliveryDateValue(client) === cf.delivery_date
+
+    return matchesSearch && matchesStatus && matchesType &&
+      matchesProjects && matchesBudget && matchesStartDate && matchesDeliveryDate
+  })
+
   const activeCount = useMemo(() => clients.filter(c => (c.status || 'active') === 'active').length, [clients])
   const totalPortfolioBudget = useMemo(() => clients.reduce((sum, c) => sum + getTotalBudget(c), 0), [clients])
   const totalProjectsCount = useMemo(() => clients.reduce((sum, c) => sum + (c.projects?.length || c.project_ids?.length || 0), 0), [clients])
@@ -625,10 +791,7 @@ const Clients = () => {
           {(isCompanyAdmin || isLead) && (
             <button
               type="button"
-              onClick={() => {
-                resetForm()
-                setShowCreateModal(true)
-              }}
+              onClick={openCreateModal}
               className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3.5 py-1.5 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 border border-white/20"
             >
               <Plus className="h-4 w-4" />
@@ -659,22 +822,107 @@ const Clients = () => {
               className="w-full rounded-lg border border-gray-200 bg-gray-50/50 pl-9 pr-3 py-2 text-xs font-medium text-gray-900 shadow-sm transition placeholder:text-gray-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-800/50 dark:text-white dark:focus:bg-gray-800"
             />
           </div>
-          <div className="relative flex items-center">
-            <Filter className="absolute left-3 h-4 w-4 text-gray-400 pointer-events-none z-10" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-9 w-full sm:w-auto rounded-lg border border-gray-200 bg-white pl-9 pr-8 text-xs font-semibold text-gray-700 shadow-sm transition hover:border-indigo-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-600 cursor-pointer appearance-none"
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowFilters((prev) => !prev)}
+              className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                showFilters || activeColumnFilterCount > 0
+                  ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300'
+                  : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-600'
+              }`}
             >
-              <option value="">All Statuses</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="on_hold">On Hold</option>
-              <option value="archived">Archived</option>
-            </select>
-            <ChevronDown className="absolute right-3 h-4 w-4 text-gray-400 pointer-events-none" />
+              <Filter className="h-4 w-4" />
+              <span>Filters</span>
+              {activeColumnFilterCount > 0 && (
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-600 px-1.5 text-[10px] font-bold text-white">
+                  {activeColumnFilterCount}
+                </span>
+              )}
+            </button>
+            {activeColumnFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={clearColumnFilters}
+                title="Clear all filters"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-sm transition hover:border-rose-300 hover:text-rose-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-rose-700 dark:hover:text-rose-400"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
+
+        {showFilters && (
+          <div className="mt-3 border-t border-gray-200/80 pt-3 dark:border-gray-800">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <FormField label="Type">
+                <select value={columnFilters.type} onChange={(e) => updateColumnFilter('type', e.target.value)} className={inputClassName}>
+                  <option value="">All types</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="one_time">One Time</option>
+                </select>
+              </FormField>
+              <FormField label="Projects">
+                <select value={columnFilters.projects} onChange={(e) => updateColumnFilter('projects', e.target.value)} className={inputClassName}>
+                  <option value="">Any count</option>
+                  <option value="0">0</option>
+                  <option value="1-5">1 – 5</option>
+                  <option value="6-10">6 – 10</option>
+                  <option value="10+">More than 10</option>
+                </select>
+              </FormField>
+              <FormField label="Budget">
+                <select value={columnFilters.budget} onChange={(e) => updateColumnFilter('budget', e.target.value)} className={inputClassName}>
+                  <option value="">Any amount</option>
+                  <option value="lt-50000">Under ₹50,000</option>
+                  <option value="50000-100000">₹50,000 – ₹1,00,000</option>
+                  <option value="100000-500000">₹1,00,000 – ₹5,00,000</option>
+                  <option value="500000-1000000">₹5,00,000 – ₹10,00,000</option>
+                  <option value="gt-1000000">Above ₹10,00,000</option>
+                </select>
+              </FormField>
+              <FormField label="Start date">
+                <input type="date" value={columnFilters.start_date} onChange={(e) => updateColumnFilter('start_date', e.target.value)} className={inputClassName} />
+              </FormField>
+              <FormField label="Delivery date">
+                <input type="date" value={columnFilters.delivery_date} onChange={(e) => updateColumnFilter('delivery_date', e.target.value)} className={inputClassName} />
+              </FormField>
+              <FormField label="Status">
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClassName}>
+                  <option value="">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="on_hold">On Hold</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </FormField>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {activeColumnFilterCount > 0
+                  ? `${activeColumnFilterCount} filter${activeColumnFilterCount > 1 ? 's' : ''} active`
+                  : 'No filters applied'}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={clearColumnFilters}
+                  className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  Clear all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFilters(false)}
+                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Clients Table / Cards Container */}
@@ -699,10 +947,7 @@ const Clients = () => {
           action={(isCompanyAdmin || isLead) ? (
             <button
               type="button"
-              onClick={() => {
-                resetForm()
-                setShowCreateModal(true)
-              }}
+              onClick={openCreateModal}
               className="btn btn-primary"
             >
               Add Your First Client
@@ -769,53 +1014,62 @@ const Clients = () => {
                       {client.budget > 0 ? `₹${Number(client.budget).toLocaleString()}` : getTotalBudget(client) > 0 ? `₹${getTotalBudget(client).toLocaleString()}` : '-'}
                     </td>
                     <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
-                      {client.start_date ? timeService.formatDateOnly(client.start_date) : (() => {
-                        const startDate = getEarliestStartDate(client)
-                        return startDate ? format(startDate, 'MMM d, yyyy') : '-'
-                      })()}
+                      {getStartDateText(client)}
                     </td>
                     <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
-                      {client.delivery_date ? timeService.formatDateOnly(client.delivery_date) : (() => {
-                        const deliveryDate = getLatestDeliveryDate(client)
-                        return deliveryDate ? format(deliveryDate, 'MMM d, yyyy') : '-'
-                      })()}
+                      {getDeliveryDateText(client)}
                     </td>
                     <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
                       {(isCompanyAdmin || isLead) ? (
-                        <select
-                          value={client.status || 'active'}
-                          onChange={(e) => handleStatusChange(client.id, e.target.value)}
-                          disabled={updatingStatusId === client.id}
-                          className={`text-xs rounded-full px-2.5 py-1 border-0 font-semibold cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-60 transition ${client.status === 'active'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                            : client.status === 'inactive'
-                              ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                              : client.status === 'on_hold'
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                                : client.status === 'archived'
-                                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
-                                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                            }`}
-                        >
-                          <option value="active">Active</option>
-                          <option value="inactive">Inactive</option>
-                          <option value="on_hold">On Hold</option>
-                          <option value="archived">Archived</option>
-                        </select>
+                        <div className="relative inline-block" data-status-menu-root>
+                          <button
+                            type="button"
+                            disabled={updatingStatusId === client.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setOpenStatusMenuId((current) => (current === client.id ? null : client.id))
+                            }}
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-60 ${getStatusMeta(client.status || 'active').chipClass}`}
+                            aria-haspopup="menu"
+                            aria-expanded={openStatusMenuId === client.id}
+                          >
+                            <span className={`h-1.5 w-1.5 rounded-full ${getStatusMeta(client.status || 'active').dotClass}`}></span>
+                            <span>{getStatusMeta(client.status || 'active').label}</span>
+                            <span className="text-[10px]">v</span>
+                          </button>
+
+                          {openStatusMenuId === client.id ? (
+                            <div className="absolute right-0 z-20 mt-1 w-32 rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                              {statusOptions.map((status) => {
+                                const meta = getStatusMeta(status)
+                                const selected = (client.status || 'active') === status
+                                return (
+                                  <button
+                                    key={status}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setOpenStatusMenuId(null)
+                                      if (!selected) {
+                                        handleStatusChange(client.id, status)
+                                      }
+                                    }}
+                                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-semibold transition ${meta.optionClass} ${selected ? 'bg-indigo-50 dark:bg-indigo-950/40' : 'hover:bg-gray-50 dark:hover:bg-gray-800/80'}`}
+                                    role="menuitem"
+                                  >
+                                    <span className={`h-1.5 w-1.5 rounded-full ${meta.dotClass}`}></span>
+                                    <span>{meta.label}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
                       ) : (
                         <span
-                          className={`text-xs px-2.5 py-1 rounded-full font-semibold ${client.status === 'active'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                            : client.status === 'inactive'
-                              ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                              : client.status === 'on_hold'
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                                : client.status === 'archived'
-                                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
-                                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                            }`}
+                          className={`text-xs px-2.5 py-1 rounded-full font-semibold ${getStatusMeta(client.status || 'active').chipClass}`}
                         >
-                          {client.status || 'active'}
+                          {getStatusMeta(client.status || 'active').label}
                         </span>
                       )}
                     </td>
@@ -879,10 +1133,7 @@ const Clients = () => {
       {showCreateModal && (
         <Modal
           isOpen={showCreateModal}
-          onClose={() => {
-            setShowCreateModal(false)
-            resetForm()
-          }}
+          onClose={closeCreateModal}
           title={editingClient ? 'Edit client' : 'Create client'}
           description={clientFormStep === 1 ? 'Step 1 of 2: identify the client and how to contact them.' : 'Step 2 of 2: add ownership, billing, address, and handoff details.'}
           size="lg"
@@ -903,8 +1154,7 @@ const Clients = () => {
                       setClientFormStep(1)
                       return
                     }
-                    setShowCreateModal(false)
-                    resetForm()
+                    closeCreateModal()
                   }}
                 >
                   {clientFormStep === 2 ? 'Back' : 'Cancel'}
@@ -967,10 +1217,10 @@ const Clients = () => {
                   {formErrors.email ? <p className="mt-1 text-xs text-red-600" role="alert">{formErrors.email}</p> : null}
                 </FormField>
                 <FormField label="Primary phone">
-                  <PhoneInput value={formData.contact} onChange={(e) => updateClientField('contact', e.target.value)} className="input min-h-11" />
+                  <PhoneInput value={formData.contact} onChange={(e) => updateClientField('contact', e.target.value)} className="input min-h-11" placeholder="Enter number" />
                 </FormField>
                 <FormField label="Alternate phone">
-                  <PhoneInput value={formData.alternate_contact} onChange={(e) => updateClientField('alternate_contact', e.target.value)} className="input min-h-11" />
+                  <PhoneInput value={formData.alternate_contact} onChange={(e) => updateClientField('alternate_contact', e.target.value)} className="input min-h-11" placeholder="Enter number" />
                 </FormField>
                 <FormField label="Industry">
                   <input type="text" value={formData.industry} onChange={(e) => updateClientField('industry', e.target.value)} className="input min-h-11" placeholder="SaaS, Retail, Healthcare" />
@@ -985,6 +1235,11 @@ const Clients = () => {
                       {leads.map(lead => (
                         <option key={lead.id} value={lead.id}>{lead.first_name} {lead.last_name}</option>
                       ))}
+                      {assignableUsers
+                        .filter(u => u.role === 'manager')
+                        .map(manager => (
+                          <option key={manager.id} value={manager.id}>{manager.first_name} {manager.last_name}</option>
+                        ))}
                     </CreatableSelectField>
                   </FormField>
                   <FormField label="Client type">

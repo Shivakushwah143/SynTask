@@ -1031,7 +1031,9 @@ def build_file_response(version: HRDocumentVersion, *, download: bool = False):
                 url = CloudinaryStorage.signed_url(
                     version.storage_reference,
                     resource_type=version.storage_resource_type or "image",
+                    delivery_type=version.storage_delivery_type or "authenticated",
                     attachment=download,
+                    storage_url=version.storage_url,
                 )
                 if url:
                     return RedirectResponse(url)

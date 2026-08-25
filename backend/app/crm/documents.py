@@ -39,6 +39,10 @@ def _display_name(user: User) -> str:
     return f"{getattr(user, 'first_name', '') or ''} {getattr(user, 'last_name', '') or ''}".strip() or getattr(user, "email", "") or str(user.id)
 
 
+def _enum_value(value: Any) -> Any:
+    return value.value if hasattr(value, "value") else value
+
+
 def _public_url(token: str) -> str:
     return f"{settings.FRONTEND_URL.rstrip('/')}/public/crm-documents/{token}"
 
@@ -102,6 +106,8 @@ def calculate_totals(items: list[dict[str, Any]], overall_discount: Any = 0) -> 
         tax_total += tax
         normalized.append({
             "description": str(item.get("description") or "Item"),
+            "product_id": item.get("product_id"),
+            "requires_pricing": bool(item.get("requires_pricing") or item.get("unmapped_recommendation")),
             "quantity": str(quantity),
             "unit": str(item.get("unit") or "unit"),
             "unit_price": str(unit_price),
@@ -119,6 +125,54 @@ def calculate_totals(items: list[dict[str, Any]], overall_discount: Any = 0) -> 
         "grand_total": grand_total,
         "items": normalized,
     }
+
+
+def unresolved_pricing_items(document: CRMDocument) -> list[str]:
+    missing: list[str] = []
+    for item in (document.content_snapshot or {}).get("items") or []:
+        unit_price = _money(item.get("unit_price", 0))
+        line_total = _money(item.get("line_total", 0))
+        if item.get("requires_pricing") and (unit_price <= 0 or line_total <= 0):
+            missing.append(str(item.get("description") or "Unpriced item"))
+    return missing
+
+
+async def _sync_lead_status_from_document(document: CRMDocument, actor: Optional[User] = None) -> None:
+    lead = await SalesProspect.get(document.lead_id)
+    if not lead or lead.deleted or str(lead.company_id) != document.company_id:
+        return
+    if document.document_type == CRMDocumentType.QUOTATION:
+        mapping = {
+            CRMDocumentStatus.DRAFT: "draft",
+            CRMDocumentStatus.SENT: "sent",
+            CRMDocumentStatus.VIEWED: "viewed",
+            CRMDocumentStatus.CHANGES_REQUESTED: "revision_requested",
+            CRMDocumentStatus.REJECTED: "rejected",
+            CRMDocumentStatus.EXPIRED: "expired",
+            CRMDocumentStatus.ACCEPTED: "accepted",
+        }
+        target = mapping.get(document.status)
+        stage_key = "proposal"
+    elif document.document_type == CRMDocumentType.CONTRACT:
+        mapping = {
+            CRMDocumentStatus.DRAFT: "draft",
+            CRMDocumentStatus.SENT: "sent",
+            CRMDocumentStatus.VIEWED: "viewed",
+            CRMDocumentStatus.REJECTED: "rejected",
+            CRMDocumentStatus.EXPIRED: "expired",
+            CRMDocumentStatus.ACCEPTED: "signed",
+        }
+        target = mapping.get(document.status)
+        stage_key = "agreement"
+    else:
+        return
+    if not target:
+        return
+    from app.crm.pipeline import apply_stage_status_change
+
+    apply_stage_status_change(lead, stage_key=stage_key, new_status=target, user=actor, now=utc_now())
+    lead.updated_at = utc_now()
+    await lead.save()
 
 
 async def _next_document_number(company_id: str, document_type: CRMDocumentType) -> str:
@@ -144,6 +198,7 @@ async def _next_document_number(company_id: str, document_type: CRMDocumentType)
 
 async def _event(document: CRMDocument, event_type: str, actor: Optional[User] = None, **metadata: Any) -> None:
     actor_name = _display_name(actor) if actor else None
+    document_type = str(_enum_value(getattr(document, "document_type", CRMDocumentType.QUOTATION.value)) or CRMDocumentType.QUOTATION.value)
     await CRMDocumentEvent(
         company_id=document.company_id,
         lead_id=document.lead_id,
@@ -160,7 +215,7 @@ async def _event(document: CRMDocument, event_type: str, actor: Optional[User] =
         entity_type="lead",
         entity_id=document.lead_id,
         activity_type="note",
-        title=f"{document.document_type.value.title()} {event_type.replace('_', ' ')}",
+        title=f"{document_type.title()} {event_type.replace('_', ' ')}",
         description=f"{document.document_number} {event_type.replace('_', ' ')}",
         owner_id=str(actor.id) if actor else document.created_by,
         owner_name=actor_name,
@@ -178,10 +233,10 @@ async def _event(document: CRMDocument, event_type: str, actor: Optional[User] =
 def serialize(document: CRMDocument, include_token: bool = False) -> dict[str, Any]:
     data = document.model_dump()
     data["id"] = str(document.id)
-    data["document_type"] = document.document_type.value
-    data["status"] = document.status.value
+    data["document_type"] = _enum_value(getattr(document, "document_type", data.get("document_type") or CRMDocumentType.QUOTATION.value))
+    data["status"] = _enum_value(getattr(document, "status", data.get("status") or CRMDocumentStatus.DRAFT.value))
     for key in ["subtotal", "discount_total", "tax_total", "grand_total"]:
-        data[key] = str(getattr(document, key))
+        data[key] = str(getattr(document, key, data.get(key, 0)) or 0)
     if not include_token:
         data.pop("token_hash", None)
     return data
@@ -200,8 +255,25 @@ def public_serialize(document: CRMDocument) -> dict[str, Any]:
 
 async def list_documents(current_user: User, lead_id: str) -> dict[str, Any]:
     lead = await _lead_for_user(current_user, lead_id)
-    documents = await CRMDocument.find({"company_id": str(lead.company_id), "lead_id": str(lead.id)}).sort("-created_at").to_list()
-    return {"documents": [serialize(document) for document in documents]}
+    try:
+        documents = await CRMDocument.find({"company_id": str(lead.company_id), "lead_id": str(lead.id)}).sort("-created_at").to_list()
+        return {"documents": [serialize(document) for document in documents]}
+    except Exception:
+        raw_documents = await get_database()[CRMDocument.Settings.name].find(
+            {"company_id": str(lead.company_id), "lead_id": str(lead.id)}
+        ).sort("created_at", -1).to_list(length=None)
+        return {"documents": [_serialize_raw_document(document) for document in raw_documents]}
+
+
+def _serialize_raw_document(document: dict[str, Any]) -> dict[str, Any]:
+    data = dict(document or {})
+    data["id"] = str(data.pop("_id", data.get("id", "")))
+    data["document_type"] = _enum_value(data.get("document_type") or CRMDocumentType.QUOTATION.value)
+    data["status"] = _enum_value(data.get("status") or CRMDocumentStatus.DRAFT.value)
+    for key in ["subtotal", "discount_total", "tax_total", "grand_total"]:
+        data[key] = str(data.get(key, 0) or 0)
+    data.pop("token_hash", None)
+    return data
 
 
 async def create_document(current_user: User, lead_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -235,10 +307,13 @@ async def create_document(current_user: User, lead_id: str, payload: dict[str, A
             "confidentiality": payload.get("confidentiality"),
             "termination": payload.get("termination"),
             "clauses": payload.get("clauses") or [],
+            "proposal_context": payload.get("proposal_context") or {},
+            "source_snapshot": payload.get("source_snapshot") or {},
         },
         created_by=str(current_user.id),
     )
     await document.insert()
+    await _sync_lead_status_from_document(document, current_user)
     await _event(document, "created", current_user)
     return {"document": serialize(document)}
 
@@ -264,6 +339,19 @@ async def update_document(current_user: User, lead_id: str, document_id: str, pa
 
 async def create_contract_from_document(current_user: User, lead_id: str, document_id: str) -> dict[str, Any]:
     _, source = await _document_for_user(current_user, lead_id, document_id)
+    if source.document_type != CRMDocumentType.QUOTATION:
+        raise HTTPException(status_code=400, detail="Contracts can be created only from quotations")
+    if source.status != CRMDocumentStatus.ACCEPTED:
+        raise HTTPException(status_code=400, detail="Contract can be created only from an accepted quotation")
+    existing = await CRMDocument.find_one({
+        "company_id": source.company_id,
+        "lead_id": source.lead_id,
+        "document_type": CRMDocumentType.CONTRACT,
+        "content_snapshot.source_document_id": str(source.id),
+        "status": {"$ne": CRMDocumentStatus.CANCELLED},
+    })
+    if existing:
+        return {"document": serialize(existing), "idempotent": True}
     contract = CRMDocument(
         company_id=source.company_id,
         lead_id=source.lead_id,
@@ -281,12 +369,15 @@ async def create_contract_from_document(current_user: User, lead_id: str, docume
         created_by=str(current_user.id),
     )
     await contract.insert()
+    await _sync_lead_status_from_document(contract, current_user)
     await _event(contract, "created_from_quotation", current_user, source_document_id=str(source.id))
     return {"document": serialize(contract)}
 
 
-async def upload_pdf(current_user: User, lead_id: str, file: UploadFile, document_type: str = "contract", title: Optional[str] = None) -> dict[str, Any]:
+async def upload_pdf(current_user: User, lead_id: str, file: UploadFile, document_type: Optional[str] = None, title: Optional[str] = None) -> dict[str, Any]:
     lead = await _lead_for_user(current_user, lead_id)
+    if not document_type:
+        raise HTTPException(status_code=400, detail="Choose whether this PDF is a quotation or contract before uploading.")
     content = await file.read()
     await file.seek(0)
     if len(content) > settings.MAX_UPLOAD_SIZE:
@@ -318,6 +409,8 @@ def _pdf_path(document: CRMDocument) -> Path:
 
 async def generate_pdf(current_user: User, lead_id: str, document_id: str) -> dict[str, Any]:
     _, document = await _document_for_user(current_user, lead_id, document_id)
+    if document.source_file_path and not document.content_snapshot:
+        raise HTTPException(status_code=400, detail="Uploaded PDFs keep their original file. PDF generation is unavailable for this document.")
     path = _pdf_path(document)
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -328,6 +421,8 @@ async def generate_pdf(current_user: User, lead_id: str, document_id: str) -> di
     doc = SimpleDocTemplate(str(path), pagesize=A4)
     snapshot = document.content_snapshot or {}
     lead = snapshot.get("lead") or {}
+    document_type = _enum_value(document.document_type)
+    document_type_label = str(document_type or CRMDocumentType.QUOTATION.value).title()
 
     def p(value: Any, style: str = "Normal"):
         return Paragraph(escape(str(value or "")), styles[style])
@@ -340,17 +435,18 @@ async def generate_pdf(current_user: User, lead_id: str, document_id: str) -> di
 
     story = [
         p("SynTask", "Title"),
-        p(f"{document.document_type.value.title()} {document.document_number}", "Heading2"),
+        p(f"{document_type_label} {document.document_number}", "Heading2"),
         p(document.title),
         p(f"Issue date: {utc_now().date().isoformat()}"),
         Spacer(1, 12),
     ]
     story.append(p(f"Client: {lead.get('company_name') or lead.get('name') or 'Lead'}"))
     story.append(p(f"Contact: {lead.get('email') or lead.get('phone') or '-'}"))
-    if document.valid_until:
-        story.append(p(f"Valid until: {document.valid_until.date().isoformat()}"))
+    valid_until = _parse_optional_datetime(getattr(document, "valid_until", None))
+    if valid_until:
+        story.append(p(f"Valid until: {valid_until.date().isoformat()}"))
 
-    if document.document_type == CRMDocumentType.CONTRACT:
+    if document_type == CRMDocumentType.CONTRACT.value:
         for label, key in [
             ("Parties", "parties"),
             ("Scope of work", "scope"),
@@ -373,7 +469,11 @@ async def generate_pdf(current_user: User, lead_id: str, document_id: str) -> di
         rows = [["Description", "Qty", "Unit Price", "Tax %", "Total"]]
         for item in snapshot.get("items") or []:
             rows.append([escape(str(item.get("description") or "")), item.get("quantity"), item.get("unit_price"), item.get("tax_rate"), item.get("line_total")])
-        rows += [["", "", "", "Subtotal", str(document.subtotal)], ["", "", "", "Tax", str(document.tax_total)], ["", "", "", "Total", str(document.grand_total)]]
+        rows += [
+            ["", "", "", "Subtotal", str(getattr(document, "subtotal", 0) or 0)],
+            ["", "", "", "Tax", str(getattr(document, "tax_total", 0) or 0)],
+            ["", "", "", "Total", str(getattr(document, "grand_total", 0) or 0)],
+        ]
         table = Table(rows)
         table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.grey), ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey)]))
         story += [Spacer(1, 12), table]
@@ -397,6 +497,9 @@ async def create_share_link(current_user: User, lead_id: str, document_id: str, 
     _, document = await _document_for_user(current_user, lead_id, document_id)
     if document.status in {CRMDocumentStatus.ACCEPTED, CRMDocumentStatus.REJECTED, CRMDocumentStatus.CANCELLED}:
         raise HTTPException(status_code=400, detail="Finalized documents cannot be shared")
+    missing = unresolved_pricing_items(document)
+    if document.document_type == CRMDocumentType.QUOTATION and missing:
+        raise HTTPException(status_code=400, detail={"code": "PRICING_REQUIRED", "message": "Pricing required before sending quotation.", "items": missing})
     if not document.pdf_file_path and not document.source_file_path:
         await generate_pdf(current_user, lead_id, document_id)
         document = await CRMDocument.get(str(document.id))
@@ -411,6 +514,7 @@ async def create_share_link(current_user: User, lead_id: str, document_id: str, 
         document.sent_at = utc_now()
     document.updated_at = utc_now()
     await document.save()
+    await _sync_lead_status_from_document(document, current_user)
     await _event(document, "link_created", current_user, expires_at=document.token_expires_at.isoformat())
     return {"document": serialize(document), "public_link": _public_url(token), "expires_at": document.token_expires_at}
 
@@ -428,6 +532,9 @@ async def send_document(current_user: User, lead_id: str, document_id: str, reci
     lead, document = await _document_for_user(current_user, lead_id, document_id)
     if document.status in {CRMDocumentStatus.ACCEPTED, CRMDocumentStatus.REJECTED, CRMDocumentStatus.CANCELLED}:
         raise HTTPException(status_code=400, detail="Finalized documents cannot be sent")
+    missing = unresolved_pricing_items(document)
+    if document.document_type == CRMDocumentType.QUOTATION and missing:
+        raise HTTPException(status_code=400, detail={"code": "PRICING_REQUIRED", "message": "Pricing required before sending quotation.", "items": missing})
     if not document.pdf_file_path and not document.source_file_path:
         await generate_pdf(current_user, lead_id, document_id)
         document = await CRMDocument.get(str(document.id))
@@ -456,6 +563,7 @@ async def send_document(current_user: User, lead_id: str, document_id: str, reci
         document.status = CRMDocumentStatus.SENT
         document.sent_at = utc_now()
         document.send_error = None
+        await _sync_lead_status_from_document(document, current_user)
         await _event(document, "sent", current_user)
     else:
         document.send_error = delivery.get("error") or delivery.get("status")
@@ -484,6 +592,7 @@ async def public_document(token: str, mark_viewed: bool = True, ip_address: Opti
         document.status = CRMDocumentStatus.VIEWED
         document.viewed_at = utc_now()
         await document.save()
+        await _sync_lead_status_from_document(document)
         await _event(document, "viewed", None, ip_address=ip_address, user_agent=user_agent, idempotency_key="first-view")
     return document
 
@@ -509,5 +618,6 @@ async def public_action(token: str, action: str, payload: dict[str, Any], ip_add
     document.status = requested
     document.updated_at = utc_now()
     await document.save()
+    await _sync_lead_status_from_document(document)
     await _event(document, action if action != "changes" else "change_requested", None, ip_address=ip_address, user_agent=user_agent, signer=payload.get("name"), email=payload.get("email"), comment=payload.get("comment"))
     return {"document": document, "idempotent": False}

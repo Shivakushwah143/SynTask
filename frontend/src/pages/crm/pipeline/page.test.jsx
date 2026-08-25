@@ -1,5 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import toast from 'react-hot-toast'
 import CRMPipelinePage from './page'
 
 // Shared handles so tests can assert against the exact query client instance the
@@ -141,14 +142,69 @@ describe('crm pipeline page', () => {
 
     fireEvent.click(addLeadButton)
 
-    // The create form modal opens and exposes the real fields + submit button.
+    // The create form modal opens and exposes every field (shared component)
+    // including the + New category / + New product quick-creation flows.
     expect(screen.getByRole('heading', { name: /add new lead/i })).toBeTruthy()
-    expect(screen.getByPlaceholderText('John')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /create lead/i })).toBeTruthy()
+    expect(screen.getByPlaceholderText('First name')).toBeTruthy()
+    expect(screen.getByText('+ New category')).toBeTruthy()
+    expect(screen.getByText('+ New product')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /save lead/i })).toBeTruthy()
 
     // Closing via Cancel hides the modal again.
     fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
     expect(screen.queryByRole('heading', { name: /add new lead/i })).toBeNull()
+  })
+
+  it('treats a delete 404 as success so a duplicate DELETE never shows a failure toast', async () => {
+    // Reported feedback: the lead was deleted, the toast said "failed to delete",
+    // and the network tab showed the DELETE fired twice. The first request wins;
+    // the second gets a 404 (lead already gone). That must be handled as success
+    // (close dialog + refetch) rather than a misleading error toast.
+    render(<CRMPipelinePage />)
+    const deleteMutation = capturedMutations.find((item) =>
+      String(item.mutationFn).includes('deleteLead')
+    )
+    expect(deleteMutation).toBeTruthy()
+
+    toast.error.mockClear()
+    toast.success.mockClear()
+
+    await deleteMutation.options.onError(
+      { response: { status: 404, data: { detail: 'Lead not found' } } },
+      'lead-1',
+    )
+
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(toast.success).toHaveBeenCalledWith('Lead deleted')
+    expect(queryClientMock.invalidateQueries).toHaveBeenCalled()
+  })
+
+  it('keeps a 403 delete from settling (no refetch) while a 404 closes the flow', async () => {
+    // 403 = genuinely forbidden → keep the dialog open, only show the error.
+    // 404 = already deleted → settle like success. This split is what prevents
+    // both the misleading "failed to delete" toast and any second request.
+    render(<CRMPipelinePage />)
+    const deleteMutation = capturedMutations.find((item) =>
+      String(item.mutationFn).includes('deleteLead')
+    )
+    expect(deleteMutation).toBeTruthy()
+
+    queryClientMock.invalidateQueries.mockClear()
+    await deleteMutation.options.onError(
+      { response: { status: 403, data: { detail: 'no' } } },
+      'lead-1',
+    )
+    expect(queryClientMock.invalidateQueries).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith('You do not have permission to delete this lead')
+
+    queryClientMock.invalidateQueries.mockClear()
+    toast.error.mockClear()
+    await deleteMutation.options.onError(
+      { response: { status: 404, data: { detail: 'Lead not found' } } },
+      'lead-1',
+    )
+    expect(queryClientMock.invalidateQueries).toHaveBeenCalled()
+    expect(toast.error).not.toHaveBeenCalled()
   })
 
   it('does not optimistically move a lead in the board cache while the request is in flight', async () => {

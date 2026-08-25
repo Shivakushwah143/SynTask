@@ -11,7 +11,7 @@ import re
 from pydantic import BaseModel
 
 from app.api.deps import Pagination50, PaginationParams
-from app.api.dependencies import get_current_company_admin_or_lead, get_current_user, require_module
+from app.api.dependencies import get_current_user, require_module
 from app.core.rbac_visibility import build_visibility_query, require_owned_record_access
 from app.models.user import User, UserRole, UserStatus
 from app.models.department import Department
@@ -120,15 +120,6 @@ def _normalize_lead_csv_header(header: str) -> str:
     if normalized in {"email_address", "email_id", "e_mail"}:
         return "email"
     return normalized
-
-
-def _ensure_create_permission(user: User):
-    # Allow all roles including EMPLOYEE to create prospects
-    if user.role not in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE, UserRole.SUPER_ADMIN]:
-        raise HTTPException(
-            status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to add prospects"
-        )
 
 
 def _parse_multi_value(value: str) -> List[str]:
@@ -341,6 +332,7 @@ async def list_prospects(
                 "email": p.email,
                 "assigned_to": p.assigned_to,
                 "assigned_by": p.assigned_by,
+                "referred_by": getattr(p, "referred_by", None),
                 "category_id": p.category_id,
                 "product_ids": p.product_ids,
                 "crm_company_id": p.crm_company_id,
@@ -490,6 +482,7 @@ async def get_prospect(
         "estimated_close_date": prospect.estimated_close_date.isoformat() if prospect.estimated_close_date else None,
         "assigned_to": prospect.assigned_to,
         "assigned_by": prospect.assigned_by,
+        "referred_by": getattr(prospect, "referred_by", None),
         "current_stage": prospect.current_stage,
         "due_date": prospect.due_date.isoformat() if prospect.due_date else None,
         "due_time": prospect.due_time,
@@ -532,6 +525,14 @@ async def get_prospect(
         "proposal_status": prospect.proposal_status,
         "negotiation_status": prospect.negotiation_status,
         "negotiation_notes": prospect.negotiation_notes,
+        "accepted_quotation_reference": getattr(prospect, "accepted_quotation_reference", None),
+        "customer_counter_offer": getattr(prospect, "customer_counter_offer", None),
+        "final_agreed_amount": getattr(prospect, "won_amount", None),
+        "discount": getattr(prospect, "discount", None),
+        "final_scope": getattr(prospect, "final_scope", None),
+        "payment_terms": getattr(prospect, "payment_terms", None),
+        "delivery_timeline": getattr(prospect, "timeline", None),
+        "client_conditions": getattr(prospect, "client_conditions", None),
         "agreement_status": prospect.agreement_status,
         "agreement_expiry_date": prospect.agreement_expiry_date.isoformat() if getattr(prospect, "agreement_expiry_date", None) else None,
         "agreement_signed_at": prospect.agreement_signed_at.isoformat() if getattr(prospect, "agreement_signed_at", None) else None,
@@ -555,7 +556,7 @@ async def create_prospect(
     first_name: Optional[str] = Form(None),
     last_name: Optional[str] = Form(None),
     country_code: Optional[str] = Form("+91"),
-    phone: str = Form(...),
+    phone: Optional[str] = Form(None),  # Phone is optional - a lead may be captured with only a name
     category_id: Optional[str] = Form(None),
     product_ids: Optional[str] = Form(None),  # Comma-separated or pipe-separated
     interest_level: Optional[str] = Form(None),
@@ -576,6 +577,7 @@ async def create_prospect(
     language: Optional[str] = Form(None),  # Pipe-separated
     owner_name: Optional[str] = Form(None),
     owner_contact_no: Optional[str] = Form(None),
+    referred_by: Optional[str] = Form(None),  # User ID of the employee/manager who referred the lead
     tag: Optional[str] = Form(None),  # Pipe-separated
     greeting_preference: Optional[str] = Form(None),
     custom_fields: Optional[str] = Form(None),
@@ -603,8 +605,11 @@ async def create_prospect(
     agreement_expiry_date: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user)
 ):
-    """Create a new prospect"""
-    _ensure_create_permission(current_user)
+    """Create a new prospect.
+
+    Open to every authenticated company user (any role) so leads can be added
+    by anyone, by any channel — no role-based creation gate.
+    """
     logger.info(
         "Create prospect request ownerId=%s companyId=%s actorId=%s phone=%s",
         assigned_to,
@@ -639,6 +644,7 @@ async def create_prospect(
             "language": _parse_multi_value(language) if language else [],
             "owner_name": owner_name,
             "owner_contact_no": owner_contact_no,
+            "referred_by": referred_by,
             "tag": _parse_multi_value(tag) if tag else [],
             "greeting_preference": greeting_preference,
             "custom_fields": _parse_custom_fields(custom_fields),
@@ -689,6 +695,7 @@ async def update_prospect(
     estimated_close_date: Optional[str] = Form(None),
     reason_for_lost: Optional[str] = Form(None),
     won_amount: Optional[float] = Form(None),
+    referred_by: Optional[str] = Form(None),
     crm_company_id: Optional[str] = Form(None),
     custom_fields: Optional[str] = Form(None),
     source: Optional[str] = Form(None),
@@ -750,6 +757,7 @@ async def update_prospect(
         "estimated_close_date": estimated_close_date,
         "reason_for_lost": reason_for_lost,
         "won_amount": won_amount,
+        "referred_by": referred_by,
         "crm_company_id": crm_company_id,
         "custom_fields": _parse_custom_fields(custom_fields),
         "source": source,
@@ -804,12 +812,14 @@ async def bulk_upload_prospects(
     target_user_id: Optional[str] = Form(None),
     target_department_id: Optional[str] = Form(None),
     allow_duplicates: bool = Form(False),
-    current_user: User = Depends(get_current_company_admin_or_lead)
+    current_user: User = Depends(get_current_user)
 ):
     """Bulk upload prospects from CSV with assignment strategies.
 
-    allow_duplicates=True imports every valid row even when the same phone
-    already exists in the company (or repeats within the file).
+    Open to every authenticated company user (any role) so leads can be
+    imported by anyone. allow_duplicates=True imports every valid row even
+    when the same phone already exists in the company (or repeats within the
+    file).
     """
     return await LeadEngine.import_leads(
         current_user,
@@ -827,7 +837,7 @@ async def preview_bulk_upload_prospects(
     file: UploadFile = File(...),
     target_user_id: Optional[str] = Form(None),
     target_department_id: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_company_admin_or_lead)
+    current_user: User = Depends(get_current_user)
 ):
     return await LeadEngine.preview_import(
         current_user,
@@ -839,5 +849,5 @@ async def preview_bulk_upload_prospects(
 
 
 @router.post("/imports/{job_id}/retry")
-async def retry_import_job(job_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
+async def retry_import_job(job_id: str, current_user: User = Depends(get_current_user)):
     return await LeadEngine.retry_import_job(current_user, job_id)

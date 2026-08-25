@@ -54,6 +54,8 @@ describe('buildBreadcrumbTrail (Phase 5, spec §10.5)', () => {
 
   it('maps HR recruitment routes under People with renamed labels', () => {
     expect(buildBreadcrumbTrail('/hr/recruitment/jobs')).toEqual(['Home', 'People', 'Recruitment', 'Job Openings'])
+    expect(buildBreadcrumbTrail('/hr/recruitment/jobs/6a85bad39652eaa89a110d2b')).toEqual(['Home', 'People', 'Recruitment', 'Job Openings', 'Job Detail'])
+    expect(buildBreadcrumbTrail('/hr/recruitment/candidates/6a85bad39652eaa89a110d2b')).toEqual(['Home', 'People', 'Recruitment', 'Candidates', 'Candidate Detail'])
     expect(buildBreadcrumbTrail('/hr/recruitment/reports')).toEqual(['Home', 'People', 'Recruitment', 'Hiring Reports'])
   })
 

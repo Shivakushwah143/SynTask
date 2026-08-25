@@ -86,6 +86,7 @@ def serialize_scheduled_task_placeholder(job: ScheduledJob) -> dict:
         "extension_count": 0,
         "estimated_hours": payload.get("estimated_hours"),
         "task_type": payload.get("task_type") or "standard",
+        "source_type": payload.get("source_type") or None,
         "measurement_type": payload.get("measurement_type"),
         "custom_measurement_label": payload.get("custom_measurement_label"),
         "target_quantity": payload.get("target_quantity"),
@@ -130,11 +131,26 @@ async def _assert_task_view(current_user: User, task: Task) -> None:
     except Exception:
         pass
     if current_user.role == UserRole.EMPLOYEE:
-        if task.project_id:
+        if task.project_id or task.project_object_id:
             from app.api.dependencies import get_project_by_id
-            project, _ = await get_project_by_id(task.project_id, current_user.company_id)
+            project, _ = await get_project_by_id(task.project_id or task.project_object_id, current_user.company_id)
             if project and await _can_access_project_for_task(current_user, project):
                 return
+            # Employees involved in the project (assigned to any task in it) may
+            # open its tasks, matching the project board visibility rule so the
+            # board's task cards are clickable. The Tasks list page is unchanged.
+            if project:
+                involved = await Task.find_one({
+                    "company_id": task.company_id,
+                    "$or": [
+                        {"project_id": getattr(project, "project_id", None) or str(project.id)},
+                        {"project_id": str(project.id)},
+                        {"project_object_id": str(project.id)},
+                    ],
+                    "assigned_to": str(current_user.id),
+                })
+                if involved:
+                    return
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
         scope_ids = set(await _get_user_scope_ids(current_user))
@@ -551,6 +567,7 @@ async def list_tasks(
                 "extension_count": getattr(task, "extension_count", 0),
                 "estimated_hours": getattr(task, "estimated_hours", None),
                 "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
+                "source_type": getattr(task, "source_type", None),
                 "tags": task.tags,
                 "created_at": task.created_at,
                 "is_scheduled_placeholder": False,

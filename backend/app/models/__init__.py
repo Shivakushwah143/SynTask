@@ -62,6 +62,7 @@ from app.models.sales_product import SalesProduct
 from app.models.sales_contact import SalesContact, ContactSharing
 from app.models.sales_lead_file import SalesLeadFile
 from app.models.sales_prospect import SalesProspect
+from app.models.sales_discovery_audit import SalesAudit, SalesDiscovery, SalesWorkspaceStatus
 from app.models.sales_lead_note import SalesLeadNote
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.sales_import_job import SalesImportJob
@@ -158,7 +159,7 @@ __all__ = [
     "TimesheetEntry", "TimesheetSummary", "TimesheetStatus",
     # Sales models
     "SalesCategory", "SalesProduct", "SalesContact", "ContactSharing", "SalesLeadFile",
-    "SalesProspect", "SalesLeadNote", "SalesPipelineHistory", "SalesImportJob",
+    "SalesProspect", "SalesDiscovery", "SalesAudit", "SalesWorkspaceStatus", "SalesLeadNote", "SalesPipelineHistory", "SalesImportJob",
     "SalesStage", "ReasonForLost", "SalesChannel", "SalesTag",
     "Nationality", "BusinessCategory", "GreetingTemplate",
     # Attendance & Monitoring models

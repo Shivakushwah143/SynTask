@@ -230,8 +230,8 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 | POST | `/api/v1/companies/register` | `register_company` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/companies/{company_id}` | `delete_company` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/companies/{company_id}` | `get_company` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/companies/{company_id}/approve` | `approve_company` | Uses router/endpoint dependencies where configured. |
-| PATCH | `/api/v1/companies/{company_id}/status` | `update_company_status` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/companies/{company_id}/approve` | `approve_company` | Canonical first-time approval. Validates pending company, prevents duplicate company admin/subscription, creates first Company Admin, assigns selected subscription/plan, provisions modules, sets `approved_by`/`approved_at`, activates company, and attempts existing welcome email. Partial admin/subscription creation is rolled back on provisioning failure. |
+| PATCH | `/api/v1/companies/{company_id}/status` | `update_company_status` | Super Admin lifecycle status update. Valid transitions are pending to cancelled, active to suspended, and suspended to active. Invalid transitions return HTTP 409 with `invalid_company_status_transition`. |
 
 ### Components
 
@@ -254,7 +254,7 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 | GET | `/api/v1/files/clients/{filename}` | `get_client_file` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/files/msa/{filename}` | `get_msa_file` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/files/projects/{filename}` | `get_project_file` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/files/upload` | `upload_file` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/files/upload` | `upload_file` | General-purpose upload used by task/project attachments. Accepts **any file type** (images, videos, PDF, Excel, etc.) up to **200 MB** (`GENERAL_UPLOAD_MAX_SIZE`). Oversized files return `413` with a clear detail stating the actual size and the limit (e.g. `File is too large: 312.0 MB exceeds the maximum allowed size of 200 MB`). Avatar and other security-sensitive uploads keep their stricter type/size whitelists. |
 | GET | `/api/v1/files/{filename}` | `get_file` | Uses router/endpoint dependencies where configured. |
 
 ### Health
@@ -303,7 +303,7 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | POST | `/api/v1/leaves/` | `create_leave_request` | Any authenticated company member (Employee/Manager/Lead) submits leave. Admin/Sub Admin/Super Admin do not submit. Reviewers are auto-assigned via the nearest manager, falling back to company admins (Admin + Sub Admin). Requires company membership and no overlapping leave. |
-| GET | `/api/v1/leaves/` | `list_leave_requests` | Super Admin sees all company leaves except own; Admin, Sub Admin and Manager see all company leaves except their own (including forwarded leaves); Lead sees all company leaves except own; Employee sees only own leaves. Seeing a request is not the same as acting on it: approve/reject actions are limited to the assigned reviewers (see approve/reject rows) — managers review employee/lead requests, and forwarded leaves are decided only by the reviewers the manager selected. Supports `status`, `leave_type`, `employee_id`, `start_date`, `end_date`, `skip`, `limit`. |
+| GET | `/api/v1/leaves/` | `list_leave_requests` | Super Admin sees all company leaves except own; Admin, Sub Admin and Manager see all company leaves except their own (including forwarded leaves); Lead sees all company leaves except own; Employee sees only own leaves. The `employee_id` filter stays within the same visibility: any same-company employee (except self) is a valid filter target for Admin/Sub Admin/Manager/Lead, matching the unfiltered list. Seeing a request is not the same as acting on it: approve/reject actions are limited to the assigned reviewers (see approve/reject rows) — managers review employee/lead requests, and forwarded leaves are decided only by the reviewers the manager selected. Supports `status`, `leave_type`, `employee_id`, `start_date`, `end_date`, `skip`, `limit`. |
 | GET | `/api/v1/leaves/availability` | `get_availability` | Returns leave-type balance/availability for the authenticated user. |
 | GET | `/api/v1/leaves/calendar` | `get_leave_calendar` | Calendar view with the same role-based visibility as the list endpoint. |
 | GET | `/api/v1/leaves/my` | `get_my_leave_requests` | Returns only the authenticated user's own leave requests. |
@@ -468,10 +468,10 @@ Permission model:
 | GET | `/api/v1/projects/` | `list_projects` | Company-scoped. Admin/Super Admin and Manager list company projects; Employee list includes projects where they are the project leader, project member, or have assigned tasks. Pending scheduled `CREATE_PROJECT` jobs are also returned as `scheduled` placeholders only to the scheduling creator, with `is_scheduled_placeholder=true`, `scheduled_job_id`, and `scheduled_run_at`; they are not visible to other tenant users before publish. |
 | POST | `/api/v1/projects/` | `create_project` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/projects/for-task-creation` | `get_projects_for_task_creation` | Returns non-archived projects where the authenticated user has `create_task`. Employees assigned as that project's `lead_id` are treated as project-scoped Lead only for that project. |
-| DELETE | `/api/v1/projects/{project_id}` | `delete_project` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/projects/{project_id}` | `delete_project` | Deletes the project and cascade-deletes all of its tasks and dependent records (task comments, watchers, time logs, epics, sprints, pages, notifications, scheduled jobs that would recreate it, etc.) in a transaction when supported, falling back to an ordered idempotent cascade. Accepts the logical `project_id` or Mongo `_id`. Requires an org management role (Super Admin/Admin/Sub Admin/Manager) with `manage_project`; 404 when the project does not exist in the caller's organization, 403 without permission. Tasks no longer block deletion. |
 | GET | `/api/v1/projects/{project_id}` | `get_project` | Loads the real project by logical ID or MongoDB ID, enforces project-scoped access, and returns `effective_project_role` plus permission flags. |
 | PUT | `/api/v1/projects/{project_id}` | `update_project` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/projects/{project_id}/board` | `get_project_board` | Loads the real project, enforces project-scoped access, and returns board data with `effective_project_role` plus permission flags. Project-scoped Leads see all project tasks; ordinary Employee members see only assigned tasks. |
+| GET | `/api/v1/projects/{project_id}/board` | `get_project_board` | Loads the real project, enforces project-scoped access, and returns board data with `effective_project_role` plus permission flags. Tasks are matched by logical `project_id`, Mongo `_id`, or `project_object_id` so tasks created through any integration flow appear. Project-scoped Leads see all project tasks; Employees who are involved in the project (a project member, or assigned to any project task) also see all project tasks on the board, while unrelated Employees see only their own tasks. This board-only visibility does not change the Tasks list page. |
 | GET | `/api/v1/projects/{project_id}/board-columns` | `get_board_columns` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/projects/{project_id}/board-columns` | `create_board_column` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/projects/{project_id}/board-columns/{column_id}` | `delete_board_column` | Uses router/endpoint dependencies where configured. |
@@ -506,6 +506,13 @@ Permission model:
 | GET | `/api/v1/sales/dashboard` | `sales_dashboard` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/sales/health` | `sales_health` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/sales/me` | `sales_me` | Uses router/endpoint dependencies where configured. |
+
+### CRM Negotiation
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/crm/leads/{lead_id}/negotiation` | `get_lead_negotiation` | Loads the Negotiation workspace after the lead reaches Negotiation. Enforces existing lead company and ownership access. |
+| PATCH | `/api/v1/crm/leads/{lead_id}/negotiation` | `patch_lead_negotiation` | Saves negotiation terms, keeps `negotiation_status` manually editable, syncs accepted/final amount to existing Sales lead fields where applicable, and records a CRM lead activity event. Agreement entry remains gated by `negotiation_status = accepted`. |
 
 ### Sales Categories
 
@@ -580,12 +587,12 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | GET | `/api/v1/sales/prospects/` | `list_prospects` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/sales/prospects/` | `create_prospect` | Creates a tenant-scoped lead. Phone is required for manual entry, but phone duplicates are allowed and remain visible through duplicate review/merge flows. If `assigned_to` is provided, it must be an active assignable user in the actor's company; Admin, Sub Admin, and Super Admin assignment checks are company-wide rather than actor-department-limited. |
+| POST | `/api/v1/sales/prospects/` | `create_prospect` | Creates a tenant-scoped lead. Open to every authenticated company user (any role, including Employee). Phone is optional for manual entry - a lead may be captured with only a name, only a phone, or both (it falls back to `Unknown Lead`); the backend performs no phone-format enforcement (the +country-code + 10-digit format check is frontend-side). Phone duplicates are allowed and remain visible through duplicate review/merge flows. Owner resolution never blocks creation: if `assigned_to` is provided it must be an active assignable user in the actor's company (Admin, Sub Admin, and Super Admin checks are company-wide rather than actor-department-limited), and when no valid assignable user can be found (e.g. an Employee whose department has no other assignable members) the lead falls back to its creator so it stays visible on their dashboard instead of failing with a 400. Optional form field `referred_by` stores the user ID of the employee/manager who referred the lead; it is never validated against assignable users and has no effect on ownership or visibility. |
 | POST | `/api/v1/sales/prospects/bulk-upload` | `bulk_upload_prospects` | Accepts any file type (CSV, XLSX, or text). Unknown columns stored as `custom_fields`. **No validation is applied** — every row imports even when a mobile number is missing (phone is optional). Rows whose email already exists in the company still import; the colliding email is dropped (email has a unique per-company index). `allow_duplicates` is accepted for backward compatibility but no longer gates anything. Form fields: `file`, `strategy` (`round-robin`\|`evenly`\|`least-loaded`\|`manual`), optional `target_user_id`, `target_department_id`. |
 | POST | `/api/v1/sales/prospects/bulk-upload/preview` | `preview_bulk_upload_prospects` | Returns preview rows, failed rows, detected columns, and field mapping recommendations. |
 | GET | `/api/v1/sales/prospects/search/contact` | `search_contact_for_prospect` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/sales/prospects/{prospect_id}` | `get_prospect` | Uses router/endpoint dependencies where configured. |
-| PUT | `/api/v1/sales/prospects/{prospect_id}` | `update_prospect` | Updates only the form fields the client actually sent; omitted fields are left untouched (a partial update never clears budget, decision maker, phone, or other stored values). Fields sent as explicit empty strings still clear their stored value. The pipeline stage and inner status are never mutated by this endpoint. |
+| PUT | `/api/v1/sales/prospects/{prospect_id}` | `update_prospect` | Updates only the form fields the client actually sent; omitted fields are left untouched (a partial update never clears budget, decision maker, phone, or other stored values). Fields sent as explicit empty strings still clear their stored value. `custom_fields` (JSON string) replaces the complete custom-field set, so the overview Add-field flow and the sidebar editor both persist. The pipeline stage and inner status are never mutated by this endpoint. |
 
 ### Sales Reports
 
@@ -627,6 +634,16 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | DELETE | `/api/v1/superadmin/plans/{plan_id}` | `delete_plan` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/superadmin/plans/{plan_id}` | `get_plan` | Uses router/endpoint dependencies where configured. |
 | PUT | `/api/v1/superadmin/plans/{plan_id}` | `update_plan` | Uses router/endpoint dependencies where configured. |
+
+### Departments
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/departments/` | `list_departments` | Company-scoped department list for Admin, Sub Admin, Manager, Lead, and Super Admin. Super Admin sessions without a selected company return an empty list instead of a company-resolution error. |
+| GET | `/api/v1/departments/{department_ref}` | `get_department` | Company-scoped single department lookup by Mongo id or exact department name. Cross-company access is rejected as not found; Super Admin without company context gets 404 instead of an unhandled error. |
+| POST | `/api/v1/departments/` | `create_department` | Company admin only; requires `company_id` on the actor. |
+| PUT | `/api/v1/departments/{department_id}` | `update_department` | Company admin only and same-company department only. |
+| DELETE | `/api/v1/departments/{department_id}` | `delete_department` | Company admin only and same-company department only; blocks deletion while active users or tasks still reference the department. |
 
 ### Super Admin - Tenants
 
@@ -703,12 +720,14 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | GET | `/api/v1/users/` | `list_users` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/assignable` | `get_assignable_users` | Returns active company users eligible for assignment, including admins, managers, leads, and employees; `project_id` still narrows the list to project members. |
 | GET | `/api/v1/users/creatable-roles` | `get_creatable_roles` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/users/create-employee` | `create_employee` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/users/create-employee` | `create_employee` | Accepts an optional `modules` form param (comma-separated catalog ids, e.g. `tasks_projects,chat,attendance_leaves`) that sets the member's sidebar-module permissions. Omitted → legacy defaults (`task,attendance_leaves`). Creators can only grant modules they themselves can access (privilege-escalation guard). |
 | POST | `/api/v1/users/create-lead` | `create_lead` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/users/create-user` | `create_user_hierarchical` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/users/create-user` | `create_user_hierarchical` | Accepts an optional `modules` form param. Non-admin creators can only grant modules they can access; admins are unrestricted. |
 | DELETE | `/api/v1/users/detail/{user_id}` | `delete_user` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/detail/{user_id}` | `get_user` | Uses router/endpoint dependencies where configured. |
-| PUT | `/api/v1/users/detail/{user_id}` | `update_user` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/users/detail/{user_id}` | `update_user` | Accepts an optional `modules` form param to update a member's sidebar-module permissions. The same creator-privilege guard applies (non-admin creators can only grant modules they can access). |
+
+**Module enforcement (`require_module`):** members whose stored `modules` list is a pre-permission-system default (`task` / `task,attendance_leaves` / empty) keep the legacy role auto-grants (sales/tickets/recruitment for Manager/Lead/Employee). Members with any other explicit list — including a single `tasks_projects` (the new permission-system id) — are governed strictly by that list, so a module deselected in the Permissions selector is truly withheld. Super Admin / Admin / Sub Admin have full module access regardless of the list.
 | PATCH | `/api/v1/users/detail/{user_id}/status` | `update_user_status` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/my-team` | `get_my_team` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/reporting-options` | `get_reporting_options` | Uses router/endpoint dependencies where configured. |
@@ -765,13 +784,16 @@ The existing Celery beat schedule evaluates enabled tenant configurations hourly
 
 All routes require `get_current_super_admin`.
 
+The Super Admin UI exposes three distinct sidebar entries: `/super-admin/companies` for the existing platform Companies page and Add Company form, `/super-admin/tenants` for tenant operations backed by the superadmin tenant APIs below, and `/super-admin/clients` for the existing CRM Clients page. The Tenants page also links Add Company to the existing Companies form. These routes do not merge platform Company records with CRM Client records.
+
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | GET | `/api/v1/superadmin/tenants/subscription-overview` | `subscription_overview` | Lists tenant plan, purchase date, next billing date, amount, status, and user count. |
 | GET | `/api/v1/superadmin/tenants/{company_id}/users` | `list_company_users` | Lists users for one tenant company. |
 | POST | `/api/v1/superadmin/tenants/{company_id}/users/{user_id}/reset-password` | `reset_user_password` | Stores a hashed reset token, sends reset email, and writes audit log. |
-| POST | `/api/v1/superadmin/tenants/{company_id}/suspend` | `suspend_tenant` | Suspends tenant with reason, notes, optional admin notification, and audit log. |
-| POST | `/api/v1/superadmin/tenants/{company_id}/activate` | `activate_tenant` | Reactivates tenant and clears subscription suspension state. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/approve` | `approve_tenant` | Deprecated. Returns HTTP 410; use `/api/v1/companies/{company_id}/approve` for first-time approval and admin provisioning. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/suspend` | `suspend_tenant` | Suspends active tenants only; invalid current statuses return HTTP 409 without changing status. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/activate` | `activate_tenant` | Reactivates suspended tenants only and clears subscription suspension state; invalid current statuses return HTTP 409 without changing status. |
 | POST | `/api/v1/superadmin/tenants/{company_id}/assign-plan` | `assign_plan_to_tenant` | Assigns a plan and billing cycle, with optional custom user limit. |
 | GET | `/api/v1/superadmin/billing/revenue/analytics` | `get_revenue_analytics` | Supports `period=7d\|30d\|90d\|1y` plus legacy date range query. |
 | GET | `/api/v1/superadmin/billing/invoices` | `list_invoices` | Lists invoice-like billing transactions with company name and sent status. |
@@ -797,6 +819,18 @@ Suspended tenant enforcement occurs in `get_current_user`: non-superadmin users 
 | 422 | Validation error | Request body/query does not match Pydantic schema |
 | 429 | Rate limited | SlowAPI auth limits exceeded |
 | 500 | Internal error | Unhandled server-side failure |
+
+## Public Careers
+
+Public recruitment career endpoints do not require authentication. `GET /api/v1/careers` returns companies that currently have published, public jobs and links visitors to `/careers/track` for existing applications. `GET /api/v1/careers/{company_slug}` returns one company's career portal settings, and `GET /api/v1/careers/{company_slug}/jobs` plus `GET /api/v1/careers/{company_slug}/jobs/{job_slug}` return only that company's jobs where `lifecycle_status=published`, `visibility=public`, and `deleted_at=null`. Anonymous applications post multipart form data to `/api/v1/careers/{company_slug}/jobs/{job_id}/apply`; the form includes `full_name`, `email`, `date_of_birth`, optional profile fields, and `resume`. The backend resolves the company from the slug and rejects cross-company, draft, paused, closed, archived, deleted, private, or expired jobs.
+
+Successful anonymous applications return `tracking_code`, `temporary_user_id`, and a one-time random `tracking_pin` shown on screen for printing. The `application_id` and `temporary_user_id` fields in this public response are tracking identifiers, not MongoDB ids. The server stores only hashes for temporary tracking secrets in `recruitment_candidate_portal_credentials` and `recruitment_applications`; predictable DOB-derived passwords are not used. Candidates track progress with `POST /api/v1/careers/applications/track` and body `{ "tracking_code": "...", "tracking_pin": "..." }`. The response is public-safe: company/job basics, candidate-owned profile fields, current resume metadata, current status label, human-readable timeline, public-safe stage detail feed, scheduled interview summaries, and offer status summaries. Sent offer summaries include an `offer_url` only when a valid tenant-scoped public offer token exists; candidates open that URL without employee login to view/download the offer letter and accept or reject it. Candidates can update their public profile with `PATCH /api/v1/careers/applications/track/profile` using the same tracking credentials, and can replace the application resume with multipart `POST /api/v1/careers/applications/track/resume`. Private HR notes, internal database ids, scores, recruiter-only data, and cross-tenant data are not exposed. Temporary portal credential documents are removed when the candidate reaches terminal lifecycle states such as rejected, withdrawn, archived, joined, or employee. `GET /api/v1/careers/applications/{tracking_code}` is retained for compatibility but requires `tracking_pin` as a query parameter.
+
+Authenticated HR users can call `GET /api/v1/recruitment/career-page` to get their own company's public career route for verification. The endpoint is tenant-scoped by `current_user.company_id`; public listing/application endpoints never depend on `current_user`.
+
+Authenticated HR users can call `GET /api/v1/recruitment/jobs/{job_id}/applications` to list applied candidates for a job. The endpoint uses `current_user.company_id`, requires recruitment candidate view permission, and returns candidate summary, application date/status, resume link, recruiter summary, score summary when available, all same-job interview rounds, the latest interview summary, and the latest offer summary when available. Candidate lifecycle actions continue to use existing `/api/v1/recruitment/candidates/{candidate_id}/move`, `/reject`, and `/archive` endpoints; interview scheduling/result and offer creation/send use existing `/api/v1/recruitment/interviews` and `/api/v1/recruitment/offers` workflow APIs. HR can upload an already prepared offer letter with multipart `POST /api/v1/recruitment/offers/{offer_id}/upload-letter`; accepted files are PDF, JPG, JPEG, and PNG, tenant-scoped to the offer's company, and stored on the existing immutable offer-file fields used by secure public offer viewing.
+
+Recruitment resumes are stored in `recruitment_resumes` with `storage_url` plus Cloudinary metadata when Cloudinary is enabled. Resume upload accepts PDF, DOC, DOCX, TXT, JPG, JPEG, and PNG files; document/text formats can be parsed, while image resumes are stored and previewed without text extraction. The linked `recruitment_candidates.resume_url` mirrors the current resume document URL for candidate-detail consumers while `resume_id` remains the canonical relation. Recruitment resume uploads use browser-openable Cloudinary delivery URLs for PDF preview. HR resume links should open `GET /api/v1/recruitment/resumes/{resume_id}/file`, which re-checks tenant authorization and returns either the local uploaded file, the stored Cloudinary URL, or a correctly path-signed Cloudinary delivery URL for older authenticated assets. Add `?download=true` to force attachment/download behavior. Shared uploaded-file serving returns inline content disposition so local PDFs preview in-browser instead of always downloading.
 
 ## Pagination
 List endpoints commonly use `skip` and `limit`; default page size is configured in `Settings.DEFAULT_PAGE_SIZE` and max size is `Settings.MAX_PAGE_SIZE`.

@@ -86,22 +86,46 @@ async def test_create_lead_preserves_selected_stage(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_create_lead_rejects_whitespace_phone(monkeypatch):
+async def test_create_lead_allows_missing_phone(monkeypatch):
+    """Phone is optional on manual lead creation: an empty/whitespace phone is
+    stored as None instead of failing the request with a 400 (the reported UI
+    feedback: a lead with no mobile number must still be created)."""
+    async def fake_find_duplicate(current_user, payload):
+        return None
+
+    async def fake_resolve_company(current_user, payload):
+        return None, payload.get("company_name")
+
+    async def fake_resolve_contact(current_user, payload):
+        return None
+
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        return [SimpleNamespace(id="user-1", first_name="Ada", last_name="Admin")]
+
+    async def fake_publish(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.find_duplicate", fake_find_duplicate)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_company", fake_resolve_company)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_contact", fake_resolve_contact)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.LeadEventPublisher.lead_created", fake_publish)
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect", FakeProspect)
+
     current_user = SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER)
+    result = await LeadEngine.create_lead(
+        current_user,
+        {
+            "first_name": "Ada",
+            "last_name": "Admin",
+            "country_code": "+91",
+            "phone": "   ",
+            "company_name": "Alpha",
+        },
+    )
 
-    with pytest.raises(HTTPException) as exc_info:
-        await LeadEngine.create_lead(
-            current_user,
-            {
-                "first_name": "Ada",
-                "last_name": "Admin",
-                "country_code": "+91",
-                "phone": "   ",
-            },
-        )
-
-    assert exc_info.value.status_code == 400
-    assert "Phone is required" in str(exc_info.value.detail)
+    assert result["message"] == "Prospect created successfully"
+    assert result["lead"]["phone"] is None
 
 
 @pytest.mark.asyncio
@@ -244,6 +268,107 @@ async def test_create_lead_sub_admin_manual_owner_is_not_limited_to_actor_depart
 
     assert result["lead"]["assigned_to"] == "user-2"
     assert captured_departments == [None]
+
+
+@pytest.mark.asyncio
+async def test_create_lead_employee_with_no_assignable_users_gets_creator_ownership(monkeypatch):
+    """An employee whose department has no assignable users must still be able
+    to create a lead (reported: POST /api/v1/sales/prospects/ returns 400
+    'No assignable users found in your company' for employees). The lead falls
+    back to the creator instead of failing the request."""
+    async def fake_find_duplicate(current_user, payload):
+        return None
+
+    async def fake_resolve_company(current_user, payload):
+        return None, payload.get("company_name")
+
+    async def fake_resolve_contact(current_user, payload):
+        return None
+
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        raise HTTPException(status_code=400, detail="No assignable users found in your company")
+
+    async def fake_publish(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.find_duplicate", fake_find_duplicate)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_company", fake_resolve_company)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_contact", fake_resolve_contact)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.LeadEventPublisher.lead_created", fake_publish)
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect", FakeProspect)
+
+    # Employee scoped to a department that has no other assignable members.
+    current_user = SimpleNamespace(
+        id="employee-1",
+        company_id="company-1",
+        role=UserRole.EMPLOYEE,
+        department_id="dept-engineering",
+    )
+    result = await LeadEngine.create_lead(
+        current_user,
+        {
+            "first_name": "Ada",
+            "last_name": "Admin",
+            "country_code": "+91",
+            "phone": "9999999999",
+            "company_name": "Alpha",
+        },
+    )
+
+    assert result["message"] == "Prospect created successfully"
+    # The lead is owned by its creator so it stays visible on their dashboard.
+    assert result["lead"]["assigned_to"] == "employee-1"
+    assert result["lead"]["assigned_by"] == "employee-1"
+
+
+@pytest.mark.asyncio
+async def test_create_lead_falls_back_to_creator_when_explicit_owner_invalid(monkeypatch):
+    """An explicitly requested owner that cannot be validated (e.g. deactivated
+    or outside the creator's department scope) must not block lead creation —
+    the lead falls back to the creator."""
+    async def fake_find_duplicate(current_user, payload):
+        return None
+
+    async def fake_resolve_company(current_user, payload):
+        return None, payload.get("company_name")
+
+    async def fake_resolve_contact(current_user, payload):
+        return None
+
+    async def fake_validate_target_user(*args, **kwargs):
+        raise HTTPException(status_code=400, detail="Target user must be an active user in your company")
+
+    async def fake_publish(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.find_duplicate", fake_find_duplicate)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_company", fake_resolve_company)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_contact", fake_resolve_contact)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.validate_target_user", fake_validate_target_user)
+    monkeypatch.setattr("app.crm.lead_engine.LeadEventPublisher.lead_created", fake_publish)
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect", FakeProspect)
+
+    current_user = SimpleNamespace(
+        id="manager-1",
+        company_id="company-1",
+        role=UserRole.MANAGER,
+        department_id="dept-sales",
+    )
+    result = await LeadEngine.create_lead(
+        current_user,
+        {
+            "first_name": "Ada",
+            "last_name": "Admin",
+            "country_code": "+91",
+            "phone": "9999999999",
+            "company_name": "Alpha",
+            "assigned_to": "user-9",
+        },
+    )
+
+    assert result["message"] == "Prospect created successfully"
+    assert result["lead"]["assigned_to"] == "manager-1"
 
 
 class FakeImportFile:
@@ -638,6 +763,79 @@ async def test_update_lead_reassigns_owner_and_records_transfer(monkeypatch):
     assert FakeOwnershipTransfer.last_inserted.notes == "Manual reassignment from lead update"
     assert lead.assigned_to == "user-2"
     assert lead.updated_at is not None
+
+
+@pytest.mark.asyncio
+async def test_update_lead_persists_custom_fields(monkeypatch):
+    """Adding a custom field from the lead overview must persist custom_fields.
+
+    Regression: update_lead never applied custom_fields, so the overview
+    Add-field flow (and the sidebar Advanced-fields JSON editor) silently saved
+    nothing. The stored set is replaced by the payload's complete set.
+    """
+    lead = FakeProspect(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        prospect_name="Alpha Co",
+        source="manual",
+        assigned_to="user-1",
+        assigned_by="user-9",
+        custom_fields={"existing": "yes"},
+    )
+    lead.saved = False
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_require_owned_record_access(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.lead_engine.require_owned_record_access", fake_require_owned_record_access)
+
+    current_user = SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER)
+    result = await LeadEngine.update_lead(
+        current_user,
+        "lead-1",
+        {"custom_fields": {"existing": "yes", "linkedin_url": "https://linkedin.com/in/jane"}},
+    )
+
+    assert result["message"] == "Prospect updated successfully"
+    assert lead.custom_fields == {"existing": "yes", "linkedin_url": "https://linkedin.com/in/jane"}
+    assert lead.saved is True
+
+
+@pytest.mark.asyncio
+async def test_update_lead_persists_referred_by(monkeypatch):
+    """The optional referred_by field set at creation can be updated later."""
+    lead = FakeProspect(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        prospect_name="Alpha Co",
+        source="manual",
+        assigned_to="user-1",
+        assigned_by="user-9",
+        referred_by=None,
+    )
+    lead.saved = False
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_require_owned_record_access(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.lead_engine.require_owned_record_access", fake_require_owned_record_access)
+
+    current_user = SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER)
+    result = await LeadEngine.update_lead(current_user, "lead-1", {"referred_by": "user-2"})
+
+    assert result["message"] == "Prospect updated successfully"
+    assert lead.referred_by == "user-2"
+    assert lead.saved is True
 
 
 @pytest.mark.asyncio

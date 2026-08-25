@@ -195,6 +195,83 @@ def test_explicit_self_view_is_blocked():
 
 
 @pytest.mark.asyncio
+async def test_manager_can_filter_by_any_same_company_employee(monkeypatch):
+    manager = user("manager-1", UserRole.MANAGER)
+    # A peer from the same department who is NOT a direct report/descendant.
+    peer = user("employee-9", UserRole.EMPLOYEE, reports_to="manager-2", ancestors=["manager-2"])
+
+    async def fake_get(uid):
+        return peer if uid == "employee-9" else None
+
+    monkeypatch.setattr(leave_endpoints.User, "get", staticmethod(fake_get))
+    query = await leave_endpoints._base_query(manager, "employee-9")
+
+    assert query == {"employee_id": "employee-9", "company_id": "company-1"}
+
+
+@pytest.mark.asyncio
+async def test_lead_can_filter_by_any_same_company_employee(monkeypatch):
+    lead = user("lead-1", UserRole.LEAD)
+    # An employee outside the lead's hierarchy (same company only).
+    employee = user("employee-7", UserRole.EMPLOYEE, reports_to="manager-2", ancestors=["manager-2"])
+
+    async def fake_get(uid):
+        return employee if uid == "employee-7" else None
+
+    monkeypatch.setattr(leave_endpoints.User, "get", staticmethod(fake_get))
+    query = await leave_endpoints._base_query(lead, "employee-7")
+
+    assert query == {"employee_id": "employee-7", "company_id": "company-1"}
+
+
+@pytest.mark.asyncio
+async def test_employee_filter_blocks_cross_company_employees(monkeypatch):
+    manager = user("manager-1", UserRole.MANAGER)
+    other_company = user("employee-9", UserRole.EMPLOYEE, company_id="company-2", reports_to="manager-2", ancestors=["manager-2"])
+
+    async def fake_get(uid):
+        return other_company if uid == "employee-9" else None
+
+    monkeypatch.setattr(leave_endpoints.User, "get", staticmethod(fake_get))
+    with pytest.raises(HTTPException) as exc_info:
+        await leave_endpoints._base_query(manager, "employee-9")
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Access denied"
+
+
+@pytest.mark.asyncio
+async def test_employee_cannot_filter_by_another_employee(monkeypatch):
+    employee = user("employee-1", UserRole.EMPLOYEE)
+    coworker = user("employee-9", UserRole.EMPLOYEE, reports_to="manager-1", ancestors=["manager-1"])
+
+    async def fake_get(uid):
+        return coworker if uid == "employee-9" else None
+
+    monkeypatch.setattr(leave_endpoints.User, "get", staticmethod(fake_get))
+    with pytest.raises(HTTPException) as exc_info:
+        await leave_endpoints._base_query(employee, "employee-9")
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Access denied"
+
+
+@pytest.mark.asyncio
+async def test_filter_by_self_is_still_blocked(monkeypatch):
+    manager = user("manager-1", UserRole.MANAGER)
+
+    async def fake_get(uid):
+        return manager if uid == "manager-1" else None
+
+    monkeypatch.setattr(leave_endpoints.User, "get", staticmethod(fake_get))
+    with pytest.raises(HTTPException) as exc_info:
+        await leave_endpoints._base_query(manager, "manager-1")
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Users cannot view their own leave requests"
+
+
+@pytest.mark.asyncio
 async def test_manager_lists_subordinate_employee_and_lead_leave_but_lead_has_no_approval_inbox():
     employee = user("employee-1", UserRole.EMPLOYEE, reports_to="lead-1", ancestors=["manager-1", "lead-1"])
     lead = user("lead-1", UserRole.LEAD, reports_to="manager-1", ancestors=["manager-1"])

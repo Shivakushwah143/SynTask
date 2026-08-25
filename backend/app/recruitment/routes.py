@@ -1,12 +1,14 @@
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.core.clock import utc_now
+from app.models.company import Company
 from app.models.user import User
 from app.recruitment.models import (Candidate, CandidateJobScore, CandidateStatus, CandidateTimeline,
                                     ImportStatus, Interview, JobLifecycleStatus,
@@ -49,11 +51,19 @@ from app.recruitment.schemas import (ApplicationApplyResponse, ApplicationStatus
                                      InterviewCancelRequest,
                                      InterviewDecisionRequest, JobCreate,
                                      JobFilter, JobListResponse, JobResponse,
+<<<<<<< HEAD
                                      JobSort, JobUpdate, JobRejectRequest,
                                      KeywordMatchResponse,
                                      MarkJoinedRequest,
                                      OfferCreate, OfferListResponse,
                                      OfferUpdate, PublicJobListResponse,
+=======
+                                     JobSort, JobStatusUpdate, JobUpdate, KeywordMatchResponse,
+                                     OfferCreate,
+                                     OfferUpdate, PublicCareerCompanyResponse,
+                                     PublicTrackingProfileUpdate,
+                                     PublicJobListResponse,
+>>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
                                      PublicJobResponse, ResumePoolResponse)
 from app.recruitment.services import (ApplicationService, CareerPortalService,
                                       CandidateAssignmentService,
@@ -71,6 +81,8 @@ from app.recruitment.services import (ApplicationService, CareerPortalService,
                                       RecruitmentReportService,
                                       RecruitmentService, ResumePoolService,
                                       record)
+from app.services.cloudinary_storage import CloudinaryStorage
+from app.services.file_service import FileService
 
 router = APIRouter()
 careers_router = APIRouter()
@@ -141,6 +153,11 @@ class SyncStatusResponse(BaseModel):
     resolved_company_name: Optional[str] = None
 
 
+class PublicTrackingRequest(BaseModel):
+    tracking_code: str
+    tracking_pin: str
+
+
 # =============================================================================
 # Job Engine API Endpoints (Phase 2)
 # =============================================================================
@@ -181,6 +198,19 @@ async def job_dashboard(user: User = Depends(require_job_view)):
         "archived_jobs": status_counts.get(JobLifecycleStatus.ARCHIVED.value, 0),
         "recent_jobs": recent_jobs,
         "by_status": status_counts,
+    }
+
+
+@router.get("/career-page")
+async def current_company_career_page(user: User = Depends(require_job_view)):
+    """Return current company's public career URL metadata for HR users."""
+    cid = company(user)
+    company_doc = await Company.get(cid)
+    if not company_doc:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return {
+        "company_slug": CareerPortalService.company_slug(company_doc),
+        "path": f"/careers/{CareerPortalService.company_slug(company_doc)}",
     }
 
 
@@ -244,6 +274,12 @@ async def list_jobs(
     )
 
 
+@router.get("/jobs/{job_id}/applications")
+async def list_job_applications(job_id: str, user: User = Depends(require_candidate_view)):
+    """List candidates who applied to one job."""
+    return {"items": await CandidateWorkspaceService.list_for_job(company(user), job_id)}
+
+
 # Get Job by ID
 @router.get("/jobs/{job_id}", response_model=JobResponse)
 async def get_job(job_id: str, user: User = Depends(require_job_view)):
@@ -303,6 +339,20 @@ async def restore_job(job_id: str, user: User = Depends(require_job_update)):
     """Restore an archived job."""
     job = await JobService.get_job(job_id, company(user))
     job = await JobService.restore_job(job, str(user.id))
+    return serialize_job(job)
+
+
+# Set Job Status (validated lifecycle transition)
+@router.post("/jobs/{job_id}/status", response_model=JobResponse)
+async def set_job_status(job_id: str, payload: JobStatusUpdate, user: User = Depends(require_job_update)):
+    """Set a job's lifecycle status through a validated transition.
+
+    Accepts any lifecycle status (draft, pending_approval, approved, published,
+    paused, closed, archived). Invalid transitions return a 400 with a clear
+    message; re-selecting the current status is a no-op.
+    """
+    job = await JobService.get_job(job_id, company(user))
+    job = await JobService.set_status(job, payload.status, str(user.id))
     return serialize_job(job)
 
 
@@ -398,7 +448,22 @@ async def archive_job_legacy(job_id: str, user: User = Depends(require_recruitme
 # =============================================================================
 
 
-@careers_router.get("")
+@careers_router.get("", response_model=list[PublicCareerCompanyResponse])
+async def list_career_companies():
+    """List companies with published public jobs for anonymous visitors."""
+    return await CareerPortalService.list_companies_with_public_jobs()
+
+
+@careers_router.get("/{company_slug}")
+async def get_company_career_portal(company_slug: str, request: Request):
+    """Get career portal settings for a company slug."""
+    resolved_company_id = await CareerPortalService.resolve_company_slug(company_slug)
+    settings = await CareerPortalService.get_portal_settings(resolved_company_id)
+    await record(resolved_company_id, "CareerPortalViewed", None, payload={"host": request.headers.get("host"), "company_slug": company_slug})
+    return settings
+
+
+@careers_router.get("/portal")
 async def get_career_portal(
     request: Request,
     company_id: Optional[str] = Query(None),
@@ -409,6 +474,35 @@ async def get_career_portal(
     settings = await CareerPortalService.get_portal_settings(resolved_company_id)
     await record(resolved_company_id, "CareerPortalViewed", None, payload={"host": request.headers.get("host")})
     return settings
+
+
+@careers_router.get("/{company_slug}/jobs", response_model=PublicJobListResponse)
+async def list_company_public_jobs(
+    company_slug: str,
+    search: Optional[str] = None,
+    department_id: Optional[str] = None,
+    location: Optional[str] = None,
+    employment_type: Optional[str] = None,
+    work_mode: Optional[str] = None,
+    sort_by: str = Query("created_at", alias="sort_by"),
+    sort_order: str = Query("desc", alias="sort_order"),
+    page: int = 1,
+    page_size: int = 50,
+):
+    """List published public jobs for one company slug."""
+    resolved_company_id = await CareerPortalService.resolve_company_slug(company_slug)
+    skip = (page - 1) * page_size
+    items, total = await JobDiscoveryService.list_public_jobs(
+        resolved_company_id, search, department_id, location,
+        employment_type, work_mode, skip, page_size, sort_by, sort_order
+    )
+    return PublicJobListResponse(
+        items=[PublicJobResponse.model_validate(JobDiscoveryService.public_job_payload(job)) for job in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_next=(page * page_size) < total,
+    )
 
 
 @careers_router.get("/jobs", response_model=PublicJobListResponse)
@@ -444,6 +538,17 @@ async def list_public_jobs(
     )
 
 
+@careers_router.get("/{company_slug}/jobs/{slug}", response_model=PublicJobResponse)
+async def get_company_public_job(company_slug: str, slug: str, request: Request):
+    """Get one published public job by company slug and job slug."""
+    resolved_company_id = await CareerPortalService.resolve_company_slug(company_slug)
+    job = await JobDiscoveryService.get_public_job_by_slug(slug, resolved_company_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    await record(resolved_company_id, "JobViewed", None, job_id=str(job.id), payload={"slug": slug, "company_slug": company_slug, "host": request.headers.get("host")})
+    return JobDiscoveryService.public_job_payload(job)
+
+
 @careers_router.get("/jobs/{slug}", response_model=PublicJobResponse)
 async def get_public_job(
     slug: str,
@@ -461,6 +566,55 @@ async def get_public_job(
     return JobDiscoveryService.public_job_payload(job)
 
 
+@careers_router.post("/{company_slug}/jobs/{job_id}/apply", status_code=201, response_model=ApplicationApplyResponse)
+async def apply_to_company_job(
+    company_slug: str,
+    job_id: str,
+    full_name: str = Form(...),
+    email: str = Form(...),
+    date_of_birth: Optional[str] = Form(None),
+    phone: Optional[str] = Form(None),
+    current_company: Optional[str] = Form(None),
+    experience_years: float = Form(0),
+    expected_salary: Optional[float] = Form(None),
+    notice_period: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),
+    education: Optional[str] = Form(None),
+    skills: Optional[str] = Form(None),
+    resume: UploadFile = File(...),
+):
+    """Apply anonymously to a company-scoped public job."""
+    from app.recruitment.schemas import ApplicationApplyRequest
+    resolved_company_id = await CareerPortalService.resolve_company_slug(company_slug)
+
+    job = await RecruitmentJob.get(job_id)
+    if not job or job.company_id != resolved_company_id:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    validation = await JobDiscoveryService.validate_job_for_application(job)
+    if not validation["is_valid"]:
+        raise HTTPException(status_code=400, detail=validation["errors"])
+
+    resume_content = await resume.read()
+    skills_list = [s.strip() for s in skills.split(",") if s.strip()] if skills else []
+    data = ApplicationApplyRequest(
+        full_name=full_name,
+        email=email,
+        date_of_birth=date_of_birth,
+        phone=phone,
+        current_company=current_company,
+        experience_years=experience_years,
+        expected_salary=expected_salary,
+        notice_period=notice_period,
+        location=location,
+        education=education,
+        skills=skills_list,
+        resume_content=resume_content,
+        resume_filename=resume.filename or "resume.pdf",
+    )
+    return await ApplicationService.apply_to_job(resolved_company_id, job, data)
+
+
 @careers_router.post("/jobs/{job_id}/apply", status_code=201, response_model=ApplicationApplyResponse)
 async def apply_to_job(
     job_id: str,
@@ -469,6 +623,7 @@ async def apply_to_job(
     company_domain: Optional[str] = Query(None),
     full_name: str = Form(...),
     email: str = Form(...),
+    date_of_birth: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     current_company: Optional[str] = Form(None),
     experience_years: float = Form(0),
@@ -505,6 +660,7 @@ async def apply_to_job(
     data = ApplicationApplyRequest(
         full_name=full_name,
         email=email,
+        date_of_birth=date_of_birth,
         phone=phone,
         current_company=current_company,
         experience_years=experience_years,
@@ -524,13 +680,34 @@ async def apply_to_job(
 async def get_application_status(
     tracking_code: str,
     request: Request,
+    tracking_pin: Optional[str] = Query(None),
     company_id: Optional[str] = Query(None),
     company_domain: Optional[str] = Query(None),
 ):
     """Get application status by tracking code."""
-    resolved_company_id = await CareerPortalService.resolve_company_id(company_id, company_domain, request.headers.get("host"))
+    if tracking_pin:
+        return await ApplicationService.get_public_application_status(tracking_code, tracking_pin)
+    if company_id or company_domain:
+        resolved_company_id = await CareerPortalService.resolve_company_id(company_id, company_domain, request.headers.get("host"))
+    else:
+        raise HTTPException(status_code=401, detail="Tracking PIN is required")
 
     return await ApplicationService.get_application_status(tracking_code, resolved_company_id)
+
+
+@careers_router.post("/applications/track", response_model=ApplicationStatusResponse)
+async def track_application(payload: PublicTrackingRequest):
+    return await ApplicationService.get_public_application_status(payload.tracking_code, payload.tracking_pin)
+
+
+@careers_router.patch("/applications/track/profile", response_model=ApplicationStatusResponse)
+async def update_tracked_application_profile(payload: PublicTrackingProfileUpdate):
+    return await ApplicationService.update_public_candidate_profile(payload.tracking_code, payload.tracking_pin, payload)
+
+
+@careers_router.post("/applications/track/resume", response_model=ApplicationStatusResponse)
+async def upload_tracked_application_resume(tracking_code: str = Form(...), tracking_pin: str = Form(...), resume: UploadFile = File(...)):
+    return await ApplicationService.upload_public_resume(tracking_code, tracking_pin, resume)
 
 
 # Legacy endpoints for backward compatibility
@@ -812,6 +989,47 @@ async def resume_status(resume_id: str, user: User = Depends(require_candidate_v
         "started_at": resume.processing_started_at,
         "completed_at": resume.processing_completed_at,
     }
+
+
+@router.get("/resumes/{resume_id}/file")
+async def open_resume_file(resume_id: str, download: bool = False, user: User = Depends(require_candidate_view)):
+    resume = await TenantRepository.get(Resume, resume_id, company(user))
+    if not resume or resume.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    if resume.storage_public_id:
+        signed_url = CloudinaryStorage.signed_url(
+            resume.storage_public_id,
+            resume.storage_resource_type or "auto",
+            resume.storage_delivery_type or "authenticated",
+            attachment=download,
+            storage_url=resume.storage_url,
+        )
+        if signed_url:
+            return RedirectResponse(signed_url)
+
+    storage_url = resume.storage_url or ""
+    if not storage_url.startswith("/uploads/"):
+        if storage_url.startswith("http://") or storage_url.startswith("https://"):
+            separator = "&" if "?" in storage_url else "?"
+            return RedirectResponse(storage_url + (f"{separator}fl_attachment" if download else ""))
+        raise HTTPException(status_code=404, detail="Stored resume file not found")
+
+    relative_path = storage_url.removeprefix("/uploads/").replace("\\", "/")
+    uploads_root = FileService.resolve_upload_dir().resolve()
+    file_path = (uploads_root / relative_path).resolve()
+    try:
+        file_path.relative_to(uploads_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid resume path") from exc
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Stored resume file not found")
+    return FileResponse(
+        file_path,
+        media_type=resume.mime_type,
+        filename=resume.original_filename,
+        content_disposition_type="attachment" if download else "inline",
+    )
 
 
 @router.get("/resumes/{resume_id}/parsed-profile")
@@ -1217,6 +1435,11 @@ async def generate_offer_pdf(offer_id: str, user: User = Depends(require_recruit
     return await OfferWorkflowService.generate_pdf(company(user), str(user.id), offer_id)
 
 
+@router.post("/offers/{offer_id}/upload-letter")
+async def upload_offer_letter(offer_id: str, file: UploadFile = File(...), user: User = Depends(require_recruitment_manager)):
+    return await OfferWorkflowService.upload_letter(company(user), str(user.id), offer_id, file)
+
+
 @router.post("/offers/{offer_id}/send")
 async def send_offer(offer_id: str, user: User = Depends(require_recruitment_manager)):
     return await OfferWorkflowService.send(company(user), str(user.id), offer_id)
@@ -1434,4 +1657,7 @@ async def public_offer_pdf(secure_token: str):
     offer, _ = await OfferWorkflowService.public_offer(secure_token)
     if not offer.immutable_pdf_path:
         raise HTTPException(status_code=404, detail="Offer PDF not generated")
-    return FileResponse(offer.immutable_pdf_path, media_type="application/pdf", filename=f"{offer.offer_number or 'offer'}.pdf")
+    suffix = Path(offer.immutable_pdf_path).suffix.lower()
+    media_type = "image/jpeg" if suffix in {".jpg", ".jpeg"} else "image/png" if suffix == ".png" else "application/pdf"
+    filename = f"{offer.offer_number or 'offer'}{suffix or '.pdf'}"
+    return FileResponse(offer.immutable_pdf_path, media_type=media_type, filename=filename)

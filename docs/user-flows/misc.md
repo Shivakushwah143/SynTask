@@ -42,8 +42,8 @@ flowchart TD
 
 ## Global Time Settings
 - How the user reaches it: navbar live clock.
-- What they can do: view active timezone, time format, seconds setting, and automatic/manual time mode.
-- What happens after every action: Admin and Super Admin changes save and immediately update clock/display formatting.
+- What they can do: view active timezone, time format, seconds setting, and automatic/manual time mode; Admin and Super Admin can change settings in a local draft.
+- What happens after every action: changing a setting reveals Save and Cancel; Save sends `PUT /api/v1/time/settings`, shows an in-flight loading state, and updates clock/display formatting after success; Cancel restores the last saved settings without sending a request.
 - Backend APIs called: `GET /api/v1/time/settings`, `PUT /api/v1/time/settings`.
 - Timeline events created: none directly.
 - Notifications sent: none directly.

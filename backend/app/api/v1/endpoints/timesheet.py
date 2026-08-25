@@ -198,8 +198,8 @@ async def get_team_timesheet(
     current_user: User = Depends(get_current_user),
 ):
     """Get team timesheet with hierarchical RBAC"""
-    # Check access - Admin, Manager, Lead can view team timesheet
-    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+    # Check access - Admin, Sub Admin, Manager, Lead can view team timesheet
+    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.SUB_ADMIN]
     
     if not is_admin and current_user.role not in [UserRole.MANAGER, UserRole.LEAD]:
         raise HTTPException(
@@ -314,8 +314,8 @@ async def get_timesheet_list(
     current_user: User = Depends(get_current_user),
 ):
     """Get timesheet list with last 5 days status for team members (hierarchical RBAC)"""
-    # Check access - Admin, Manager, Lead can view team timesheet list
-    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+    # Check access - Admin, Sub Admin, Manager, Lead can view team timesheet list
+    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.SUB_ADMIN]
     
     if not is_admin and current_user.role not in [UserRole.MANAGER, UserRole.LEAD]:
         raise HTTPException(
@@ -432,8 +432,8 @@ async def delete_timesheet_entry(
     check_company_access(current_user, entry.company_id)
     
     # Only allow users to delete their own entries (unless admin/lead)
-    # Check access - Admin, Manager, Lead can delete team entries
-    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+    # Check access - Admin, Sub Admin, Manager, Lead can delete team entries
+    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.SUB_ADMIN]
     
     if entry.user_id != str(current_user.id) and not is_admin and current_user.role not in [UserRole.MANAGER, UserRole.LEAD]:
         raise HTTPException(

@@ -251,11 +251,14 @@ class MicrosoftGraphClient:
 
 
 class ResumeIntelligenceService:
-    allowed_ext = {".pdf", ".docx", ".txt"}
+    allowed_ext = {".pdf", ".doc", ".docx", ".txt", ".jpg", ".jpeg", ".png"}
     allowed_mimes = {
         "application/pdf",
+        "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "text/plain",
+        "image/jpeg",
+        "image/png",
     }
 
     @staticmethod
@@ -274,10 +277,12 @@ class ResumeIntelligenceService:
         if not resume:
             raise HTTPException(status_code=500, detail="Resume storage failed")
         candidate.resume_id = str(resume.id)
+        candidate.resume_url = resume.storage_url
         candidate.updated_at = utc_now()
         await candidate.save()
         await record(company_id, "ResumeUploaded", actor_id, candidate_id=candidate_id, payload={"resume_id": str(resume.id)})
-        await ResumeIntelligenceService.process_resume(company_id, str(resume.id), actor_id)
+        if Path(resume.original_filename or "").suffix.lower() in {".pdf", ".doc", ".docx", ".txt"}:
+            await ResumeIntelligenceService.process_resume(company_id, str(resume.id), actor_id)
         return resume
 
     @staticmethod
@@ -1100,6 +1105,39 @@ class OfferWorkflowService:
         return offer
 
     @staticmethod
+    async def upload_letter(company_id: str, actor_id: str, offer_id: str, file: UploadFile) -> Offer:
+        offer = await TenantRepository.get(Offer, offer_id, company_id)
+        if not offer:
+            raise HTTPException(status_code=404, detail="Offer not found")
+        filename = Path(file.filename or "offer-letter").name
+        suffix = Path(filename).suffix.lower()
+        content_type = (file.content_type or "").lower()
+        allowed_suffixes = {".pdf", ".jpg", ".jpeg", ".png"}
+        allowed_types = {"application/pdf", "image/jpeg", "image/png"}
+        if suffix not in allowed_suffixes and content_type not in allowed_types:
+            raise HTTPException(status_code=400, detail="Offer letter must be a PDF, JPG, or PNG file")
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Offer letter file is empty")
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Offer letter file is too large")
+        path = Path(settings.UPLOAD_DIR) / "offers"
+        path.mkdir(parents=True, exist_ok=True)
+        checksum = hashlib.sha256(content).hexdigest()
+        version = int(time.time())
+        stored_suffix = suffix or ".pdf"
+        file_path = path / f"{offer.offer_number or offer_id}-uploaded-v{version}{stored_suffix}"
+        file_path.write_bytes(content)
+        offer.pdf_checksum = checksum
+        offer.immutable_pdf_path = str(file_path)
+        offer.pdf_file_id = f"/uploads/offers/{file_path.name}"
+        offer.status = "ready"
+        offer.updated_at = utc_now()
+        await offer.save()
+        await record(company_id, "OfferLetterUploaded", actor_id, candidate_id=offer.candidate_id, job_id=offer.job_id, payload={"offer_id": offer_id, "filename": filename, "checksum": checksum})
+        return offer
+
+    @staticmethod
     async def send(company_id: str, actor_id: str, offer_id: str) -> dict[str, Any]:
         offer = await TenantRepository.get(Offer, offer_id, company_id)
         if not offer:
@@ -1111,14 +1149,20 @@ class OfferWorkflowService:
         expiry = offer.offer_expiry or utc_now() + timedelta(days=7)
         existing = await OfferAccessToken.find_one({"company_id": company_id, "offer_id": offer_id, "revoked_at": None})
         if not existing:
-            await OfferAccessToken(company_id=company_id, offer_id=offer_id, candidate_id=offer.candidate_id, token_hash=token_hash, expires_at=expiry).insert()
+            existing = await OfferAccessToken(company_id=company_id, offer_id=offer_id, candidate_id=offer.candidate_id, token_hash=token_hash, access_token_encrypted=encrypt_sensitive_value(raw), expires_at=expiry).insert()
+        elif not existing.access_token_encrypted:
+            existing.revoked_at = utc_now()
+            await existing.save()
+            existing = await OfferAccessToken(company_id=company_id, offer_id=offer_id, candidate_id=offer.candidate_id, token_hash=token_hash, access_token_encrypted=encrypt_sensitive_value(raw), expires_at=expiry).insert()
+        else:
+            raw = decrypt_sensitive_value(existing.access_token_encrypted)
         offer.status = "sent"
         offer.sent_at = offer.sent_at or utc_now()
         offer.updated_at = utc_now()
         await offer.save()
         await RecruitmentService.move(await TenantRepository.get(Candidate, offer.candidate_id, company_id), CandidateStatus.OFFER_SENT, actor_id)
         candidate = await TenantRepository.get(Candidate, offer.candidate_id, company_id)
-        secure_url = f"{settings.FRONTEND_URL}/public/offers/{raw}" if not existing else None
+        secure_url = f"{settings.FRONTEND_URL}/public/offers/{raw}"
         delivery = None
         if candidate and candidate.email and secure_url:
             delivery = await RecruitmentEmailService.send(

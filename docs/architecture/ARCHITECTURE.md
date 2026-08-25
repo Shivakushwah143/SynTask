@@ -53,6 +53,8 @@ Project/task delivery access is company-scoped before role rules apply. Company 
 
 Ticket creation and assignment are company-scoped. Only Employees and Leads create tickets. An Employee may assign a ticket only to a Lead, Sub Admin, or Admin; Leads, Sub Admins, and Admins may assign to any same-company user. Sub Admins can view and update all company tickets, so they are valid ticket assignees alongside Admins. Cross-company assignment is rejected (tenant isolation).
 
+EOD reports and time tracking are company-scoped. Super Admin, Admin, and Sub Admin can view all active employees' EOD reports and team timesheets in their company; Managers and Leads view their own reports plus their subordinates' (hierarchy-scoped). Employees see only their own EOD and time-tracking entries. Cross-company access is rejected (tenant isolation). The Timesheet page renders a Team Time Tracking bar section for Admin, Sub Admin, Manager, and Lead users.
+
 ## Authentication Flow
 ```mermaid
 sequenceDiagram
@@ -89,6 +91,13 @@ FastAPI endpoints, Motor, Beanie, Redis, and background helpers are async-first.
 
 ### Dependency Injection
 Authentication, role gates, module gates, and company access checks are implemented as FastAPI dependencies.
+
+### Sales Commercial Workflow
+Sales lead identity and shared qualification fields live on `SalesProspect`. Larger pre-conversion Discovery and Audit workspaces are tenant+lead-scoped documents (`SalesDiscovery`, `SalesAudit`) with unique `(company_id, lead_id)` indexes so repeated opens or saves do not create duplicate workspace records. APIs load the existing lead first and enforce the same ownership fields used by the rest of CRM: `assigned_to`, `assigned_by`, and `created_by`.
+
+Discovery/Audit quotation generation reuses `CRMDocument` rather than creating a second quotation system. The generated quotation is always `draft` and its `content_snapshot` includes the captured Discovery/Audit source snapshot plus product-mapped line items. Unmapped recommendations are carried as pricing-required quotation lines and cannot be sent/shared until commercial values are supplied. Contracts continue to be created from the selected accepted quotation document snapshot, so later Discovery/Audit edits cannot alter sent, accepted, or contracted commercial terms.
+
+Proposal and Agreement stage statuses are domain-synchronized from document evidence. Quotation lifecycle changes update `SalesProspect.proposal_status` server-side (`draft`, `sent`, `viewed`, `revision_requested`, `rejected`, `expired`, `accepted`). Contract lifecycle changes update `SalesProspect.agreement_status` server-side (`draft`, `sent`, `viewed`, `rejected`, `expired`, `signed`). Manual status APIs reject authoritative Proposal/Agreement outcomes; users must use the quotation or contract workflow. Tenant isolation remains enforced by loading the lead first, checking ownership/company access, and then scoping `CRMDocument` by the same `company_id` and `lead_id`.
 
 ### Meta Integration Foundation
 Meta support lives under `backend/app/integrations/meta` rather than CRM controllers. Phase 1 adds tenant-scoped settings, durable webhook inbox, sync-run, and marketing-insight documents. Deployment-wide Meta credentials come from environment variables; tenant tokens are encrypted with the existing Fernet helper before database storage. `META_INTEGRATION_ENABLED` defaults to `False`, and tenant settings default disabled, so deploying the foundation changes no CRM behavior.

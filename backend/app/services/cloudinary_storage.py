@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import base64
 import time
 import uuid
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlparse, urlunparse
 
 import requests
 from fastapi import HTTPException, status
@@ -31,6 +32,11 @@ def _sign(params: dict[str, Any]) -> str:
 
 def _resource_type(mime_type: str) -> str:
     return "image" if mime_type.startswith(IMAGE_MIME_PREFIX) else "auto"
+
+
+def _delivery_signature(path_to_sign: str) -> str:
+    digest = hashlib.sha1(f"{path_to_sign}{settings.CLOUDINARY_API_SECRET}".encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")[:8]
 
 
 class CloudinaryStorage:
@@ -83,9 +89,16 @@ class CloudinaryStorage:
             ) from exc
 
         if response.status_code >= 400:
+            try:
+                cloudinary_message = response.json().get("error", {}).get("message") or response.text[:300]
+            except Exception:
+                cloudinary_message = response.text[:300]
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Cloudinary upload failed",
+                detail=(
+                    "File upload failed at the storage provider: "
+                    + (cloudinary_message or "unknown error")
+                ),
             )
 
         payload = response.json()
@@ -104,6 +117,7 @@ class CloudinaryStorage:
         delivery_type: str = "authenticated",
         expires_in: int = 3600,
         attachment: bool = False,
+        storage_url: str | None = None,
     ) -> str | None:
         """Build a short-lived signed delivery URL for a stored Cloudinary file.
 
@@ -113,20 +127,26 @@ class CloudinaryStorage:
         """
         if not CloudinaryStorage.enabled() or not public_id:
             return None
-        expires_at = int(time.time()) + expires_in
-        params = {
-            "timestamp": int(time.time()),
-            "public_id": public_id,
-            "expires_at": expires_at,
-        }
-        params["signature"] = _sign(params)
-        url = (
-            f"https://res.cloudinary.com/{settings.CLOUDINARY_CLOUD_NAME}/"
-            f"{resource_type}/{delivery_type}/{public_id}?{urlencode(params)}"
-        )
-        if attachment:
-            url += "&fl_attachment"
-        return url
+        if delivery_type == "upload":
+            if not storage_url:
+                return f"https://res.cloudinary.com/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/upload/{public_id}"
+            return storage_url
+
+        delivery_tail = None
+        parsed = urlparse(storage_url or "")
+        marker = f"/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/{delivery_type}/"
+        if parsed.scheme and marker in parsed.path:
+            delivery_tail = parsed.path.split(marker, 1)[1].lstrip("/")
+        if not delivery_tail:
+            delivery_tail = public_id.lstrip("/")
+
+        if attachment and not delivery_tail.startswith("fl_attachment/"):
+            delivery_tail = f"fl_attachment/{delivery_tail}"
+        signature = _delivery_signature(delivery_tail)
+        signed_path = f"/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/{delivery_type}/s--{signature}--/{delivery_tail}"
+        if parsed.scheme:
+            return urlunparse((parsed.scheme, parsed.netloc, signed_path, "", "", ""))
+        return f"https://res.cloudinary.com{signed_path}"
 
     @staticmethod
     def delete(public_id: str, resource_type: str = "image", delivery_type: str = "upload") -> None:

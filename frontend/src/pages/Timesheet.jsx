@@ -13,6 +13,8 @@ import { Badge, Button, EmptyState, FormField, inputClassName, PageHeader, Skele
 import { asArray, formatDate, toFormData } from './phase4Utils'
 import { addWeeks, eachDayOfInterval, endOfWeek, format, parseISO, startOfWeek, isSameDay } from 'date-fns'
 import { timeService } from '@/services/timeService'
+import { ROLE, normalizeRole } from '../utils/roles'
+import { useAuthStore } from '../store/authStore'
 
 const STANDARD_WORK_SECONDS = 8 * 3600
 
@@ -23,6 +25,9 @@ const formatSeconds = (totalSeconds) => {
   const mins = Math.floor((s % 3600) / 60)
   return `${hrs}h ${mins}m`
 }
+
+// Roles that can view other employees' time tracking (mirrors backend team-timesheet gate)
+export const canViewTeamTimesheet = (role) => [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD].includes(normalizeRole(role))
 
 // Stat Card Component
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
@@ -75,7 +80,33 @@ const WorkTypeBadge = ({ workType }) => {
   )
 }
 
-const AttendanceSummaryBlock = ({ summary }) => {
+const AttendanceSummaryBlock = ({ summary, loading }) => {
+  if (loading) {
+    return (
+      <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="rounded-lg bg-indigo-50 p-2.5 dark:bg-indigo-950/30">
+              <BarChart2 className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Today's Attendance</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Real-time tracking</p>
+            </div>
+          </div>
+          <div className="mb-4">
+            <div className="h-3 animate-pulse rounded-full bg-gray-100 dark:bg-gray-800" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {[...Array(6)].map((_, index) => (
+              <div key={index} className="h-16 animate-pulse rounded-xl bg-gray-50 dark:bg-gray-900/50" />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
   if (!summary) return null
 
   const progressPct = Math.min(100, ((summary.total_working_seconds || 0) / STANDARD_WORK_SECONDS) * 100)
@@ -195,8 +226,69 @@ const AttendanceSummaryBlock = ({ summary }) => {
   )
 }
 
+const TeamTimeTrackingBlock = ({ rows, loading }) => {
+  const maxHours = Math.max(...rows.map((row) => row.totalHours), 1)
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
+      <div className="border-b border-gray-200 bg-gradient-to-r from-violet-50/50 to-white p-4 dark:border-gray-700 dark:from-violet-900/20 dark:to-gray-800">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
+            <Users className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+          </div>
+          <div>
+            <h2 className="font-bold text-gray-900 dark:text-white">Team Time Tracking</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Hours logged by your team this week</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-4">
+        {loading ? (
+          <div className="space-y-3">
+            {[...Array(5)].map((_, index) => (
+              <div key={index} className="h-8 animate-pulse rounded-lg bg-gray-100 dark:bg-gray-800" />
+            ))}
+          </div>
+        ) : rows.length ? (
+          <div className="space-y-3">
+            {rows.map((row) => (
+              <div key={row.id} className="flex items-center gap-3">
+                <div className="w-44 shrink-0 truncate text-sm font-medium text-gray-800 dark:text-gray-100" title={row.name}>
+                  {row.name}
+                </div>
+                <div className="h-6 flex-1 overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
+                  <div
+                    className="flex h-full items-center justify-end rounded-lg bg-gradient-to-r from-violet-500 to-indigo-500 pr-2 text-[11px] font-semibold text-white transition-all duration-700"
+                    style={{ width: `${row.totalHours > 0 ? Math.max((row.totalHours / maxHours) * 100, 6) : 0}%` }}
+                  >
+                    {row.totalHours > 0 ? `${row.totalHours.toFixed(1)}h` : ''}
+                  </div>
+                </div>
+                <div className="w-14 shrink-0 text-right text-sm font-bold text-gray-700 dark:text-gray-300">
+                  {row.totalHours.toFixed(1)}h
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="py-8 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
+              <Users className="h-6 w-6 text-gray-400" />
+            </div>
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">No team time entries</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Team members haven't logged hours this week.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Timesheet() {
   const queryClient = useQueryClient()
+  const { user } = useAuthStore()
+  const canViewTeam = canViewTeamTimesheet(user?.role)
   const today = timeService.toUtcISOString(timeService.now()).slice(0, 10)
   const [form, setForm] = useState({
     date: today,
@@ -206,6 +298,7 @@ export default function Timesheet() {
   })
   const [errors, setErrors] = useState({})
   const [attendanceSummary, setAttendanceSummary] = useState(null)
+  const [attendanceLoading, setAttendanceLoading] = useState(true)
   const [weekOffset, setWeekOffset] = useState(0)
   const [weeklyDraft, setWeeklyDraft] = useState({})
   const [savingWeek, setSavingWeek] = useState(false)
@@ -213,6 +306,14 @@ export default function Timesheet() {
   const mine = useQuery('my-timesheet', timesheetApi.getMine)
   const entries = asArray(mine.data, ['entries', 'timesheet'])
   const weekStart = useMemo(() => startOfWeek(addWeeks(timeService.now(), weekOffset), { weekStartsOn: 1 }), [weekOffset])
+  const team = useQuery(
+    ['team-timesheet', weekStart],
+    () => timesheetApi.getTeam({
+      start_date: timeService.toUtcISOString(weekStart).slice(0, 10),
+      end_date: timeService.toUtcISOString(endOfWeek(weekStart, { weekStartsOn: 1 })).slice(0, 10),
+    }),
+    { enabled: canViewTeam }
+  )
   const weekDays = useMemo(() => eachDayOfInterval({ start: weekStart, end: endOfWeek(weekStart, { weekStartsOn: 1 }) }), [weekStart])
   const rows = useMemo(() => {
     const map = new Map()
@@ -225,6 +326,25 @@ export default function Timesheet() {
     })
     return Array.from(map.values())
   }, [entries])
+
+  const teamRows = useMemo(() => {
+    const payload = team.data?.data ?? team.data
+    if (!payload) return []
+    const { timesheet_data = {}, user_data = {} } = payload
+    const userIds = new Set([...Object.keys(user_data), ...Object.keys(timesheet_data)])
+    return Array.from(userIds)
+      .map((userId) => {
+        const info = user_data[userId] || {}
+        const days = timesheet_data[userId] || {}
+        return {
+          id: userId,
+          name: info.name || 'Unknown',
+          email: info.email || '',
+          totalHours: Object.values(days).reduce((sum, day) => sum + Number(day.total_hours || 0), 0),
+        }
+      })
+      .sort((a, b) => b.totalHours - a.totalHours)
+  }, [team.data])
 
   useEffect(() => {
     const nextDraft = {}
@@ -248,11 +368,13 @@ export default function Timesheet() {
   )
 
   useEffect(() => {
+    setAttendanceLoading(true)
     attendanceAPI.getTimesheetSummary()
       .then(res => {
         if (res?.data) setAttendanceSummary(res.data)
       })
       .catch(() => {})
+      .finally(() => setAttendanceLoading(false))
   }, [])
 
   const update = (key, value) => setForm(state => ({ ...state, [key]: value }))
@@ -383,7 +505,7 @@ export default function Timesheet() {
       </div>
 
       {/* Attendance Summary Block */}
-      <AttendanceSummaryBlock summary={attendanceSummary} />
+      <AttendanceSummaryBlock summary={attendanceSummary} loading={attendanceLoading} />
 
       {/* Weekly Grid */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
@@ -571,6 +693,11 @@ export default function Timesheet() {
           }
         </div>
       </div>
+
+      {/* Team Time Tracking */}
+      {canViewTeam && (
+        <TeamTimeTrackingBlock rows={teamRows} loading={team.isLoading} />
+      )}
     </div>
   )
 }

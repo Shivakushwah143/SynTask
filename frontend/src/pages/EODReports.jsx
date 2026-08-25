@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { format } from 'date-fns'
 import { ClipboardCheck, Edit3, Search, Send, Clock, Calendar, Users, Activity, CheckCircle2, AlertCircle, TrendingUp } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { eodAPI } from '../api/eod'
@@ -14,7 +13,7 @@ export const canReviewEODReports = (role) => [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE
 
 export const canSubmitOwnEODReport = (role) => ![ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN].includes(normalizeRole(role))
 
-// Stat Card Component
+// Stat Card Component (compact)
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   const colors = {
     indigo: 'from-indigo-500 to-purple-500',
@@ -26,15 +25,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
-          <Icon className="h-4 w-4" />
-        </div>
+    <div className="group flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-2.5 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+      <div className={`shrink-0 rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-sm`}>
+        <Icon className="h-4 w-4" />
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      <div className="min-w-0">
+        <p className="truncate text-[11px] font-medium leading-none text-gray-500 dark:text-gray-400">{label}</p>
+        <p className="mt-1 truncate text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+      </div>
+      {subtitle && (
+        <p className="ml-auto hidden shrink-0 text-[11px] text-gray-400 dark:text-gray-500 lg:block">{subtitle}</p>
+      )}
     </div>
   )
 }
@@ -50,6 +51,8 @@ export default function EODReports() {
   const [filters, setFilters] = useState({ report_date: todayIso(), search: '', team: '' })
   const [reports, setReports] = useState([])
   const [pending, setPending] = useState([])
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(null)
+  const [detailTab, setDetailTab] = useState('work')
 
   const loadMine = useCallback(async () => {
     const data = await eodAPI.today()
@@ -104,6 +107,43 @@ export default function EODReports() {
   const totalSubmitted = reports.length
   const totalPending = pending.length
 
+  // Combine submitted and pending into a single employee list for the master-detail layout
+  const allEmployees = useMemo(() => {
+    const map = new Map()
+    reports.forEach((item) => {
+      map.set(item.employee_id, {
+        id: item.employee_id,
+        name: item.employee_name || 'Employee',
+        status: 'submitted',
+        report: item,
+      })
+    })
+    pending.forEach((item) => {
+      if (!map.has(item.employee_id)) {
+        map.set(item.employee_id, {
+          id: item.employee_id,
+          name: item.employee_name || 'Employee',
+          status: item.status === 'leave' ? 'leave' : 'pending',
+          report: null,
+        })
+      }
+    })
+    return Array.from(map.values())
+  }, [reports, pending])
+
+  // Auto-select the first employee when the list changes and the current selection is gone
+  useEffect(() => {
+    if (!allEmployees.length) {
+      setSelectedEmployeeId(null)
+      return
+    }
+    if (!allEmployees.some((employee) => employee.id === selectedEmployeeId)) {
+      setSelectedEmployeeId(allEmployees[0].id)
+    }
+  }, [allEmployees, selectedEmployeeId])
+
+  const selectedEmployee = allEmployees.find((employee) => employee.id === selectedEmployeeId) || null
+
   const taskGroups = useMemo(() => ([
     ['Completed Tasks Today', autoSummary.completed_tasks || []],
     ['Tasks In Progress', autoSummary.in_progress_tasks || []],
@@ -153,32 +193,32 @@ export default function EODReports() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-sky-600 via-indigo-600 to-violet-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-sky-600 via-indigo-600 to-violet-600 p-3 text-white shadow-xl md:p-4">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-              <ClipboardCheck className="h-6 w-6" />
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-white/20 p-1.5 backdrop-blur-sm">
+              <ClipboardCheck className="h-4 w-4" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold md:text-3xl">Daily Work Report</h1>
-              <p className="mt-1 text-indigo-100">
+              <h1 className="text-lg font-bold md:text-xl">Daily Work Report</h1>
+              <p className="mt-0.5 text-xs text-indigo-100">
                 {canSubmitOwnReport ? 'Submit one simple end-of-day summary for today.' : 'Review submitted and pending end-of-day reports for your company.'}
               </p>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="mt-2.5 flex flex-wrap gap-2">
             {canSubmitOwnReport && (
-              <span className={`inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium backdrop-blur-sm ${
+              <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-medium backdrop-blur-sm ${
                 status === 'submitted' 
                   ? 'bg-emerald-500/30 text-emerald-100' 
                   : status === 'leave'
                   ? 'bg-amber-500/30 text-amber-100'
                   : 'bg-gray-500/30 text-gray-100'
               }`}>
-                {status === 'submitted' && <CheckCircle2 className="h-4 w-4 mr-2" />}
-                {status === 'leave' && <AlertCircle className="h-4 w-4 mr-2" />}
+                {status === 'submitted' && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                {status === 'leave' && <AlertCircle className="h-3 w-3 mr-1" />}
                 {statusLabel}
               </span>
             )}
@@ -189,7 +229,7 @@ export default function EODReports() {
       {canSubmitOwnReport ? (
         <>
           {/* Stats for employee view */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               label="Working Hours"
               value={formatSeconds(autoSummary.total_working_seconds)}
@@ -332,7 +372,7 @@ export default function EODReports() {
       {canReview ? (
         <>
           {/* Stats for review section */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               label="Submitted"
               value={totalSubmitted}
@@ -363,33 +403,31 @@ export default function EODReports() {
             />
           </div>
 
-          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-                    <Users className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-gray-900 dark:text-white">Manager Review</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Submitted and pending EODs for your visible team</p>
-                  </div>
+          <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white px-4 py-2.5 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+              <div className="flex items-center gap-2.5">
+                <div className="rounded-md bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+                  <Users className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900 dark:text-white">Manager Review</h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Submitted and pending EODs for your visible team</p>
                 </div>
               </div>
             </div>
 
-            <div className="p-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <div className="p-3">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center">
                 <input 
-                  className={`${inputClassName} md:w-48 bg-gray-50 dark:bg-gray-900/50`} 
+                  className={`${inputClassName} md:w-44 bg-gray-50 dark:bg-gray-900/50`} 
                   type="date" 
                   value={filters.report_date} 
                   onChange={(event) => setFilters({ ...filters, report_date: event.target.value })} 
                 />
                 <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
                   <input 
-                    className={`${inputClassName} pl-9 bg-gray-50 dark:bg-gray-900/50`} 
+                    className={`${inputClassName} pl-8 bg-gray-50 dark:bg-gray-900/50`} 
                     placeholder="Search employees..." 
                     value={filters.search} 
                     onChange={(event) => setFilters({ ...filters, search: event.target.value })} 
@@ -397,7 +435,7 @@ export default function EODReports() {
                   />
                 </div>
                 <input 
-                  className={`${inputClassName} md:w-40 bg-gray-50 dark:bg-gray-900/50`} 
+                  className={`${inputClassName} md:w-36 bg-gray-50 dark:bg-gray-900/50`} 
                   placeholder="Team" 
                   value={filters.team} 
                   onChange={(event) => setFilters({ ...filters, team: event.target.value })} 
@@ -405,43 +443,161 @@ export default function EODReports() {
                 />
               </div>
 
-              <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                    Submitted
-                  </h3>
-                  <div className="mt-3 space-y-3">
-                    {reports.length ? reports.map((item) => (
-                      <div key={item.id} className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 transition hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-900/30 dark:hover:border-indigo-700">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">{item.employee_name || 'Employee'}</p>
-                            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{item.worked_on}</p>
-                          </div>
-                          <Badge label="Submitted" colorKey="submitted" />
+              <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(260px,0.9fr)_1.6fr]">
+                {/* LEFT: employee list with status */}
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50/50 dark:border-gray-700 dark:bg-gray-900/30">
+                  <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-700">
+                    <h3 className="flex items-center gap-1.5 text-xs font-semibold text-gray-900 dark:text-white">
+                      <Users className="h-3.5 w-3.5 text-indigo-500" />
+                      Employees
+                    </h3>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{allEmployees.length}</span>
+                  </div>
+                  <div className="max-h-[440px] space-y-1.5 overflow-y-auto p-2">
+                    {allEmployees.length ? allEmployees.map((employee) => (
+                      <button
+                        key={employee.id}
+                        type="button"
+                        onClick={() => { setSelectedEmployeeId(employee.id); setDetailTab('work') }}
+                        className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left transition ${
+                          selectedEmployeeId === employee.id
+                            ? 'border-indigo-300 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/40'
+                            : 'border-gray-200 bg-white hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-gray-900 dark:text-white" title={employee.name}>{employee.name}</p>
+                          {employee.status === 'submitted' && employee.report?.report_date && (
+                            <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{employee.report.report_date}</p>
+                          )}
                         </div>
-                      </div>
-                    )) : <div className="py-8 text-center text-gray-500 dark:text-gray-400">No submitted EODs found.</div>}
+                        <Badge
+                          label={employee.status === 'submitted' ? 'Submitted' : employee.status === 'leave' ? 'Leave' : 'Pending'}
+                          colorKey={employee.status === 'submitted' ? 'submitted' : employee.status === 'leave' ? 'pending' : 'draft'}
+                        />
+                      </button>
+                    )) : (
+                      <div className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">No employees found.</div>
+                    )}
                   </div>
                 </div>
 
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 text-amber-500" />
-                    Pending
-                  </h3>
-                  <div className="mt-3 space-y-3">
-                    {pending.length ? pending.map((item) => (
-                      <div key={item.employee_id} className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-900/30">
-                        <div>
-                          <p className="font-medium text-gray-900 dark:text-white">{item.employee_name}</p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">{item.email}</p>
+                {/* RIGHT: selected employee EOD detail */}
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                  {selectedEmployee ? (
+                    selectedEmployee.status === 'submitted' && selectedEmployee.report ? (
+                      <>
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+                          <div className="flex items-center gap-2.5">
+                            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+                              <ClipboardCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-bold text-gray-900 dark:text-white">{selectedEmployee.name}</h3>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {selectedEmployee.report.report_date} · {formatSeconds(selectedEmployee.report.total_working_seconds)} worked
+                              </p>
+                            </div>
+                          </div>
+                          <Badge label="Submitted" colorKey="submitted" />
                         </div>
-                        <Badge label={item.status === 'leave' ? 'Leave' : 'Pending'} colorKey={item.status === 'leave' ? 'pending' : 'draft'} />
+
+                        {/* Detail tabs */}
+                        <div className="flex gap-1 border-b border-gray-200 px-3 pt-2 dark:border-gray-700">
+                          {[
+                            { key: 'work', label: 'Worked', icon: Activity },
+                            { key: 'blockers', label: 'Work Blockage', icon: AlertCircle },
+                            { key: 'plan', label: 'Plan for Tomorrow', icon: Calendar },
+                          ].map((tab) => (
+                            <button
+                              key={tab.key}
+                              type="button"
+                              onClick={() => setDetailTab(tab.key)}
+                              className={`inline-flex items-center gap-1.5 rounded-t-lg border-b-2 px-3 py-2 text-xs font-semibold transition ${
+                                detailTab === tab.key
+                                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                              }`}
+                            >
+                              <tab.icon className="h-3.5 w-3.5" />
+                              {tab.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="p-4">
+                          {detailTab === 'work' && (
+                            <div className="space-y-4">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">What did you work on?</p>
+                                <p className="mt-1.5 whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
+                                  {selectedEmployee.report.worked_on || 'No details provided.'}
+                                </p>
+                              </div>
+                              <div className="grid gap-3 sm:grid-cols-3">
+                                <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-900/50">
+                                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Completed</p>
+                                  <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">{selectedEmployee.report.task_summary?.completed_count || 0}</p>
+                                </div>
+                                <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-900/50">
+                                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">In Progress</p>
+                                  <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">{selectedEmployee.report.task_summary?.in_progress_count || 0}</p>
+                                </div>
+                                <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-900/50">
+                                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Assigned Today</p>
+                                  <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">{selectedEmployee.report.task_summary?.assigned_today_count || 0}</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          {detailTab === 'blockers' && (
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Work Blockage</p>
+                              {selectedEmployee.report.blockers ? (
+                                <p className="mt-1.5 whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">{selectedEmployee.report.blockers}</p>
+                              ) : (
+                                <div className="mt-2 rounded-lg bg-emerald-50 px-3 py-5 text-center text-sm text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                                  <CheckCircle2 className="mx-auto mb-1 h-5 w-5" />
+                                  No blockers reported.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {detailTab === 'plan' && (
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Plan for Tomorrow</p>
+                              {selectedEmployee.report.tomorrow_plan ? (
+                                <p className="mt-1.5 whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">{selectedEmployee.report.tomorrow_plan}</p>
+                              ) : (
+                                <div className="mt-2 rounded-lg bg-gray-50 px-3 py-5 text-center text-sm text-gray-500 dark:bg-gray-900/50 dark:text-gray-400">
+                                  No plan for tomorrow provided.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex min-h-[300px] flex-col items-center justify-center p-6 text-center">
+                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                          <AlertCircle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                        </div>
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-white">{selectedEmployee.name}</h3>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                          {selectedEmployee.status === 'leave'
+                            ? 'On leave — no EOD report required for this date.'
+                            : 'This employee has not submitted an EOD report for the selected date.'}
+                        </p>
                       </div>
-                    )) : <div className="py-8 text-center text-gray-500 dark:text-gray-400">No pending EODs. Everyone has submitted or is on leave.</div>}
-                  </div>
+                    )
+                  ) : (
+                    <div className="flex min-h-[300px] flex-col items-center justify-center p-6 text-center">
+                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
+                        <Users className="h-6 w-6 text-gray-400" />
+                      </div>
+                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Select an employee to view their EOD report.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

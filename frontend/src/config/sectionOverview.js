@@ -37,7 +37,7 @@ export const SECTION_OVERVIEWS = {
   },
   inbox: {
     title: "Unified Inbox",
-    description: "Monitor notifications, social messages, activity, daily updates, AI replies, and approval queues.",
+    description: "Monitor notifications, social messages, activity, AI replies, and approval queues.",
     stats: ["Messages", "Notifications", "Updates", "Approvals"],
     actions: ["Open inbox", "Review alerts", "Check activity", "Approve replies"],
   },

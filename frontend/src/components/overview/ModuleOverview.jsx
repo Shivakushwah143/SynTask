@@ -1,22 +1,22 @@
 import { Link } from "react-router-dom";
 import { AlertTriangle, ArrowRight, BarChart3, Clock3, Layers3, Search, Sparkles } from "lucide-react";
 
-const iconWrap = "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-surface-border bg-surface-muted";
+const iconWrap = "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-surface-border bg-surface-muted";
 
 export const ModuleOverviewHeader = ({ icon: Icon, title, label, description, accent }) => (
-  <section className="rounded-lg border border-surface-border bg-surface p-5 shadow-sm">
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex min-w-0 items-start gap-4">
+  <section className="rounded-lg border border-surface-border bg-surface p-3 shadow-sm">
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
         <div className={`${iconWrap} ${accent}`}>
-          {Icon ? <Icon className="h-6 w-6" aria-hidden="true" /> : null}
+          {Icon ? <Icon className="h-5 w-5" aria-hidden="true" /> : null}
         </div>
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase text-text-muted">{label}</p>
-          <h1 className="mt-1 text-2xl font-bold text-text-primary sm:text-3xl">{title}</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">{description}</p>
+          <h1 className="mt-0.5 text-lg font-bold text-text-primary sm:text-xl">{title}</h1>
+          <p className="mt-1 max-w-2xl truncate text-xs text-text-muted">{description}</p>
         </div>
       </div>
-      <div className="flex items-center gap-2 rounded-lg border border-primary-500/20 bg-primary-500/10 px-3 py-2 text-sm font-medium text-primary-700 dark:text-primary-300">
+      <div className="flex h-8 items-center gap-2 rounded-lg border border-primary-500/20 bg-primary-500/10 px-2.5 text-xs font-semibold text-primary-700 dark:text-primary-300">
         <Sparkles className="h-4 w-4" aria-hidden="true" />
         Workspace Map
       </div>
@@ -27,17 +27,21 @@ export const ModuleOverviewHeader = ({ icon: Icon, title, label, description, ac
 export const OverviewStats = ({ stats }) => {
   const icons = [Layers3, Clock3, BarChart3, Sparkles];
   return (
-    <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <section className="grid grid-cols-2 gap-2 lg:grid-cols-4">
       {stats.map((stat, index) => {
         const Icon = icons[index % icons.length];
         return (
-          <div key={stat.label} className="rounded-lg border border-surface-border bg-surface p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-medium text-text-muted">{stat.label}</p>
-              <Icon className="h-4 w-4 text-primary-600 dark:text-primary-300" aria-hidden="true" />
+          <div key={stat.label} className="rounded-lg border border-surface-border bg-surface p-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-500/10 text-primary-600 dark:text-primary-300">
+                <Icon className="h-4 w-4" aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-[11px] font-semibold uppercase text-text-muted">{stat.label}</p>
+                <p className="mt-0.5 truncate text-lg font-bold leading-tight text-text-primary">{stat.value}</p>
+                <p className="truncate text-[11px] text-text-muted">{stat.hint}</p>
+              </div>
             </div>
-            <p className="mt-2 text-2xl font-bold text-text-primary">{stat.value}</p>
-            <p className="mt-1 text-xs text-text-muted">{stat.hint}</p>
           </div>
         );
       })}

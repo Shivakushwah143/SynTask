@@ -1,12 +1,12 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertCircle, CalendarClock, ChevronDown, Filter, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles, X } from 'lucide-react'
+import { AlertCircle, CalendarClock, ChevronDown, FileText, Filter, Loader2, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
-import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageStatus, getLeadTags, getStageDealValue, getStageKey, getStageStatusOptions } from './utils'
+import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadRawContactName, getLeadStageStatus, getLeadTags, getStageDealValue, getStageKey, getStageStatusOptions } from './utils'
 
 const leadColumnStyle = 'w-[300px] flex-none snap-start'
 export const pipelineLeadCardClassNames = {
@@ -345,6 +345,8 @@ export const PipelineBoard = memo(function PipelineBoard({
   onUpdateStageStatus,
   onRecordContact,
   onScheduleFollowUp,
+  onGenerateQuotation,
+  onDeleteLead,
   getAllowedStageKeys,
   onCopyLeadId,
   onLeadSelect,
@@ -386,6 +388,8 @@ export const PipelineBoard = memo(function PipelineBoard({
               onUpdateStageStatus={onUpdateStageStatus}
               onRecordContact={onRecordContact}
               onScheduleFollowUp={onScheduleFollowUp}
+              onGenerateQuotation={onGenerateQuotation}
+              onDeleteLead={onDeleteLead}
               getAllowedStageKeys={getAllowedStageKeys}
               onCopyLeadId={onCopyLeadId}
               onLeadSelect={onLeadSelect}
@@ -409,10 +413,13 @@ export const PipelineStageListView = memo(function PipelineStageListView({
   onUpdateStageStatus,
   onRecordContact,
   onScheduleFollowUp,
+  onDeleteLead,
   onLeadSelect,
   onResetFilters,
   onBulkAssign,
   bulkAssigning = false,
+  onBulkDelete,
+  bulkDeleting = false,
   hasActiveFilters = false,
 }) {
   // ── Hooks first: they must run unconditionally, before the early returns ───
@@ -428,6 +435,39 @@ export const PipelineStageListView = memo(function PipelineStageListView({
     })
     return values
   }, [users])
+
+  // ── Sync a scrollbar on top of the table with the table's own scroll ───────
+  // The table can overflow horizontally (Company/Mobile/Email/... columns), but
+  // its native scrollbar sits at the bottom, out of sight. A thin bar mirrored
+  // at the top lets the user scroll the columns without reaching down. The top
+  // bar's inner spacer is sized imperatively (ref, not state) so no React state
+  // updates happen during layout — keeping tests warning-free and cheap.
+  const tableScrollRef = useRef(null)
+  const topScrollRef = useRef(null)
+
+  useLayoutEffect(() => {
+    const node = tableScrollRef.current
+    const bar = topScrollRef.current
+    if (!node || !bar || !bar.firstElementChild) return
+    const update = () => {
+      if (bar.firstElementChild) bar.firstElementChild.style.width = `${node.scrollWidth}px`
+    }
+    update()
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
+    if (observer) observer.observe(node)
+    return () => observer?.disconnect()
+  }, [leads.length])
+
+  const syncTopFromTable = () => {
+    if (topScrollRef.current && tableScrollRef.current) {
+      topScrollRef.current.scrollLeft = tableScrollRef.current.scrollLeft
+    }
+  }
+  const syncTableFromTop = () => {
+    if (tableScrollRef.current && topScrollRef.current) {
+      tableScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft
+    }
+  }
 
   // ── Bulk multi-select (e.g. assign many Acquire leads at once) ─────────────
   const leadIdOf = (lead) => lead.id || lead._id || ''
@@ -493,6 +533,11 @@ export const PipelineStageListView = memo(function PipelineStageListView({
     }
   }
 
+  const handleBulkDelete = () => {
+    if (bulkDeleting || selectedIds.size === 0) return
+    onBulkDelete?.(Array.from(selectedIds))
+  }
+
   return (
     <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-surface/95 shadow-sm dark:border-gray-800 dark:bg-gray-900">
       {selectedIds.size > 0 ? (
@@ -533,15 +578,32 @@ export const PipelineStageListView = memo(function PipelineStageListView({
           <button
             type="button"
             onClick={clearSelection}
-            disabled={bulkAssigning}
+            disabled={bulkAssigning || bulkDeleting}
             className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-text-secondary transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800"
           >
             <X className="h-3.5 w-3.5" />
             Clear
           </button>
+          <span className="ml-auto" />
+          <button
+            type="button"
+            onClick={handleBulkDelete}
+            disabled={bulkDeleting}
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 text-[11px] font-semibold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50"
+          >
+            {bulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            {bulkDeleting ? 'Deleting...' : 'Delete'}
+          </button>
         </div>
       ) : null}
-      <div className="overflow-x-auto">
+      <div
+        ref={topScrollRef}
+        onScroll={syncTableFromTop}
+        className="overflow-x-auto overscroll-x-contain border-b border-surface-border/60 bg-surface-muted/40"
+      >
+        <div className="h-2" aria-hidden="true" />
+      </div>
+      <div ref={tableScrollRef} onScroll={syncTopFromTable} className="overflow-x-auto">
         <table className="min-w-full divide-y divide-surface-border/80 text-sm">
           <thead className="bg-surface-muted/80 text-text-secondary dark:bg-gray-950/50 dark:text-gray-300">
             <tr>
@@ -555,7 +617,10 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                 />
               </th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Lead</th>
-              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Owner</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Company</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Mobile</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Email</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Assigned To</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Priority</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Status</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Value</th>
@@ -567,9 +632,12 @@ export const PipelineStageListView = memo(function PipelineStageListView({
           <tbody className="divide-y divide-surface-border/80 dark:divide-gray-800">
             {leads.map((lead, index) => {
               const leadId = lead.id || lead._id || `${stage.key}-${index}`
-              const leadTitle = lead.company_name || lead.prospect_name || getLeadContactLabel(lead) || 'Lead'
-              const phoneLabel = [lead.country_code, lead.phone].filter(Boolean).join(' ')
-              const leadSubtitle = [phoneLabel, lead.email].filter(Boolean).join(' · ') || 'No contact info'
+              // Lead column shows the person (if any), otherwise the company.
+              const contactName = getLeadRawContactName(lead)
+              const leadTitle = String(contactName || '').trim() || lead.company_name || getLeadContactLabel(lead) || 'Lead'
+              const companyLabel = lead.company_name || lead.crm_company_name || ''
+              const phoneLabel = [lead.country_code, lead.phone].filter(Boolean).join(' ') || ''
+              const emailLabel = lead.email || ''
               const ownerLabel = ownerLookup.get(String(lead.assigned_to || lead.owner_id || lead.ownerId || '').trim()) || getLeadOwnerLabel(lead)
               const priority = getLeadPriority(lead)
               const tags = getLeadTags(lead)
@@ -594,13 +662,12 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                     <button
                       type="button"
                       onClick={() => onLeadSelect?.(lead)}
-                      className="block max-w-[280px] text-left focus-visible:outline-none"
+                      className="block max-w-[240px] text-left focus-visible:outline-none"
                       aria-label={`Open ${leadTitle}`}
                     >
                       <div className="truncate text-sm font-semibold text-text-primary transition-colors group-hover:text-primary-700 dark:text-gray-100 dark:group-hover:text-primary-300">
                         {leadTitle}
                       </div>
-                      <div className="mt-0.5 truncate text-xs text-text-secondary dark:text-gray-400">{leadSubtitle}</div>
                     </button>
                     {tags.length ? (
                       <div className="mt-1 flex flex-wrap gap-1">
@@ -614,6 +681,19 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                         ) : null}
                       </div>
                     ) : null}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="block max-w-[180px] truncate text-xs text-text-secondary dark:text-gray-400">
+                      {companyLabel || '—'}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-xs text-text-secondary dark:text-gray-300">
+                    {phoneLabel || '—'}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="block max-w-[220px] truncate text-xs text-text-secondary dark:text-gray-300">
+                      {emailLabel || '—'}
+                    </span>
                   </td>
                   <td className="px-3 py-2.5">
                     <span className="block max-w-[140px] truncate text-xs font-medium text-text-primary dark:text-gray-100">
@@ -656,6 +736,17 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                      {/* {onDeleteLead ? (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteLead(lead)}
+                          title="Delete lead permanently"
+                          aria-label={`Delete ${leadTitle}`}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null} */}
                       {getStageKey(stage) === 'acquire' && !lead.phone && !lead.first_contact_at && !lead.last_contacted_at ? (
                         <Button
                           type="button"
@@ -679,6 +770,18 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                           Follow up
                         </Button>
                       ) : null}
+                      {['discovery', 'proposal'].includes(getStageKey(stage)) ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onGenerateQuotation?.(lead)}
+                          title="Open Audit to generate quotation draft"
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                          Quotation
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
                         variant="primary"
@@ -691,6 +794,17 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                         <MoveRight className="h-3.5 w-3.5" />
                         {nextStage ? `Move to ${nextStage.name}` : 'Final stage'}
                       </Button>
+                       {onDeleteLead ? (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteLead(lead)}
+                          title="Delete lead permanently"
+                          aria-label={`Delete ${leadTitle}`}
+                          className="inline-flex h-7 w-7  items-center justify-center rounded-lg text-red-800 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -714,8 +828,10 @@ export const PipelineColumn = memo(function PipelineColumn({
   users = [],
   onRecordContact,
   onScheduleFollowUp,
+  onGenerateQuotation,
   onMoveLeadToStage,
   onUpdateStageStatus,
+  onDeleteLead,
   getAllowedStageKeys,
   onCopyLeadId,
   onLeadSelect,
@@ -770,6 +886,8 @@ export const PipelineColumn = memo(function PipelineColumn({
                 onUpdateStageStatus={onUpdateStageStatus}
                 onRecordContact={onRecordContact}
                 onScheduleFollowUp={onScheduleFollowUp}
+                onGenerateQuotation={onGenerateQuotation}
+                onDeleteLead={onDeleteLead}
                 allowedStageKeys={allowedStageKeys}
                 onCopyLeadId={onCopyLeadId}
                 onLeadSelect={onLeadSelect}
@@ -810,6 +928,8 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   onUpdateStageStatus,
   onRecordContact,
   onScheduleFollowUp,
+  onGenerateQuotation,
+  onDeleteLead,
   allowedStageKeys = new Set(),
   onCopyLeadId,
   onLeadSelect,
@@ -966,6 +1086,25 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           }}
         />
       ) : null}
+      {['discovery', 'proposal'].includes(getStageKey(stage)) ? (
+        <ActionItem
+          label="Generate quotation draft"
+          onClick={() => {
+            onGenerateQuotation?.(lead)
+            setMenuOpen(false)
+          }}
+        />
+      ) : null}
+      {onDeleteLead ? (
+        <ActionItem
+          label="Delete lead permanently"
+          destructive
+          onClick={() => {
+            onDeleteLead(lead)
+            setMenuOpen(false)
+          }}
+        />
+      ) : null}
       {stageActions.map((action) => (
         <ActionItem
           key={`${action.key}-${action.label}`}
@@ -1112,6 +1251,19 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           >
             <CalendarClock className="h-4 w-4" />
             Follow up
+          </Button>
+        ) : null}
+        {['discovery', 'proposal'].includes(getStageKey(stage)) ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={pipelineLeadCardClassNames.actionButton}
+            onClick={() => onGenerateQuotation?.(lead)}
+            title="Open Audit to generate quotation draft"
+          >
+            <FileText className="h-4 w-4" />
+            Quotation
           </Button>
         ) : null}
         {canMoveNext ? (
@@ -1274,7 +1426,7 @@ export const PipelineInsightRail = memo(function PipelineInsightRail({ visibleLe
   )
 })
 
-function ActionItem({ label, onClick, disabled = false }) {
+function ActionItem({ label, onClick, disabled = false, destructive = false }) {
   return (
     <button
       type="button"
@@ -1284,7 +1436,11 @@ function ActionItem({ label, onClick, disabled = false }) {
         event.stopPropagation()
         onClick?.()
       }}
-      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-text-secondary transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-200 dark:hover:bg-gray-800"
+      className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        destructive
+          ? 'text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40'
+          : 'text-text-secondary hover:bg-surface-muted dark:text-gray-200 dark:hover:bg-gray-800'
+      }`}
     >
       <span className="min-w-0 truncate">{label}</span>
     </button>

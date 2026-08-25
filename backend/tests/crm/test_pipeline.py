@@ -7,9 +7,15 @@ import pytest
 from bson import ObjectId
 from fastapi import HTTPException
 
-from app.crm.pipeline import CRMPipelineService, _serialize_lead, resolved_stage_status
+from app.crm.pipeline import CRMPipelineService, _is_allowed_transition, _serialize_lead, resolved_stage_status
 from app.models.sales_prospect import ProspectStatus, SalesProspect
 from app.models.user import UserRole
+
+
+def test_pipeline_allows_adjacent_previous_stage_but_not_backward_skip():
+    assert _is_allowed_transition("Discovery", "Qualify") is True
+    assert _is_allowed_transition("Proposal", "Discovery") is True
+    assert _is_allowed_transition("Proposal", "Qualify") is False
 
 
 class FakeQuery:

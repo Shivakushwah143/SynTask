@@ -767,9 +767,17 @@ async def _base_query(current_user: User, employee_id: Optional[str]) -> dict:
         employee = await User.get(employee_id)
         if not employee:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
-        await assert_leave_view_access(current_user, employee)
-        # Admins, sub-admins and managers can view every leave of the selected
-        # employee. Approve/reject is gated separately by pending_with_user_ids.
+        # The employee filter must stay within the leaves the current user can
+        # already see in the unfiltered list: super admins, admins, sub-admins,
+        # managers and leads see every company leave except their own, so any
+        # same-company employee is a valid filter target (approve/reject stays
+        # gated separately by pending_with_user_ids).
+        if str(employee.id) == str(current_user.id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Users cannot view their own leave requests")
+        if current_user.role != UserRole.SUPER_ADMIN and employee.company_id != current_user.company_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        if current_user.role == UserRole.EMPLOYEE:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         return {"employee_id": str(employee.id), "company_id": employee.company_id}
     # Admins, sub-admins and super-admins see all company leaves except their own (managed via admin view)
     if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}:

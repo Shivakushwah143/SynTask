@@ -47,6 +47,7 @@ class SalesProspect(Document):
     estimated_close_date: Optional[datetime] = None
     assigned_to: str  # User ID
     assigned_by: Optional[str] = None  # User ID who assigned
+    referred_by: Optional[str] = None  # User ID of the employee/manager who referred this lead
     current_stage: str = "new"  # Stage name (from master)
     due_date: Optional[datetime] = None
     due_time: Optional[str] = None  # HH:MM AM/PM format
@@ -118,6 +119,12 @@ class SalesProspect(Document):
     # ── Negotiation stage data ────────────────────────────────────────────────
     negotiation_status: Optional[str] = None  # negotiation_started, waiting_client, waiting_internal, discount_approval, final_offer, accepted, rejected
     negotiation_notes: Optional[str] = None
+    customer_counter_offer: Optional[float] = None
+    discount: Optional[float] = None
+    final_scope: Optional[str] = None
+    payment_terms: Optional[str] = None
+    client_conditions: Optional[str] = None
+    accepted_quotation_reference: Optional[str] = None
 
     # ── Agreement stage data ──────────────────────────────────────────────────
     agreement_status: Optional[str] = None  # draft, sent, viewed, signed, rejected, expired

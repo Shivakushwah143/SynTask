@@ -177,6 +177,93 @@ async def test_employee_task_fallback_does_not_crash_on_missing_user_id_name(mon
     assert response["tasks_by_status"]["todo"][0]["assigned_to"] == "employee-1"
 
 
+class CapturingTaskModel:
+    """Task model fake that records the last query passed to find()."""
+
+    def __init__(self, tasks, find_one_result=None):
+        self.tasks = tasks
+        self.find_one_result = find_one_result
+        self.last_query = None
+
+    def find(self, query, *_args, **_kwargs):
+        self.last_query = query
+        return FakeTaskQuery(self.tasks)
+
+    async def find_one(self, *_args, **_kwargs):
+        return self.find_one_result
+
+
+@pytest.mark.asyncio
+async def test_project_board_includes_tasks_linked_by_project_object_id(monkeypatch):
+    # Tasks created via integration flows may carry only project_object_id
+    # (the normalized Mongo-id link) and must still appear on the board.
+    object_id_task = task(project_id=None, project_object_id="6a705d6e32b37e4355c08587")
+    task_model = CapturingTaskModel([object_id_task])
+
+    monkeypatch.setattr(project_board_view, "get_project_by_id", lambda *_args, **_kwargs: _async_tuple(project()))
+    monkeypatch.setattr(project_board_view, "Task", task_model)
+    monkeypatch.setattr(project_board_view.User, "find", lambda *_args, **_kwargs: FakeTaskQuery([]))
+    monkeypatch.setattr(project_board_view.User, "get", lambda *_args, **_kwargs: _async_none())
+
+    response = await project_board_view.get_project_board("6a705d6e32b37e4355c08587", current_user=user())
+
+    assert {"project_object_id": "6a705d6e32b37e4355c08587"} in task_model.last_query["$or"]
+    assert response["tasks_by_status"]["todo"][0]["title"] == "Task"
+
+
+@pytest.mark.asyncio
+async def test_involved_employee_sees_all_project_tasks_on_board(monkeypatch):
+    # An employee assigned to any task in the project sees every project task
+    # on the board (this board-only rule must not change the Tasks list page).
+    employee = user("employee-1")
+    employee.role = UserRole.EMPLOYEE
+    employee_project = project(lead_id=None, assigned_user_ids=[], created_by="admin-1")
+    tasks = [
+        task(id="mine", title="Mine", assigned_to="employee-1"),
+        task(id="others", title="Others", assigned_to="employee-2"),
+    ]
+    task_model = CapturingTaskModel(tasks, find_one_result=tasks[0])
+
+    monkeypatch.setattr(project_board_view, "get_project_by_id", lambda *_args, **_kwargs: _async_tuple(employee_project))
+    monkeypatch.setattr(project_board_view, "Task", task_model)
+    monkeypatch.setattr(project_board_view.User, "find", lambda *_args, **_kwargs: FakeTaskQuery([]))
+    monkeypatch.setattr(project_board_view.User, "get", lambda *_args, **_kwargs: _async_none())
+    # Access control resolves through the shared Task model.
+    monkeypatch.setattr(shared, "Task", FakeTaskModel(tasks))
+
+    response = await project_board_view.get_project_board("6a705d6e32b37e4355c08587", current_user=employee)
+
+    # No own-tasks-only filter is applied for an involved employee.
+    assert "assigned_to" not in task_model.last_query
+    titles = [item["title"] for column in response["tasks_by_status"].values() for item in column]
+    assert set(titles) == {"Mine", "Others"}
+
+
+@pytest.mark.asyncio
+async def test_unrelated_employee_only_sees_own_tasks_on_board(monkeypatch):
+    # An employee with no project link keeps the own-tasks-only board filter.
+    employee = user("employee-9")
+    employee.role = UserRole.EMPLOYEE
+    unrelated_project = project(lead_id=None, assigned_user_ids=[], created_by="admin-1")
+    tasks = [
+        task(id="mine", title="Mine", assigned_to="employee-9"),
+        task(id="others", title="Others", assigned_to="employee-2"),
+    ]
+    task_model = CapturingTaskModel(tasks, find_one_result=None)
+
+    monkeypatch.setattr(project_board_view, "get_project_by_id", lambda *_args, **_kwargs: _async_tuple(unrelated_project))
+    monkeypatch.setattr(project_board_view, "Task", task_model)
+    monkeypatch.setattr(project_board_view.User, "find", lambda *_args, **_kwargs: FakeTaskQuery([]))
+    monkeypatch.setattr(project_board_view.User, "get", lambda *_args, **_kwargs: _async_none())
+    # Grant access through the shared model while the board involvement check
+    # finds no assigned task, exercising the defensive own-tasks-only branch.
+    monkeypatch.setattr(shared, "Task", FakeTaskModel(tasks))
+
+    await project_board_view.get_project_board("6a705d6e32b37e4355c08587", current_user=employee)
+
+    assert task_model.last_query["assigned_to"] == "employee-9"
+
+
 async def _async_tuple(value):
     return value, value.project_id
 

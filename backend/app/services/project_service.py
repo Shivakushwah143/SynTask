@@ -247,6 +247,347 @@ class ProjectService:
         await project.save()
         return project
 
+    # ------------------------------------------------------------------
+    # Cascade project deletion
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def delete_project_cascade(
+        *,
+        project: Project,
+        current_user: User,
+    ) -> dict:
+        """
+        Delete a project and everything it owns.
+
+        Cascade order (children before parents, project deleted last):
+          1. task-dependent records (comments, watchers, extension requests,
+             time logs, issue links, timesheet entries, notifications)
+          2. every task belonging to the project (any status, any link style)
+          3. project-scoped records (epics, sprints, components, versions,
+             pages, content calendar, AI memory, workflows, automation rules,
+             webhooks, issue types, creative review family, scheduled jobs
+             that would recreate the project or its tasks, notifications)
+          4. the project document itself
+
+        Runs inside a MongoDB transaction when the deployment supports it
+        (replica set / Atlas) and falls back to a carefully ordered, idempotent
+        cascade otherwise. Every stage is keyed by project/task identifiers plus
+        the project's company, so no record from another project or organization
+        can ever be touched.
+
+        Deliberately preserved (intentional history / audit / financial):
+        timeline events, change logs, audit logs, agent runs, invoices, EOD
+        reports, and CRM/sales records that merely reference the project.
+        """
+        from app.core import database
+        from app.core.cache import cache_delete, cache_delete_pattern, project_list_key
+
+        company_id = str(project.company_id)
+        actor_id = str(getattr(current_user, "id", "") or "")
+        project_label = project.project_id or str(project.id)
+        logger.info(
+            "PROJECT_DELETE_STARTED project_id=%s company_id=%s user_id=%s",
+            project_label, company_id, actor_id,
+        )
+
+        project_identifiers = [str(project.id)]
+        if getattr(project, "project_id", None):
+            project_identifiers.append(str(project.project_id))
+
+        # 1. Discover every task belonging to this project (any status, either
+        #    link style: logical project_id or normalized project_object_id).
+        task_filter = {
+            "company_id": company_id,
+            "$or": [
+                {"project_id": {"$in": project_identifiers}},
+                {"project_object_id": str(project.id)},
+            ],
+        }
+        tasks = await Task.find(task_filter).to_list()
+        task_ids = [str(task.id) for task in tasks]
+        logger.info(
+            "PROJECT_DELETE_TASKS_FOUND project_id=%s task_count=%s",
+            project_label, len(task_ids),
+        )
+
+        db = database.get_database()
+        stages = ProjectService._build_delete_stages(
+            project=project,
+            company_id=company_id,
+            project_identifiers=project_identifiers,
+            task_ids=task_ids,
+        )
+
+        # 2. Execute the ordered cascade (transaction when supported).
+        deleted = await ProjectService._run_delete_stages(db, stages)
+
+        # 3. Detach the project from its linked client (reference cleanup).
+        await ProjectService._detach_client_reference(project, company_id)
+
+        # 4. Best-effort local storage cleanup for project files (never blocks).
+        await ProjectService._cleanup_project_files(project)
+
+        # 5. Cache invalidation.
+        try:
+            await cache_delete(project_list_key(company_id))
+            await cache_delete_pattern(f"dashboard:stats:{company_id}:*")
+        except Exception as exc:  # pragma: no cover - cache is best-effort
+            logger.warning("Project delete cache invalidation failed: %s", exc)
+
+        logger.info(
+            "PROJECT_DELETE_COMPLETED project_id=%s deleted=%s",
+            project_label, deleted,
+        )
+        return {
+            "deleted_tasks": len(task_ids),
+            "deleted_records": {key: int(value) for key, value in deleted.items()},
+        }
+
+    @staticmethod
+    def _build_delete_stages(
+        *,
+        project: Project,
+        company_id: str,
+        project_identifiers: list[str],
+        task_ids: list[str],
+    ) -> list[tuple[str, dict]]:
+        """Return ordered (collection, filter) stages for the cascade."""
+        from bson import ObjectId
+
+        stages: list[tuple[str, dict]] = []
+        project_filter = {"project_id": {"$in": project_identifiers}}
+
+        # --- Task-dependent records (only when tasks exist) ---
+        if task_ids:
+            task_ids_in = {"$in": task_ids}
+            stages.extend([
+                ("task_comments", {"task_id": task_ids_in, "company_id": company_id}),
+                ("watchers", {"task_id": task_ids_in, "company_id": company_id}),
+                ("task_extension_requests", {"task_id": task_ids_in, "company_id": company_id}),
+                ("time_logs", {"task_id": task_ids_in}),
+                ("time_tracking_summaries", {"task_id": task_ids_in}),
+                ("issue_links", {
+                    "$or": [
+                        {"source_task_id": task_ids_in},
+                        {"destination_task_id": task_ids_in},
+                    ]
+                }),
+                ("timesheet_entries", {"task_id": task_ids_in, "company_id": company_id}),
+            ])
+
+            # Tasks themselves, by canonical Mongo id.
+            task_oids = [ObjectId(tid) for tid in task_ids if ObjectId.is_valid(tid)]
+            if task_oids:
+                stages.append(("tasks", {"_id": {"$in": task_oids}, "company_id": company_id}))
+
+        # --- Project-scoped records ---
+        stages.extend([
+            ("epics", {**project_filter, "company_id": company_id}),
+            ("sprints", {**project_filter, "company_id": company_id}),
+            ("components", {**project_filter, "company_id": company_id}),
+            ("versions", {**project_filter, "company_id": company_id}),
+            ("pages", {**project_filter, "company_id": company_id}),
+            ("content_calendar_items", {**project_filter, "company_id": company_id}),
+            ("project_memory", {**project_filter, "company_id": company_id}),
+            ("knowledge_records", {**project_filter, "company_id": company_id}),
+            ("workflows", {**project_filter, "company_id": company_id}),
+            ("automation_rules", {**project_filter, "company_id": company_id}),
+            ("webhooks", {**project_filter, "company_id": company_id}),
+            ("issue_types", {**project_filter, "company_id": company_id}),
+            ("creative_reviews", {**project_filter, "company_id": company_id}),
+            ("creative_review_history", {**project_filter, "company_id": company_id}),
+            ("creative_issues", {**project_filter, "company_id": company_id}),
+            ("creative_suggestions", {**project_filter, "company_id": company_id}),
+            ("creative_asset_metadata", {**project_filter, "company_id": company_id}),
+            ("creative_campaign_reviews", {**project_filter, "company_id": company_id}),
+            # timesheet_entries appears twice by design: entries may reference a
+            # task (task-dependent) or the project bucket directly (project-scoped).
+            # delete_many is idempotent, so the overlap is harmless.
+            ("timesheet_entries", {**project_filter, "company_id": company_id}),
+            ("notifications", {
+                "company_id": company_id,
+                "$or": [
+                    {"related_type": "task", "related_id": {"$in": task_ids}},
+                    {"related_type": "project", "related_id": {"$in": project_identifiers}},
+                ],
+            }),
+            # Scheduled jobs that would recreate the project or its tasks. Logical
+            # project ids are unique per company, so scope by company too - a
+            # same-id scheduled job in another organization must never be touched.
+            ("scheduled_jobs", {
+                "company_id": company_id,
+                "action_type": {"$in": ["CREATE_TASK", "CREATE_PROJECT"]},
+                "payload.project_id": {"$in": project_identifiers},
+            }),
+        ])
+
+        # --- The project document itself is deleted LAST ---
+        project_oid = ObjectId(str(project.id)) if ObjectId.is_valid(str(project.id)) else str(project.id)
+        stages.append(("projects", {"_id": project_oid}))
+        return stages
+
+    @staticmethod
+    def _is_transaction_unsupported(exc: Exception) -> bool:
+        """True when the server rejected a transaction because the deployment
+        is not a replica set / mongos (pymongo OperationFailure code 20)."""
+        if getattr(exc, "code", None) == 20:
+            return True
+        message = str(exc).lower()
+        return any(
+            token in message
+            for token in (
+                "transaction numbers are only allowed on a replica set member or mongos",
+                "transactions are not supported",
+                "does not support transactions",
+            )
+        )
+
+    @staticmethod
+    async def _run_delete_stages(db, stages: list[tuple[str, dict]]) -> dict:
+        """
+        Run all cascade stages, inside a MongoDB transaction when supported.
+
+        A replica set / Atlas deployment supports transactions; a standalone
+        mongod or a missing client does not. We attempt a transaction first and
+        transparently fall back to the carefully ordered, idempotent cascade
+        (children before parents, project deleted last) when transactions are
+        unavailable - the order makes the fallback safe: a partial failure can
+        never leave a parent (task/project) without its children removed first.
+
+        Note: pymongo's start_transaction() is lazy - on a standalone mongod the
+        replica-set error surfaces when the FIRST operation executes, not at
+        start_transaction(). Both failure points are therefore handled.
+        """
+        async def execute(session=None) -> dict:
+            deleted: dict[str, int] = {}
+            for collection_name, filt in stages:
+                collection = db[collection_name]
+                if session is None:
+                    result = await collection.delete_many(filt)
+                else:
+                    result = await collection.delete_many(filt, session=session)
+                deleted[collection_name] = int(getattr(result, "deleted_count", 0) or 0)
+            return deleted
+
+        from app.core import database
+        from pymongo.errors import OperationFailure
+
+        session = None
+        transaction_started = False
+        client = getattr(database, "client", None)
+        if client is not None:
+            try:
+                session = await client.start_session()
+                session.start_transaction()
+                transaction_started = True
+            except Exception as exc:
+                # No session / transaction support at all (e.g. broken client).
+                logger.warning(
+                    "PROJECT_DELETE_TRANSACTION_UNSUPPORTED - using ordered cascade fallback: %s", exc
+                )
+                if session is not None:
+                    try:
+                        session.end_session()
+                    except Exception:
+                        pass
+                    session = None
+
+        try:
+            result = await execute(session)
+        except OperationFailure as exc:
+            if transaction_started and ProjectService._is_transaction_unsupported(exc):
+                # Standalone mongod: the transaction was accepted locally but the
+                # first write with the session was rejected. Abort the dead
+                # transaction and re-run the whole cascade WITHOUT a session.
+                # delete_many is idempotent, so re-running already-completed
+                # stages (none, in practice) is safe.
+                logger.warning(
+                    "PROJECT_DELETE_TRANSACTION_UNSUPPORTED - using ordered cascade fallback: %s", exc
+                )
+                if session is not None:
+                    try:
+                        await session.abort_transaction()
+                    except Exception:
+                        pass
+                    try:
+                        session.end_session()
+                    except Exception:
+                        pass
+                    session = None
+                return await execute(session=None)
+            if session is not None and transaction_started:
+                try:
+                    await session.abort_transaction()
+                except Exception:
+                    pass
+            raise
+        except Exception:
+            if session is not None and transaction_started:
+                try:
+                    await session.abort_transaction()
+                except Exception:
+                    pass
+            raise
+        else:
+            if session is not None and transaction_started:
+                await session.commit_transaction()
+            return result
+        finally:
+            if session is not None:
+                try:
+                    session.end_session()
+                except Exception:
+                    pass
+
+    @staticmethod
+    async def _detach_client_reference(project: Project, company_id: str) -> None:
+        """Remove the deleted project id from its linked Client's project_ids."""
+        client_id = getattr(project, "client_id", None)
+        if not client_id:
+            return
+        try:
+            from app.models.client import Client
+            client = await Client.get(client_id)
+            if not client or str(client.company_id) != str(company_id):
+                return
+            project_ids = [
+                item
+                for item in (getattr(client, "project_ids", None) or [])
+                if str(item) not in (str(project.id), str(project.project_id or ""))
+            ]
+            if len(project_ids) != len(getattr(client, "project_ids", None) or []):
+                client.project_ids = project_ids
+                await client.save()
+        except Exception as exc:  # pragma: no cover - reference cleanup is best-effort
+            logger.warning("Project delete client reference cleanup failed: %s", exc)
+
+    @staticmethod
+    async def _cleanup_project_files(project: Project) -> None:
+        """Best-effort removal of local storage files owned by the project."""
+        try:
+            from pathlib import Path
+            from app.api.v1.endpoints.projects.shared import PROJECT_UPLOAD_DIR
+            removed = 0
+            for file_data in getattr(project, "files", None) or []:
+                url = file_data.get("url") or ""
+                if not url:
+                    continue
+                file_path = PROJECT_UPLOAD_DIR / Path(url).name
+                try:
+                    if file_path.exists():
+                        file_path.unlink()
+                        removed += 1
+                except Exception:
+                    pass
+            if removed:
+                logger.info(
+                    "PROJECT_DELETE_FILES_REMOVED project_id=%s count=%s",
+                    project.project_id or project.id, removed,
+                )
+        except Exception as exc:  # pragma: no cover - storage cleanup is best-effort
+            logger.warning("Project delete file cleanup failed: %s", exc)
+
     @staticmethod
     async def create_project_core(
         *,

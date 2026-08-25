@@ -3,7 +3,7 @@
 ## Overview
 SynTask is a multi-tenant B2B SaaS platform for task management, project boards, ticketing, client operations, billing workflows, MSA signing, meetings, Google Workspace, chat, and sales CRM. It is built for companies that need one operational workspace with tenant isolation, role-based access, and module-based feature access.
 
-The application has a FastAPI backend, MongoDB/Beanie document models, Redis-backed token revocation, and a React 18 frontend. It supports a five-level role hierarchy, company-scoped data access, task/project workflows, support tickets, invoice and ledger flows, sales contacts/prospects/products, and super-admin tenant management.
+The application has a FastAPI backend, MongoDB/Beanie document models, Redis-backed token revocation, and a React 18 frontend. It supports a five-level role hierarchy, company-scoped data access, task/project workflows, support tickets, invoice and ledger flows, sales contacts/prospects/products, lead Discovery/Audit workspaces, quotation-driven Proposal status, a dedicated Negotiation workspace, contract-driven Agreement status, and super-admin tenant management.
 
 ## Tech Stack
 | Layer | Technology |
@@ -88,6 +88,7 @@ SynTask uses a single database with tenant isolation through `company_id` fields
 ## Documentation
 - [Documentation Index](docs/DOCUMENTATION_INDEX.md)
 - [Product Requirements](docs/product/PRD.md)
+- [SOP Library User Flow](docs/user-flows/sop-library.md)
 - [Global Time ADR](docs/architecture/decisions/2026-07-19-global-time-service.md)
 - [Detailed Architecture](docs/architecture/DETAILED_ARCHITECTURE.md)
 - [Non-Functional Requirements](docs/architecture/NON_FUNCTIONAL_REQUIREMENTS.md)

@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import _module_access_allowed, get_current_user
 from app.models.department import Department
 from app.models.user import User, UserRole
 from app.schemas.admin_permissions import MODULE_CATALOG, ModuleUpdateRequest, normalize_modules
@@ -54,11 +54,11 @@ async def _require_admin_company_scope(current_user: User) -> User:
 
 
 def _cap_modules_for_actor(actor: User, modules: list[str]) -> list[str]:
-    normalized = normalize_modules(modules)
+    normalized = normalize_modules(modules, require_tasks_projects=False)
     if _normalize_role(getattr(actor, "role", None)) in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
         return normalized
-    allowed = set(getattr(actor, "modules", []) or [])
-    return [module for module in normalized if module in allowed]
+    actor_modules = getattr(actor, "modules", []) or []
+    return [module for module in normalized if _module_access_allowed(module, actor_modules)]
 
 
 def _ensure_full_admin(actor: User) -> None:

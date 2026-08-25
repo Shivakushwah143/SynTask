@@ -54,3 +54,32 @@ async def test_store_uploaded_file_keeps_local_fallback(monkeypatch, tmp_path):
     assert stored["file_url"].startswith("/uploads/")
     assert stored["file_path"].exists()
     assert stored["file_path"].read_bytes() == b"hello"
+
+
+def test_cloudinary_signed_url_uses_delivery_signature(monkeypatch):
+    monkeypatch.setattr(CloudinaryStorage, "enabled", staticmethod(lambda: True))
+    monkeypatch.setattr("app.services.cloudinary_storage.settings.CLOUDINARY_CLOUD_NAME", "demo")
+    monkeypatch.setattr("app.services.cloudinary_storage.settings.CLOUDINARY_API_SECRET", "secret")
+
+    url = CloudinaryStorage.signed_url(
+        "syntask/hr/resume",
+        resource_type="image",
+        delivery_type="authenticated",
+        storage_url="https://res.cloudinary.com/demo/image/authenticated/v123/syntask/hr/resume.pdf",
+    )
+
+    assert url.startswith("https://res.cloudinary.com/demo/image/authenticated/s--")
+    assert url.endswith("--/v123/syntask/hr/resume.pdf")
+    assert "signature=" not in url
+
+
+def test_cloudinary_signed_url_keeps_upload_url(monkeypatch):
+    monkeypatch.setattr(CloudinaryStorage, "enabled", staticmethod(lambda: True))
+    stored_url = "https://res.cloudinary.com/demo/image/upload/v123/syntask/hr/resume.pdf"
+
+    assert CloudinaryStorage.signed_url(
+        "syntask/hr/resume",
+        resource_type="image",
+        delivery_type="upload",
+        storage_url=stored_url,
+    ) == stored_url
