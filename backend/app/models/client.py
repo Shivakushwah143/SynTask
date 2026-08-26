@@ -10,9 +10,15 @@ from pymongo import ASCENDING, DESCENDING, TEXT, IndexModel
 
 
 class ClientStatus(str, Enum):
+    NEW = "new"
+    ONBOARDING = "onboarding"
     ACTIVE = "active"
-    INACTIVE = "inactive"
+    AT_RISK = "at_risk"
+    ON_HOLD = "on_hold"
+    RENEWAL_DUE = "renewal_due"
+    CHURNED = "churned"
     ARCHIVED = "archived"
+    INACTIVE = "inactive"  # Legacy; accepted for existing records.
 
 
 class ClientType(str, Enum):
@@ -36,7 +42,7 @@ class Client(Document):
     zip_code: Optional[str] = None
     
     # Client Details
-    status: ClientStatus = ClientStatus.ACTIVE
+    status: ClientStatus = ClientStatus.NEW
     company_name: Optional[str] = None  # Client's company name
     industry: Optional[str] = None
 

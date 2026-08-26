@@ -477,7 +477,6 @@ class LeadConversionService:
 
         client = await _resolve_client(prospect)
         if client:
-            client.status = "active"
             client.updated_at = now
             await client.save()
 

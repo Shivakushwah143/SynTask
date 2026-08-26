@@ -45,8 +45,13 @@ function clientFileUrl(url) {
 }
 
 const CLIENT_STATUS_OPTIONS = [
+  { value: 'new', label: 'New' },
+  { value: 'onboarding', label: 'Onboarding' },
   { value: 'active', label: 'Active' },
-  { value: 'inactive', label: 'Inactive' },
+  { value: 'at_risk', label: 'At Risk' },
+  { value: 'on_hold', label: 'On Hold' },
+  { value: 'renewal_due', label: 'Renewal Due' },
+  { value: 'churned', label: 'Churned' },
   { value: 'archived', label: 'Archived' },
 ]
 
@@ -57,9 +62,27 @@ function formatClientType(value) {
 }
 
 function clientStatusClass(status) {
+  if (status === 'new') return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/50 dark:text-sky-300'
+  if (status === 'onboarding') return 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/60 dark:bg-indigo-950/50 dark:text-indigo-300'
   if (status === 'active') return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-300'
+  if (status === 'at_risk') return 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/60 dark:bg-orange-950/50 dark:text-orange-300'
+  if (status === 'on_hold') return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-300'
+  if (status === 'renewal_due') return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/50 dark:text-violet-300'
+  if (status === 'churned') return 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-300'
   if (status === 'archived') return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/50 dark:text-rose-300'
   return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300'
+}
+
+function firstPositiveNumber(...values) {
+  for (const value of values) {
+    const number = Number(value || 0)
+    if (number > 0) return number
+  }
+  return 0
+}
+
+function projectBoardId(project) {
+  return project?.id || project?.project_id || project?.key
 }
 
 function WorkspaceTabs({ activeTab, onTabChange, counts = {} }) {
@@ -235,12 +258,7 @@ export default function ClientWorkspacePage() {
   const primaryPhone = client.contact || 'No phone on file'
   const leadBudgetFallback = leads.find((l) => l.won_amount || l.budget)?.won_amount || leads.find((l) => l.won_amount || l.budget)?.budget
   const projectsBudgetFallback = projects.reduce((sum, p) => sum + Number(p.budget || 0), 0)
-  const clientBudget = Number(
-    client.budget ??
-    client.total_budget ??
-    leadBudgetFallback ??
-    (projectsBudgetFallback > 0 ? projectsBudgetFallback : 0)
-  )
+  const clientBudget = firstPositiveNumber(client.budget, client.total_budget, leadBudgetFallback, projectsBudgetFallback)
   const budgetLabel = clientBudget > 0 ? formatCurrency(clientBudget) : 'N/A'
   const budgetSourceHelper = client.source_budget === 'sales_lead' || (!client.budget && leadBudgetFallback)
     ? 'From won sales lead'
@@ -276,7 +294,7 @@ export default function ClientWorkspacePage() {
                     <tr key={project.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
                       <td className="px-4 py-3">
                         <Link
-                          to={`/projects/${project.id || project.project_id}/board`}
+                          to={`/projects/${projectBoardId(project)}/board`}
                           className="font-medium text-gray-900 hover:text-primary-600 hover:underline dark:text-gray-100 dark:hover:text-primary-400"
                         >
                           {project.name}
@@ -288,7 +306,7 @@ export default function ClientWorkspacePage() {
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(project.start_date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(project.delivery_date)}</td>
                       <td className="px-4 py-3">
-                        <Link className="btn btn-secondary btn-sm inline-flex items-center gap-2" to={`/projects/${project.id || project.project_id}/board`}>
+                        <Link className="btn btn-secondary btn-sm inline-flex items-center gap-2" to={`/projects/${projectBoardId(project)}/board`}>
                           <ExternalLink className="h-3 w-3" />
                           Open
                         </Link>
@@ -519,9 +537,7 @@ export default function ClientWorkspacePage() {
                 <p>{client.company_name || 'No company name'}</p>
                 <p>Status: {client.status || 'N/A'}</p>
                 <p>Owner: {client.assigned_to_name || client.assigned_to || 'Unassigned'}</p>
-                {client.client_type && (
-                  <p>Type: <span className="capitalize font-medium">{client.client_type === 'monthly' ? 'Monthly' : 'One Time'}</span></p>
-                )}
+                <p>Type: <span className="font-medium">{clientTypeLabel}</span></p>
               </div>
             </article>
             <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -535,18 +551,9 @@ export default function ClientWorkspacePage() {
             <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Financial & Schedule</p>
               <div className="mt-3 space-y-2 text-sm text-gray-700 dark:text-gray-200">
-                {client.budget > 0 && (
-                  <p>Budget: <span className="font-medium">₹{Number(client.budget).toLocaleString()}</span></p>
-                )}
-                {client.start_date && (
-                  <p>Start: {formatDate(client.start_date)}</p>
-                )}
-                {client.delivery_date && (
-                  <p>Delivery: {formatDate(client.delivery_date)}</p>
-                )}
-                {!client.budget && !client.start_date && !client.delivery_date && (
-                  <p className="text-gray-500 dark:text-gray-400">No financial info set</p>
-                )}
+                <p>Budget: <span className="font-medium">{budgetLabel}</span></p>
+                <p>Start: {formatDate(client.start_date)}</p>
+                <p>Delivery: {formatDate(client.delivery_date)}</p>
               </div>
             </article>
             <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">

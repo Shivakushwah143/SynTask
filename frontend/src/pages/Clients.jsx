@@ -166,17 +166,47 @@ const Clients = () => {
   }, [])
 
   const statusMeta = {
+    new: {
+      label: 'New',
+      chipClass: 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300',
+      optionClass: 'text-sky-700 dark:text-sky-300',
+      dotClass: 'bg-sky-500',
+    },
+    onboarding: {
+      label: 'Onboarding',
+      chipClass: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300',
+      optionClass: 'text-indigo-700 dark:text-indigo-300',
+      dotClass: 'bg-indigo-500',
+    },
     active: {
       label: 'Active',
       chipClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
       optionClass: 'text-emerald-700 dark:text-emerald-300',
       dotClass: 'bg-emerald-500',
     },
-    inactive: {
-      label: 'Inactive',
-      chipClass: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300',
-      optionClass: 'text-rose-700 dark:text-rose-300',
-      dotClass: 'bg-rose-500',
+    at_risk: {
+      label: 'At Risk',
+      chipClass: 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300',
+      optionClass: 'text-orange-700 dark:text-orange-300',
+      dotClass: 'bg-orange-500',
+    },
+    on_hold: {
+      label: 'On Hold',
+      chipClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
+      optionClass: 'text-amber-700 dark:text-amber-300',
+      dotClass: 'bg-amber-500',
+    },
+    renewal_due: {
+      label: 'Renewal Due',
+      chipClass: 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300',
+      optionClass: 'text-violet-700 dark:text-violet-300',
+      dotClass: 'bg-violet-500',
+    },
+    churned: {
+      label: 'Churned',
+      chipClass: 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-300',
+      optionClass: 'text-slate-700 dark:text-slate-300',
+      dotClass: 'bg-slate-500',
     },
     archived: {
       label: 'Archived',
@@ -184,9 +214,15 @@ const Clients = () => {
       optionClass: 'text-gray-700 dark:text-gray-300',
       dotClass: 'bg-gray-500',
     },
+    inactive: {
+      label: 'Inactive',
+      chipClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
+      optionClass: 'text-amber-700 dark:text-amber-300',
+      dotClass: 'bg-amber-500',
+    },
   }
 
-  const statusOptions = ['active', 'inactive', 'archived']
+  const statusOptions = ['new', 'onboarding', 'active', 'at_risk', 'on_hold', 'renewal_due', 'churned', 'archived']
   const getStatusMeta = (status) => statusMeta[status] || statusMeta.active
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
@@ -885,8 +921,13 @@ const Clients = () => {
               <FormField label="Status">
                 <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClassName}>
                   <option value="">All statuses</option>
+                  <option value="new">New</option>
+                  <option value="onboarding">Onboarding</option>
                   <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
+                  <option value="at_risk">At Risk</option>
+                  <option value="on_hold">On Hold</option>
+                  <option value="renewal_due">Renewal Due</option>
+                  <option value="churned">Churned</option>
                   <option value="archived">Archived</option>
                 </select>
               </FormField>

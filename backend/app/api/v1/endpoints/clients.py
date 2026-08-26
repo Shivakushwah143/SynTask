@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 from app.crm.models import Client, ClientStatus, ClientType, SalesProspect
 from app.crm.client_identity import load_contacts_for_client
+from app.crm.client_lifecycle import normalize_client_status, transition_client_status
 from app.models.user import User, UserRole
 from app.models.project import Project
 from app.models.crm_company import CRMCompany
@@ -273,9 +274,9 @@ async def list_clients(
     
     if status_filter:
         try:
-            query["status"] = ClientStatus(status_filter)
-        except:
-            pass
+            query["status"] = normalize_client_status(status_filter)
+        except HTTPException:
+            raise
     
     if assigned_to:
         query["assigned_to"] = assigned_to
@@ -506,10 +507,7 @@ async def update_client(
     if industry is not None:
         client.industry = industry
     if client_status is not None:
-        try:
-            client.status = ClientStatus(client_status)
-        except:
-            pass
+        await transition_client_status(client, client_status, current_user)
     if assigned_to is not None:
         if assigned_to:
             assigned_user = await User.get(assigned_to)

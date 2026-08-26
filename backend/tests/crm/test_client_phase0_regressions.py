@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app.api.v1.endpoints.clients import _client_commercial_fields
 from app.crm.client_workspace import ClientWorkspaceService
 from app.crm.client_identity import ClientCompanyResolution, load_contacts_for_client, resolve_crm_company_for_client
+from app.crm.client_lifecycle import normalize_client_status, transition_client_status
 from app.crm.deal_automation import _resolve_client, handle_won_deal_automation
 from app.models.client import Client, ClientStatus, ClientType
 from app.models.invoice import InvoiceStatus, InvoiceType
@@ -289,7 +290,7 @@ async def test_won_deal_client_creation_uses_lead_tenant_and_company(monkeypatch
     assert client.company_id == lead.company_id
     assert client.company_name == lead.company_name
     assert client.email == lead.email
-    assert client.status == ClientStatus.ACTIVE
+    assert client.status == ClientStatus.ONBOARDING
     assert client.crm_company_id == "0000000000000000000000aa"
     assert client.source_lead_id == str(lead.id)
     assert client.account_owner_id == lead.assigned_to
@@ -641,9 +642,67 @@ async def test_won_deal_conversion_reuses_existing_client_and_links_project(monk
     assert saved["project"] >= 1
 
 
-@pytest.mark.parametrize("status", [ClientStatus.ACTIVE, ClientStatus.INACTIVE, ClientStatus.ARCHIVED])
+@pytest.mark.parametrize(
+    "status",
+    [
+        ClientStatus.NEW,
+        ClientStatus.ONBOARDING,
+        ClientStatus.ACTIVE,
+        ClientStatus.AT_RISK,
+        ClientStatus.ON_HOLD,
+        ClientStatus.RENEWAL_DUE,
+        ClientStatus.CHURNED,
+        ClientStatus.ARCHIVED,
+        ClientStatus.INACTIVE,
+    ],
+)
 def test_current_client_statuses_are_supported(status):
     assert ClientStatus(status.value) is status
+
+
+def test_legacy_inactive_client_status_normalizes_to_on_hold():
+    assert normalize_client_status("inactive") == ClientStatus.ON_HOLD
+
+
+@pytest.mark.asyncio
+async def test_valid_client_lifecycle_transition_succeeds():
+    client = _client(status=ClientStatus.ONBOARDING)
+
+    await transition_client_status(client, ClientStatus.ACTIVE, _user())
+
+    assert client.status == ClientStatus.ACTIVE
+    assert client.saved is True
+
+
+@pytest.mark.asyncio
+async def test_invalid_client_lifecycle_transition_fails_clearly():
+    client = _client(status=ClientStatus.NEW)
+
+    with pytest.raises(HTTPException) as exc:
+        await transition_client_status(client, ClientStatus.CHURNED, _user())
+
+    assert exc.value.status_code == 400
+    assert "Invalid client status transition" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_client_lifecycle_transition_is_blocked():
+    client = _client(company_id="tenant-2", status=ClientStatus.ACTIVE)
+
+    with pytest.raises(HTTPException) as exc:
+        await transition_client_status(client, ClientStatus.ON_HOLD, _user(company_id="tenant-1"))
+
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_active_on_hold_active_lifecycle_path():
+    client = _client(status=ClientStatus.ACTIVE)
+
+    await transition_client_status(client, ClientStatus.ON_HOLD, _user())
+    assert client.status == ClientStatus.ON_HOLD
+    await transition_client_status(client, ClientStatus.ACTIVE, _user())
+    assert client.status == ClientStatus.ACTIVE
 
 
 def test_client_api_uses_source_lead_budget_when_client_budget_empty():

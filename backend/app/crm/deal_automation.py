@@ -307,7 +307,7 @@ async def _resolve_client(current_user: User, lead: SalesProspect, deal: Optiona
         company_name=company_name,
         email=getattr(lead, "email", None),
         contact=getattr(lead, "phone", None),
-        status=ClientStatus.ACTIVE,
+        status=ClientStatus.ONBOARDING,
         crm_company_id=crm_company_id,
         source_lead_id=str(lead.id),
         account_owner_id=str(getattr(lead, "assigned_to", "") or getattr(current_user, "id", "")) or None,
