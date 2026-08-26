@@ -233,8 +233,22 @@ export default function ClientWorkspacePage() {
   const companySummary = client.company_name || client.name || 'Client'
   const primaryEmail = client.email || 'No email on file'
   const primaryPhone = client.contact || 'No phone on file'
-  const clientBudget = Number(client.budget || client.total_budget || 0)
+  const leadBudgetFallback = leads.find((l) => l.won_amount || l.budget)?.won_amount || leads.find((l) => l.won_amount || l.budget)?.budget
+  const projectsBudgetFallback = projects.reduce((sum, p) => sum + Number(p.budget || 0), 0)
+  const clientBudget = Number(
+    client.budget ??
+    client.total_budget ??
+    leadBudgetFallback ??
+    (projectsBudgetFallback > 0 ? projectsBudgetFallback : 0)
+  )
   const budgetLabel = clientBudget > 0 ? formatCurrency(clientBudget) : 'N/A'
+  const budgetSourceHelper = client.source_budget === 'sales_lead' || (!client.budget && leadBudgetFallback)
+    ? 'From won sales lead'
+    : client.source_budget === 'projects' || (!client.budget && projectsBudgetFallback > 0)
+    ? 'Sum of project budgets'
+    : clientBudget > 0
+    ? 'Client account value'
+    : 'No budget set'
   const clientTypeLabel = formatClientType(client.client_type)
   const clientStatus = client.status || 'active'
   const clientStatusLabel = CLIENT_STATUS_OPTIONS.find((item) => item.value === clientStatus)?.label || clientStatus
@@ -261,7 +275,12 @@ export default function ClientWorkspacePage() {
                   {projects.map((project) => (
                     <tr key={project.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900 dark:text-gray-100">{project.name}</p>
+                        <Link
+                          to={`/projects/${project.id || project.project_id}/board`}
+                          className="font-medium text-gray-900 hover:text-primary-600 hover:underline dark:text-gray-100 dark:hover:text-primary-400"
+                        >
+                          {project.name}
+                        </Link>
                         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{project.key || project.project_id || project.id}</p>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{project.status || 'N/A'}</td>
@@ -269,7 +288,7 @@ export default function ClientWorkspacePage() {
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(project.start_date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(project.delivery_date)}</td>
                       <td className="px-4 py-3">
-                        <Link className="btn btn-secondary btn-sm inline-flex items-center gap-2" to={`/projects/${project.project_id || project.id}/board`}>
+                        <Link className="btn btn-secondary btn-sm inline-flex items-center gap-2" to={`/projects/${project.id || project.project_id}/board`}>
                           <ExternalLink className="h-3 w-3" />
                           Open
                         </Link>
@@ -303,12 +322,32 @@ export default function ClientWorkspacePage() {
                   {tasks.map((task) => (
                     <tr key={task.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900 dark:text-gray-100">{task.title}</p>
+                        <Link
+                          to={
+                            task.project_object_id || task.project_id
+                              ? `/projects/${task.project_object_id || task.project_id}/tasks/${task.id}`
+                              : `/tasks/${task.id}`
+                          }
+                          className="font-medium text-gray-900 hover:text-primary-600 hover:underline dark:text-gray-100 dark:hover:text-primary-400"
+                        >
+                          {task.title}
+                        </Link>
                         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{task.id}</p>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{task.status || 'N/A'}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{task.priority || 'N/A'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{task.project_id || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                        {task.project_object_id || task.project_id ? (
+                          <Link
+                            to={`/projects/${task.project_object_id || task.project_id}/board`}
+                            className="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                          >
+                            {task.project_id || task.project_object_id}
+                          </Link>
+                        ) : (
+                          'N/A'
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(task.due_date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(task.updated_at)}</td>
                     </tr>
@@ -602,7 +641,7 @@ export default function ClientWorkspacePage() {
             <article className="rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Budget</p>
               <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">{budgetLabel}</p>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{client.source_budget === 'sales_lead' ? 'From won sales lead' : 'Client account value'}</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{budgetSourceHelper}</p>
             </article>
             <article className="rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Type</p>
@@ -625,7 +664,7 @@ export default function ClientWorkspacePage() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <CRMStatCard icon={Building2} label="Client" value={client.name || '-'} tone="blue" helper={client.company_name || 'Client account'} />
-        <CRMStatCard icon={DollarSign} label="Budget" value={budgetLabel} tone="emerald" helper={clientTypeLabel} />
+        <CRMStatCard icon={DollarSign} label="Budget" value={budgetLabel} tone="emerald" helper={budgetSourceHelper} />
         <CRMStatCard icon={FolderKanban} label="Projects" value={String(totalProjects)} tone="emerald" helper={projects[0]?.name || 'Linked projects'} />
         <CRMStatCard icon={DollarSign} label="Invoices" value={String(totalInvoices)} tone="amber" helper={formatCurrency(outstandingAmount || 0)} />
         <CRMStatCard icon={Clock3} label="Updated" value={formatDate(client.updated_at)} tone="slate" helper="Workspace freshness" />

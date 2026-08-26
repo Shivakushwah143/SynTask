@@ -681,3 +681,40 @@ def test_client_source_lead_index_matches_existing_partial_unique_index():
     assert source_lead_index["name"] == "company_id_1_source_lead_id_1"
     assert source_lead_index["unique"] is True
     assert source_lead_index["partialFilterExpression"] == {"source_lead_id": {"$type": "string"}}
+
+
+@pytest.mark.asyncio
+async def test_client_workspace_budget_fallback_from_projects_and_leads(monkeypatch):
+    client = _client(budget=None, project_ids=[])
+
+    async def client_get(_id):
+        return client
+
+    async def no_user(_id):
+        return None
+
+    project_a = _project(client_id=str(client.id))
+    project_a.budget = 150000
+
+    monkeypatch.setattr("app.crm.client_workspace.Client.get", client_get)
+    monkeypatch.setattr("app.crm.client_workspace.Project.find", lambda query: FakeQuery([project_a]))
+    monkeypatch.setattr("app.crm.client_workspace.Meeting.find", lambda query: FakeQuery([]))
+    monkeypatch.setattr("app.crm.client_workspace.Invoice.find", lambda query: FakeQuery([]))
+    monkeypatch.setattr("app.crm.client_workspace.SalesProspect.find", lambda query: FakeQuery([]))
+    monkeypatch.setattr("app.crm.client_workspace.Task.find", lambda query: FakeQuery([]))
+
+    async def no_company(_client):
+        return ClientCompanyResolution(None, "unresolved", "test")
+
+    async def no_contacts(_client):
+        return []
+
+    monkeypatch.setattr("app.crm.client_workspace.resolve_crm_company_for_client", no_company)
+    monkeypatch.setattr("app.crm.client_workspace.load_contacts_for_client", no_contacts)
+    monkeypatch.setattr("app.crm.client_workspace.User.get", no_user)
+
+    workspace = await ClientWorkspaceService.load_workspace(_user(), str(client.id))
+
+    assert workspace["client"]["budget"] == 150000
+    assert workspace["client"]["source_budget"] == "projects"
+

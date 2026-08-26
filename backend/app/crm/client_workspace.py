@@ -47,7 +47,7 @@ def _project_summary(project: Project) -> Dict[str, Any]:
         "lead_id": project.lead_id,
         "assigned_to": project.assigned_to,
         "category": project.category,
-        "budget": None,
+        "budget": getattr(project, "budget", None),
         "start_date": project.start_date,
         "delivery_date": project.delivery_date,
         "created_at": project.created_at,
@@ -115,7 +115,7 @@ class ClientWorkspaceService:
         for project in project_objects:
             summary = _project_summary(project)
             project_key = str(project.project_id or project.id)
-            summary["budget"] = (client.projects_budget or {}).get(project_key) or (client.projects_budget or {}).get(str(project.id))
+            summary["budget"] = (client.projects_budget or {}).get(project_key) or (client.projects_budget or {}).get(str(project.id)) or getattr(project, "budget", None)
             summary["start_date"] = (client.projects_start_date or {}).get(project_key) or (client.projects_start_date or {}).get(str(project.id)) or project.start_date
             summary["delivery_date"] = (client.projects_delivery_date or {}).get(project_key) or (client.projects_delivery_date or {}).get(str(project.id)) or project.delivery_date
             projects.append(summary)
@@ -188,6 +188,52 @@ class ClientWorkspaceService:
                 "summary": {"total": 0, "sales": 0, "contacts": 0, "files": 0, "comments": 0, "system": 0, "last_activity_at": None},
             }
 
+        source_lead = None
+        source_lead_id = getattr(client, "source_lead_id", None)
+        if source_lead_id:
+            try:
+                source_lead = await SalesProspect.get(source_lead_id)
+            except Exception:
+                source_lead = None
+        if not source_lead and lead_candidates:
+            source_lead = next((l for l in lead_candidates if str(l.id) == getattr(client, "source_lead_id", None)), None)
+
+        def _lead_budget_val(lead_item: Optional[SalesProspect]) -> Optional[float]:
+            if not lead_item:
+                return None
+            for val in (getattr(lead_item, "won_amount", None), getattr(lead_item, "budget", None), getattr(lead_item, "deal_value", None)):
+                if val in (None, ""):
+                    continue
+                try:
+                    amt = float(val)
+                except (TypeError, ValueError):
+                    continue
+                if amt > 0:
+                    return amt
+            return None
+
+        fallback_budget = _lead_budget_val(source_lead)
+        source_budget_type = None
+        if client.budget not in (None, "", 0):
+            resolved_budget = client.budget
+            source_budget_type = "client"
+        elif fallback_budget:
+            resolved_budget = fallback_budget
+            source_budget_type = "sales_lead"
+        else:
+            resolved_budget = None
+            for lead_item in lead_candidates:
+                lead_amt = _lead_budget_val(lead_item)
+                if lead_amt:
+                    resolved_budget = lead_amt
+                    source_budget_type = "sales_lead"
+                    break
+            if resolved_budget is None and projects:
+                proj_sum = sum(float(p.get("budget") or 0) for p in projects if p.get("budget"))
+                if proj_sum > 0:
+                    resolved_budget = proj_sum
+                    source_budget_type = "projects"
+
         return {
             "client": {
                 "id": str(client.id),
@@ -215,8 +261,9 @@ class ClientWorkspaceService:
                 "project_ids": client.project_ids or [],
                 "documents": client.documents or [],
                 "client_type": client.client_type.value if client.client_type else None,
-                "budget": client.budget,
-                "start_date": client.start_date,
+                "budget": resolved_budget,
+                "source_budget": source_budget_type,
+                "start_date": client.start_date or (getattr(source_lead, "converted_at", None) if source_lead else None) or (getattr(source_lead, "closed_date", None) if source_lead else None),
                 "delivery_date": client.delivery_date,
                 "created_at": client.created_at,
                 "updated_at": client.updated_at,
