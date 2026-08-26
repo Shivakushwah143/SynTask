@@ -6,6 +6,7 @@ from typing import Optional, List
 from datetime import datetime
 from bson import ObjectId
 import logging
+import json
 from pathlib import Path
 import uuid
 import re
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 from app.crm.models import Client, ClientStatus, ClientType, SalesProspect
 from app.crm.client_identity import load_contacts_for_client
-from app.crm.client_lifecycle import normalize_client_status, transition_client_status
+from app.crm.client_lifecycle import client_lifecycle_rules, normalize_client_status, transition_client_status
 from app.models.user import User, UserRole
 from app.models.project import Project
 from app.models.crm_company import CRMCompany
@@ -38,6 +39,12 @@ router = APIRouter()
 BACKEND_DIR = Path(__file__).resolve().parents[4]
 UPLOAD_DIR = BACKEND_DIR / settings.UPLOAD_DIR / "clients"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@router.get("/lifecycle/rules")
+async def get_client_lifecycle_rules():
+    """Return the backend-owned client lifecycle rules for the stage controls."""
+    return {"rules": client_lifecycle_rules()}
 PROJECT_UPLOAD_DIR = BACKEND_DIR / settings.UPLOAD_DIR / "projects"
 PROJECT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -439,6 +446,8 @@ async def get_client(
         "documents": client.documents,
         "notes": client.notes,
         "tags": client.tags,
+        "lifecycle_reason": client.lifecycle_reason,
+        "lifecycle_metadata": client.lifecycle_metadata,
         **commercial,
         "created_at": client.created_at,
         "updated_at": client.updated_at,
@@ -474,6 +483,8 @@ async def update_client(
     sales_owner_id: Optional[str] = Form(None),
     industry: Optional[str] = Form(None),
     client_status: Optional[str] = Form(None, alias="status"),
+    lifecycle_reason: Optional[str] = Form(None),
+    lifecycle_metadata: Optional[str] = Form(None),
     assigned_to: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
@@ -526,7 +537,13 @@ async def update_client(
     if industry is not None:
         client.industry = industry
     if client_status is not None:
-        await transition_client_status(client, client_status, current_user)
+        metadata = None
+        if lifecycle_metadata:
+            try:
+                metadata = json.loads(lifecycle_metadata)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid lifecycle metadata")
+        await transition_client_status(client, client_status, current_user, lifecycle_reason, metadata)
     if assigned_to is not None:
         if assigned_to:
             assigned_user = await User.get(assigned_to)

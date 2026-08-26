@@ -75,6 +75,8 @@ class Client(Document):
     # Notes and Additional Info
     notes: Optional[str] = None
     tags: List[str] = []
+    lifecycle_reason: Optional[str] = None
+    lifecycle_metadata: Dict[str, Any] = Field(default_factory=dict)
     
     # Assigned Admin/Lead
     assigned_to: Optional[str] = None  # User ID (Admin/Lead managing this client)

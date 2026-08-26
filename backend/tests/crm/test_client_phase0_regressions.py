@@ -733,19 +733,31 @@ async def test_active_on_hold_active_lifecycle_path(monkeypatch):
     monkeypatch.setattr(client_lifecycle.Meeting, "find_one", fake_meeting_find_one)
     client = _client(status=ClientStatus.ACTIVE, notes="Requirements captured")
 
-    await transition_client_status(client, ClientStatus.ON_HOLD, _user())
+    await transition_client_status(client, ClientStatus.ON_HOLD, _user(), reason="Temporary service pause")
     assert client.status == ClientStatus.ON_HOLD
     await transition_client_status(client, ClientStatus.ACTIVE, _user())
     assert client.status == ClientStatus.ACTIVE
 
 
 @pytest.mark.asyncio
-async def test_active_client_can_return_to_onboarding():
+async def test_active_client_cannot_return_to_onboarding():
     client = _client(status=ClientStatus.ACTIVE)
 
-    await transition_client_status(client, ClientStatus.ONBOARDING, _user())
+    with pytest.raises(HTTPException) as exc:
+        await transition_client_status(client, ClientStatus.ONBOARDING, _user())
 
-    assert client.status == ClientStatus.ONBOARDING
+    assert exc.value.status_code == 400
+    assert "Invalid client status transition" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_active_client_can_directly_enter_conditional_stage_with_reason():
+    client = _client(status=ClientStatus.ACTIVE)
+
+    await transition_client_status(client, ClientStatus.CHURNED, _user(), reason="Contract ended")
+
+    assert client.status == ClientStatus.CHURNED
+    assert client.lifecycle_reason == "Contract ended"
 
 
 def test_client_api_uses_source_lead_budget_when_client_budget_empty():

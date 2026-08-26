@@ -19,6 +19,11 @@ export const clientsAPI = {
     return response.data
   },
 
+  getLifecycleRules: async () => {
+    const response = await api.get('/clients/lifecycle/rules')
+    return response.data
+  },
+
   // Get client workspace
   getWorkspace: async (clientId) => {
     const response = await api.get(`/clients/${clientId}/workspace`)
@@ -66,9 +71,11 @@ export const clientsAPI = {
   },
 
   // Update client status only
-  updateClientStatus: async (clientId, status) => {
+  updateClientStatus: async (clientId, status, reason = '', metadata = null) => {
     const formData = new FormData()
     formData.append('status', status)
+    if (reason) formData.append('lifecycle_reason', reason)
+    if (metadata) formData.append('lifecycle_metadata', JSON.stringify(metadata))
     const response = await api.put(`/clients/${clientId}`, formData)
     return response.data
   },

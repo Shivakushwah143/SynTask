@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowRight, Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2, Sparkles, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Briefcase, Plus, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2, Sparkles, ShieldCheck } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { Button, CreatableSelectField, EmptyState, FormField, LoadingSpinner, Modal, PhoneInput, SkeletonTable, inputClassName } from '../components/ui'
@@ -96,24 +96,6 @@ const CLIENT_STAGE_PATHS = Object.entries(CLIENT_STAGE_ROUTES).reduce((acc, [pat
   return acc
 }, {})
 
-const CLIENT_TRANSITION_ACTIONS = {
-  new: [{ status: 'onboarding', label: 'Start Onboarding' }, { status: 'archived', label: 'Archive' }],
-  onboarding: [{ status: 'active', label: 'Activate Client' }, { status: 'on_hold', label: 'Put On Hold' }, { status: 'archived', label: 'Archive' }],
-  active: [
-    { status: 'at_risk', label: 'Mark At Risk' },
-    { status: 'on_hold', label: 'Put On Hold' },
-    { status: 'renewal_due', label: 'Start Renewal' },
-    { status: 'churned', label: 'Mark Churned' },
-    { status: 'archived', label: 'Archive' },
-  ],
-  at_risk: [{ status: 'active', label: 'Resume' }, { status: 'churned', label: 'Mark Churned' }, { status: 'archived', label: 'Archive' }],
-  on_hold: [{ status: 'active', label: 'Resume' }, { status: 'churned', label: 'Mark Churned' }, { status: 'archived', label: 'Archive' }],
-  renewal_due: [{ status: 'active', label: 'Resume' }, { status: 'churned', label: 'Mark Churned' }, { status: 'archived', label: 'Archive' }],
-  churned: [{ status: 'archived', label: 'Archive' }],
-  archived: [],
-  inactive: [{ status: 'active', label: 'Resume' }, { status: 'on_hold', label: 'Put On Hold' }, { status: 'archived', label: 'Archive' }],
-}
-
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   const colors = {
     indigo: 'from-indigo-500 to-purple-500',
@@ -190,19 +172,12 @@ const Clients = () => {
   const [documentFile, setDocumentFile] = useState(null)
   const [documentName, setDocumentName] = useState('')
   const [updatingStatusId, setUpdatingStatusId] = useState(null)
-  const [openStatusMenuId, setOpenStatusMenuId] = useState(null)
+  const [stageSelectionClient, setStageSelectionClient] = useState(null)
   const [transitionBlocker, setTransitionBlocker] = useState(null)
+  const [lifecycleRules, setLifecycleRules] = useState({})
+  const [reasonRequest, setReasonRequest] = useState(null)
+  const [transitionReason, setTransitionReason] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-
-  useEffect(() => {
-    const handleDocumentMouseDown = (event) => {
-      if (!event.target.closest('[data-status-menu-root]')) {
-        setOpenStatusMenuId(null)
-      }
-    }
-    document.addEventListener('mousedown', handleDocumentMouseDown)
-    return () => document.removeEventListener('mousedown', handleDocumentMouseDown)
-  }, [])
 
   const statusMeta = {
     new: {
@@ -261,7 +236,6 @@ const Clients = () => {
     },
   }
 
-  const statusOptions = ['new', 'onboarding', 'active', 'at_risk', 'on_hold', 'renewal_due', 'churned', 'archived']
   const getStatusMeta = (status) => statusMeta[status] || statusMeta.active
   const routeStatus = CLIENT_STAGE_ROUTES[stageKey] || ''
   const effectiveStatusFilter = routeStatus || statusFilter
@@ -313,6 +287,16 @@ const Clients = () => {
     }
   }, [])
 
+  const loadLifecycleRules = useCallback(async () => {
+    try {
+      const data = await clientsAPI.getLifecycleRules()
+      setLifecycleRules(Object.fromEntries((data.rules || []).map((rule) => [rule.status, rule])))
+    } catch (error) {
+      console.error('Error loading client lifecycle rules:', error)
+      setLifecycleRules({})
+    }
+  }, [])
+
   const loadAssignableUsers = useCallback(async () => {
     try {
       const data = await usersAPI.getAssignableUsersWithJuniors()
@@ -331,7 +315,8 @@ const Clients = () => {
     loadClients()
     loadLeads()
     loadAssignableUsers()
-  }, [isAuthenticated, loadClients, loadLeads])
+    loadLifecycleRules()
+  }, [isAuthenticated, loadClients, loadLeads, loadAssignableUsers, loadLifecycleRules])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -469,11 +454,18 @@ const Clients = () => {
     setShowCreateModal(true)
   }
 
-  const handleStatusChange = async (clientId, newStatus, client = null) => {
+  const handleStatusChange = async (clientId, newStatus, client = null, reason = '') => {
+    const rule = lifecycleRules[client?.status || '']
+    const destinationRequirement = rule?.destination_requirements?.[newStatus]
+    if (destinationRequirement?.required_reason && !reason) {
+      setTransitionReason('')
+      setReasonRequest({ clientId, newStatus, client })
+      return
+    }
     if (updatingStatusId) return
     try {
       setUpdatingStatusId(clientId)
-      await clientsAPI.updateClientStatus(clientId, newStatus)
+      await clientsAPI.updateClientStatus(clientId, newStatus, reason)
       toast.success(`Client status updated to ${getStatusMeta(newStatus).label}`)
       if (routeStatus && routeStatus !== newStatus) {
         setClients((prev) => prev.filter((c) => c.id !== clientId))
@@ -485,13 +477,36 @@ const Clients = () => {
     } catch (error) {
       const detail = error.response?.data?.detail
       if (detail && typeof detail === 'object' && detail.code === 'CLIENT_TRANSITION_BLOCKED') {
-        setTransitionBlocker({ detail, client })
+        if (detail.missing_fields?.some((item) => item.field === 'lifecycle_reason')) {
+          setTransitionReason('')
+          setReasonRequest({ clientId, newStatus, client })
+        } else {
+          setTransitionBlocker({ detail, client })
+        }
       } else {
         toast.error(typeof detail === 'string' ? detail : 'Failed to update status')
       }
     } finally {
       setUpdatingStatusId(null)
     }
+  }
+
+  const openLifecycleAction = (client) => {
+    const rule = lifecycleRules[client.status || '']
+    if (!rule?.allowed_destinations?.length) return
+    if (rule.transition_type === 'sequential' && rule.allowed_destinations.length === 1) {
+      handleStatusChange(client.id, rule.allowed_destinations[0], client)
+      return
+    }
+    setStageSelectionClient(client)
+  }
+
+  const getLifecycleActionLabel = (client) => {
+    const status = client.status || 'active'
+    if (status === 'new') return 'Start Onboarding'
+    if (status === 'onboarding') return 'Activate Client'
+    if (lifecycleRules[status]?.transition_type === 'conditional') return 'Update Client Stage'
+    return lifecycleRules[status]?.action_label || 'Next Stage'
   }
 
   const handleCreateProject = async (e) => {
@@ -1073,8 +1088,10 @@ const Clients = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {paginatedClients.map((client) => (
-                  <tr
+                {paginatedClients.map((client) => {
+                  const lifecycleRule = lifecycleRules[client.status || 'active']
+                  return (
+                    <tr
                     key={client.id}
                     className="group cursor-pointer transition hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20"
                     onClick={() => openClientWorkspace(client.id)}
@@ -1120,61 +1137,27 @@ const Clients = () => {
                       {getDeliveryDateText(client)}
                     </td>
                     <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
-                      {(isCompanyAdmin || isLead) ? (
-                        <div className="relative inline-block" data-status-menu-root>
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusMeta(client.status || 'active').chipClass}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${getStatusMeta(client.status || 'active').dotClass}`}></span>
+                        {getStatusMeta(client.status || 'active').label}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {(isCompanyAdmin || isLead) && lifecycleRule?.allowed_destinations?.length ? (
                           <button
                             type="button"
                             disabled={updatingStatusId === client.id}
                             onClick={(e) => {
                               e.stopPropagation()
-                              setOpenStatusMenuId((current) => (current === client.id ? null : client.id))
+                              openLifecycleAction(client)
                             }}
-                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-60 ${getStatusMeta(client.status || 'active').chipClass}`}
-                            aria-haspopup="menu"
-                            aria-expanded={openStatusMenuId === client.id}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-orange-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm ring-1 ring-orange-300/50 transition hover:bg-orange-600 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-orange-300 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            <span className={`h-1.5 w-1.5 rounded-full ${getStatusMeta(client.status || 'active').dotClass}`}></span>
-                            <span>{getStatusMeta(client.status || 'active').label}</span>
-                            <span className="text-[10px]">v</span>
+                            <span aria-hidden="true" className="text-sm leading-none">→</span>
+                            <span>{getLifecycleActionLabel(client)}</span>
                           </button>
-
-                          {openStatusMenuId === client.id ? (
-                            <div className="absolute right-0 z-20 mt-1 w-32 rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
-                              {statusOptions.map((status) => {
-                                const meta = getStatusMeta(status)
-                                const selected = (client.status || 'active') === status
-                                return (
-                                  <button
-                                    key={status}
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      setOpenStatusMenuId(null)
-                                      if (!selected) {
-                                        handleStatusChange(client.id, status, client)
-                                      }
-                                    }}
-                                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-semibold transition ${meta.optionClass} ${selected ? 'bg-indigo-50 dark:bg-indigo-950/40' : 'hover:bg-gray-50 dark:hover:bg-gray-800/80'}`}
-                                    role="menuitem"
-                                  >
-                                    <span className={`h-1.5 w-1.5 rounded-full ${meta.dotClass}`}></span>
-                                    <span>{meta.label}</span>
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <span
-                          className={`text-xs px-2.5 py-1 rounded-full font-semibold ${getStatusMeta(client.status || 'active').chipClass}`}
-                        >
-                          {getStatusMeta(client.status || 'active').label}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                        ) : null}
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -1185,47 +1168,6 @@ const Clients = () => {
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openClientWorkspace(client.id)
-                          }}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-indigo-600 dark:hover:bg-gray-800 dark:hover:text-indigo-400 transition"
-                          title="Open Workspace"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </button>
-                        {(isCompanyAdmin || isLead) && (
-                          <>
-                          {(() => {
-                            const action = (CLIENT_TRANSITION_ACTIONS[client.status || 'active'] || [])[0]
-                            return action ? (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleStatusChange(client.id, action.status, client)
-                                }}
-                                disabled={updatingStatusId === client.id}
-                                className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50 disabled:opacity-60 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
-                                title={action.label}
-                              >
-                                <ArrowRight className="h-3.5 w-3.5" />
-                                <span className="hidden xl:inline">{action.label}</span>
-                              </button>
-                            ) : null
-                          })()}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleEditClient(client)
-                            }}
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-indigo-600 dark:hover:bg-gray-800 dark:hover:text-indigo-400 transition"
-                            title="Edit Client"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          </>
-                        )}
                         {isCompanyAdmin && (
                           <button
                             onClick={(e) => {
@@ -1240,8 +1182,9 @@ const Clients = () => {
                         )}
                       </div>
                     </td>
-                  </tr>
-                ))}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -1273,9 +1216,38 @@ const Clients = () => {
       )}
 
       <Modal
+        isOpen={Boolean(stageSelectionClient)}
+        onClose={() => setStageSelectionClient(null)}
+        title="Update Client Stage"
+        description={stageSelectionClient ? `Choose the next business state for ${stageSelectionClient.name}.` : ''}
+        size="md"
+      >
+        <div className="space-y-2">
+          {(lifecycleRules[stageSelectionClient?.status || '']?.allowed_destinations || []).map((stage) => {
+            const meta = getStatusMeta(stage)
+            return (
+              <button
+                key={stage}
+                type="button"
+                onClick={() => {
+                  const client = stageSelectionClient
+                  setStageSelectionClient(null)
+                  handleStatusChange(client.id, stage, client)
+                }}
+                className="flex w-full items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm font-semibold transition hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+              >
+                <span className={`h-2 w-2 rounded-full ${meta.dotClass}`}></span>
+                <span>{meta.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      </Modal>
+
+      <Modal
         isOpen={Boolean(transitionBlocker)}
         onClose={() => setTransitionBlocker(null)}
-        title={transitionBlocker?.detail?.target_status ? `Cannot Move to ${getStatusMeta(transitionBlocker.detail.target_status).label}` : 'Cannot Move Client'}
+        title="Cannot Update Client Stage"
         description="Complete the missing information, then retry the stage movement."
         size="md"
         footer={(
@@ -1328,6 +1300,46 @@ const Clients = () => {
           <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
             Client stays in current stage until backend lifecycle validation accepts the transition.
           </p>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(reasonRequest)}
+        onClose={() => setReasonRequest(null)}
+        title="Update Client Stage"
+        description={reasonRequest?.newStatus ? `Why is this client moving to ${getStatusMeta(reasonRequest.newStatus).label}?` : ''}
+        size="md"
+        footer={(
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setReasonRequest(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!transitionReason.trim() || updatingStatusId === reasonRequest?.clientId}
+              onClick={async () => {
+                const request = reasonRequest
+                setReasonRequest(null)
+                await handleStatusChange(request.clientId, request.newStatus, request.client, transitionReason)
+              }}
+            >
+              Update Stage
+            </Button>
+          </div>
+        )}
+      >
+        <div className="space-y-2">
+          <label htmlFor="client-lifecycle-reason" className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+            Reason
+          </label>
+          <textarea
+            id="client-lifecycle-reason"
+            value={transitionReason}
+            onChange={(event) => setTransitionReason(event.target.value)}
+            rows={4}
+            placeholder="Record the business reason for this stage change"
+            className={`${inputClassName} min-h-24 resize-y`}
+          />
         </div>
       </Modal>
 
