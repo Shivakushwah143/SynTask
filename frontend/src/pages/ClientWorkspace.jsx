@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
-import { useQuery } from 'react-query'
+import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Activity, Building2, CalendarDays, Clock3, DollarSign, ExternalLink, FileText, FolderKanban, Mail, Phone, Users } from 'lucide-react'
 import { format } from 'date-fns'
+import toast from 'react-hot-toast'
 import { clientsAPI } from '../api/clients'
 import { Button, EmptyState, Skeleton } from '../components/ui'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../components/crm'
@@ -43,6 +44,24 @@ function clientFileUrl(url) {
   return `${baseUrl}${url}`
 }
 
+const CLIENT_STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'archived', label: 'Archived' },
+]
+
+function formatClientType(value) {
+  if (value === 'monthly') return 'Monthly'
+  if (value === 'one_time') return 'One Time'
+  return 'N/A'
+}
+
+function clientStatusClass(status) {
+  if (status === 'active') return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-300'
+  if (status === 'archived') return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/50 dark:text-rose-300'
+  return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300'
+}
+
 function WorkspaceTabs({ activeTab, onTabChange, counts = {} }) {
   return (
     <nav aria-label="Client workspace sections" className="overflow-x-auto rounded-2xl border border-surface-border/80 bg-white/90 p-2 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
@@ -78,6 +97,7 @@ function WorkspaceTabs({ activeTab, onTabChange, counts = {} }) {
 
 export default function ClientWorkspacePage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { clientId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -104,6 +124,20 @@ export default function ClientWorkspacePage() {
   const timeline = workspace.timeline || {}
   const summary = workspace.summary || {}
   const errorStatus = workspaceQuery.error?.response?.status
+
+  const statusMutation = useMutation(
+    (nextStatus) => clientsAPI.updateClientStatus(clientId, nextStatus),
+    {
+      onSuccess: () => {
+        toast.success('Client status updated')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries('clients')
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Failed to update client status')
+      },
+    }
+  )
 
   const setTab = (tab) => {
     setSearchParams((current) => {
@@ -199,6 +233,11 @@ export default function ClientWorkspacePage() {
   const companySummary = client.company_name || client.name || 'Client'
   const primaryEmail = client.email || 'No email on file'
   const primaryPhone = client.contact || 'No phone on file'
+  const clientBudget = Number(client.budget || client.total_budget || 0)
+  const budgetLabel = clientBudget > 0 ? formatCurrency(clientBudget) : 'N/A'
+  const clientTypeLabel = formatClientType(client.client_type)
+  const clientStatus = client.status || 'active'
+  const clientStatusLabel = CLIENT_STATUS_OPTIONS.find((item) => item.value === clientStatus)?.label || clientStatus
   const workspaceHealth = totalInvoices > 0
     ? `${formatCurrency(outstandingAmount || 0)} outstanding`
     : 'No billing activity yet'
@@ -514,10 +553,10 @@ export default function ClientWorkspacePage() {
       />
 
       <section className="overflow-hidden rounded-[2rem] border border-emerald-100/80 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-5 shadow-sm dark:border-gray-800 dark:from-gray-950 dark:via-gray-900 dark:to-gray-900">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(380px,0.85fr)]">
           <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700 shadow-sm dark:border-gray-700 dark:bg-gray-900/90 dark:text-emerald-300">
-              Active account workspace
+            <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] shadow-sm ${clientStatusClass(clientStatus)}`}>
+              {clientStatusLabel} account workspace
             </div>
             <div>
               <h2 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">{client.name}</h2>
@@ -542,6 +581,35 @@ export default function ClientWorkspacePage() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <article className="rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
+              <label className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400" htmlFor="client-workspace-status">
+                Status
+              </label>
+              <select
+                id="client-workspace-status"
+                value={clientStatus}
+                disabled={statusMutation.isLoading}
+                onChange={(event) => {
+                  if (event.target.value !== clientStatus) statusMutation.mutate(event.target.value)
+                }}
+                className="mt-2 h-9 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:ring-primary-900/50"
+              >
+                {CLIENT_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Update account state</p>
+            </article>
+            <article className="rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Budget</p>
+              <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">{budgetLabel}</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{client.source_budget === 'sales_lead' ? 'From won sales lead' : 'Client account value'}</p>
+            </article>
+            <article className="rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Type</p>
+              <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{clientTypeLabel}</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{formatDate(client.start_date)}</p>
+            </article>
+            <article className="rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Workspace owner</p>
               <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{client.assigned_to_name || client.assigned_to || 'Unassigned'}</p>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{primaryEmail}</p>
@@ -555,8 +623,9 @@ export default function ClientWorkspacePage() {
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <CRMStatCard icon={Building2} label="Client" value={client.name || '-'} tone="blue" helper={client.company_name || 'Client account'} />
+        <CRMStatCard icon={DollarSign} label="Budget" value={budgetLabel} tone="emerald" helper={clientTypeLabel} />
         <CRMStatCard icon={FolderKanban} label="Projects" value={String(totalProjects)} tone="emerald" helper={projects[0]?.name || 'Linked projects'} />
         <CRMStatCard icon={DollarSign} label="Invoices" value={String(totalInvoices)} tone="amber" helper={formatCurrency(outstandingAmount || 0)} />
         <CRMStatCard icon={Clock3} label="Updated" value={formatDate(client.updated_at)} tone="slate" helper="Workspace freshness" />

@@ -172,12 +172,6 @@ const Clients = () => {
       optionClass: 'text-emerald-700 dark:text-emerald-300',
       dotClass: 'bg-emerald-500',
     },
-    on_hold: {
-      label: 'On Hold',
-      chipClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
-      optionClass: 'text-amber-700 dark:text-amber-300',
-      dotClass: 'bg-amber-500',
-    },
     inactive: {
       label: 'Inactive',
       chipClass: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300',
@@ -192,7 +186,7 @@ const Clients = () => {
     },
   }
 
-  const statusOptions = ['active', 'on_hold', 'inactive', 'archived']
+  const statusOptions = ['active', 'inactive', 'archived']
   const getStatusMeta = (status) => statusMeta[status] || statusMeta.active
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
@@ -893,7 +887,6 @@ const Clients = () => {
                   <option value="">All statuses</option>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
-                  <option value="on_hold">On Hold</option>
                   <option value="archived">Archived</option>
                 </select>
               </FormField>
@@ -977,7 +970,7 @@ const Clients = () => {
                   <tr
                     key={client.id}
                     className="group cursor-pointer transition hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20"
-                    onClick={() => handleViewClient(client)}
+                    onClick={() => openClientWorkspace(client.id)}
                   >
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-3">
@@ -1553,9 +1546,8 @@ const Clients = () => {
                     <div className="flex items-center gap-2">
                       <h2 className="text-2xl font-bold tracking-tight text-white">{selectedClient.name}</h2>
                       <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider ${selectedClient.status === 'active' ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30' :
-                        selectedClient.status === 'on_hold' ? 'bg-amber-500/20 text-amber-200 border border-amber-400/30' :
-                          selectedClient.status === 'archived' ? 'bg-rose-500/20 text-rose-200 border border-rose-400/30' :
-                            'bg-white/20 text-gray-200 border border-white/30'
+                        selectedClient.status === 'archived' ? 'bg-rose-500/20 text-rose-200 border border-rose-400/30' :
+                          'bg-white/20 text-gray-200 border border-white/30'
                         }`}>
                         {selectedClient.status || 'Active'}
                       </span>

@@ -15,6 +15,7 @@ from fastapi import HTTPException, status
 
 from app.timeline.publisher import publish_crm_timeline_event
 from app.crm.pipeline import WON_STATUSES, apply_stage_status_change, normalize_stage_display, _serialize_lead, _user_display_name, _run_won_automation
+from app.crm.client_identity import resolve_crm_company_for_lead
 from app.crm.models import SalesProspect
 from app.models.client import Client
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
@@ -57,12 +58,23 @@ async def _resolve_client(prospect: SalesProspect) -> Optional[Client]:
         if client:
             return client
     company_id = str(getattr(prospect, "company_id", "") or "")
+    crm_resolution = await resolve_crm_company_for_lead(prospect)
+    if crm_resolution.crm_company:
+        client = await Client.find_one(
+            {
+                "company_id": company_id,
+                "deleted": {"$ne": True},
+                "crm_company_id": str(crm_resolution.crm_company.id),
+            }
+        )
+        if client:
+            return client
     company_name = (getattr(prospect, "company_name", None) or "").strip()
     if company_name:
         return await Client.find_one(
             {
                 "company_id": company_id,
-                "deleted": False,
+                "deleted": {"$ne": True},
                 "$or": [{"company_name": company_name}, {"name": company_name}, {"name": getattr(prospect, "prospect_name", None)}],
             }
         )

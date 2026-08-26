@@ -72,9 +72,9 @@ const STAGE_GATE = {
     nextKey: 'qualify',
     nextLabel: 'Qualify',
     requirements: (lead) => [
-      { label: 'First contact recorded', met: Boolean(lead?.first_contact_at) || Boolean(lead?.last_contacted_at) },
+      { label: 'First contact attempt logged', met: Boolean(lead?.first_contact_at) || Boolean(lead?.last_contacted_at) },
     ],
-    hint: 'Record a first contact attempt before moving to Qualify.',
+    hint: 'Log a call, email, or meeting attempt before moving to Qualify.',
   },
   qualify: {
     nextKey: 'discovery',

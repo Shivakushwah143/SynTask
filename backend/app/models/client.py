@@ -39,6 +39,13 @@ class Client(Document):
     status: ClientStatus = ClientStatus.ACTIVE
     company_name: Optional[str] = None  # Client's company name
     industry: Optional[str] = None
+
+    # Canonical CRM relationship fields. Legacy display/contact fields stay for
+    # API compatibility; CRMCompany remains the source of truth when linked.
+    crm_company_id: Optional[str] = None
+    source_lead_id: Optional[str] = None
+    account_owner_id: Optional[str] = None
+    sales_owner_id: Optional[str] = None
     
     # Client-level financial & scheduling info
     client_type: Optional[ClientType] = None  # monthly or one_time billing
@@ -79,9 +86,20 @@ class Client(Document):
             "status",
             "assigned_to",
             "created_by",
+            "crm_company_id",
+            "source_lead_id",
+            "account_owner_id",
+            "sales_owner_id",
             IndexModel([("company_id", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("crm_company_id", ASCENDING)]),
+            IndexModel(
+                [("company_id", ASCENDING), ("source_lead_id", ASCENDING)],
+                name="company_id_1_source_lead_id_1",
+                unique=True,
+                partialFilterExpression={"source_lead_id": {"$type": "string"}},
+            ),
             IndexModel([("name", TEXT), ("company_name", TEXT), ("email", TEXT)]),
         ]
 

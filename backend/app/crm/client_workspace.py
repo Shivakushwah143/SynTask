@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
+import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
 from bson import ObjectId
 
 from app.crm.company_timeline import CRMCompanyTimelineService
+from app.crm.client_identity import load_contacts_for_client, resolve_crm_company_for_client
 from app.crm.models import Client
 from app.models.invoice import Invoice
 from app.models.meeting import Meeting
@@ -69,11 +71,26 @@ def _meeting_summary(meeting: Meeting) -> Dict[str, Any]:
     }
 
 
+def _contact_summary(contact: Any) -> Dict[str, Any]:
+    return {
+        "id": str(contact.id),
+        "first_name": contact.first_name,
+        "last_name": contact.last_name,
+        "full_name": contact.full_name(),
+        "email": contact.email,
+        "phone": contact.phone,
+        "country_code": contact.country_code,
+        "designation": contact.designation,
+        "crm_company_id": contact.crm_company_id,
+        "is_primary_contact": contact.is_primary_contact,
+    }
+
+
 class ClientWorkspaceService:
     @staticmethod
     async def load_workspace(current_user: User, client_id: str) -> Dict[str, Any]:
         client = await Client.get(client_id)
-        if not client or client.deleted:
+        if not client:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
         await _company_or_403(current_user, client)
 
@@ -105,11 +122,11 @@ class ClientWorkspaceService:
 
         meetings = []
         if projects:
-            project_object_ids = [item["id"] for item in projects]
+            project_names = [item["name"] for item in projects if item.get("name")]
             meetings_query: Dict[str, Any] = {"company_id": client.company_id}
             meetings_query["$or"] = [
-                {"host_id": str(client.assigned_to)} if client.assigned_to else {"host_id": None},
-                {"participant_ids": {"$in": [client.assigned_to]}} if client.assigned_to else {"participant_ids": {"$exists": True}},
+                {"title": f"Kickoff - {client.name}"},
+                {"description": {"$in": [f"Kickoff meeting for {name}" for name in project_names]}},
             ]
             meeting_objects = await Meeting.find(meetings_query).sort("-updated_at").to_list()
             meetings = [_meeting_summary(meeting) for meeting in meeting_objects]
@@ -121,20 +138,30 @@ class ClientWorkspaceService:
             }
         ).sort("-updated_at").to_list()
 
+        company_resolution = await resolve_crm_company_for_client(client)
+        crm_company = company_resolution.crm_company
+        contacts = await load_contacts_for_client(client)
+        client_account_name = client.company_name or client.name
+        escaped_account_name = re.escape(client_account_name)
+        lead_matchers: List[Dict[str, Any]] = [
+            {"client_id": str(client.id)},
+            {"company_name": {"$regex": f"^{escaped_account_name}$", "$options": "i"}},
+        ]
+        if crm_company:
+            lead_matchers.insert(1, {"crm_company_id": str(crm_company.id)})
+
         lead_candidates = await SalesProspect.find(
             {
                 "company_id": client.company_id,
                 "deleted": False,
-                "$or": [
-                    {"crm_company_id": str(client.id)},
-                    {"company_name": {"$regex": f"^{client.name}$", "$options": "i"}},
-                ],
+                "$or": lead_matchers,
             }
         ).sort("-updated_at").to_list()
 
-        task_query: Dict[str, Any] = {"company_id": client.company_id}
+        task_query: Dict[str, Any] = {"company_id": client.company_id, "_id": {"$in": []}}
         if projects:
             task_query["$or"] = [{"project_object_id": {"$in": [item["id"] for item in projects]}}, {"project_id": {"$in": [item["project_id"] for item in projects]}}]
+            task_query.pop("_id", None)
         tasks = await Task.find(task_query).sort("-updated_at").to_list()
 
         project_counts = {
@@ -150,7 +177,16 @@ class ClientWorkspaceService:
         for task in tasks:
             task_counts[str(task.status.value if getattr(task, "status", None) else "unknown")] += 1
 
-        timeline = await CRMCompanyTimelineService.load_timeline(current_user, client)
+        if crm_company:
+            timeline = await CRMCompanyTimelineService.load_timeline(current_user, crm_company)
+        else:
+            timeline = {
+                "client_id": str(client.id),
+                "client_name": client.name,
+                "items": [],
+                "grouped_by_day": [],
+                "summary": {"total": 0, "sales": 0, "contacts": 0, "files": 0, "comments": 0, "system": 0, "last_activity_at": None},
+            }
 
         return {
             "client": {
@@ -169,6 +205,10 @@ class ClientWorkspaceService:
                 "industry": client.industry,
                 "status": client.status.value,
                 "assigned_to": client.assigned_to,
+                "crm_company_id": client.crm_company_id,
+                "source_lead_id": client.source_lead_id,
+                "account_owner_id": client.account_owner_id,
+                "sales_owner_id": client.sales_owner_id,
                 "assigned_to_name": _display_name(await User.get(client.assigned_to)) if client.assigned_to else None,
                 "notes": client.notes,
                 "tags": client.tags or [],
@@ -183,6 +223,7 @@ class ClientWorkspaceService:
                 "created_by": client.created_by,
             },
             "projects": projects,
+            "contacts": [_contact_summary(contact) for contact in contacts],
             "meetings": meetings,
             "invoices": [
                 {

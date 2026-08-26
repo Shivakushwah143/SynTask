@@ -216,6 +216,9 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 | POST | `/api/v1/clients/` | `create_client` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/clients/{client_id}` | `delete_client` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/clients/{client_id}` | `get_client` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/clients/{client_id}/workspace` | `get_client_workspace` | Loads the tenant-scoped Client Workspace for one client. Client payloads retain legacy fields and add canonical `crm_company_id`, `source_lead_id`, `account_owner_id`, and `sales_owner_id`. Projects are resolved from the client's explicit `project_ids` and existing `Project.client_id`; tasks are returned only for those projects, so clients with zero projects return zero tasks. Contacts come from the linked CRM Company through existing `SalesContact` records. Meetings are limited to existing kickoff/project context instead of account-owner-wide meetings. Lead and timeline context uses the lead's `client_id` or actual CRM Company (`SalesProspect.crm_company_id` to `CRMCompany.id`), never `Client.id` as a CRM company id. |
+
+Client list/detail responses expose the Client's own `budget`, `client_type`, and `start_date` when present. For CRM-converted Clients that were created before those fields were copied, responses fall back to the same-tenant source lead's `won_amount`/`budget` and conversion/closed date without overwriting stored Client values.
 | PUT | `/api/v1/clients/{client_id}` | `update_client` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/clients/{client_id}/documents` | `upload_client_document` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/clients/{client_id}/documents/{document_index}` | `delete_client_document` | Uses router/endpoint dependencies where configured. |
