@@ -49,9 +49,15 @@ export const SECTION_OVERVIEWS = {
   },
   people: {
     title: "People Operations",
-    description: "Manage employees, teams, departments, attendance, leave, recruitment, and people reporting.",
-    stats: ["Employees", "Attendance", "Leave", "Hiring"],
-    actions: ["Open employees", "Review attendance", "Manage leave", "Open hiring"],
+    description: "Manage employees, teams, departments, attendance, leave, and people reporting.",
+    stats: ["Employees", "Attendance", "Leave", "Departments"],
+    actions: ["Open employees", "Review attendance", "Manage leave", "View departments"],
+  },
+  recruitment: {
+    title: "Recruitment Center",
+    description: "Manage job openings, candidates, interviews, offers, and the full hiring pipeline from one focused workspace.",
+    stats: ["Job Openings", "Candidates", "Interviews", "Offers"],
+    actions: ["Create job", "Review candidates", "Schedule interviews", "Manage offers"],
   },
   finance: {
     title: "Finance Workspace",

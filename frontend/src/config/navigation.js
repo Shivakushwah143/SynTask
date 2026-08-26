@@ -54,7 +54,7 @@ import { HR_MODULES } from "./hrModules";
 // NOTE: NAV_GROUPS_OPEN_KEY (collapsible-group expand state) was removed in the tab sub-nav plan
 // (Phase D). The sidebar no longer has collapsible groups, so stale localStorage keys are ignored.
 
-// ── Icon mapping for the 12 top-level sections (spec §10.4, mapped to the project's icon set) ──
+// ── Icon mapping for the top-level sections (spec §10.4, mapped to the project's icon set) ──
 export const SECTION_ICONS = {
   home: Home,
   sales: Briefcase,
@@ -65,6 +65,7 @@ export const SECTION_ICONS = {
   inbox: MessageSquareText,
   ai: Bot,
   people: UserCog,
+  recruitment: UserRoundSearch,
   finance: DollarSign,
   insights: LineChart,
   settings: Settings,
@@ -145,6 +146,7 @@ export const SECTIONS = [
   { key: "inbox", label: "Inbox", items: ["WhatsApp", "Instagram", "Messenger", "Meta Messages", "Notifications", "Activity Feed", "AI Replies", "Approval Queue"] },
   { key: "ai", label: "AI Workspace", items: ["AI Assistant", "AI Content Assistant"] },
   { key: "people", label: "People", items: ["Employees", "My People", "Attendance", "Live Attendance", "Attendance Reports", "Leave Management", "Departments", "Company Directory"] },
+  { key: "recruitment", label: "Recruitment", items: ["Hiring Dashboard", "Job Openings", "Applications", "Candidates", "Employee Profiles", "Talent Pool", "Interviews", "Offers", "Hiring Reports", "Settings"], overviewHref: "/hr/recruitment", hideOverviewTab: true },
   { key: "finance", label: "Finance", items: ["Invoices", "Transactions", "Subscriptions"] },
   { key: "insights", label: "Insights", items: ["Workspace Reports", "Sales Reports"] },
   { key: "settings", label: "Settings", items: ["System Settings", "Roles & Permissions", "Automation Rules", "Connected Accounts", "Google Workspace", "Activity Logs", "Client Settings"] },
@@ -363,6 +365,7 @@ export const SECTION_COLORS = {
   inbox: "text-sky-400",
   ai: "text-purple-400",
   people: "text-orange-400",
+  recruitment: "text-emerald-400",
   finance: "text-yellow-400",
   insights: "text-lime-400",
   settings: "text-gray-400",
@@ -376,14 +379,33 @@ export const SECTION_COLORS = {
 // ── Route → section/item resolution (Phase 5 breadcrumbs, spec §10.5) ────────
 // Lets the header breadcrumb reuse the SAME section labels + item names as the
 // sidebar, so "Home → Section → Page" always matches what the user sees in nav.
-const NAV_ITEM_BY_NAME = [...navigation, ...crmNavigation, ...metaNavigation].reduce((acc, item) => {
+
+// Build renamed HR nav items so they can be looked up by their display name
+// (e.g. "Hiring Dashboard", "Job Openings") inside SECTION_ITEM_PAIRS.
+const hrNavItemsByName = HR_MODULES.flatMap((mod) =>
+  mod.navigation
+    .filter((item) => !HR_ITEM_SKIP.has(item.name))
+    .map((item) => {
+      const displayName = HR_ITEM_RENAMES[item.name] || item.name;
+      return {
+        ...item,
+        name: displayName,
+        match: item.href === mod.basePath ? mod.basePath : undefined,
+      };
+    })
+).reduce((acc, item) => { acc[item.name] = item; return acc; }, {});
+
+const NAV_ITEM_BY_NAME = { ...[...navigation, ...crmNavigation, ...metaNavigation].reduce((acc, item) => {
   acc[item.name] = item;
   return acc;
-}, {});
+}, {}), ...hrNavItemsByName };
 
 const SECTION_ITEM_PAIRS = SECTIONS.flatMap((section) =>
   section.items.map((name) => ({ section, item: NAV_ITEM_BY_NAME[name] }))
 ).filter((pair) => pair.item);
+
+// HR paths that should NOT render the tab bar (workflow-only screens).
+export const HR_EXCLUDED_PATHS = ["/hr/recruitment/interview-screen"];
 
 // Returns { sectionLabel, itemName, itemPath, matchedExact } for the sidebar item
 // that owns `pathname`, or null when the route is not present in the sidebar
@@ -392,7 +414,11 @@ const SECTION_ITEM_PAIRS = SECTIONS.flatMap((section) =>
 export const getNavContextForPath = (pathname, search = "") => {
   // Two passes: exact matches win over prefix matches, so a sibling page such as
   // /crm/leads/all resolves to "All Leads", not to the /crm/leads prefix of "Leads".
+  // For prefix matches, track the longest matching prefix so that /hr/recruitment/jobs/123
+  // resolves to "Job Openings" (prefix /hr/recruitment/jobs) and not "Hiring Dashboard"
+  // (prefix /hr/recruitment).
   let prefixMatch = null;
+  let maxPrefixLen = 0;
   for (const { section, item } of SECTION_ITEM_PAIRS) {
     const [itemPath, itemSearch = ""] = item.href.split("?");
     if (itemSearch) {
@@ -403,7 +429,8 @@ export const getNavContextForPath = (pathname, search = "") => {
       }
     } else if (pathname === itemPath) {
       return { sectionKey: section.key, sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: true };
-    } else if (pathname.startsWith(`${itemPath}/`) && !prefixMatch) {
+    } else if (pathname.startsWith(`${itemPath}/`) && itemPath.length > maxPrefixLen) {
+      maxPrefixLen = itemPath.length;
       prefixMatch = { sectionKey: section.key, sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: false };
     }
   }
@@ -497,6 +524,10 @@ const getHrNavItems = (user) => {
 export const getSectionItems = (sectionKey, user, orgDepartments = []) => {
   const section = SECTIONS.find((s) => s.key === sectionKey);
   if (!section || !isSectionVisible(section, user)) return [];
+  // Recruitment section uses the shared HR gating helper directly.
+  if (sectionKey === "recruitment") {
+    return getHrNavItems(user);
+  }
   const items = section.items
     .map((name) => NAV_ITEM_BY_NAME[name])
     .filter((item) => item && gateNavItem(user, item));
@@ -512,7 +543,7 @@ export const getSectionItems = (sectionKey, user, orgDepartments = []) => {
       departmentItem: true,
     }));
     if (deptIndex !== -1) items.splice(deptIndex + 1, 0, ...departmentItems);
-    items.push(...getHrNavItems(user));
+    // HR items are no longer appended here — they live under the Recruitment section.
   }
   return items;
 };

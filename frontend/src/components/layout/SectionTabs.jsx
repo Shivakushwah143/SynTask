@@ -87,9 +87,8 @@ const resolveSectionContext = (location) => {
     return { sectionKey: ctx.sectionKey, isLanding: isLegacyLanding, itemName: ctx.itemName };
   }
 
-  // HR recruitment screens belong to the People section (they were moved out of the
-  // sidebar config, but their tabs live under People). Exact-match only: the interview
-  // screen and /hr landing deliberately show no tab bar.
+  // HR recruitment screens belong to the Recruitment section (standalone sidebar entry).
+  // Exact-match only: the interview screen and /hr landing deliberately show no tab bar.
   const hrItems = HR_MODULES.flatMap((mod) =>
     mod.navigation
       .filter((item) => !HR_ITEM_SKIP.has(item.name))
@@ -100,7 +99,7 @@ const resolveSectionContext = (location) => {
       })),
   );
   const hrExact = hrItems.find((item) => isExactNavMatch(item, location));
-  if (hrExact) return { sectionKey: "people", isLanding: false, itemName: hrExact.name };
+  if (hrExact) return { sectionKey: "recruitment", isLanding: false, itemName: hrExact.name };
 
   return null;
 };
