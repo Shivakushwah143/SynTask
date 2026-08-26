@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
-import { useQuery } from 'react-query'
+import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Activity, Building2, CalendarDays, Clock3, DollarSign, ExternalLink, FileText, FolderKanban, Mail, Phone, Users } from 'lucide-react'
 import { format } from 'date-fns'
+import toast from 'react-hot-toast'
 import { clientsAPI } from '../api/clients'
 import { Button, EmptyState, Skeleton } from '../components/ui'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../components/crm'
@@ -43,6 +44,47 @@ function clientFileUrl(url) {
   return `${baseUrl}${url}`
 }
 
+const CLIENT_STATUS_OPTIONS = [
+  { value: 'new', label: 'New' },
+  { value: 'onboarding', label: 'Onboarding' },
+  { value: 'active', label: 'Active' },
+  { value: 'at_risk', label: 'At Risk' },
+  { value: 'on_hold', label: 'On Hold' },
+  { value: 'renewal_due', label: 'Renewal Due' },
+  { value: 'churned', label: 'Churned' },
+  { value: 'archived', label: 'Archived' },
+]
+
+function formatClientType(value) {
+  if (value === 'monthly') return 'Monthly'
+  if (value === 'one_time') return 'One Time'
+  return 'N/A'
+}
+
+function clientStatusClass(status) {
+  if (status === 'new') return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/50 dark:text-sky-300'
+  if (status === 'onboarding') return 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/60 dark:bg-indigo-950/50 dark:text-indigo-300'
+  if (status === 'active') return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-300'
+  if (status === 'at_risk') return 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/60 dark:bg-orange-950/50 dark:text-orange-300'
+  if (status === 'on_hold') return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-300'
+  if (status === 'renewal_due') return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/50 dark:text-violet-300'
+  if (status === 'churned') return 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-300'
+  if (status === 'archived') return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/50 dark:text-rose-300'
+  return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300'
+}
+
+function firstPositiveNumber(...values) {
+  for (const value of values) {
+    const number = Number(value || 0)
+    if (number > 0) return number
+  }
+  return 0
+}
+
+function projectBoardId(project) {
+  return project?.id || project?.project_id || project?.key
+}
+
 function WorkspaceTabs({ activeTab, onTabChange, counts = {} }) {
   return (
     <nav aria-label="Client workspace sections" className="overflow-x-auto rounded-2xl border border-surface-border/80 bg-white/90 p-2 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
@@ -78,6 +120,7 @@ function WorkspaceTabs({ activeTab, onTabChange, counts = {} }) {
 
 export default function ClientWorkspacePage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { clientId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -104,6 +147,20 @@ export default function ClientWorkspacePage() {
   const timeline = workspace.timeline || {}
   const summary = workspace.summary || {}
   const errorStatus = workspaceQuery.error?.response?.status
+
+  const statusMutation = useMutation(
+    (nextStatus) => clientsAPI.updateClientStatus(clientId, nextStatus),
+    {
+      onSuccess: () => {
+        toast.success('Client status updated')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries('clients')
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Failed to update client status')
+      },
+    }
+  )
 
   const setTab = (tab) => {
     setSearchParams((current) => {
@@ -199,6 +256,20 @@ export default function ClientWorkspacePage() {
   const companySummary = client.company_name || client.name || 'Client'
   const primaryEmail = client.email || 'No email on file'
   const primaryPhone = client.contact || 'No phone on file'
+  const leadBudgetFallback = leads.find((l) => l.won_amount || l.budget)?.won_amount || leads.find((l) => l.won_amount || l.budget)?.budget
+  const projectsBudgetFallback = projects.reduce((sum, p) => sum + Number(p.budget || 0), 0)
+  const clientBudget = firstPositiveNumber(client.budget, client.total_budget, leadBudgetFallback, projectsBudgetFallback)
+  const budgetLabel = clientBudget > 0 ? formatCurrency(clientBudget) : 'N/A'
+  const budgetSourceHelper = client.source_budget === 'sales_lead' || (!client.budget && leadBudgetFallback)
+    ? 'From won sales lead'
+    : client.source_budget === 'projects' || (!client.budget && projectsBudgetFallback > 0)
+    ? 'Sum of project budgets'
+    : clientBudget > 0
+    ? 'Client account value'
+    : 'No budget set'
+  const clientTypeLabel = formatClientType(client.client_type)
+  const clientStatus = client.status || 'active'
+  const clientStatusLabel = CLIENT_STATUS_OPTIONS.find((item) => item.value === clientStatus)?.label || clientStatus
   const workspaceHealth = totalInvoices > 0
     ? `${formatCurrency(outstandingAmount || 0)} outstanding`
     : 'No billing activity yet'
@@ -222,7 +293,12 @@ export default function ClientWorkspacePage() {
                   {projects.map((project) => (
                     <tr key={project.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900 dark:text-gray-100">{project.name}</p>
+                        <Link
+                          to={`/projects/${projectBoardId(project)}/board`}
+                          className="font-medium text-gray-900 hover:text-primary-600 hover:underline dark:text-gray-100 dark:hover:text-primary-400"
+                        >
+                          {project.name}
+                        </Link>
                         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{project.key || project.project_id || project.id}</p>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{project.status || 'N/A'}</td>
@@ -230,7 +306,7 @@ export default function ClientWorkspacePage() {
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(project.start_date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(project.delivery_date)}</td>
                       <td className="px-4 py-3">
-                        <Link className="btn btn-secondary btn-sm inline-flex items-center gap-2" to={`/projects/${project.project_id || project.id}/board`}>
+                        <Link className="btn btn-secondary btn-sm inline-flex items-center gap-2" to={`/projects/${projectBoardId(project)}/board`}>
                           <ExternalLink className="h-3 w-3" />
                           Open
                         </Link>
@@ -264,12 +340,32 @@ export default function ClientWorkspacePage() {
                   {tasks.map((task) => (
                     <tr key={task.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900 dark:text-gray-100">{task.title}</p>
+                        <Link
+                          to={
+                            task.project_object_id || task.project_id
+                              ? `/projects/${task.project_object_id || task.project_id}/tasks/${task.id}`
+                              : `/tasks/${task.id}`
+                          }
+                          className="font-medium text-gray-900 hover:text-primary-600 hover:underline dark:text-gray-100 dark:hover:text-primary-400"
+                        >
+                          {task.title}
+                        </Link>
                         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{task.id}</p>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{task.status || 'N/A'}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{task.priority || 'N/A'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{task.project_id || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                        {task.project_object_id || task.project_id ? (
+                          <Link
+                            to={`/projects/${task.project_object_id || task.project_id}/board`}
+                            className="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                          >
+                            {task.project_id || task.project_object_id}
+                          </Link>
+                        ) : (
+                          'N/A'
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(task.due_date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(task.updated_at)}</td>
                     </tr>
@@ -441,9 +537,7 @@ export default function ClientWorkspacePage() {
                 <p>{client.company_name || 'No company name'}</p>
                 <p>Status: {client.status || 'N/A'}</p>
                 <p>Owner: {client.assigned_to_name || client.assigned_to || 'Unassigned'}</p>
-                {client.client_type && (
-                  <p>Type: <span className="capitalize font-medium">{client.client_type === 'monthly' ? 'Monthly' : 'One Time'}</span></p>
-                )}
+                <p>Type: <span className="font-medium">{clientTypeLabel}</span></p>
               </div>
             </article>
             <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -457,18 +551,9 @@ export default function ClientWorkspacePage() {
             <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Financial & Schedule</p>
               <div className="mt-3 space-y-2 text-sm text-gray-700 dark:text-gray-200">
-                {client.budget > 0 && (
-                  <p>Budget: <span className="font-medium">₹{Number(client.budget).toLocaleString()}</span></p>
-                )}
-                {client.start_date && (
-                  <p>Start: {formatDate(client.start_date)}</p>
-                )}
-                {client.delivery_date && (
-                  <p>Delivery: {formatDate(client.delivery_date)}</p>
-                )}
-                {!client.budget && !client.start_date && !client.delivery_date && (
-                  <p className="text-gray-500 dark:text-gray-400">No financial info set</p>
-                )}
+                <p>Budget: <span className="font-medium">{budgetLabel}</span></p>
+                <p>Start: {formatDate(client.start_date)}</p>
+                <p>Delivery: {formatDate(client.delivery_date)}</p>
               </div>
             </article>
             <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -514,10 +599,10 @@ export default function ClientWorkspacePage() {
       />
 
       <section className="overflow-hidden rounded-[2rem] border border-emerald-100/80 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-5 shadow-sm dark:border-gray-800 dark:from-gray-950 dark:via-gray-900 dark:to-gray-900">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(380px,0.85fr)]">
           <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700 shadow-sm dark:border-gray-700 dark:bg-gray-900/90 dark:text-emerald-300">
-              Active account workspace
+            <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] shadow-sm ${clientStatusClass(clientStatus)}`}>
+              {clientStatusLabel} account workspace
             </div>
             <div>
               <h2 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">{client.name}</h2>
@@ -542,6 +627,35 @@ export default function ClientWorkspacePage() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <article className="rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
+              <label className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400" htmlFor="client-workspace-status">
+                Status
+              </label>
+              <select
+                id="client-workspace-status"
+                value={clientStatus}
+                disabled={statusMutation.isLoading}
+                onChange={(event) => {
+                  if (event.target.value !== clientStatus) statusMutation.mutate(event.target.value)
+                }}
+                className="mt-2 h-9 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:ring-primary-900/50"
+              >
+                {CLIENT_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Update account state</p>
+            </article>
+            <article className="rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Budget</p>
+              <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">{budgetLabel}</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{budgetSourceHelper}</p>
+            </article>
+            <article className="rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Type</p>
+              <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{clientTypeLabel}</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{formatDate(client.start_date)}</p>
+            </article>
+            <article className="rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Workspace owner</p>
               <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{client.assigned_to_name || client.assigned_to || 'Unassigned'}</p>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{primaryEmail}</p>
@@ -555,8 +669,9 @@ export default function ClientWorkspacePage() {
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <CRMStatCard icon={Building2} label="Client" value={client.name || '-'} tone="blue" helper={client.company_name || 'Client account'} />
+        <CRMStatCard icon={DollarSign} label="Budget" value={budgetLabel} tone="emerald" helper={budgetSourceHelper} />
         <CRMStatCard icon={FolderKanban} label="Projects" value={String(totalProjects)} tone="emerald" helper={projects[0]?.name || 'Linked projects'} />
         <CRMStatCard icon={DollarSign} label="Invoices" value={String(totalInvoices)} tone="amber" helper={formatCurrency(outstandingAmount || 0)} />
         <CRMStatCard icon={Clock3} label="Updated" value={formatDate(client.updated_at)} tone="slate" helper="Workspace freshness" />

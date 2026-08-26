@@ -113,8 +113,8 @@ export const buildBreadcrumbTrail = (pathname, search = '') => {
   else if (isCompanyWorkspace) displaySegments = [displaySegments[0], displaySegments[1], 'Company']
   else if (isTaskDetail) displaySegments = ['Projects', displaySegments[1], 'Tasks', 'Task Detail']
   else if (isDirectTaskDetail) displaySegments = ['Tasks', 'Task Detail']
-  else if (isRecruitmentJobDetail) displaySegments = ['People', 'Recruitment', 'Job Openings', 'Job Detail']
-  else if (isRecruitmentCandidateDetail) displaySegments = ['People', 'Recruitment', 'Candidates', 'Candidate Detail']
+  else if (isRecruitmentJobDetail) displaySegments = ['Recruitment', 'Job Openings', 'Job Detail']
+  else if (isRecruitmentCandidateDetail) displaySegments = ['Recruitment', 'Candidates', 'Candidate Detail']
 
   if (displaySegments[0] === 'CRM' || displaySegments[0] === 'HR') displaySegments = displaySegments.slice(1)
   return ['Home', ...displaySegments]

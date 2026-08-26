@@ -100,12 +100,12 @@ Questions? Reply to this message.
 | Live attendance | People → Live Attendance | Was "Live Attendance" under People & Activity |
 | Attendance reports | People → Attendance Reports | Was "Attendance Reports" under People & Activity |
 | Company directory | People → Company Directory | Was "Company Directory" under Administration |
-| Recruitment / Hiring | People → Hiring Dashboard | Was under HR Department |
-| Job openings | People → Job Openings | Was "Jobs" under HR Department |
-| Applications | People → Applications | Was "Inbox" under HR Department |
-| Candidates / Interviews | People → Candidates / Interviews | Was under HR Department |
-| Resume pool | People → Talent Pool | Was "Resume Pool" under HR Department |
-| Hiring reports | People → Hiring Reports | Was "Reports" under HR Department |
+| Recruitment / Hiring | Recruitment → Hiring Dashboard | Was under HR Department |
+| Job openings | Recruitment → Job Openings | Was "Jobs" under HR Department |
+| Applications | Recruitment → Applications | Was "Inbox" under HR Department |
+| Candidates / Interviews | Recruitment → Candidates / Interviews | Was under HR Department |
+| Resume pool | Recruitment → Talent Pool | Was "Resume Pool" under HR Department |
+| Hiring reports | Recruitment → Hiring Reports | Was "Reports" under HR Department |
 | User permissions / Roles | Settings → Roles & Permissions | Was "Admin Permissions" under Administration |
 | Automation / Workflows | Settings → Automation Rules | Was "Workflows" under Administration |
 | Audit log | Settings → Activity Logs | Was "Audit Log" under Administration |

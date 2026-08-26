@@ -277,6 +277,7 @@ function App() {
           <Route path="tickets" element={withBoundary(<Tickets />)} />
           <Route path="chat" element={withBoundary(<Chat />)} />
           <Route path="clients" element={<ModuleGuard module="clients">{withBoundary(<Clients />)}</ModuleGuard>} />
+          <Route path="clients/:stageKey" element={<ModuleGuard module="clients">{withBoundary(<Clients />)}</ModuleGuard>} />
           <Route path="clients/:clientId/workspace" element={<ModuleGuard module="clients">{withBoundary(<ClientWorkspacePage />)}</ModuleGuard>} />
           <Route path="invoices" element={<ModuleGuard module="invoices">{withBoundary(<Invoices />)}</ModuleGuard>} />
           {/* MSA hidden by request. Keep route commented for later restore.

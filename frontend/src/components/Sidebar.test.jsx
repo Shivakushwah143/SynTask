@@ -35,6 +35,7 @@ const SECTION_LABELS = [
   'Inbox',
   'AI Workspace',
   'People',
+  'Recruitment',
   'Finance',
   'Insights',
   'Settings',
@@ -51,6 +52,7 @@ const SECTION_KEYS = [
   'inbox',
   'ai',
   'people',
+  'recruitment',
   'finance',
   'insights',
   'settings',
@@ -71,14 +73,14 @@ beforeEach(() => {
 })
 
 describe('Sidebar tab sub-nav (Phase D): link-only sections', () => {
-  it('shows exactly 13 top-level sections as links', () => {
+  it('shows exactly 14 top-level sections as links', () => {
     renderSidebar()
     for (const label of SECTION_LABELS) {
       expect(screen.getByRole('link', { name: new RegExp(`^${label}$`, 'i') })).toBeTruthy()
     }
   })
 
-  it('renders the 13 sections in the exact spec order', () => {
+  it('renders the 14 sections in the exact spec order', () => {
     renderSidebar()
     const links = SECTION_LABELS.map((label) => screen.getByRole('link', { name: new RegExp(`^${label}$`, 'i') }))
     const orderMatches = links.every((link, index) => {

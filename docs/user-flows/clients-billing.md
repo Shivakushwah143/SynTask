@@ -25,6 +25,31 @@ flowchart TD
 - Notifications sent: none explicitly in the frontend.
 - Related modules updated: Projects, Invoices, CRM Companies.
 
+### Client lifecycle transitions
+```mermaid
+flowchart LR
+  N[New] --> O[Onboarding] --> A[Active]
+  A --> R[At Risk]
+  A --> H[On Hold]
+  A --> Y[Renewal Due]
+  A --> C[Churned]
+  A --> X[Archived]
+  R --> A
+  R --> H
+  R --> C
+  R --> X
+  H --> A
+  H --> Y
+  H --> C
+  H --> X
+  Y --> A
+  Y --> C
+  Y --> X
+  C --> A
+  C --> X
+```
+`New -> Onboarding -> Active` is sequential. After `Active`, transitions are conditional and are read from the backend lifecycle rules endpoint. Activation requires Primary Contact, Account Owner, Requirements, and Kickoff Meeting. Configured operational or terminal transitions require a reason; archived clients have no destination unless a future authorized restore flow is added.
+
 ## Invoices
 - How the user reaches it: main navigation.
 - What they can do: create and manage invoices.

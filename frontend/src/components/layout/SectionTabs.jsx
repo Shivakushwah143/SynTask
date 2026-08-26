@@ -47,7 +47,7 @@ const INBOX_COUNT_KEYS = {
 // in the sidebar, it is only removed from the Sales section tabs. The legacy Sales
 // routes (Leads / All Leads / Pipeline) stay inside the section so their URLs resolve
 // to the Sales section, while the visible tabs remain exactly the guided journey.
-const TAB_HIDDEN_ITEM_NAMES = new Set(["Import Leads", "Leads", "All Leads", "Pipeline"]);
+const TAB_HIDDEN_ITEM_NAMES = new Set(["Import Leads", "Leads", "All Leads", "Pipeline", "All Clients", "Companies", "Contacts", "Client Calendar", "Client Insights"]);
 
 // Legacy Sales routes resolved to one of the hidden items above (e.g. the full board
 // at /crm/pipeline or the browsing page at /crm/leads/all). No journey stage tab
@@ -87,9 +87,8 @@ const resolveSectionContext = (location) => {
     return { sectionKey: ctx.sectionKey, isLanding: isLegacyLanding, itemName: ctx.itemName };
   }
 
-  // HR recruitment screens belong to the People section (they were moved out of the
-  // sidebar config, but their tabs live under People). Exact-match only: the interview
-  // screen and /hr landing deliberately show no tab bar.
+  // HR recruitment screens belong to the Recruitment section (standalone sidebar entry).
+  // Exact-match only: the interview screen and /hr landing deliberately show no tab bar.
   const hrItems = HR_MODULES.flatMap((mod) =>
     mod.navigation
       .filter((item) => !HR_ITEM_SKIP.has(item.name))
@@ -100,7 +99,7 @@ const resolveSectionContext = (location) => {
       })),
   );
   const hrExact = hrItems.find((item) => isExactNavMatch(item, location));
-  if (hrExact) return { sectionKey: "people", isLanding: false, itemName: hrExact.name };
+  if (hrExact) return { sectionKey: "recruitment", isLanding: false, itemName: hrExact.name };
 
   return null;
 };
