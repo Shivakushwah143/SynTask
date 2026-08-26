@@ -1,13 +1,14 @@
 """
 Client Management Endpoints
 """
-from fastapi import APIRouter, HTTPException, status, Depends, Form, UploadFile, File
+from fastapi import APIRouter, HTTPException, status, Depends, Form, UploadFile, File, Query
 from typing import Optional, List
 from datetime import datetime
 from bson import ObjectId
 import logging
 from pathlib import Path
 import uuid
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +260,8 @@ async def create_client(
 async def list_clients(
     status_filter: Optional[str] = None,
     assigned_to: Optional[str] = None,
+    search: Optional[str] = Query(None),
+    client_type: Optional[str] = Query(None),
     pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
@@ -280,6 +283,22 @@ async def list_clients(
     
     if assigned_to:
         query["assigned_to"] = assigned_to
+
+    if client_type:
+        try:
+            query["client_type"] = ClientType(client_type)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid client type")
+
+    if search:
+        escaped = re.escape(str(search).strip())
+        if escaped:
+            query["$or"] = [
+                {"name": {"$regex": escaped, "$options": "i"}},
+                {"company_name": {"$regex": escaped, "$options": "i"}},
+                {"email": {"$regex": escaped, "$options": "i"}},
+                {"contact": {"$regex": escaped, "$options": "i"}},
+            ]
     
     # For super admin, also filter by assigned_to if provided
     if current_user.role == UserRole.SUPER_ADMIN and assigned_to:

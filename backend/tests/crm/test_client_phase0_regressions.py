@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app.api.v1.endpoints.clients import _client_commercial_fields
 from app.crm.client_workspace import ClientWorkspaceService
 from app.crm.client_identity import ClientCompanyResolution, load_contacts_for_client, resolve_crm_company_for_client
+from app.crm import client_lifecycle
 from app.crm.client_lifecycle import normalize_client_status, transition_client_status
 from app.crm.deal_automation import _resolve_client, handle_won_deal_automation
 from app.models.client import Client, ClientStatus, ClientType
@@ -665,13 +666,42 @@ def test_legacy_inactive_client_status_normalizes_to_on_hold():
 
 
 @pytest.mark.asyncio
-async def test_valid_client_lifecycle_transition_succeeds():
-    client = _client(status=ClientStatus.ONBOARDING)
+async def test_valid_client_lifecycle_transition_succeeds(monkeypatch):
+    async def fake_meeting_find_one(_query):
+        return SimpleNamespace(id="0000000000000000000000m1")
+
+    monkeypatch.setattr(client_lifecycle.Meeting, "find_one", fake_meeting_find_one)
+    client = _client(status=ClientStatus.ONBOARDING, notes="Requirements captured")
 
     await transition_client_status(client, ClientStatus.ACTIVE, _user())
 
     assert client.status == ClientStatus.ACTIVE
     assert client.saved is True
+
+
+@pytest.mark.asyncio
+async def test_client_activation_reports_missing_prerequisites(monkeypatch):
+    async def fake_meeting_find_one(_query):
+        return None
+
+    async def fake_source_lead_find_one(_query):
+        return None
+
+    monkeypatch.setattr(client_lifecycle.Meeting, "find_one", fake_meeting_find_one)
+    monkeypatch.setattr(client_lifecycle.SalesProspect, "find_one", fake_source_lead_find_one)
+    client = _client(status=ClientStatus.ONBOARDING, contact="", email="", assigned_to="", account_owner_id=None, notes="")
+
+    with pytest.raises(HTTPException) as exc:
+        await transition_client_status(client, ClientStatus.ACTIVE, _user())
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["code"] == "CLIENT_TRANSITION_BLOCKED"
+    assert [item["field"] for item in exc.value.detail["missing_fields"]] == [
+        "primary_contact",
+        "account_owner_id",
+        "requirements",
+        "kickoff_meeting",
+    ]
 
 
 @pytest.mark.asyncio
@@ -696,13 +726,26 @@ async def test_cross_tenant_client_lifecycle_transition_is_blocked():
 
 
 @pytest.mark.asyncio
-async def test_active_on_hold_active_lifecycle_path():
-    client = _client(status=ClientStatus.ACTIVE)
+async def test_active_on_hold_active_lifecycle_path(monkeypatch):
+    async def fake_meeting_find_one(_query):
+        return SimpleNamespace(id="0000000000000000000000m1")
+
+    monkeypatch.setattr(client_lifecycle.Meeting, "find_one", fake_meeting_find_one)
+    client = _client(status=ClientStatus.ACTIVE, notes="Requirements captured")
 
     await transition_client_status(client, ClientStatus.ON_HOLD, _user())
     assert client.status == ClientStatus.ON_HOLD
     await transition_client_status(client, ClientStatus.ACTIVE, _user())
     assert client.status == ClientStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_active_client_can_return_to_onboarding():
+    client = _client(status=ClientStatus.ACTIVE)
+
+    await transition_client_status(client, ClientStatus.ONBOARDING, _user())
+
+    assert client.status == ClientStatus.ONBOARDING
 
 
 def test_client_api_uses_source_lead_budget_when_client_budget_empty():

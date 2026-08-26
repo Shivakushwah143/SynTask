@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2, Sparkles, ShieldCheck } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { AlertTriangle, ArrowRight, Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2, Sparkles, ShieldCheck } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { Button, CreatableSelectField, EmptyState, FormField, LoadingSpinner, Modal, PhoneInput, SkeletonTable, inputClassName } from '../components/ui'
@@ -78,6 +78,42 @@ const clearClientFormDraft = () => {
   }
 }
 
+const CLIENT_PAGE_SIZE = 20
+
+const CLIENT_STAGE_ROUTES = {
+  new: 'new',
+  onboarding: 'onboarding',
+  active: 'active',
+  'at-risk': 'at_risk',
+  'on-hold': 'on_hold',
+  'renewal-due': 'renewal_due',
+  churned: 'churned',
+  archived: 'archived',
+}
+
+const CLIENT_STAGE_PATHS = Object.entries(CLIENT_STAGE_ROUTES).reduce((acc, [path, status]) => {
+  acc[status] = path
+  return acc
+}, {})
+
+const CLIENT_TRANSITION_ACTIONS = {
+  new: [{ status: 'onboarding', label: 'Start Onboarding' }, { status: 'archived', label: 'Archive' }],
+  onboarding: [{ status: 'active', label: 'Activate Client' }, { status: 'on_hold', label: 'Put On Hold' }, { status: 'archived', label: 'Archive' }],
+  active: [
+    { status: 'at_risk', label: 'Mark At Risk' },
+    { status: 'on_hold', label: 'Put On Hold' },
+    { status: 'renewal_due', label: 'Start Renewal' },
+    { status: 'churned', label: 'Mark Churned' },
+    { status: 'archived', label: 'Archive' },
+  ],
+  at_risk: [{ status: 'active', label: 'Resume' }, { status: 'churned', label: 'Mark Churned' }, { status: 'archived', label: 'Archive' }],
+  on_hold: [{ status: 'active', label: 'Resume' }, { status: 'churned', label: 'Mark Churned' }, { status: 'archived', label: 'Archive' }],
+  renewal_due: [{ status: 'active', label: 'Resume' }, { status: 'churned', label: 'Mark Churned' }, { status: 'archived', label: 'Archive' }],
+  churned: [{ status: 'archived', label: 'Archive' }],
+  archived: [],
+  inactive: [{ status: 'active', label: 'Resume' }, { status: 'on_hold', label: 'Put On Hold' }, { status: 'archived', label: 'Archive' }],
+}
+
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   const colors = {
     indigo: 'from-indigo-500 to-purple-500',
@@ -103,6 +139,7 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
 
 const Clients = () => {
   const { user } = useAuthStore()
+  const { stageKey } = useParams()
   const navigate = useNavigate()
   const { confirm, showUndoNotification } = useConfirmation()
   const [clients, setClients] = useState([])
@@ -154,6 +191,8 @@ const Clients = () => {
   const [documentName, setDocumentName] = useState('')
   const [updatingStatusId, setUpdatingStatusId] = useState(null)
   const [openStatusMenuId, setOpenStatusMenuId] = useState(null)
+  const [transitionBlocker, setTransitionBlocker] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
 
   useEffect(() => {
     const handleDocumentMouseDown = (event) => {
@@ -224,6 +263,12 @@ const Clients = () => {
 
   const statusOptions = ['new', 'onboarding', 'active', 'at_risk', 'on_hold', 'renewal_due', 'churned', 'archived']
   const getStatusMeta = (status) => statusMeta[status] || statusMeta.active
+  const routeStatus = CLIENT_STAGE_ROUTES[stageKey] || ''
+  const effectiveStatusFilter = routeStatus || statusFilter
+  const pageTitle = routeStatus ? `${getStatusMeta(routeStatus).label} Clients` : 'Clients Directory'
+  const pageDescription = routeStatus
+    ? `Only ${getStatusMeta(routeStatus).label.toLowerCase()} client accounts are shown here.`
+    : 'Manage enterprise client accounts, linked projects, contract budgets & files'
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isLead = isLeadRole(user?.role)
@@ -232,8 +277,10 @@ const Clients = () => {
     try {
       setLoading(true)
       setLoadError(null)
-      const params = {}
-      if (statusFilter) params.status_filter = statusFilter
+      const params = { limit: 500 }
+      if (effectiveStatusFilter) params.status_filter = effectiveStatusFilter
+      if (searchQuery.trim()) params.search = searchQuery.trim()
+      if (columnFilters.type) params.client_type = columnFilters.type
       const data = await clientsAPI.listClients(params)
       setClients(data.clients || [])
     } catch (error) {
@@ -255,7 +302,7 @@ const Clients = () => {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter])
+  }, [columnFilters.type, effectiveStatusFilter, searchQuery])
 
   const loadLeads = useCallback(async () => {
     try {
@@ -285,6 +332,10 @@ const Clients = () => {
     loadLeads()
     loadAssignableUsers()
   }, [isAuthenticated, loadClients, loadLeads])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [effectiveStatusFilter, searchQuery, columnFilters.projects, columnFilters.budget, columnFilters.start_date, columnFilters.delivery_date])
 
   const handleCreateClient = async (e) => {
     e.preventDefault()
@@ -418,17 +469,26 @@ const Clients = () => {
     setShowCreateModal(true)
   }
 
-  const handleStatusChange = async (clientId, newStatus) => {
+  const handleStatusChange = async (clientId, newStatus, client = null) => {
     if (updatingStatusId) return
     try {
       setUpdatingStatusId(clientId)
       await clientsAPI.updateClientStatus(clientId, newStatus)
-      toast.success(`Client status updated to ${newStatus}`)
-      setClients((prev) =>
-        prev.map((c) => (c.id === clientId ? { ...c, status: newStatus } : c))
-      )
+      toast.success(`Client status updated to ${getStatusMeta(newStatus).label}`)
+      if (routeStatus && routeStatus !== newStatus) {
+        setClients((prev) => prev.filter((c) => c.id !== clientId))
+      } else {
+        setClients((prev) =>
+          prev.map((c) => (c.id === clientId ? { ...c, status: newStatus } : c))
+        )
+      }
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to update status')
+      const detail = error.response?.data?.detail
+      if (detail && typeof detail === 'object' && detail.code === 'CLIENT_TRANSITION_BLOCKED') {
+        setTransitionBlocker({ detail, client })
+      } else {
+        toast.error(typeof detail === 'string' ? detail : 'Failed to update status')
+      }
     } finally {
       setUpdatingStatusId(null)
     }
@@ -735,7 +795,7 @@ const Clients = () => {
     setColumnFilters((prev) => ({ ...prev, [key]: value }))
   }
 
-  const activeColumnFilterCount = Object.values(columnFilters).filter(Boolean).length + (statusFilter ? 1 : 0)
+  const activeColumnFilterCount = Object.values(columnFilters).filter(Boolean).length + (!routeStatus && statusFilter ? 1 : 0)
 
   const clearColumnFilters = () => {
     setColumnFilters({
@@ -745,7 +805,7 @@ const Clients = () => {
       start_date: '',
       delivery_date: '',
     })
-    setStatusFilter('')
+    if (!routeStatus) setStatusFilter('')
   }
 
   const filteredClients = clients.filter(client => {
@@ -756,7 +816,7 @@ const Clients = () => {
       q(client.company_name).includes(searchQuery.toLowerCase()) ||
       q(client.contact).includes(searchQuery.toLowerCase())
 
-    const matchesStatus = !statusFilter || (client.status || 'active') === statusFilter
+    const matchesStatus = !effectiveStatusFilter || (client.status || 'active') === effectiveStatusFilter
 
     const cf = columnFilters
     const matchesType = !cf.type || (client.client_type || '') === cf.type
@@ -790,6 +850,10 @@ const Clients = () => {
       matchesProjects && matchesBudget && matchesStartDate && matchesDeliveryDate
   })
 
+  const totalPages = Math.max(1, Math.ceil(filteredClients.length / CLIENT_PAGE_SIZE))
+  const safePage = Math.min(currentPage, totalPages)
+  const paginatedClients = filteredClients.slice((safePage - 1) * CLIENT_PAGE_SIZE, safePage * CLIENT_PAGE_SIZE)
+
   const activeCount = useMemo(() => clients.filter(c => (c.status || 'active') === 'active').length, [clients])
   const totalPortfolioBudget = useMemo(() => clients.reduce((sum, c) => sum + getTotalBudget(c), 0), [clients])
   const totalProjectsCount = useMemo(() => clients.reduce((sum, c) => sum + (c.projects?.length || c.project_ids?.length || 0), 0), [clients])
@@ -814,8 +878,8 @@ const Clients = () => {
               <Briefcase className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold leading-tight text-white tracking-tight md:text-xl">Clients Directory</h1>
-              <p className="text-xs text-indigo-100">Manage enterprise client accounts, linked projects, contract budgets & files</p>
+              <h1 className="text-lg font-bold leading-tight text-white tracking-tight md:text-xl">{pageTitle}</h1>
+              <p className="text-xs text-indigo-100">{pageDescription}</p>
             </div>
           </div>
           {(isCompanyAdmin || isLead) && (
@@ -918,19 +982,21 @@ const Clients = () => {
               <FormField label="Delivery date">
                 <input type="date" value={columnFilters.delivery_date} onChange={(e) => updateColumnFilter('delivery_date', e.target.value)} className={inputClassName} />
               </FormField>
-              <FormField label="Status">
-                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClassName}>
-                  <option value="">All statuses</option>
-                  <option value="new">New</option>
-                  <option value="onboarding">Onboarding</option>
-                  <option value="active">Active</option>
-                  <option value="at_risk">At Risk</option>
-                  <option value="on_hold">On Hold</option>
-                  <option value="renewal_due">Renewal Due</option>
-                  <option value="churned">Churned</option>
-                  <option value="archived">Archived</option>
-                </select>
-              </FormField>
+              {!routeStatus && (
+                <FormField label="Status">
+                  <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClassName}>
+                    <option value="">All statuses</option>
+                    <option value="new">New</option>
+                    <option value="onboarding">Onboarding</option>
+                    <option value="active">Active</option>
+                    <option value="at_risk">At Risk</option>
+                    <option value="on_hold">On Hold</option>
+                    <option value="renewal_due">Renewal Due</option>
+                    <option value="churned">Churned</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </FormField>
+              )}
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -1007,7 +1073,7 @@ const Clients = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {filteredClients.map((client) => (
+                {paginatedClients.map((client) => (
                   <tr
                     key={client.id}
                     className="group cursor-pointer transition hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20"
@@ -1085,7 +1151,7 @@ const Clients = () => {
                                       e.stopPropagation()
                                       setOpenStatusMenuId(null)
                                       if (!selected) {
-                                        handleStatusChange(client.id, status)
+                                        handleStatusChange(client.id, status, client)
                                       }
                                     }}
                                     className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-semibold transition ${meta.optionClass} ${selected ? 'bg-indigo-50 dark:bg-indigo-950/40' : 'hover:bg-gray-50 dark:hover:bg-gray-800/80'}`}
@@ -1130,6 +1196,24 @@ const Clients = () => {
                           <ExternalLink className="h-4 w-4" />
                         </button>
                         {(isCompanyAdmin || isLead) && (
+                          <>
+                          {(() => {
+                            const action = (CLIENT_TRANSITION_ACTIONS[client.status || 'active'] || [])[0]
+                            return action ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleStatusChange(client.id, action.status, client)
+                                }}
+                                disabled={updatingStatusId === client.id}
+                                className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50 disabled:opacity-60 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+                                title={action.label}
+                              >
+                                <ArrowRight className="h-3.5 w-3.5" />
+                                <span className="hidden xl:inline">{action.label}</span>
+                              </button>
+                            ) : null
+                          })()}
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
@@ -1140,6 +1224,7 @@ const Clients = () => {
                           >
                             <Edit className="h-4 w-4" />
                           </button>
+                          </>
                         )}
                         {isCompanyAdmin && (
                           <button
@@ -1160,8 +1245,91 @@ const Clients = () => {
               </tbody>
             </table>
           </div>
+          <div className="flex flex-col gap-2 border-t border-gray-200/80 px-4 py-3 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Showing {(safePage - 1) * CLIENT_PAGE_SIZE + 1}-{Math.min(safePage * CLIENT_PAGE_SIZE, filteredClients.length)} of {filteredClients.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={safePage <= 1}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                Previous
+              </button>
+              <span className="font-semibold text-gray-700 dark:text-gray-200">Page {safePage} of {totalPages}</span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={safePage >= totalPages}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       )}
+
+      <Modal
+        isOpen={Boolean(transitionBlocker)}
+        onClose={() => setTransitionBlocker(null)}
+        title={transitionBlocker?.detail?.target_status ? `Cannot Move to ${getStatusMeta(transitionBlocker.detail.target_status).label}` : 'Cannot Move Client'}
+        description="Complete the missing information, then retry the stage movement."
+        size="md"
+        footer={(
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setTransitionBlocker(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                const client = transitionBlocker?.client
+                setTransitionBlocker(null)
+                if (client) {
+                  handleEditClient(client)
+                }
+              }}
+            >
+              Complete Missing Information
+            </Button>
+            {transitionBlocker?.detail?.missing_fields?.some((item) => item.field === 'kickoff_meeting') ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  const client = transitionBlocker?.client
+                  setTransitionBlocker(null)
+                  if (client?.id) navigate(`/clients/${client.id}/workspace?tab=meetings`)
+                }}
+              >
+                Open Workspace
+              </Button>
+            ) : null}
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                {transitionBlocker?.detail?.message || 'This client cannot move stages yet.'}
+              </p>
+              <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-amber-700 dark:text-amber-300">
+                {(transitionBlocker?.detail?.missing_fields || []).map((item) => (
+                  <li key={item.field}>{item.label || String(item.field).replace(/_/g, ' ')}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
+            Client stays in current stage until backend lifecycle validation accepts the transition.
+          </p>
+        </div>
+      </Modal>
 
       {/* Create/Edit Modal */}
       {showCreateModal && (

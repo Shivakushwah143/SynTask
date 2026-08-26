@@ -115,6 +115,17 @@ export const SALES_JOURNEY_TAB_ITEMS = ["Acquire", "Qualify", "Discovery", "Prop
 // the tab bar too — it is not part of the guided journey.
 export const SALES_HIDDEN_TAB_ITEMS = ["Leads", "All Leads", "Pipeline", "Import Leads"];
 
+export const CLIENT_STAGE_ITEMS = [
+  { name: "New", href: "/clients/new", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
+  { name: "Onboarding", href: "/clients/onboarding", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
+  { name: "Active", href: "/clients/active", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
+  { name: "At Risk", href: "/clients/at-risk", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
+  { name: "On Hold", href: "/clients/on-hold", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
+  { name: "Renewal Due", href: "/clients/renewal-due", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
+  { name: "Churned", href: "/clients/churned", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
+  { name: "Archived", href: "/clients/archived", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
+];
+
 // Route for the dedicated Sales Overview dashboard. Used as the Sales section's default
 // destination: the sidebar section link and the in-page Overview tab both resolve here
 // instead of the generic /sections/sales landing.
@@ -139,7 +150,7 @@ export const SECTIONS = [
     items: [...SALES_JOURNEY_TAB_ITEMS, ...SALES_HIDDEN_TAB_ITEMS],
     overviewHref: SALES_OVERVIEW_HREF,
   },
-  { key: "clients", label: "Clients", items: ["All Clients", "Companies", "Contacts", "Client Calendar", "Client Insights"], overviewHref: "/clients", hideOverviewTab: true },
+  { key: "clients", label: "Clients", items: ["All Clients", ...CLIENT_STAGE_ITEMS.map((item) => item.name), "Companies", "Contacts", "Client Calendar", "Client Insights"], overviewHref: "/clients" },
   { key: "work", label: "Work", items: ["Projects", "Tasks", "Requests", "Scheduled Work", "Time Tracking", "Daily Updates"] },
   { key: "content", label: "Content", items: ["Content Calendar", "Content Studio"] },
   { key: "publishing", label: "Publishing", items: ["Publishing Centre", "Social Accounts", "Publishing Analytics", "Integrations"] },
@@ -167,6 +178,7 @@ export const navigation = [
 
   // Clients — /clients has no backend module gate; company admins only.
   { name: "All Clients", href: "/clients", icon: Briefcase, roles: ADMIN_ROLES },
+  ...CLIENT_STAGE_ITEMS,
 
   // Work
   { name: "Projects", href: "/projects", icon: FolderKanban, roles: STANDARD_ROLES, module: "projects" },

@@ -121,6 +121,7 @@ describe('sidebar route correctness (Phase 7, spec §11)', () => {
       '/sales/reports',
       '/super-admin/dashboard',
       '/clients/:clientId/workspace',
+      '/clients/:stageKey',
       '/projects/:projectId/board',
       '/sections/:sectionKey', // tab sub-nav landing pages (D1)
       '/sop-library',
