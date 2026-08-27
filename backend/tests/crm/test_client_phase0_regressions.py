@@ -291,7 +291,7 @@ async def test_won_deal_client_creation_uses_lead_tenant_and_company(monkeypatch
     assert client.company_id == lead.company_id
     assert client.company_name == lead.company_name
     assert client.email == lead.email
-    assert client.status == ClientStatus.ONBOARDING
+    assert client.status == ClientStatus.NEW
     assert client.crm_company_id == "0000000000000000000000aa"
     assert client.source_lead_id == str(lead.id)
     assert client.account_owner_id == lead.assigned_to
@@ -560,7 +560,7 @@ async def test_client_workspace_zero_project_client_returns_zero_tasks(monkeypat
 @pytest.mark.asyncio
 async def test_won_deal_conversion_reuses_existing_client_and_links_project(monkeypatch):
     lead = _lead()
-    client = _client(project_ids=[])
+    client = _client(project_ids=[], status=ClientStatus.NEW)
     project = _project(client_id=None)
     meeting = _meeting()
     saved = {"client": 0, "project": 0}
@@ -635,6 +635,7 @@ async def test_won_deal_conversion_reuses_existing_client_and_links_project(monk
 
     assert result["client"] is client
     assert result["project"] is project
+    assert client.status == ClientStatus.NEW
     assert client.project_ids == [str(project.id)]
     assert project.client_id == str(client.id)
     assert client.crm_company_id == "0000000000000000000000aa"

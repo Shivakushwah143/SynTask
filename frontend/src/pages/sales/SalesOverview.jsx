@@ -105,7 +105,7 @@ const SectionCard = ({
   children,
   className = '',
 }) => (
-  <section className={`rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 ${className}`}>
+  <section className={`rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800 ${className}`}>
     <div className="flex items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2">
         {Icon ? (
@@ -120,7 +120,7 @@ const SectionCard = ({
       </div>
       {badge ? <Badge label={badge} colorKey={badgeColor} pill /> : null}
     </div>
-    <div className="mt-3">{children}</div>
+    <div className="mt-2.5">{children}</div>
   </section>
 )
 
@@ -142,17 +142,19 @@ const StageCard = ({ stage }) => {
   return (
     <Link
       to={`/crm/pipeline/${stage.key}`}
-      className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition hover:border-indigo-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-600"
+      className="group min-h-[76px] rounded-lg border border-gray-200 bg-gray-50 p-3 transition hover:border-indigo-300 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-600 dark:hover:bg-indigo-950/40"
     >
-      <div className="flex items-center justify-between gap-1.5">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className={`h-2 w-2 shrink-0 rounded-full ${accent}`} />
-          <span className="truncate text-xs font-semibold text-gray-600 dark:text-gray-300">{stage.name}</span>
+      <div className="flex items-start justify-between gap-2">
+        <span className="flex min-w-0 items-start gap-1.5">
+          <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${accent}`} />
+          <span className="whitespace-normal break-words text-xs font-semibold leading-4 text-gray-700 dark:text-gray-200">{stage.name}</span>
         </span>
-        <ArrowRight className="h-3 w-3 shrink-0 text-gray-300 transition-all group-hover:translate-x-0.5 group-hover:text-indigo-400" />
+        <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-300 transition-all group-hover:translate-x-0.5 group-hover:text-indigo-400" />
       </div>
-      <p className="mt-2 text-xl font-bold leading-tight text-gray-900 dark:text-white">{stage.leadCount}</p>
-      <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Leads</p>
+      <div className="mt-2 flex items-end justify-between gap-2">
+        <span className="text-xl font-bold leading-none text-gray-950 dark:text-white">{stage.leadCount}</span>
+        <span className="text-[11px] font-medium uppercase text-gray-400 dark:text-gray-500">Leads</span>
+      </div>
     </Link>
   )
 }
@@ -266,7 +268,7 @@ export default function SalesOverview() {
           {/* Stage momentum — one card per journey stage, shown at the top */}
           <SectionCard title="Stage Momentum" subtitle="Live leads and deal value per stage" badge={`${allLeads.length} leads`}>
             {board.stages.length ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 2xl:grid-cols-8">
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
                 {board.stages.map((stage) => (
                   <StageCard key={stage.key} stage={stage} />
                 ))}
