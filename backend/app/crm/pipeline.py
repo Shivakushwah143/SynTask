@@ -1268,6 +1268,11 @@ class CRMPipelineService:
             prospect.won_status = getattr(prospect, "won_status", None) or "payment_pending"
             prospect.converted_at = getattr(prospect, "converted_at", None) or now
             automation_result = await _run_won_automation(current_user, prospect, company_id)
+            if automation_result.get("status") == "failed" or not automation_result.get("client_id"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Won lead conversion failed: {automation_result.get('error') or 'client was not created'}",
+                )
             if automation_result.get("client_id"):
                 prospect.client_id = automation_result["client_id"]
             if automation_result.get("project_id"):

@@ -1190,6 +1190,30 @@ class LeadEngine:
             prospect.first_contact_at = prospect.last_contacted_at
 
         # ── Stage inner-status sync (single write path keeps snapshot + domain in lockstep) ──
+        requested_stage = _normalize_text(payload.get("current_stage") or "").lower().replace(" ", "_")
+        requested_status = _normalize_text(payload.get("status") or "").lower().replace(" ", "_")
+        should_convert_to_client = requested_stage in {"won", "closed_won"} or requested_status in {"won", "closed_won"}
+        if should_convert_to_client and not getattr(prospect, "client_id", None):
+            from app.crm.pipeline import _run_won_automation
+
+            prospect.current_stage = "Won"
+            prospect.status = ProspectStatus.WON
+            prospect.closed_date = now
+            prospect.closed_by = str(getattr(current_user, "id", ""))
+            prospect.reason_for_lost = None
+            prospect.won_amount = float(getattr(prospect, "won_amount", None) or getattr(prospect, "budget", None) or 0)
+            prospect.won_status = getattr(prospect, "won_status", None) or "payment_pending"
+            prospect.converted_at = getattr(prospect, "converted_at", None) or now
+            automation_result = await _run_won_automation(current_user, prospect, str(getattr(prospect, "company_id", "") or ""))
+            if automation_result.get("status") == "failed" or not automation_result.get("client_id"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Won lead conversion failed: {automation_result.get('error') or 'client was not created'}",
+                )
+            prospect.client_id = automation_result["client_id"]
+            if automation_result.get("project_id"):
+                prospect.project_id = automation_result["project_id"]
+
         from app.crm.pipeline import STAGE_STATUS_DOMAIN_FIELD, apply_stage_status_change, stage_status_key
 
         stage_key = stage_status_key(prospect.current_stage)
