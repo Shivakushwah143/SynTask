@@ -361,8 +361,8 @@ async def _resolve_project(current_user: User, lead: SalesProspect, client: Clie
             existing.team_member_ids = list(existing.team_member_ids or []) + [owner_id]
         if owner_id and not existing.assigned_to:
             existing.assigned_to = owner_id
-        if owner_id and not existing.lead_id:
-            existing.lead_id = owner_id
+        if not existing.lead_id:
+            existing.lead_id = str(lead.id)
         existing.updated_at = utc_now()
         await existing.save()
         return existing
@@ -380,7 +380,7 @@ async def _resolve_project(current_user: User, lead: SalesProspect, client: Clie
         company_id=str(lead.company_id),
         type=ProjectType.OPERATIONS,
         status=ProjectStatus.ACTIVE,
-        lead_id=str(getattr(lead, "assigned_to", None) or owner_id) or None,
+        lead_id=str(lead.id),
         assigned_to=owner_id,
         assigned_by=str(getattr(current_user, "id", "")),
         assigned_at=now,

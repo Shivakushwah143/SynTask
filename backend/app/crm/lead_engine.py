@@ -22,6 +22,7 @@ from app.models.sales_masters import SalesStage
 from app.models.sales_import_job import SalesImportJob
 from app.models.ownership_transfer import OwnershipTransfer
 from app.models.sales_pipeline_history import SalesPipelineHistory
+from app.models.client import Client
 from app.crm.models import InterestLevel, ProspectStatus, SalesProspect
 from app.models.user import User, UserRole, UserStatus
 from app.core.rbac_visibility import require_owned_record_access
@@ -1193,9 +1194,16 @@ class LeadEngine:
         requested_stage = _normalize_text(payload.get("current_stage") or "").lower().replace(" ", "_")
         requested_status = _normalize_text(payload.get("status") or "").lower().replace(" ", "_")
         should_convert_to_client = requested_stage in {"won", "closed_won"} or requested_status in {"won", "closed_won"}
-        if should_convert_to_client and not getattr(prospect, "client_id", None):
-            from app.crm.pipeline import _run_won_automation
-
+        existing_client_id = getattr(prospect, "client_id", None)
+        existing_client = None
+        if should_convert_to_client and existing_client_id:
+            try:
+                existing_client = await Client.get(existing_client_id)
+            except Exception:
+                existing_client = None
+        existing_client_company_id = str(getattr(existing_client, "company_id", "") or "") if existing_client else None
+        current_company_id = str(getattr(prospect, "company_id", "") or "")
+        if should_convert_to_client:
             prospect.current_stage = "Won"
             prospect.status = ProspectStatus.WON
             prospect.closed_date = now
@@ -1204,6 +1212,11 @@ class LeadEngine:
             prospect.won_amount = float(getattr(prospect, "won_amount", None) or getattr(prospect, "budget", None) or 0)
             prospect.won_status = getattr(prospect, "won_status", None) or "payment_pending"
             prospect.converted_at = getattr(prospect, "converted_at", None) or now
+        if should_convert_to_client and existing_client and existing_client_company_id == current_company_id:
+            prospect.client_id = str(existing_client.id)
+        if should_convert_to_client and (not existing_client or existing_client_company_id != current_company_id):
+            from app.crm.pipeline import _run_won_automation
+
             automation_result = await _run_won_automation(current_user, prospect, str(getattr(prospect, "company_id", "") or ""))
             if automation_result.get("status") == "failed" or not automation_result.get("client_id"):
                 raise HTTPException(

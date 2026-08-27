@@ -638,6 +638,7 @@ async def test_won_deal_conversion_reuses_existing_client_and_links_project(monk
     assert client.status == ClientStatus.NEW
     assert client.project_ids == [str(project.id)]
     assert project.client_id == str(client.id)
+    assert project.lead_id == str(lead.id)
     assert client.crm_company_id == "0000000000000000000000aa"
     assert client.client_type == ClientType.ONE_TIME
     assert client.budget == lead.won_amount

@@ -818,6 +818,59 @@ async def test_update_lead_status_won_runs_client_conversion(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_update_lead_status_won_reruns_conversion_for_stale_client_id(monkeypatch):
+    lead = FakeProspect(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        prospect_name="Alpha Co",
+        company_name="Alpha Co",
+        source="manual",
+        current_stage="Agreement",
+        status=ProspectStatus.ACTIVE,
+        assigned_to="user-1",
+        assigned_by="user-9",
+        budget=25000,
+        client_id="missing-client",
+        project_id=None,
+        won_status=None,
+        current_stage_status=None,
+        stage_status_history=[],
+    )
+
+    async def fake_get(lead_id):
+        assert lead_id == "lead-1"
+        return lead
+
+    async def no_client(_client_id):
+        return None
+
+    async def fake_require_owned_record_access(*args, **kwargs):
+        return None
+
+    async def fake_run_won_automation(current_user, prospect, company_id):
+        assert company_id == "company-1"
+        assert prospect.status == ProspectStatus.WON
+        return {"status": "completed", "client_id": "client-2", "project_id": "project-2"}
+
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.lead_engine.Client.get", no_client)
+    monkeypatch.setattr("app.crm.lead_engine.require_owned_record_access", fake_require_owned_record_access)
+    monkeypatch.setattr("app.crm.pipeline._run_won_automation", fake_run_won_automation)
+
+    current_user = SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER)
+    result = await LeadEngine.update_lead(current_user, "lead-1", {"status": "won"})
+
+    assert result["message"] == "Prospect updated successfully"
+    assert lead.status == ProspectStatus.WON
+    assert lead.current_stage == "Won"
+    assert lead.client_id == "client-2"
+    assert lead.project_id == "project-2"
+    assert lead.current_stage_status == "payment_pending"
+    assert lead.saved is True
+
+
+@pytest.mark.asyncio
 async def test_update_lead_persists_custom_fields(monkeypatch):
     """Adding a custom field from the lead overview must persist custom_fields.
 
