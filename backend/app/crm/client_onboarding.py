@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
+import uuid
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.crm.client_identity import load_contacts_for_client
@@ -319,3 +321,79 @@ async def activation_blockers(client: Client, actor: Optional[User] = None) -> L
         for item in onboarding["blocking_items"]
         if item["required"]
     ]
+
+
+async def build_onboarding_document(client: Client, actor: Optional[User] = None, upload_dir: Optional[Path] = None) -> Dict[str, Any]:
+    onboarding = await sync_client_onboarding(client, actor)
+    contacts = await load_contacts_for_client(client)
+    projects = await _projects_for_client(client)
+    kickoff = await _kickoff_for_client(client)
+    safe_name = "".join(ch if ch.isalnum() else "-" for ch in (client.company_name or client.name or "client")).strip("-").lower()[:40] or "client"
+    filename = f"onboarding-{safe_name}-{uuid.uuid4().hex[:8]}.md"
+    target_dir = upload_dir or Path("uploads") / "clients"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / filename
+
+    primary_contact = next((contact for contact in contacts if getattr(contact, "is_primary_contact", False)), None)
+    contact_line = (
+        f"{primary_contact.full_name()} | {primary_contact.email or 'No email'} | {primary_contact.phone or 'No phone'}"
+        if primary_contact else f"{client.email or 'No email'} | {client.contact or 'No phone'}"
+    )
+    project_lines = "\n".join(f"- {project.name} ({_status_value(project.status) or 'status unknown'})" for project in projects) or "- No project linked yet"
+    item_lines = "\n".join(f"- {item['label']}: {item['status'].replace('_', ' ')} ({item['completion_percent']}%)" for item in onboarding["items"])
+
+    content = f"""# Client Onboarding Document
+
+## Client Details
+- Client: {client.company_name or client.name}
+- Account name: {client.name}
+- Industry: {client.industry or 'Not provided'}
+- Start date: {client.start_date or 'Not set'}
+
+## Primary Contact
+{contact_line}
+
+## Commercial Summary
+- Billing frequency: {_status_value(client.client_type) or 'Not set'}
+- Contract/deal value: {client.budget or 'Not set'}
+
+## Requirements
+{client.notes or 'No requirements captured yet.'}
+
+## Project Information
+{project_lines}
+
+## Kickoff
+- Meeting: {kickoff.title if kickoff else 'Not scheduled'}
+- Status: {_status_value(kickoff.status) if kickoff else 'not scheduled'}
+- Date: {kickoff.meeting_date if kickoff else 'Not scheduled'}
+
+## Onboarding Status
+- Progress: {onboarding['progress_percent']}%
+- Required complete: {onboarding['required_completed']}/{onboarding['required_total']}
+
+## Layer Statuses
+{item_lines}
+
+## Client Confirmation
+Please review the onboarding summary and confirm that the captured scope, timeline, contact, and kickoff information are correct.
+"""
+    target.write_text(content, encoding="utf-8")
+    document = {
+        "name": "Client Onboarding Document",
+        "original_name": filename,
+        "url": f"/api/v1/files/clients/{filename}",
+        "type": "onboarding_document",
+        "category": "onboarding_document",
+        "status": "generated",
+        "generated_at": utc_now(),
+        "generated_by": str(getattr(actor, "id", "")) if actor else None,
+        "onboarding_progress_percent": onboarding["progress_percent"],
+        "sensitive": False,
+    }
+    client.documents = [doc for doc in (client.documents or []) if doc.get("category") != "onboarding_document"]
+    client.documents.append(document)
+    client.updated_at = utc_now()
+    await client.save()
+    await sync_client_onboarding(client, actor)
+    return document

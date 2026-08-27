@@ -1,14 +1,17 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Activity, Building2, CalendarDays, Clock3, DollarSign, ExternalLink, FileText, FolderKanban, Mail, Phone, Users } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Activity, Building2, CalendarDays, Clock3, DollarSign, ExternalLink, FileText, FolderKanban, Mail, Phone, Users } from 'lucide-react'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { clientsAPI } from '../api/clients'
-import { Button, EmptyState, Skeleton } from '../components/ui'
+import { meetingsApi } from '../api/meetings'
+import { projectsApi } from '../api/projects'
+import { Button, EmptyState, Modal, Skeleton } from '../components/ui'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../components/crm'
 import { CompanyTimeline } from './crm/companies/components'
 import { formatCurrency } from './crm/pipeline/utils'
+import { toFormData } from './phase4Utils'
 import { timeService } from '@/services/timeService'
 
 const TAB_KEY = 'tab'
@@ -46,6 +49,23 @@ function clientFileUrl(url) {
   return `${baseUrl}${url}`
 }
 
+function apiErrorMessage(error, fallback) {
+  const detail = error?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  return detail?.message || fallback
+}
+
+function projectSeed(client) {
+  const source = client?.company_name || client?.name || 'Client Project'
+  const key = source.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 12).toUpperCase() || 'CLIENT'
+  const suffix = String(Date.now()).slice(-4)
+  return {
+    name: `${source} Onboarding Project`,
+    key: `${key}-${suffix}`,
+    project_id: `${key}-${suffix}`,
+  }
+}
+
 const CLIENT_STATUS_OPTIONS = [
   { value: 'new', label: 'New' },
   { value: 'onboarding', label: 'Onboarding' },
@@ -66,15 +86,8 @@ const ONBOARDING_TABS = [
   { key: 'assets-access', label: 'Assets & Access' },
   { key: 'project-team', label: 'Project & Team' },
   { key: 'kickoff', label: 'Kickoff' },
+  { key: 'onboarding-document', label: 'Onboarding Document' },
 ]
-
-const MANUAL_ONBOARDING_KEYS = new Set(['agreement', 'requirements', 'brand_assets', 'required_access'])
-const MANUAL_STATUS_OPTIONS = {
-  agreement: ['missing', 'draft', 'sent', 'viewed_received', 'signed_confirmed'],
-  requirements: ['not_started', 'requested', 'partially_received', 'completed'],
-  brand_assets: ['missing', 'requested', 'partially_received', 'completed'],
-  required_access: ['missing', 'requested', 'partially_received', 'completed'],
-}
 
 function formatClientType(value) {
   if (value === 'monthly') return 'Monthly'
@@ -191,10 +204,13 @@ function OnboardingItemCard({ item, onOpenTab }) {
   )
 }
 
-function OnboardingWorkspace({ onboarding, activeTab, onTabChange, onSave, savingKey }) {
+function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, projects, contacts, meetings, documents, onSaveClient, onCreateProject, onCreateMeeting, onGenerateDocument, saving, creatingProject, creatingMeeting, generatingDocument }) {
   const visibleItems = activeTab === 'overview'
     ? onboarding?.items || []
     : (onboarding?.items || []).filter((item) => item.tab === activeTab)
+  const onboardingDocument = documents.find((item) => item.type === 'onboarding_document' || item.category === 'onboarding_document')
+  const projectDefaults = projectSeed(client)
+  const tomorrow = timeService.toUtcISOString(timeService.addDays(timeService.now(), 1)).slice(0, 10)
 
   return (
     <CRMSection title="Onboarding" description="Complete the required layers while keeping existing CRM, delivery, and meeting records as the source of truth.">
@@ -211,10 +227,120 @@ function OnboardingWorkspace({ onboarding, activeTab, onTabChange, onSave, savin
         ))}
       </div>
       {activeTab === 'overview' ? <OnboardingProgress onboarding={onboarding} /> : null}
+      {activeTab === 'commercial' ? (
+        <form className="mt-5 grid gap-4 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 md:grid-cols-2" onSubmit={(event) => {
+          event.preventDefault()
+          onSaveClient({
+            budget: event.currentTarget.elements.budget.value,
+            client_type: event.currentTarget.elements.client_type.value,
+            start_date: event.currentTarget.elements.start_date.value,
+          })
+        }}>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Contract / deal value<input name="budget" type="number" step="0.01" defaultValue={client?.budget || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Billing frequency<select name="client_type" defaultValue={client?.client_type || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Select</option><option value="monthly">Monthly</option><option value="one_time">One Time</option></select></label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Start date<input name="start_date" type="date" defaultValue={client?.start_date ? String(client.start_date).slice(0, 10) : ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          <div className="flex items-end"><Button type="submit" loading={saving} loadingText="Saving">Save Commercial</Button></div>
+        </form>
+      ) : null}
+      {activeTab === 'requirements' ? (
+        <form className="mt-5 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900" onSubmit={(event) => {
+          event.preventDefault()
+          onSaveClient({ notes: event.currentTarget.elements.notes.value })
+        }}>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Business objective, scope, deliverables, audience, deadlines, competitors, preferences, special requirements<textarea name="notes" rows={7} defaultValue={client?.notes || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          <Button type="submit" className="mt-3" loading={saving} loadingText="Saving">Save Requirements</Button>
+        </form>
+      ) : null}
+      {activeTab === 'contacts' ? (
+        <form className="mt-5 grid gap-4 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 md:grid-cols-2" onSubmit={(event) => {
+          event.preventDefault()
+          onSaveClient({
+            name: event.currentTarget.elements.name.value,
+            email: event.currentTarget.elements.email.value,
+            contact: event.currentTarget.elements.contact.value,
+          })
+        }}>
+          <div className="md:col-span-2">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Primary contact</p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{contacts.length} CRM contact(s) linked.</p>
+          </div>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Contact name<input name="name" defaultValue={client?.name || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Email<input name="email" type="email" defaultValue={client?.email || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Phone<input name="contact" defaultValue={client?.contact || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          <div className="flex items-end"><Button type="submit" loading={saving} loadingText="Saving">Save Primary Contact</Button></div>
+        </form>
+      ) : null}
+      {activeTab === 'project-team' ? (
+        <>
+          <form className="mt-5 grid gap-4 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 md:grid-cols-2" onSubmit={(event) => {
+            event.preventDefault()
+            onCreateProject({
+              name: event.currentTarget.elements.project_name.value,
+              key: event.currentTarget.elements.project_key.value,
+              project_id: event.currentTarget.elements.project_id.value,
+              description: event.currentTarget.elements.description.value,
+              start_date: event.currentTarget.elements.start_date.value,
+              delivery_date: event.currentTarget.elements.delivery_date.value,
+              client_id: client?.id,
+            })
+          }}>
+            <div className="md:col-span-2">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Create linked project</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{projects.length} project(s) linked.</p>
+            </div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Project name<input name="project_name" defaultValue={projectDefaults.name} required className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Project key<input name="project_key" defaultValue={projectDefaults.key} required className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm uppercase dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Project ID<input name="project_id" defaultValue={projectDefaults.project_id} required className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm uppercase dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Start date<input name="start_date" type="date" defaultValue={client?.start_date ? String(client.start_date).slice(0, 10) : ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Delivery date<input name="delivery_date" type="date" defaultValue={client?.delivery_date ? String(client.delivery_date).slice(0, 10) : ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200 md:col-span-2">Description<textarea name="description" rows={3} defaultValue={`Onboarding delivery for ${client?.company_name || client?.name || 'client'}.`} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <div className="md:col-span-2"><Button type="submit" loading={creatingProject} loadingText="Creating">Create Project</Button></div>
+          </form>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <OnboardingItemCard item={{ label: 'Projects', status: projects.length ? 'created' : 'not_started', completion_percent: projects.length ? 100 : 0, required: true, action_label: 'Open Projects', tab: 'project-team' }} onOpenTab={() => onTabChange('project-team')} />
+            <OnboardingItemCard item={{ label: 'Team / owner', status: client?.assigned_to || client?.account_owner_id ? 'team_assigned' : 'missing', completion_percent: client?.assigned_to || client?.account_owner_id ? 100 : 0, required: true, action_label: 'Assign Team', tab: 'project-team' }} onOpenTab={() => onTabChange('project-team')} />
+          </div>
+        </>
+      ) : null}
+      {activeTab === 'kickoff' ? (
+        <form className="mt-5 grid gap-4 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 md:grid-cols-2" onSubmit={(event) => {
+          event.preventDefault()
+          onCreateMeeting({
+            title: event.currentTarget.elements.title.value,
+            description: event.currentTarget.elements.description.value,
+            meeting_date: event.currentTarget.elements.meeting_date.value,
+            meeting_time: event.currentTarget.elements.meeting_time.value,
+            duration: event.currentTarget.elements.duration.value,
+          })
+        }}>
+          <div className="md:col-span-2">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Kickoff meeting</p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{meetings[0]?.meeting_date ? `Scheduled ${formatDateTime(meetings[0].meeting_date)}` : 'Schedule kickoff to complete this requirement.'}</p>
+          </div>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Title<input name="title" defaultValue={`Kickoff - ${client?.company_name || client?.name || 'Client'}`} required className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Date<input name="meeting_date" type="date" defaultValue={tomorrow} required className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Time<input name="meeting_time" type="time" defaultValue="10:00" required className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Duration<input name="duration" type="number" min="1" max="60" defaultValue="30" required className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200 md:col-span-2">Description<textarea name="description" rows={3} defaultValue={`Kickoff meeting for client ${client?.id}.`} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          <div className="md:col-span-2"><Button type="submit" loading={creatingMeeting} loadingText="Scheduling">Schedule Kickoff</Button></div>
+        </form>
+      ) : null}
+      {activeTab === 'onboarding-document' ? (
+        <div className="mt-5 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Client-facing onboarding document</h3>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Generated from verified onboarding data. Sensitive credentials and internal-only fields excluded.</p>
+            </div>
+            <Button type="button" onClick={onGenerateDocument} loading={generatingDocument} loadingText="Generating">{onboardingDocument ? 'Regenerate Document' : 'Generate Document'}</Button>
+          </div>
+          {onboardingDocument?.url ? (
+            <a className="mt-4 inline-flex text-sm font-semibold text-primary-700 hover:underline dark:text-primary-300" href={clientFileUrl(onboardingDocument.url)} target="_blank" rel="noopener noreferrer">Preview / Download</a>
+          ) : null}
+        </div>
+      ) : null}
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         {visibleItems.map((item) => {
-          const manual = MANUAL_ONBOARDING_KEYS.has(item.key)
-          const options = MANUAL_STATUS_OPTIONS[item.key] || []
           return (
             <article key={item.key} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
               <div className="flex items-start justify-between gap-3">
@@ -226,17 +352,7 @@ function OnboardingWorkspace({ onboarding, activeTab, onTabChange, onSave, savin
               </div>
               <div className="mt-3 h-1.5 rounded-full bg-gray-100 dark:bg-gray-800"><div className="h-1.5 rounded-full bg-primary-500" style={{ width: `${Math.min(100, Math.max(0, Number(item.completion_percent || 0)))}%` }} /></div>
               {item.linked_entity_id ? <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">Linked {item.linked_entity_type}: {item.linked_entity_id}</p> : null}
-              {manual ? (
-                <form className="mt-4 space-y-3" onSubmit={(event) => { event.preventDefault(); onSave(item, event.currentTarget) }}>
-                  <select name="status" defaultValue={item.status} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">
-                    {options.map((option) => <option key={option} value={option}>{statusText(option)}</option>)}
-                  </select>
-                  <textarea name="notes" defaultValue={item.notes || ''} rows={2} placeholder="Add a note or evidence" className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
-                  <Button type="submit" size="sm" disabled={savingKey === item.key}>{savingKey === item.key ? 'Saving...' : 'Save layer'}</Button>
-                </form>
-              ) : (
-                <Button type="button" size="sm" variant="secondary" className="mt-4" onClick={() => onTabChange(item.tab)}>{item.action_label || 'Open linked records'}</Button>
-              )}
+              <Button type="button" size="sm" variant="secondary" className="mt-4" onClick={() => onTabChange(item.tab)}>{item.action_label || 'Open linked records'}</Button>
             </article>
           )
         })}
@@ -251,6 +367,7 @@ export default function ClientWorkspacePage() {
   const queryClient = useQueryClient()
   const { clientId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
+  const [transitionBlocker, setTransitionBlocker] = useState(null)
 
   const activeTab = searchParams.get(TAB_KEY) || 'overview'
   const activeOnboardingTab = searchParams.get(ONBOARDING_TAB_KEY) || 'overview'
@@ -283,24 +400,66 @@ export default function ClientWorkspacePage() {
     (nextStatus) => clientsAPI.updateClientStatus(clientId, nextStatus),
     {
       onSuccess: () => {
+        setTransitionBlocker(null)
         toast.success('Client status updated')
         queryClient.invalidateQueries(['client-workspace', clientId])
         queryClient.invalidateQueries('clients')
       },
       onError: (error) => {
-        toast.error(error?.response?.data?.detail || 'Failed to update client status')
+        const detail = error?.response?.data?.detail
+        if (detail?.code === 'CLIENT_TRANSITION_BLOCKED') {
+          setTransitionBlocker(detail)
+          return
+        }
+        toast.error(apiErrorMessage(error, 'Failed to update client status'))
       },
     }
   )
 
-  const onboardingMutation = useMutation(
-    ({ item, values }) => clientsAPI.updateOnboardingItem(clientId, item.key, values),
+  const onboardingSaveMutation = useMutation(
+    (values) => clientsAPI.saveOnboardingData(clientId, values),
     {
-      onSuccess: (data) => {
-        queryClient.setQueryData(['client-workspace', clientId], (current) => ({ ...current, onboarding: data }))
-        toast.success('Onboarding layer updated')
+      onSuccess: () => {
+        toast.success('Onboarding data saved')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries('clients')
       },
-      onError: (error) => toast.error(error?.response?.data?.detail || 'Failed to update onboarding layer'),
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to save onboarding data')),
+    }
+  )
+
+  const createProjectMutation = useMutation(
+    (values) => projectsApi.createProject(values),
+    {
+      onSuccess: () => {
+        toast.success('Project created')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries('projects')
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to create project')),
+    }
+  )
+
+  const createMeetingMutation = useMutation(
+    (values) => meetingsApi.create(toFormData(values)),
+    {
+      onSuccess: () => {
+        toast.success('Kickoff meeting scheduled')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries('meetings')
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to schedule kickoff meeting')),
+    }
+  )
+
+  const onboardingDocumentMutation = useMutation(
+    () => clientsAPI.generateOnboardingDocument(clientId),
+    {
+      onSuccess: () => {
+        toast.success('Onboarding document generated')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to generate onboarding document')),
     }
   )
 
@@ -323,13 +482,6 @@ export default function ClientWorkspacePage() {
     }, { replace: true })
   }
 
-  const saveOnboardingItem = (item, form) => {
-    onboardingMutation.mutate({
-      item,
-      values: { status: form.elements.status.value, notes: form.elements.notes.value },
-    })
-  }
-
   const totalProjects = projects.length || client?.project_ids?.length || 0
   const totalTasks = tasks.length || 0
   const totalLeads = leads.length || 0
@@ -347,6 +499,7 @@ export default function ClientWorkspacePage() {
     meetings: meetings.length,
     timeline: Array.isArray(timeline?.grouped_by_day) ? timeline.grouped_by_day.length : 0,
   }
+  const transitionMissingFields = Array.isArray(transitionBlocker?.missing_fields) ? transitionBlocker.missing_fields : []
 
   if (!clientId) {
     return (
@@ -441,8 +594,19 @@ export default function ClientWorkspacePage() {
         onboarding={onboarding}
         activeTab={activeOnboardingTab}
         onTabChange={setOnboardingTab}
-        onSave={saveOnboardingItem}
-        savingKey={onboardingMutation.isLoading ? onboardingMutation.variables?.item?.key : null}
+        client={client}
+        projects={projects}
+        contacts={workspace.contacts || []}
+        meetings={meetings}
+        documents={documents}
+        onSaveClient={(values) => onboardingSaveMutation.mutate(values)}
+        onCreateProject={(values) => createProjectMutation.mutate(values)}
+        onCreateMeeting={(values) => createMeetingMutation.mutate(values)}
+        onGenerateDocument={() => onboardingDocumentMutation.mutate()}
+        saving={onboardingSaveMutation.isLoading}
+        creatingProject={createProjectMutation.isLoading}
+        creatingMeeting={createMeetingMutation.isLoading}
+        generatingDocument={onboardingDocumentMutation.isLoading}
       />
     ) : <CRMEmptyState title="Onboarding is not active" description="Start onboarding from the New client stage to create the onboarding workspace." />
   } else if (activeTab === 'projects') {
@@ -850,6 +1014,57 @@ export default function ClientWorkspacePage() {
       <WorkspaceTabs activeTab={activeTab} onTabChange={setTab} counts={tabCounts} />
 
       {tabBody}
+
+      <Modal
+        isOpen={Boolean(transitionBlocker)}
+        onClose={() => setTransitionBlocker(null)}
+        title="Cannot activate client yet"
+        description={transitionBlocker?.message || 'Complete missing onboarding details before moving this client forward.'}
+        size="lg"
+        footer={(
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setTransitionBlocker(null)}>Close</Button>
+            <Button
+              type="button"
+              onClick={() => {
+                const nextTab = transitionMissingFields[0]?.tab || 'overview'
+                setTransitionBlocker(null)
+                setOnboardingTab(nextTab)
+              }}
+            >
+              Open first missing item
+            </Button>
+          </div>
+        )}
+      >
+        <div className="space-y-3">
+          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" />
+            <p>Activation is blocked by required onboarding records. Fix them here; page will not break.</p>
+          </div>
+          <div className="space-y-2">
+            {transitionMissingFields.map((field) => (
+              <div key={`${field.field}-${field.tab}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-950">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{field.label || field.field}</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{field.reason || statusText(field.current_status)}</p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setTransitionBlocker(null)
+                    setOnboardingTab(field.tab || 'overview')
+                  }}
+                >
+                  {field.action_label || 'Open item'}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Modal>
     </CRMPage>
   )
 }

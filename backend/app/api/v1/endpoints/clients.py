@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 from app.crm.models import Client, ClientStatus, ClientType, SalesProspect
 from app.crm.client_identity import load_contacts_for_client
 from app.crm.client_lifecycle import client_lifecycle_rules, normalize_client_status, transition_client_status
-from app.crm.client_onboarding import sync_client_onboarding
+from app.crm.client_onboarding import build_onboarding_document, sync_client_onboarding
 from app.models.client_onboarding import ClientOnboardingItem, ClientOnboardingItemStatus
 from app.models.user import User, UserRole
 from app.models.project import Project
@@ -465,6 +465,20 @@ async def get_client_workspace(
 ):
     """Get client workspace with projects, meetings, tasks, leads, and timeline."""
     return await ClientWorkspaceService.load_workspace(current_user, client_id)
+
+
+@router.post("/{client_id}/onboarding/document/generate")
+async def generate_client_onboarding_document(
+    client_id: str,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Generate a client-facing onboarding document from verified onboarding data."""
+    client = await Client.get(client_id)
+    if not client:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+    check_company_access(current_user, client.company_id)
+    document = await build_onboarding_document(client, current_user, UPLOAD_DIR)
+    return {"message": "Onboarding document generated", "document": document}
 
 
 @router.patch("/{client_id}/onboarding/items/{item_key}")

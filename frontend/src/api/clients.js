@@ -30,11 +30,17 @@ export const clientsAPI = {
     return response.data
   },
 
-  updateOnboardingItem: async (clientId, itemKey, values) => {
+  saveOnboardingData: async (clientId, values) => {
     const formData = new FormData()
-    if (values.status) formData.append('status', values.status)
-    if (values.notes !== undefined) formData.append('notes', values.notes)
-    const response = await api.patch(`/clients/${clientId}/onboarding/items/${itemKey}`, formData)
+    Object.entries(values || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) formData.append(key, value)
+    })
+    const response = await api.put(`/clients/${clientId}`, formData)
+    return response.data
+  },
+
+  generateOnboardingDocument: async (clientId) => {
+    const response = await api.post(`/clients/${clientId}/onboarding/document/generate`)
     return response.data
   },
 

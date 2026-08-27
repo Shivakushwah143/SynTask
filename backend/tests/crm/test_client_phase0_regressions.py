@@ -668,10 +668,13 @@ def test_legacy_inactive_client_status_normalizes_to_on_hold():
 
 @pytest.mark.asyncio
 async def test_valid_client_lifecycle_transition_succeeds(monkeypatch):
-    async def fake_meeting_find_one(_query):
-        return SimpleNamespace(id="0000000000000000000000m1")
+    async def fake_activation_blockers(_client):
+        return []
+    async def fake_sync_client_onboarding(_client, _user=None):
+        return {}
 
-    monkeypatch.setattr(client_lifecycle.Meeting, "find_one", fake_meeting_find_one)
+    monkeypatch.setattr(client_lifecycle, "activation_blockers", fake_activation_blockers)
+    monkeypatch.setattr(client_lifecycle, "sync_client_onboarding", fake_sync_client_onboarding)
     client = _client(status=ClientStatus.ONBOARDING, notes="Requirements captured")
 
     await transition_client_status(client, ClientStatus.ACTIVE, _user())
@@ -682,14 +685,17 @@ async def test_valid_client_lifecycle_transition_succeeds(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_client_activation_reports_missing_prerequisites(monkeypatch):
-    async def fake_meeting_find_one(_query):
-        return None
+    async def fake_activation_blockers(_client):
+        return [
+            {"field": "primary_contact", "label": "Primary Contact", "tab": "contacts"},
+            {"field": "requirements", "label": "Requirements", "tab": "requirements"},
+            {"field": "kickoff_meeting", "label": "Kickoff Meeting", "tab": "kickoff"},
+        ]
+    async def fake_sync_client_onboarding(_client, _user=None):
+        return {}
 
-    async def fake_source_lead_find_one(_query):
-        return None
-
-    monkeypatch.setattr(client_lifecycle.Meeting, "find_one", fake_meeting_find_one)
-    monkeypatch.setattr(client_lifecycle.SalesProspect, "find_one", fake_source_lead_find_one)
+    monkeypatch.setattr(client_lifecycle, "activation_blockers", fake_activation_blockers)
+    monkeypatch.setattr(client_lifecycle, "sync_client_onboarding", fake_sync_client_onboarding)
     client = _client(status=ClientStatus.ONBOARDING, contact="", email="", assigned_to="", account_owner_id=None, notes="")
 
     with pytest.raises(HTTPException) as exc:
@@ -699,7 +705,6 @@ async def test_client_activation_reports_missing_prerequisites(monkeypatch):
     assert exc.value.detail["code"] == "CLIENT_TRANSITION_BLOCKED"
     assert [item["field"] for item in exc.value.detail["missing_fields"]] == [
         "primary_contact",
-        "account_owner_id",
         "requirements",
         "kickoff_meeting",
     ]
@@ -728,10 +733,13 @@ async def test_cross_tenant_client_lifecycle_transition_is_blocked():
 
 @pytest.mark.asyncio
 async def test_active_on_hold_active_lifecycle_path(monkeypatch):
-    async def fake_meeting_find_one(_query):
-        return SimpleNamespace(id="0000000000000000000000m1")
+    async def fake_activation_blockers(_client):
+        return []
+    async def fake_sync_client_onboarding(_client, _user=None):
+        return {}
 
-    monkeypatch.setattr(client_lifecycle.Meeting, "find_one", fake_meeting_find_one)
+    monkeypatch.setattr(client_lifecycle, "activation_blockers", fake_activation_blockers)
+    monkeypatch.setattr(client_lifecycle, "sync_client_onboarding", fake_sync_client_onboarding)
     client = _client(status=ClientStatus.ACTIVE, notes="Requirements captured")
 
     await transition_client_status(client, ClientStatus.ON_HOLD, _user(), reason="Temporary service pause")
