@@ -18,7 +18,7 @@ flowchart TD
 - What happens after every action:
   - Create/edit opens a guided modal sequence with two steps: Contact setup for required identity fields, then Client details for ownership, budget, schedule, address, tags, and notes.
   - Required name and email format validation run before the user can continue to Details or submit.
-  - Create/update operations refresh the list/detail.
+  - Create/update operations refresh the list/detail. The create/edit modal does not close on accidental outside clicks; explicit Cancel or Close still exits. In edit mode, Save Details stores the filled fields without changing lifecycle stage, while Update Client saves and continues the lifecycle action when one is pending. When a lifecycle blocker opens the edit form, a successful Update retries the original stage move with the updated client data instead of forcing the user to click the same stage action again. If Kickoff Meeting is missing, the warning popup includes an inline kickoff scheduler; after scheduling succeeds, the original activation retry runs automatically, and the saved kickoff meeting appears in the client workspace Meetings tab. The workspace overview shows saved primary contact email and phone details.
   - Draft preservation: partially filled values in the create form are kept as a draft when the modal is closed by the cross button, Escape, backdrop, or Cancel, and are restored the next time the form opens, so the user does not need to re-enter them. The draft is cleared only after a successful client creation.
 - Backend APIs called: clients APIs and linked document/project endpoints.
 - Timeline events created: client lifecycle should be reflected where backend events exist.

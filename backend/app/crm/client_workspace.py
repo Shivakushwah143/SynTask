@@ -120,16 +120,17 @@ class ClientWorkspaceService:
             summary["delivery_date"] = (client.projects_delivery_date or {}).get(project_key) or (client.projects_delivery_date or {}).get(str(project.id)) or project.delivery_date
             projects.append(summary)
 
-        meetings = []
-        if projects:
-            project_names = [item["name"] for item in projects if item.get("name")]
-            meetings_query: Dict[str, Any] = {"company_id": client.company_id}
-            meetings_query["$or"] = [
-                {"title": f"Kickoff - {client.name}"},
-                {"description": {"$in": [f"Kickoff meeting for {name}" for name in project_names]}},
-            ]
-            meeting_objects = await Meeting.find(meetings_query).sort("-updated_at").to_list()
-            meetings = [_meeting_summary(meeting) for meeting in meeting_objects]
+        meeting_matchers: List[Dict[str, Any]] = [
+            {"title": f"Kickoff - {client.name}"},
+            {"description": {"$regex": str(client.id), "$options": "i"}},
+        ]
+        project_names = [item["name"] for item in projects if item.get("name")]
+        if project_names:
+            meeting_matchers.append({"description": {"$in": [f"Kickoff meeting for {name}" for name in project_names]}})
+        meeting_objects = await Meeting.find(
+            {"company_id": client.company_id, "$or": meeting_matchers}
+        ).sort("-updated_at").to_list()
+        meetings = [_meeting_summary(meeting) for meeting in meeting_objects]
 
         invoices = await Invoice.find(
             {
