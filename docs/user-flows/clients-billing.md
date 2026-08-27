@@ -48,7 +48,12 @@ flowchart LR
   C --> A
   C --> X
 ```
-`New -> Onboarding -> Active` is sequential. After `Active`, transitions are conditional and are read from the backend lifecycle rules endpoint. Activation requires Primary Contact, Account Owner, Requirements, and Kickoff Meeting. Configured operational or terminal transitions require a reason; archived clients have no destination unless a future authorized restore flow is added.
+`New -> Onboarding -> Active` is sequential. After `Active`, transitions are conditional and are read from the backend lifecycle rules endpoint. Activation requires the backend-calculated onboarding items for payment terms, primary contact, requirements, project creation, team/account owner assignment, kickoff completion, and initial start readiness. The activation response identifies each missing item, its current status, reason, destination tab, and action label; the Client UI opens that secondary tab directly. Configured operational or terminal transitions require a reason; archived clients have no destination unless a future authorized restore flow is added.
+
+### Client onboarding workspace
+When a Client is in `onboarding`, its workspace exposes secondary tabs for Overview, Commercial, Contacts, Requirements, Documents, Assets & Access, Project & Team, and Kickoff. Existing CRM Contacts, CRM Documents, Projects, Meetings, and Client files are linked as source records; onboarding items do not duplicate them. Contact, contract, project, team, and kickoff statuses synchronize from those records. Agreement, requirements, brand/assets, and access layers support tenant-scoped manual notes/status updates through `PATCH /api/v1/clients/{client_id}/onboarding/items/{item_key}`. Each item stores required/optional state, layer status, completion percentage, owner/link metadata, timestamps, validation data, and audit entries.
+
+The onboarding list view shows compact progress and the next required action beside onboarding-stage Clients. Required progress is calculated as completed required items divided by total required items; optional layers never block activation. Tenant isolation is enforced by the Client and linked-record company key, and onboarding edits use the existing company-admin/lead permission gate.
 
 ## Invoices
 - How the user reaches it: main navigation.

@@ -1145,6 +1145,12 @@ const Clients = () => {
                         </div>
                         <div>
                           <div className="text-xs font-bold text-gray-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400 transition">{displayName}</div>
+                          {client.status === 'onboarding' && client.onboarding ? (
+                            <div className="mt-1 max-w-[190px] text-[11px] text-indigo-600 dark:text-indigo-300">
+                              <span className="font-semibold">{client.onboarding.progress_percent || 0}% ready</span>
+                              {client.onboarding.next_action ? ` · ${client.onboarding.next_action}` : ''}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </td>
@@ -1320,8 +1326,9 @@ const Clients = () => {
                 variant="secondary"
                 onClick={() => {
                   const client = transitionBlocker?.client
+                  const item = transitionBlocker?.detail?.missing_fields?.find((field) => field.field === 'kickoff_meeting')
                   setTransitionBlocker(null)
-                  if (client?.id) navigate(`/clients/${client.id}/workspace?tab=meetings`)
+                  if (client?.id) navigate(`/clients/${client.id}/workspace?tab=onboarding&onboardingTab=${item?.tab || 'kickoff'}`)
                 }}
               >
                 Open Workspace

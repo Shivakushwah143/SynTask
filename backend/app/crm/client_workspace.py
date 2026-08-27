@@ -10,7 +10,9 @@ from bson import ObjectId
 
 from app.crm.company_timeline import CRMCompanyTimelineService
 from app.crm.client_identity import load_contacts_for_client, resolve_crm_company_for_client
+from app.crm.client_onboarding import sync_client_onboarding
 from app.crm.models import Client
+from app.models.client import ClientStatus
 from app.models.invoice import Invoice
 from app.models.meeting import Meeting
 from app.models.project import Project
@@ -235,6 +237,10 @@ class ClientWorkspaceService:
                     resolved_budget = proj_sum
                     source_budget_type = "projects"
 
+        onboarding = None
+        if client.status == ClientStatus.ONBOARDING:
+            onboarding = await sync_client_onboarding(client, current_user)
+
         return {
             "client": {
                 "id": str(client.id),
@@ -273,6 +279,7 @@ class ClientWorkspaceService:
             "projects": projects,
             "contacts": [_contact_summary(contact) for contact in contacts],
             "meetings": meetings,
+            "onboarding": onboarding,
             "invoices": [
                 {
                     "id": str(invoice.id),

@@ -12,8 +12,10 @@ import { formatCurrency } from './crm/pipeline/utils'
 import { timeService } from '@/services/timeService'
 
 const TAB_KEY = 'tab'
+const ONBOARDING_TAB_KEY = 'onboardingTab'
 const TABS = [
   { key: 'overview', label: 'Overview' },
+  { key: 'onboarding', label: 'Onboarding' },
   { key: 'projects', label: 'Projects' },
   { key: 'tasks', label: 'Tasks' },
   { key: 'leads', label: 'Leads' },
@@ -54,6 +56,25 @@ const CLIENT_STATUS_OPTIONS = [
   { value: 'churned', label: 'Churned' },
   { value: 'archived', label: 'Archived' },
 ]
+
+const ONBOARDING_TABS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'commercial', label: 'Commercial' },
+  { key: 'contacts', label: 'Contacts' },
+  { key: 'requirements', label: 'Requirements' },
+  { key: 'documents', label: 'Documents' },
+  { key: 'assets-access', label: 'Assets & Access' },
+  { key: 'project-team', label: 'Project & Team' },
+  { key: 'kickoff', label: 'Kickoff' },
+]
+
+const MANUAL_ONBOARDING_KEYS = new Set(['agreement', 'requirements', 'brand_assets', 'required_access'])
+const MANUAL_STATUS_OPTIONS = {
+  agreement: ['missing', 'draft', 'sent', 'viewed_received', 'signed_confirmed'],
+  requirements: ['not_started', 'requested', 'partially_received', 'completed'],
+  brand_assets: ['missing', 'requested', 'partially_received', 'completed'],
+  required_access: ['missing', 'requested', 'partially_received', 'completed'],
+}
 
 function formatClientType(value) {
   if (value === 'monthly') return 'Monthly'
@@ -118,6 +139,113 @@ function WorkspaceTabs({ activeTab, onTabChange, counts = {} }) {
   )
 }
 
+function statusText(value) {
+  return String(value || 'missing').replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function OnboardingProgress({ onboarding }) {
+  const percent = Number(onboarding?.progress_percent || 0)
+  return (
+    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 dark:border-indigo-900/60 dark:bg-indigo-950/25">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-700 dark:text-indigo-300">Onboarding</p>
+          <h3 className="mt-1 text-xl font-bold text-gray-900 dark:text-white">
+            {onboarding?.required_completed || 0}/{onboarding?.required_total || 0} ready, {percent}%
+          </h3>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{onboarding?.next_action || 'Ready for next step'}</p>
+        </div>
+        <div className="h-16 w-16 rounded-full border-4 border-white bg-white text-center text-sm font-bold leading-[3.5rem] text-indigo-700 shadow-sm dark:border-gray-900 dark:bg-gray-900 dark:text-indigo-300">
+          {percent}%
+        </div>
+      </div>
+      <div className="mt-4 h-2 rounded-full bg-white dark:bg-gray-900">
+        <div className="h-2 rounded-full bg-indigo-600" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function OnboardingItemCard({ item, onOpenTab }) {
+  const complete = Number(item.completion_percent || 0) >= 100
+  return (
+    <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">{item.label}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.required ? 'Required' : 'Optional'} · {statusText(item.status)}</p>
+        </div>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${complete ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'}`}>
+          {item.completion_percent || 0}%
+        </span>
+      </div>
+      <div className="mt-3 h-1.5 rounded-full bg-gray-100 dark:bg-gray-800">
+        <div className={`h-1.5 rounded-full ${complete ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, Math.max(0, Number(item.completion_percent || 0)))}%` }} />
+      </div>
+      {!complete ? (
+        <Button type="button" size="sm" variant="secondary" className="mt-3" onClick={() => onOpenTab?.(item.tab)}>
+          {item.action_label || 'Open'}
+        </Button>
+      ) : null}
+    </article>
+  )
+}
+
+function OnboardingWorkspace({ onboarding, activeTab, onTabChange, onSave, savingKey }) {
+  const visibleItems = activeTab === 'overview'
+    ? onboarding?.items || []
+    : (onboarding?.items || []).filter((item) => item.tab === activeTab)
+
+  return (
+    <CRMSection title="Onboarding" description="Complete the required layers while keeping existing CRM, delivery, and meeting records as the source of truth.">
+      <div className="mb-5 flex gap-2 overflow-x-auto border-b border-gray-200 pb-2 dark:border-gray-800">
+        {ONBOARDING_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => onTabChange(tab.key)}
+            className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium ${activeTab === tab.key ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800'}`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {activeTab === 'overview' ? <OnboardingProgress onboarding={onboarding} /> : null}
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        {visibleItems.map((item) => {
+          const manual = MANUAL_ONBOARDING_KEYS.has(item.key)
+          const options = MANUAL_STATUS_OPTIONS[item.key] || []
+          return (
+            <article key={item.key} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{item.label}</h3>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.required ? 'Required' : 'Optional'} · {statusText(item.status)}</p>
+                </div>
+                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-200">{item.completion_percent || 0}%</span>
+              </div>
+              <div className="mt-3 h-1.5 rounded-full bg-gray-100 dark:bg-gray-800"><div className="h-1.5 rounded-full bg-primary-500" style={{ width: `${Math.min(100, Math.max(0, Number(item.completion_percent || 0)))}%` }} /></div>
+              {item.linked_entity_id ? <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">Linked {item.linked_entity_type}: {item.linked_entity_id}</p> : null}
+              {manual ? (
+                <form className="mt-4 space-y-3" onSubmit={(event) => { event.preventDefault(); onSave(item, event.currentTarget) }}>
+                  <select name="status" defaultValue={item.status} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">
+                    {options.map((option) => <option key={option} value={option}>{statusText(option)}</option>)}
+                  </select>
+                  <textarea name="notes" defaultValue={item.notes || ''} rows={2} placeholder="Add a note or evidence" className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                  <Button type="submit" size="sm" disabled={savingKey === item.key}>{savingKey === item.key ? 'Saving...' : 'Save layer'}</Button>
+                </form>
+              ) : (
+                <Button type="button" size="sm" variant="secondary" className="mt-4" onClick={() => onTabChange(item.tab)}>{item.action_label || 'Open linked records'}</Button>
+              )}
+            </article>
+          )
+        })}
+      </div>
+      {!visibleItems.length ? <CRMEmptyState title="No onboarding items" description="This layer has no configured items yet." /> : null}
+    </CRMSection>
+  )
+}
+
 export default function ClientWorkspacePage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -125,6 +253,7 @@ export default function ClientWorkspacePage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const activeTab = searchParams.get(TAB_KEY) || 'overview'
+  const activeOnboardingTab = searchParams.get(ONBOARDING_TAB_KEY) || 'overview'
 
   const workspaceQuery = useQuery(
     ['client-workspace', clientId],
@@ -144,6 +273,8 @@ export default function ClientWorkspacePage() {
   const documents = useMemo(() => (Array.isArray(client?.documents) ? client.documents : []), [client?.documents])
   const invoices = useMemo(() => (Array.isArray(workspace.invoices) ? workspace.invoices : []), [workspace.invoices])
   const meetings = useMemo(() => (Array.isArray(workspace.meetings) ? workspace.meetings : []), [workspace.meetings])
+  const onboarding = workspace.onboarding || null
+  const onboardingItems = useMemo(() => (Array.isArray(onboarding?.items) ? onboarding.items : []), [onboarding?.items])
   const timeline = workspace.timeline || {}
   const summary = workspace.summary || {}
   const errorStatus = workspaceQuery.error?.response?.status
@@ -162,6 +293,17 @@ export default function ClientWorkspacePage() {
     }
   )
 
+  const onboardingMutation = useMutation(
+    ({ item, values }) => clientsAPI.updateOnboardingItem(clientId, item.key, values),
+    {
+      onSuccess: (data) => {
+        queryClient.setQueryData(['client-workspace', clientId], (current) => ({ ...current, onboarding: data }))
+        toast.success('Onboarding layer updated')
+      },
+      onError: (error) => toast.error(error?.response?.data?.detail || 'Failed to update onboarding layer'),
+    }
+  )
+
   const setTab = (tab) => {
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
@@ -169,6 +311,23 @@ export default function ClientWorkspacePage() {
       else next.delete(TAB_KEY)
       return next
     }, { replace: true })
+  }
+
+  const setOnboardingTab = (tab) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.set(TAB_KEY, 'onboarding')
+      if (tab && tab !== 'overview') next.set(ONBOARDING_TAB_KEY, tab)
+      else next.delete(ONBOARDING_TAB_KEY)
+      return next
+    }, { replace: true })
+  }
+
+  const saveOnboardingItem = (item, form) => {
+    onboardingMutation.mutate({
+      item,
+      values: { status: form.elements.status.value, notes: form.elements.notes.value },
+    })
   }
 
   const totalProjects = projects.length || client?.project_ids?.length || 0
@@ -179,6 +338,7 @@ export default function ClientWorkspacePage() {
   const outstandingAmount = summary.invoices?.outstanding_amount || invoices.reduce((sum, invoice) => sum + Number(invoice.outstanding_amount || 0), 0)
   const tabCounts = {
     overview: 4,
+    onboarding: onboardingItems.length,
     projects: totalProjects,
     tasks: totalTasks,
     leads: totalLeads,
@@ -275,7 +435,17 @@ export default function ClientWorkspacePage() {
     : 'No billing activity yet'
 
   let tabBody
-  if (activeTab === 'projects') {
+  if (activeTab === 'onboarding') {
+    tabBody = onboarding ? (
+      <OnboardingWorkspace
+        onboarding={onboarding}
+        activeTab={activeOnboardingTab}
+        onTabChange={setOnboardingTab}
+        onSave={saveOnboardingItem}
+        savingKey={onboardingMutation.isLoading ? onboardingMutation.variables?.item?.key : null}
+      />
+    ) : <CRMEmptyState title="Onboarding is not active" description="Start onboarding from the New client stage to create the onboarding workspace." />
+  } else if (activeTab === 'projects') {
     tabBody = (
       <CRMSection title="Projects" description="Projects linked to this client account.">
         {projects.length ? (
