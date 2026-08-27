@@ -54,7 +54,6 @@ import CreateLeadModal from '../../../components/sales/CreateLeadModal'
 import {
   TRANSITION_BLOCKER,
   TRANSITION_WARNING_TOAST,
-  buildStatusWarningMessage,
   classifyTransitionFailure,
 } from '../../../utils/salesTransition'
 
@@ -270,26 +269,30 @@ export default function CRMPipelinePage() {
     }
   }, [])
 
+  const openStageBlockerDialog = useCallback(async (blocker, variables) => {
+    const leadId = variables?.lead?.id || variables?.lead?._id
+    const freshLead = await fetchFreshLeadForDialog(leadId)
+    setRequirementsDialog({
+      blocker,
+      lead: freshLead ? { ...(variables?.lead || {}), ...freshLead } : variables?.lead,
+      targetStageKey: variables?.stageKey,
+    })
+  }, [fetchFreshLeadForDialog])
+
   // Shared failure handling for stage-movement attempts. Business validation
   // blockers open the required-details popup or show a warning; only genuine
   // technical failures surface as error toasts.
   const handleMoveFailure = async (error, variables) => {
     const blocker = classifyTransitionFailure(error, 'Failed to update lead stage')
     if (blocker.category === TRANSITION_BLOCKER.MISSING_DETAILS) {
-      const leadId = variables?.lead?.id || variables?.lead?._id
-      const freshLead = await fetchFreshLeadForDialog(leadId)
-      setRequirementsDialog({
-        blocker,
-        lead: freshLead ? { ...(variables?.lead || {}), ...freshLead } : variables?.lead,
-        targetStageKey: variables?.stageKey,
-      })
+      await openStageBlockerDialog(blocker, variables)
       return
     }
     if (
       blocker.category === TRANSITION_BLOCKER.STATUS_REQUIREMENT
       || blocker.category === TRANSITION_BLOCKER.ACTION_REQUIREMENT
     ) {
-      toast(buildStatusWarningMessage(blocker) || blocker.message, TRANSITION_WARNING_TOAST)
+      await openStageBlockerDialog(blocker, variables)
       return
     }
     if (blocker.category === TRANSITION_BLOCKER.PERMISSION_DENIED) {
@@ -298,6 +301,80 @@ export default function CRMPipelinePage() {
     }
     toast.error(blocker.message)
   }
+
+  const getBlockerContextActions = useCallback(() => {
+    if (!requirementsDialog?.blocker) return []
+    const blocker = requirementsDialog.blocker
+    const lead = requirementsDialog.lead || {}
+    const leadId = lead.id || lead._id
+    const closeAndNavigate = (to) => {
+      setRequirementsDialog(null)
+      if (to) navigate(to)
+    }
+    if (!leadId) return []
+
+    const actions = []
+    const statusField = blocker.statusRequirement?.field
+    const actionField = blocker.actionRequirement?.field
+    const stageRoute = getCanonicalPipelineStageKey(blocker.currentStage || lead.current_stage || lead.stage)
+    const targetRoute = getCanonicalPipelineStageKey(requirementsDialog.targetStageKey || blocker.targetStage)
+
+    if (statusField === 'proposal_status') {
+      actions.push({
+        key: 'open-proposal',
+        label: 'Open proposal form',
+        onClick: () => closeAndNavigate(`/crm/leads/${leadId}?tab=proposal`),
+      })
+    } else if (statusField === 'negotiation_status') {
+      actions.push({
+        key: 'open-negotiation',
+        label: 'Open negotiation form',
+        onClick: () => closeAndNavigate(`/crm/leads/${leadId}?tab=negotiation`),
+      })
+    } else if (statusField === 'agreement_status') {
+      actions.push({
+        key: 'open-agreement',
+        label: 'Open agreement form',
+        onClick: () => closeAndNavigate(`/crm/leads/${leadId}?tab=agreement`),
+      })
+    } else if (statusField === 'discovery_outcome') {
+      actions.push({
+        key: 'open-discovery',
+        label: 'Open discovery form',
+        onClick: () => closeAndNavigate(`/crm/leads/${leadId}?tab=discovery`),
+      })
+    }
+
+    if (actionField === 'first_contact') {
+      actions.push({
+        key: 'record-contact',
+        label: 'Record contact attempt',
+        onClick: () => {
+          setRequirementsDialog(null)
+          setContactAttemptLead(lead)
+        },
+      })
+    } else if (actionField === 'stage_sequence' && stageRoute) {
+      actions.push({
+        key: 'open-current-stage',
+        label: `Open ${blocker.currentStage || 'current'} stage`,
+        onClick: () => closeAndNavigate(`/crm/pipeline/${stageRoute}`),
+      })
+    } else if (statusField === 'current_stage' && targetRoute) {
+      actions.push({
+        key: 'open-required-stage',
+        label: `Open ${blocker.targetStage || 'required'} stage`,
+        onClick: () => closeAndNavigate(`/crm/pipeline/${targetRoute}`),
+      })
+    }
+
+    actions.push({
+      key: 'open-lead-workspace',
+      label: 'Open lead workspace',
+      onClick: () => closeAndNavigate(`/crm/leads/${leadId}`),
+    })
+    return actions
+  }, [navigate, requirementsDialog])
 
   const moveLeadMutation = useMutation(
     ({ leadId, stageKey }) => crmApi.updatePipelineStage(leadId, { stage: stageKey }),
@@ -1129,6 +1206,7 @@ export default function CRMPipelinePage() {
           setRequirementsDialog(null)
           if (leadId) navigate(`/crm/leads/${leadId}`)
         }}
+        contextActions={getBlockerContextActions()}
       />
 
       {/* ============================================================ */}

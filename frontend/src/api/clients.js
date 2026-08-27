@@ -30,6 +30,20 @@ export const clientsAPI = {
     return response.data
   },
 
+  saveOnboardingData: async (clientId, values) => {
+    const formData = new FormData()
+    Object.entries(values || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) formData.append(key, value)
+    })
+    const response = await api.put(`/clients/${clientId}`, formData)
+    return response.data
+  },
+
+  generateOnboardingDocument: async (clientId) => {
+    const response = await api.post(`/clients/${clientId}/onboarding/document/generate`)
+    return response.data
+  },
+
   // Update client
   updateClient: async (clientId, formData) => {
     const response = await api.put(`/clients/${clientId}`, formData)

@@ -291,7 +291,7 @@ async def test_won_deal_client_creation_uses_lead_tenant_and_company(monkeypatch
     assert client.company_id == lead.company_id
     assert client.company_name == lead.company_name
     assert client.email == lead.email
-    assert client.status == ClientStatus.ONBOARDING
+    assert client.status == ClientStatus.NEW
     assert client.crm_company_id == "0000000000000000000000aa"
     assert client.source_lead_id == str(lead.id)
     assert client.account_owner_id == lead.assigned_to
@@ -560,7 +560,7 @@ async def test_client_workspace_zero_project_client_returns_zero_tasks(monkeypat
 @pytest.mark.asyncio
 async def test_won_deal_conversion_reuses_existing_client_and_links_project(monkeypatch):
     lead = _lead()
-    client = _client(project_ids=[])
+    client = _client(project_ids=[], status=ClientStatus.NEW)
     project = _project(client_id=None)
     meeting = _meeting()
     saved = {"client": 0, "project": 0}
@@ -635,8 +635,10 @@ async def test_won_deal_conversion_reuses_existing_client_and_links_project(monk
 
     assert result["client"] is client
     assert result["project"] is project
+    assert client.status == ClientStatus.NEW
     assert client.project_ids == [str(project.id)]
     assert project.client_id == str(client.id)
+    assert project.lead_id == str(lead.id)
     assert client.crm_company_id == "0000000000000000000000aa"
     assert client.client_type == ClientType.ONE_TIME
     assert client.budget == lead.won_amount
@@ -667,10 +669,13 @@ def test_legacy_inactive_client_status_normalizes_to_on_hold():
 
 @pytest.mark.asyncio
 async def test_valid_client_lifecycle_transition_succeeds(monkeypatch):
-    async def fake_meeting_find_one(_query):
-        return SimpleNamespace(id="0000000000000000000000m1")
+    async def fake_activation_blockers(_client):
+        return []
+    async def fake_sync_client_onboarding(_client, _user=None):
+        return {}
 
-    monkeypatch.setattr(client_lifecycle.Meeting, "find_one", fake_meeting_find_one)
+    monkeypatch.setattr(client_lifecycle, "activation_blockers", fake_activation_blockers)
+    monkeypatch.setattr(client_lifecycle, "sync_client_onboarding", fake_sync_client_onboarding)
     client = _client(status=ClientStatus.ONBOARDING, notes="Requirements captured")
 
     await transition_client_status(client, ClientStatus.ACTIVE, _user())
@@ -681,14 +686,17 @@ async def test_valid_client_lifecycle_transition_succeeds(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_client_activation_reports_missing_prerequisites(monkeypatch):
-    async def fake_meeting_find_one(_query):
-        return None
+    async def fake_activation_blockers(_client):
+        return [
+            {"field": "primary_contact", "label": "Primary Contact", "tab": "contacts"},
+            {"field": "requirements", "label": "Requirements", "tab": "requirements"},
+            {"field": "kickoff_meeting", "label": "Kickoff Meeting", "tab": "kickoff"},
+        ]
+    async def fake_sync_client_onboarding(_client, _user=None):
+        return {}
 
-    async def fake_source_lead_find_one(_query):
-        return None
-
-    monkeypatch.setattr(client_lifecycle.Meeting, "find_one", fake_meeting_find_one)
-    monkeypatch.setattr(client_lifecycle.SalesProspect, "find_one", fake_source_lead_find_one)
+    monkeypatch.setattr(client_lifecycle, "activation_blockers", fake_activation_blockers)
+    monkeypatch.setattr(client_lifecycle, "sync_client_onboarding", fake_sync_client_onboarding)
     client = _client(status=ClientStatus.ONBOARDING, contact="", email="", assigned_to="", account_owner_id=None, notes="")
 
     with pytest.raises(HTTPException) as exc:
@@ -698,7 +706,6 @@ async def test_client_activation_reports_missing_prerequisites(monkeypatch):
     assert exc.value.detail["code"] == "CLIENT_TRANSITION_BLOCKED"
     assert [item["field"] for item in exc.value.detail["missing_fields"]] == [
         "primary_contact",
-        "account_owner_id",
         "requirements",
         "kickoff_meeting",
     ]
@@ -727,10 +734,13 @@ async def test_cross_tenant_client_lifecycle_transition_is_blocked():
 
 @pytest.mark.asyncio
 async def test_active_on_hold_active_lifecycle_path(monkeypatch):
-    async def fake_meeting_find_one(_query):
-        return SimpleNamespace(id="0000000000000000000000m1")
+    async def fake_activation_blockers(_client):
+        return []
+    async def fake_sync_client_onboarding(_client, _user=None):
+        return {}
 
-    monkeypatch.setattr(client_lifecycle.Meeting, "find_one", fake_meeting_find_one)
+    monkeypatch.setattr(client_lifecycle, "activation_blockers", fake_activation_blockers)
+    monkeypatch.setattr(client_lifecycle, "sync_client_onboarding", fake_sync_client_onboarding)
     client = _client(status=ClientStatus.ACTIVE, notes="Requirements captured")
 
     await transition_client_status(client, ClientStatus.ON_HOLD, _user(), reason="Temporary service pause")

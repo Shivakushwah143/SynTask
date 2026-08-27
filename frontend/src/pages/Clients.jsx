@@ -1,27 +1,18 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, Briefcase, Plus, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2, Sparkles, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Briefcase, Plus, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2 } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { Button, CreatableSelectField, EmptyState, FormField, LoadingSpinner, Modal, PhoneInput, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal, QuickCreateProjectModal } from '../components/relatedRecords/QuickCreateModals'
 import { projectsApi } from '../api/projects'
+import { meetingsApi } from '../api/meetings'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { timeService } from '@/services/timeService'
-
-const getTotalBudget = (client) => {
-  if (!client) return 0
-  if (client.total_budget != null) return Number(client.total_budget) || 0
-  if (client.budget != null) return Number(client.budget) || 0
-  if (Array.isArray(client.projects)) {
-    return client.projects.reduce((sum, p) => sum + (Number(p.budget) || 0), 0)
-  }
-  return 0
-}
 
 // Draft persistence: keep partially-filled client form values when the modal
 // closes (cross button, Escape, backdrop, or cancel) so the user does not have
@@ -80,6 +71,12 @@ const clearClientFormDraft = () => {
 
 const CLIENT_PAGE_SIZE = 20
 
+const getTomorrowDateValue = () => {
+  const date = timeService.now()
+  date.setDate(date.getDate() + 1)
+  return format(date, 'yyyy-MM-dd')
+}
+
 const CLIENT_STAGE_ROUTES = {
   new: 'new',
   onboarding: 'onboarding',
@@ -90,11 +87,6 @@ const CLIENT_STAGE_ROUTES = {
   churned: 'churned',
   archived: 'archived',
 }
-
-const CLIENT_STAGE_PATHS = Object.entries(CLIENT_STAGE_ROUTES).reduce((acc, [path, status]) => {
-  acc[status] = path
-  return acc
-}, {})
 
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   const colors = {
@@ -174,9 +166,16 @@ const Clients = () => {
   const [updatingStatusId, setUpdatingStatusId] = useState(null)
   const [stageSelectionClient, setStageSelectionClient] = useState(null)
   const [transitionBlocker, setTransitionBlocker] = useState(null)
+  const [pendingLifecycleRetry, setPendingLifecycleRetry] = useState(null)
   const [lifecycleRules, setLifecycleRules] = useState({})
   const [reasonRequest, setReasonRequest] = useState(null)
   const [transitionReason, setTransitionReason] = useState('')
+  const [kickoffMeetingForm, setKickoffMeetingForm] = useState({
+    meeting_date: getTomorrowDateValue(),
+    meeting_time: '10:00',
+    duration: 30,
+  })
+  const [creatingKickoffMeeting, setCreatingKickoffMeeting] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
 
   const statusMeta = {
@@ -355,10 +354,11 @@ const Clients = () => {
     }
   }
 
-  const handleUpdateClient = async (e) => {
+  const handleUpdateClient = async (e, options = {}) => {
     e.preventDefault()
     if (submitting || !editingClient) return
     if (!validateClientForm()) return
+    const shouldRetryLifecycle = options.retryLifecycle !== false
 
     try {
       setSubmitting(true)
@@ -371,12 +371,17 @@ const Clients = () => {
         formDataObj.set('client_type', formData.client_type)
       }
 
-      await clientsAPI.updateClient(editingClient.id, formDataObj)
+      const updatedClient = await clientsAPI.updateClient(editingClient.id, formDataObj)
       toast.success('Client updated successfully')
       setShowCreateModal(false)
       setEditingClient(null)
       resetForm()
       loadClients()
+      const retry = shouldRetryLifecycle ? pendingLifecycleRetry : null
+      setPendingLifecycleRetry(null)
+      if (retry?.clientId === editingClient.id && retry.newStatus) {
+        await handleStatusChange(retry.clientId, retry.newStatus, { ...(retry.client || {}), ...updatedClient }, retry.reason || '')
+      }
     } catch (error) {
       console.error('Error updating client:', error)
       toast.error('Failed to update client')
@@ -488,6 +493,41 @@ const Clients = () => {
       }
     } finally {
       setUpdatingStatusId(null)
+    }
+  }
+
+  const handleCreateKickoffMeetingAndRetry = async () => {
+    const client = transitionBlocker?.client
+    const targetStatus = transitionBlocker?.detail?.target_status || 'active'
+    if (!client?.id || creatingKickoffMeeting) return
+    if (!kickoffMeetingForm.meeting_date || !kickoffMeetingForm.meeting_time) {
+      toast.error('Meeting date and time are required')
+      return
+    }
+
+    try {
+      setCreatingKickoffMeeting(true)
+      const meetingData = new FormData()
+      meetingData.append('title', `Kickoff - ${client.name || client.company_name || 'Client'}`)
+      meetingData.append('description', `Kickoff meeting for client ${client.id}`)
+      meetingData.append('meeting_date', kickoffMeetingForm.meeting_date)
+      meetingData.append('meeting_time', kickoffMeetingForm.meeting_time)
+      meetingData.append('duration', String(kickoffMeetingForm.duration || 30))
+      await meetingsApi.create(meetingData)
+      toast.success('Kickoff meeting scheduled')
+      setTransitionBlocker(null)
+      setKickoffMeetingForm({
+        meeting_date: getTomorrowDateValue(),
+        meeting_time: '10:00',
+        duration: 30,
+      })
+      loadClients()
+      await handleStatusChange(client.id, targetStatus, client)
+    } catch (error) {
+      const detail = error.response?.data?.detail
+      toast.error(typeof detail === 'string' ? detail : 'Failed to schedule kickoff meeting')
+    } finally {
+      setCreatingKickoffMeeting(false)
     }
   }
 
@@ -662,7 +702,7 @@ const Clients = () => {
     if (showCreateProjectModal) {
       loadAssignableUsers()
     }
-  }, [showCreateProjectModal])
+  }, [loadAssignableUsers, showCreateProjectModal])
 
   const handleUploadDocument = async () => {
     if (!selectedClient || !documentFile) return
@@ -705,6 +745,7 @@ const Clients = () => {
       saveClientFormDraft(formData)
     }
     setShowCreateModal(false)
+    setPendingLifecycleRetry(null)
   }
 
   const updateClientField = (field, value) => {
@@ -1090,6 +1131,7 @@ const Clients = () => {
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {paginatedClients.map((client) => {
                   const lifecycleRule = lifecycleRules[client.status || 'active']
+                  const displayName = client.company_name?.trim() || client.name || 'Client'
                   return (
                     <tr
                     key={client.id}
@@ -1099,13 +1141,16 @@ const Clients = () => {
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-3">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-xs font-bold text-white shadow-sm">
-                          {client.name?.[0]?.toUpperCase() || 'C'}
+                          {displayName[0]?.toUpperCase() || 'C'}
                         </div>
                         <div>
-                          <div className="text-xs font-bold text-gray-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400 transition">{client.name}</div>
-                          {client.company_name && (
-                            <div className="text-[11px] text-gray-500 dark:text-gray-400">{client.company_name}</div>
-                          )}
+                          <div className="text-xs font-bold text-gray-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400 transition">{displayName}</div>
+                          {client.status === 'onboarding' && client.onboarding ? (
+                            <div className="mt-1 max-w-[190px] text-[11px] text-indigo-600 dark:text-indigo-300">
+                              <span className="font-semibold">{client.onboarding.progress_percent || 0}% ready</span>
+                              {client.onboarding.next_action ? ` · ${client.onboarding.next_action}` : ''}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </td>
@@ -1255,26 +1300,35 @@ const Clients = () => {
             <Button type="button" variant="secondary" onClick={() => setTransitionBlocker(null)}>
               Cancel
             </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                const client = transitionBlocker?.client
-                setTransitionBlocker(null)
-                if (client) {
-                  handleEditClient(client)
-                }
-              }}
-            >
-              Complete Missing Information
-            </Button>
+            {(transitionBlocker?.detail?.missing_fields || []).some((item) => item.field !== 'kickoff_meeting') ? (
+              <Button
+                type="button"
+                onClick={() => {
+                  const client = transitionBlocker?.client
+                  const targetStatus = transitionBlocker?.detail?.target_status
+                  setTransitionBlocker(null)
+                  if (client) {
+                    setPendingLifecycleRetry({
+                      clientId: client.id,
+                      newStatus: targetStatus,
+                      client,
+                    })
+                    handleEditClient(client)
+                  }
+                }}
+              >
+                Update Details and Retry
+              </Button>
+            ) : null}
             {transitionBlocker?.detail?.missing_fields?.some((item) => item.field === 'kickoff_meeting') ? (
               <Button
                 type="button"
                 variant="secondary"
                 onClick={() => {
                   const client = transitionBlocker?.client
+                  const item = transitionBlocker?.detail?.missing_fields?.find((field) => field.field === 'kickoff_meeting')
                   setTransitionBlocker(null)
-                  if (client?.id) navigate(`/clients/${client.id}/workspace?tab=meetings`)
+                  if (client?.id) navigate(`/clients/${client.id}/workspace?tab=onboarding&onboardingTab=${item?.tab || 'kickoff'}`)
                 }}
               >
                 Open Workspace
@@ -1300,6 +1354,58 @@ const Clients = () => {
           <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
             Client stays in current stage until backend lifecycle validation accepts the transition.
           </p>
+          {transitionBlocker?.detail?.missing_fields?.some((item) => item.field === 'kickoff_meeting') ? (
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+                  <Calendar className="h-4 w-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Schedule kickoff meeting</h4>
+                  <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                    Create the required kickoff meeting here, then activation will retry automatically.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_0.8fr_0.7fr]">
+                <FormField label="Date" required>
+                  <input
+                    type="date"
+                    value={kickoffMeetingForm.meeting_date}
+                    onChange={(event) => setKickoffMeetingForm((current) => ({ ...current, meeting_date: event.target.value }))}
+                    className={inputClassName}
+                  />
+                </FormField>
+                <FormField label="Time" required>
+                  <input
+                    type="time"
+                    value={kickoffMeetingForm.meeting_time}
+                    onChange={(event) => setKickoffMeetingForm((current) => ({ ...current, meeting_time: event.target.value }))}
+                    className={inputClassName}
+                  />
+                </FormField>
+                <FormField label="Minutes" required>
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={kickoffMeetingForm.duration}
+                    onChange={(event) => setKickoffMeetingForm((current) => ({ ...current, duration: event.target.value }))}
+                    className={inputClassName}
+                  />
+                </FormField>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <Button
+                  type="button"
+                  onClick={handleCreateKickoffMeetingAndRetry}
+                  disabled={creatingKickoffMeeting}
+                >
+                  {creatingKickoffMeeting ? 'Scheduling...' : 'Schedule and Activate'}
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </Modal>
 
@@ -1351,6 +1457,7 @@ const Clients = () => {
           title={editingClient ? 'Edit client' : 'Create client'}
           description={clientFormStep === 1 ? 'Step 1 of 2: identify the client and how to contact them.' : 'Step 2 of 2: add ownership, billing, address, and handoff details.'}
           size="lg"
+          closeOnBackdrop={false}
           bodyClassName="bg-gray-50/60 dark:bg-gray-950/30"
           footer={(
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1384,9 +1491,22 @@ const Clients = () => {
                     Next
                   </Button>
                 ) : (
-                  <Button type="submit" form="client-create-form" loading={submitting} loadingText="Saving">
-                    {editingClient ? 'Update client' : 'Create client'}
-                  </Button>
+                  <>
+                    {editingClient ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        loading={submitting}
+                        loadingText="Saving"
+                        onClick={(event) => handleUpdateClient(event, { retryLifecycle: false })}
+                      >
+                        Save Details
+                      </Button>
+                    ) : null}
+                    <Button type="submit" form="client-create-form" loading={submitting} loadingText="Saving">
+                      {editingClient ? 'Update client' : 'Create client'}
+                    </Button>
+                  </>
                 )}
               </div>
             </div>

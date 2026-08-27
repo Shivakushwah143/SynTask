@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 from app.crm.models import Client, ClientStatus, ClientType, SalesProspect
 from app.crm.client_identity import load_contacts_for_client
 from app.crm.client_lifecycle import client_lifecycle_rules, normalize_client_status, transition_client_status
+from app.crm.client_onboarding import build_onboarding_document, sync_client_onboarding
+from app.models.client_onboarding import ClientOnboardingItem, ClientOnboardingItemStatus
 from app.models.user import User, UserRole
 from app.models.project import Project
 from app.models.crm_company import CRMCompany
@@ -350,6 +352,7 @@ async def list_clients(
             "total_budget": sum(client.projects_budget.values()),
             "documents_count": len(client.documents),
             **commercial,
+            "onboarding": await sync_client_onboarding(client, current_user) if client.status == ClientStatus.ONBOARDING else None,
             "created_at": client.created_at,
             "updated_at": client.updated_at,
         })
@@ -462,6 +465,73 @@ async def get_client_workspace(
 ):
     """Get client workspace with projects, meetings, tasks, leads, and timeline."""
     return await ClientWorkspaceService.load_workspace(current_user, client_id)
+
+
+@router.post("/{client_id}/onboarding/document/generate")
+async def generate_client_onboarding_document(
+    client_id: str,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Generate a client-facing onboarding document from verified onboarding data."""
+    client = await Client.get(client_id)
+    if not client:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+    check_company_access(current_user, client.company_id)
+    document = await build_onboarding_document(client, current_user, UPLOAD_DIR)
+    return {"message": "Onboarding document generated", "document": document}
+
+
+@router.patch("/{client_id}/onboarding/items/{item_key}")
+async def update_client_onboarding_item(
+    client_id: str,
+    item_key: str,
+    item_status: Optional[str] = Form(None, alias="status"),
+    notes: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Record a genuinely manual onboarding layer update."""
+    client = await Client.get(client_id)
+    if not client:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+    check_company_access(current_user, client.company_id)
+
+    item = await ClientOnboardingItem.find_one(
+        {"company_id": client.company_id, "client_id": str(client.id), "key": item_key}
+    )
+    if not item:
+        await sync_client_onboarding(client, current_user)
+        item = await ClientOnboardingItem.find_one(
+            {"company_id": client.company_id, "client_id": str(client.id), "key": item_key}
+        )
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Onboarding item not found")
+
+    old_status = item.status.value
+    old_notes = item.notes
+    if item_status is not None:
+        try:
+            item.status = ClientOnboardingItemStatus(item_status)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid onboarding item status") from exc
+        item.completion_percent = 100 if item.status in {
+            ClientOnboardingItemStatus.COMPLETED,
+            ClientOnboardingItemStatus.SIGNED_CONFIRMED,
+            ClientOnboardingItemStatus.CONFIRMED,
+            ClientOnboardingItemStatus.READY,
+        } else max(item.completion_percent, 25)
+    if notes is not None:
+        item.notes = notes.strip() or None
+    if old_status != item.status.value or old_notes != item.notes:
+        item.audit_history.append({
+            "actor_id": str(current_user.id),
+            "from_status": old_status,
+            "to_status": item.status.value,
+            "timestamp": utc_now(),
+            "notes_changed": old_notes != item.notes,
+        })
+    item.updated_at = utc_now()
+    await item.save()
+    return await sync_client_onboarding(client, current_user)
 
 
 @router.put("/{client_id}")

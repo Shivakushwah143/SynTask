@@ -5,9 +5,10 @@ from typing import Any, Dict, Iterable, List, Set
 from fastapi import HTTPException, status
 
 from app.models.client import Client, ClientStatus
-from app.models.meeting import Meeting
-from app.models.sales_prospect import SalesProspect
 from app.models.user import User, UserRole
+from app.models.meeting import Meeting
+from app.crm.models import SalesProspect
+from app.crm.client_onboarding import activation_blockers, sync_client_onboarding
 
 
 CLIENT_TRANSITION_BLOCKED_CODE = "CLIENT_TRANSITION_BLOCKED"
@@ -27,10 +28,13 @@ CLIENT_LIFECYCLE_RULES: Dict[ClientStatus, Dict[str, Any]] = {
         "transition_type": "sequential",
         "allowed_destinations": {ClientStatus.ACTIVE},
         "prerequisites": [
-            {"field": "primary_contact", "label": "Primary Contact"},
-            {"field": "account_owner_id", "label": "Account Owner"},
-            {"field": "requirements", "label": "Requirements"},
-            {"field": "kickoff_meeting", "label": "Kickoff Meeting"},
+            {"field": "payment_terms", "label": "Payment Terms / Billing", "tab": "commercial"},
+            {"field": "primary_contact", "label": "Primary Contact", "tab": "contacts"},
+            {"field": "requirements", "label": "Requirements", "tab": "requirements"},
+            {"field": "project_created", "label": "Project Created", "tab": "project-team"},
+            {"field": "team_assigned", "label": "Team / Account Owner Assigned", "tab": "project-team"},
+            {"field": "kickoff_meeting", "label": "Kickoff Meeting", "tab": "kickoff"},
+            {"field": "start_readiness", "label": "Initial Delivery / Start Readiness", "tab": "project-team"},
         ],
         "action_label": "Next Stage",
     },
@@ -161,39 +165,6 @@ def _has_value(value: Any) -> bool:
     return True
 
 
-async def _source_lead_for_client(client: Client) -> SalesProspect | None:
-    company_id = str(getattr(client, "company_id", "") or "")
-    source_lead_id = getattr(client, "source_lead_id", None)
-    if source_lead_id:
-        try:
-            lead = await SalesProspect.get(source_lead_id)
-        except Exception:
-            lead = None
-        if lead and not getattr(lead, "deleted", False) and str(getattr(lead, "company_id", "") or "") == company_id:
-            return lead
-    return await SalesProspect.find_one(
-        {
-            "company_id": company_id,
-            "client_id": str(client.id),
-            "deleted": {"$ne": True},
-        }
-    )
-
-
-async def _has_kickoff_meeting(client: Client) -> bool:
-    company_id = str(getattr(client, "company_id", "") or "")
-    client_id = str(getattr(client, "id", "") or "")
-    title = f"Kickoff - {getattr(client, 'name', '')}"
-    query = {
-        "company_id": company_id,
-        "$or": [
-            {"title": title},
-            {"description": {"$regex": client_id, "$options": "i"}},
-        ],
-    }
-    return bool(await Meeting.find_one(query))
-
-
 async def validate_client_transition_requirements(client: Client, target_status: ClientStatus, reason: str | None = None) -> None:
     current_status = normalize_client_status(getattr(client, "status", None))
     destination_requirements = CLIENT_LIFECYCLE_RULES[current_status].get("destination_requirements", {})
@@ -207,19 +178,7 @@ async def validate_client_transition_requirements(client: Client, target_status:
     if target_status != ClientStatus.ACTIVE:
         return
 
-    missing: List[Dict[str, Any]] = []
-    source_lead = None
-
-    if not (_has_value(getattr(client, "contact", None)) or _has_value(getattr(client, "email", None))):
-        missing.append({"field": "primary_contact", "label": "Primary Contact"})
-    if not (_has_value(getattr(client, "account_owner_id", None)) or _has_value(getattr(client, "assigned_to", None))):
-        missing.append({"field": "account_owner_id", "label": "Account Owner"})
-    if not _has_value(getattr(client, "notes", None)):
-        source_lead = await _source_lead_for_client(client)
-        if not (_has_value(getattr(source_lead, "requirement", None)) or _has_value(getattr(source_lead, "pain_points", None))):
-            missing.append({"field": "requirements", "label": "Requirements"})
-    if not await _has_kickoff_meeting(client):
-        missing.append({"field": "kickoff_meeting", "label": "Kickoff Meeting"})
+    missing = await activation_blockers(client)
 
     if missing:
         raise _transition_blocked(
@@ -257,4 +216,6 @@ async def transition_client_status(client: Client, target_status: str | ClientSt
     if metadata:
         client.lifecycle_metadata = metadata
     await client.save()
+    if next_status in {ClientStatus.ONBOARDING, ClientStatus.ACTIVE}:
+        await sync_client_onboarding(client, current_user)
     return client

@@ -9,7 +9,7 @@ Client setup requires ordered progression, while operational client states depen
 ## Decision
 The backend `client_lifecycle.py` owns one rule catalog. Each stage declares its transition type, allowed destinations, prerequisites, destination reason requirements, and action label. The Client API exposes that catalog at `/api/v1/clients/lifecycle/rules`; the frontend renders controls from it. The update endpoint remains the enforcement boundary and stores lifecycle reason and metadata on the Client.
 
-Setup is strictly `New -> Onboarding -> Active`. Post-activation transitions are conditional. Archived has no destination without a separately authorized restore flow. Activation requires primary contact, account owner, requirements, and kickoff meeting.
+Setup is strictly `New -> Onboarding -> Active`. Post-activation transitions are conditional. Archived has no destination without a separately authorized restore flow. Activation requires the backend-calculated onboarding readiness items for payment terms, primary contact, requirements, project creation, team/account owner assignment, kickoff completion, and initial start readiness.
 
 ## Alternatives considered
 - Keep separate React and backend maps: rejected because they can diverge.

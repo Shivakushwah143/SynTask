@@ -18,7 +18,7 @@ flowchart TD
 - What happens after every action:
   - Create/edit opens a guided modal sequence with two steps: Contact setup for required identity fields, then Client details for ownership, budget, schedule, address, tags, and notes.
   - Required name and email format validation run before the user can continue to Details or submit.
-  - Create/update operations refresh the list/detail.
+  - Create/update operations refresh the list/detail. The create/edit modal does not close on accidental outside clicks; explicit Cancel or Close still exits. In edit mode, Save Details stores the filled fields without changing lifecycle stage, while Update Client saves and continues the lifecycle action when one is pending. When a lifecycle blocker opens the edit form, a successful Update retries the original stage move with the updated client data instead of forcing the user to click the same stage action again. If Kickoff Meeting is missing, the warning popup includes an inline kickoff scheduler; after scheduling succeeds, the original activation retry runs automatically, and the saved kickoff meeting appears in the client workspace Meetings tab. The workspace overview shows saved primary contact email and phone details.
   - Draft preservation: partially filled values in the create form are kept as a draft when the modal is closed by the cross button, Escape, backdrop, or Cancel, and are restored the next time the form opens, so the user does not need to re-enter them. The draft is cleared only after a successful client creation.
 - Backend APIs called: clients APIs and linked document/project endpoints.
 - Timeline events created: client lifecycle should be reflected where backend events exist.
@@ -48,7 +48,12 @@ flowchart LR
   C --> A
   C --> X
 ```
-`New -> Onboarding -> Active` is sequential. After `Active`, transitions are conditional and are read from the backend lifecycle rules endpoint. Activation requires Primary Contact, Account Owner, Requirements, and Kickoff Meeting. Configured operational or terminal transitions require a reason; archived clients have no destination unless a future authorized restore flow is added.
+`New -> Onboarding -> Active` is sequential. After `Active`, transitions are conditional and are read from the backend lifecycle rules endpoint. Activation requires the backend-calculated onboarding items for payment terms, primary contact, requirements, project creation, team/account owner assignment, kickoff completion, and initial start readiness. The activation response identifies each missing item, its current status, reason, destination tab, and action label; the Client list and workspace status controls show a blocking warning instead of failing the page, and each action opens the matching onboarding tab directly. Configured operational or terminal transitions require a reason; archived clients have no destination unless a future authorized restore flow is added.
+
+### Client onboarding workspace
+When a Client is in `onboarding`, its workspace exposes secondary tabs for Overview, Commercial, Contacts, Requirements, Documents, Assets & Access, Project & Team, Kickoff, and Onboarding Document. Existing CRM Contacts, CRM Documents, Projects, Meetings, and Client files are linked as source records; onboarding items do not duplicate them. Status-only dropdowns cannot complete requirements: commercial, primary contact, and requirement details save real Client fields; project/team and kickoff tabs expose forms that create linked Project and Meeting records; assets use existing Client files; project/team/kickoff/contact/document states derive from existing records; and activation blockers are calculated by the backend from those records. The Onboarding Document tab generates or regenerates a client-facing document from current onboarding data and excludes sensitive credentials and internal-only notes. Each item stores required/optional state, layer status, completion percentage, owner/link metadata, timestamps, validation data, and audit entries.
+
+The onboarding list view shows compact progress and the next required action beside onboarding-stage Clients. Required progress is calculated as completed required items divided by total required items; optional layers never block activation. Tenant isolation is enforced by the Client and linked-record company key, and onboarding edits use the existing company-admin/lead permission gate.
 
 ## Invoices
 - How the user reaches it: main navigation.

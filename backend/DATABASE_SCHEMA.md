@@ -2,7 +2,7 @@
 
 Database: `alphanexis_task_management`
 
-This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **59 unique MongoDB collection names** across **64 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
+This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **61 unique MongoDB collection names** across **66 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
 
 Recruitment models under `backend/app/recruitment/models.py` also define tenant-scoped collections. `recruitment_candidates` stores public applicant profile data including `date_of_birth` when submitted. `recruitment_applications` stores candidate job applications with `company_id`, `candidate_id`, `job_id`, `status`, globally unique `tracking_code`, hashed `tracking_secret_hash`, `tracking_secret_created_at`, `applied_at`, `updated_at`, and `deleted_at`. `recruitment_candidate_portal_credentials` is a temporary public tracking credential collection keyed by `company_id`, `candidate_id`, `application_id`, `job_id`, and `tracking_code`; it stores only `secret_hash`, never the temporary password. Public candidate tracking verifies `tracking_code` plus PIN against a temporary credential hash and never exposes the hash or MongoDB id. `recruitment_offer_access_tokens` stores tenant-scoped offer access records with a token hash and optional encrypted raw token used to render public offer links in candidate tracking; public offer routes still verify the token hash and expiry before exposing offer details. Terminal candidate states remove temporary credential documents while retaining recruitment audit/application records.
 
@@ -15,6 +15,8 @@ Recruitment models under `backend/app/recruitment/models.py` also define tenant-
 | `billing_transactions` | BillingTransaction | Billing invoices, payment state, Razorpay metadata. |
 | `changelogs` | ChangeLog | ChangeLog persistence collection. |
 | `chat_messages` | ChatMessage | Chat message records. |
+| `client_onboarding_items` | ClientOnboardingItem | Client onboarding layer items, derived status, validation metadata, links, and audit history. |
+| `client_onboardings` | ClientOnboarding | Client onboarding progress summary and activation blockers. |
 | `clients` | Client | Client CRM records and linked projects/documents. |
 | `companies` | Company | Tenant/company registration and account metadata. |
 | `company_subscriptions` | CompanySubscription | Company subscription state, module entitlements, usage counters. |
@@ -212,6 +214,45 @@ Indexes: `['conversation_id', 'company_id', 'sender_id', 'created_at']`
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 | `is_edited` | `bool` | No | No | Model field |
 | `is_deleted` | `bool` | No | No | Model field |
+
+### `client_onboardings`
+
+#### Model: `ClientOnboarding`
+
+Indexes include unique `(company_id, client_id)` for one onboarding record per tenant-scoped Client.
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `client_id` | `str` | Yes | Yes | Linked Client id |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `status` | `ClientOnboardingStatus` | No | Yes | `in_progress`, `ready`, or `completed` |
+| `progress_percent` | `int` | No | No | Required item completion percentage |
+| `required_total` | `int` | No | No | Required item count |
+| `required_completed` | `int` | No | No | Completed required item count |
+| `blocking_item_keys` | `List[str]` | No | No | Required item keys currently blocking activation |
+| `next_action` | `Optional[str]` | No | No | Human-readable next action |
+| `started_at`, `completed_at`, `created_at`, `updated_at` | `datetime` | No | No | Lifecycle timestamps |
+
+### `client_onboarding_items`
+
+#### Model: `ClientOnboardingItem`
+
+Indexes include unique `(company_id, client_id, key)` so layer state is updated idempotently.
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `onboarding_id` | `str` | Yes | Yes | Parent onboarding id |
+| `client_id` | `str` | Yes | Yes | Linked Client id |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `key`, `label`, `layer`, `tab` | `str` | Yes | Yes | Layer identity and destination tab |
+| `required` | `bool` | No | Yes | Whether item blocks activation |
+| `status` | `ClientOnboardingItemStatus` | No | Yes | Derived layer status |
+| `completion_percent` | `int` | No | No | Derived completion percentage |
+| `assigned_owner_id` | `Optional[str]` | No | No | Owner reference where relevant |
+| `linked_entity_type`, `linked_entity_id` | `Optional[str]` | No | No | Existing Contact/Document/Project/Meeting/Client link |
+| `validation` | `Dict[str, Any]` | No | No | Validation metadata |
+| `audit_history` | `List[Dict[str, Any]]` | No | No | Actor/timestamp/status changes |
+| `notes`, `completed_at`, `created_at`, `updated_at` | mixed | No | No | Layer notes and timestamps |
 
 ### `clients`
 
