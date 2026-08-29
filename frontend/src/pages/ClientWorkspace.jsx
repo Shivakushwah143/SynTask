@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowLeft, Activity, Building2, CalendarDays, Clock3, Do
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { clientsAPI } from '../api/clients'
+import { crmApi } from '../api/crm'
 import { meetingsApi } from '../api/meetings'
 import { projectsApi } from '../api/projects'
 import { Button, EmptyState, Modal, Skeleton } from '../components/ui'
@@ -12,6 +13,7 @@ import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '.
 import { CompanyTimeline } from './crm/companies/components'
 import { formatCurrency } from './crm/pipeline/utils'
 import { toFormData } from './phase4Utils'
+import { onboardingBlockerDestination } from './clientOnboardingNavigation'
 import { timeService } from '@/services/timeService'
 
 const TAB_KEY = 'tab'
@@ -204,11 +206,18 @@ function OnboardingItemCard({ item, onOpenTab }) {
   )
 }
 
-function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, projects, contacts, meetings, documents, onSaveClient, onCreateProject, onCreateMeeting, onGenerateDocument, saving, creatingProject, creatingMeeting, generatingDocument }) {
+function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, projects, contacts, meetings, documents, onSaveClient, onSaveOnboarding, onSaveAssetsAccess, onSetPrimaryContact, onCreateContact, onCreateProject, onCreateMeeting, onGenerateDocument, saving, creatingContact, creatingProject, creatingMeeting, generatingDocument }) {
   const visibleItems = activeTab === 'overview'
     ? onboarding?.items || []
     : (onboarding?.items || []).filter((item) => item.tab === activeTab)
   const onboardingDocument = documents.find((item) => item.type === 'onboarding_document' || item.category === 'onboarding_document')
+  const onboardingData = client?.lifecycle_metadata?.onboarding || {}
+  const requirements = onboardingData.requirements || {}
+  const commercial = onboardingData.commercial || {}
+  const assets = onboardingData.assets || []
+  const access = onboardingData.access || []
+  const primaryContact = contacts.find((contact) => contact.is_primary_contact)
+  const [showContactForm, setShowContactForm] = useState(!contacts.length)
   const projectDefaults = projectSeed(client)
   const tomorrow = timeService.toUtcISOString(timeService.addDays(timeService.now(), 1)).slice(0, 10)
 
@@ -235,39 +244,137 @@ function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, proje
             client_type: event.currentTarget.elements.client_type.value,
             start_date: event.currentTarget.elements.start_date.value,
           })
+          onSaveOnboarding({ commercial: {
+            deal_value: event.currentTarget.elements.budget.value,
+            billing_frequency: event.currentTarget.elements.client_type.value,
+            payment_terms: event.currentTarget.elements.payment_terms.value,
+            engagement_start_date: event.currentTarget.elements.start_date.value,
+            billing_contact: event.currentTarget.elements.billing_contact.value,
+          } })
         }}>
           <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Contract / deal value<input name="budget" type="number" step="0.01" defaultValue={client?.budget || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
           <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Billing frequency<select name="client_type" defaultValue={client?.client_type || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Select</option><option value="monthly">Monthly</option><option value="one_time">One Time</option></select></label>
           <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Start date<input name="start_date" type="date" defaultValue={client?.start_date ? String(client.start_date).slice(0, 10) : ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Payment terms<input name="payment_terms" defaultValue={commercial.payment_terms || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-200 md:col-span-2">Billing contact / details<input name="billing_contact" defaultValue={commercial.billing_contact || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
           <div className="flex items-end"><Button type="submit" loading={saving} loadingText="Saving">Save Commercial</Button></div>
         </form>
       ) : null}
       {activeTab === 'requirements' ? (
         <form className="mt-5 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900" onSubmit={(event) => {
           event.preventDefault()
-          onSaveClient({ notes: event.currentTarget.elements.notes.value })
+          onSaveOnboarding({ requirements: Object.fromEntries(new FormData(event.currentTarget).entries()) })
         }}>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Business objective, scope, deliverables, audience, deadlines, competitors, preferences, special requirements<textarea name="notes" rows={7} defaultValue={client?.notes || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          {['business_objective', 'scope', 'expected_deliverables', 'target_audience', 'important_deadlines', 'competitors_references', 'preferences', 'special_requirements', 'client_facing_notes'].map((field) => (
+            <label key={field} className="mb-3 block text-sm font-medium text-gray-700 dark:text-gray-200">{field.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}<textarea name={field} rows={2} defaultValue={requirements[field] || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          ))}
           <Button type="submit" className="mt-3" loading={saving} loadingText="Saving">Save Requirements</Button>
         </form>
       ) : null}
       {activeTab === 'contacts' ? (
-        <form className="mt-5 grid gap-4 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 md:grid-cols-2" onSubmit={(event) => {
-          event.preventDefault()
-          onSaveClient({
-            name: event.currentTarget.elements.name.value,
-            email: event.currentTarget.elements.email.value,
-            contact: event.currentTarget.elements.contact.value,
-          })
-        }}>
-          <div className="md:col-span-2">
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">Primary contact</p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{contacts.length} CRM contact(s) linked.</p>
+        <div className="mt-5 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Primary contact</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{primaryContact ? `${primaryContact.full_name} · ${primaryContact.designation || 'No designation'} · ${primaryContact.email || 'No email'} · ${primaryContact.phone || 'No phone'}` : `${contacts.length} CRM contact(s) linked.`}</p>
+            </div>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setShowContactForm((value) => !value)}>{showContactForm ? 'Select Existing' : 'Add Contact'}</Button>
           </div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Contact name<input name="name" defaultValue={client?.name || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Email<input name="email" type="email" defaultValue={client?.email || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Phone<input name="contact" defaultValue={client?.contact || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-          <div className="flex items-end"><Button type="submit" loading={saving} loadingText="Saving">Save Primary Contact</Button></div>
+          {!showContactForm ? (
+            <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={(event) => {
+              event.preventDefault()
+              onSetPrimaryContact(event.currentTarget.elements.contact_id.value)
+            }}>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-200 md:col-span-2">Select existing CRM contact<select name="contact_id" defaultValue={primaryContact?.id || ''} required className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Select contact</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.full_name} · {contact.designation || 'No designation'} · {contact.email || 'No email'} · {contact.phone || 'No phone'}</option>)}</select></label>
+              <div className="flex items-end"><Button type="submit" loading={saving} loadingText="Saving">Save Primary Contact</Button></div>
+            </form>
+          ) : (
+            <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={(event) => {
+              event.preventDefault()
+              const form = event.currentTarget
+              onCreateContact({
+                first_name: form.elements.first_name.value,
+                last_name: form.elements.last_name.value,
+                designation: form.elements.designation.value,
+                email: form.elements.email.value || null,
+                country_code: form.elements.country_code.value || '+91',
+                phone: form.elements.phone.value,
+                crm_company_id: client?.crm_company_id,
+                is_primary_contact: true,
+              })
+            }}>
+              {!client?.crm_company_id ? <p className="text-sm font-medium text-amber-700 dark:text-amber-300 md:col-span-2">Link this client to a CRM Company before adding CRM contacts.</p> : null}
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">First name<input name="first_name" required disabled={!client?.crm_company_id} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Last name<input name="last_name" required disabled={!client?.crm_company_id} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Designation<input name="designation" disabled={!client?.crm_company_id} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Email<input name="email" type="email" disabled={!client?.crm_company_id} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Country code<input name="country_code" defaultValue="+91" required disabled={!client?.crm_company_id} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Phone<input name="phone" required disabled={!client?.crm_company_id} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+              <div className="md:col-span-2"><Button type="submit" disabled={!client?.crm_company_id} loading={creatingContact} loadingText="Creating">Create & Mark Primary</Button></div>
+            </form>
+          )}
+        </div>
+      ) : null}
+      {activeTab === 'assets-access' ? (
+        <form className="mt-5 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900" onSubmit={(event) => {
+          event.preventDefault()
+          const form = event.currentTarget
+          const row = (prefix) => [0, 1, 2, 3].map((index) => ({
+            name: form.elements[`${prefix}_name_${index}`]?.value,
+            status: form.elements[`${prefix}_status_${index}`]?.value,
+            reference: form.elements[`${prefix}_reference_${index}`]?.value,
+            file: form.elements[`${prefix}_file_${index}`]?.files?.[0],
+          })).filter((item) => item.name)
+          onSaveAssetsAccess({ assets: row('asset'), access: row('access') })
+        }}>
+          <div className="border-b border-gray-100 pb-4 dark:border-gray-800">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Collect launch materials and access</p>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Track what the client must provide before work starts. Use references for uploaded file names, ticket links, or secure vault/integration references only.</p>
+          </div>
+
+          <div className="mt-5 space-y-5">
+            <section>
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Brand assets to collect</h3>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Mark each asset as requested, received, or verified after checking it is usable.</p>
+              </div>
+              <div className="space-y-3">
+                {['Logo', 'Brand Guidelines', 'Images / Media', 'Reference Material'].map((name, index) => (
+                  <div key={name} className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950/40">
+                    <div className="grid gap-3 md:grid-cols-[1.1fr_160px_1.2fr_1.2fr]">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Asset needed<input name={`asset_name_${index}`} defaultValue={assets[index]?.name || name} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Stage<select name={`asset_status_${index}`} defaultValue={assets[index]?.status || 'missing'} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="missing">Missing</option><option value="requested">Requested</option><option value="received">Received</option><option value="verified">Verified</option></select></label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Upload file<input name={`asset_file_${index}`} type="file" className="mt-1 block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-primary-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-primary-700 hover:file:bg-primary-100 dark:text-gray-300 dark:file:bg-primary-950 dark:file:text-primary-200" /></label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Uploaded file / reference<input name={`asset_reference_${index}`} defaultValue={assets[index]?.reference || ''} placeholder="Auto-filled after upload" className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+                    </div>
+                    {assets[index]?.file_url ? <a className="mt-2 inline-flex text-xs font-semibold text-primary-700 hover:underline dark:text-primary-300" href={clientFileUrl(assets[index].file_url)} target="_blank" rel="noopener noreferrer">Open uploaded file</a> : null}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Access to request</h3>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Record only the access status and safe reference. Do not paste passwords, tokens, or recovery codes here.</p>
+              </div>
+              <div className="space-y-3">
+                {['Website', 'Instagram', 'Facebook', 'Google Business'].map((name, index) => (
+                  <div key={name} className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950/40">
+                    <div className="grid gap-3 md:grid-cols-[1.2fr_180px_1.4fr]">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Access needed<input name={`access_name_${index}`} defaultValue={access[index]?.name || name} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Stage<select name={`access_status_${index}`} defaultValue={access[index]?.status || 'missing'} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="missing">Missing</option><option value="requested">Requested</option><option value="received">Received</option><option value="verified">Verified</option></select></label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Safe reference<input name={`access_reference_${index}`} defaultValue={access[index]?.reference || ''} placeholder="Example: vault item or invite sent" className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <div className="mt-5 flex justify-end border-t border-gray-100 pt-4 dark:border-gray-800">
+            <Button type="submit" loading={saving} loadingText="Saving">Save Asset & Access Status</Button>
+          </div>
         </form>
       ) : null}
       {activeTab === 'project-team' ? (
@@ -299,6 +406,11 @@ function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, proje
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <OnboardingItemCard item={{ label: 'Projects', status: projects.length ? 'created' : 'not_started', completion_percent: projects.length ? 100 : 0, required: true, action_label: 'Open Projects', tab: 'project-team' }} onOpenTab={() => onTabChange('project-team')} />
             <OnboardingItemCard item={{ label: 'Team / owner', status: client?.assigned_to || client?.account_owner_id ? 'team_assigned' : 'missing', completion_percent: client?.assigned_to || client?.account_owner_id ? 100 : 0, required: true, action_label: 'Assign Team', tab: 'project-team' }} onOpenTab={() => onTabChange('project-team')} />
+          </div>
+          <div className="mt-5 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Start readiness</p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Confirm only after the project, team, kickoff, commercial, contact, and requirements are operationally ready.</p>
+            <Button type="button" className="mt-3" loading={saving} loadingText="Saving" onClick={() => onSaveOnboarding({ start_readiness: { ready: true } })}>Confirm Ready</Button>
           </div>
         </>
       ) : null}
@@ -332,8 +444,9 @@ function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, proje
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Client-facing onboarding document</h3>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Generated from verified onboarding data. Sensitive credentials and internal-only fields excluded.</p>
             </div>
-            <Button type="button" onClick={onGenerateDocument} loading={generatingDocument} loadingText="Generating">{onboardingDocument ? 'Regenerate Document' : 'Generate Document'}</Button>
+            <Button type="button" onClick={onGenerateDocument} loading={generatingDocument} loadingText="Generating">{onboardingDocument ? 'Regenerate PDF' : 'Generate PDF'}</Button>
           </div>
+          {onboardingDocument?.freshness === 'stale' ? <p className="mt-3 text-sm font-medium text-amber-700 dark:text-amber-300">Update Available / Regeneration Required</p> : null}
           {onboardingDocument?.url ? (
             <a className="mt-4 inline-flex text-sm font-semibold text-primary-700 hover:underline dark:text-primary-300" href={clientFileUrl(onboardingDocument.url)} target="_blank" rel="noopener noreferrer">Preview / Download</a>
           ) : null}
@@ -352,7 +465,7 @@ function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, proje
               </div>
               <div className="mt-3 h-1.5 rounded-full bg-gray-100 dark:bg-gray-800"><div className="h-1.5 rounded-full bg-primary-500" style={{ width: `${Math.min(100, Math.max(0, Number(item.completion_percent || 0)))}%` }} /></div>
               {item.linked_entity_id ? <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">Linked {item.linked_entity_type}: {item.linked_entity_id}</p> : null}
-              <Button type="button" size="sm" variant="secondary" className="mt-4" onClick={() => onTabChange(item.tab)}>{item.action_label || 'Open linked records'}</Button>
+              <Button type="button" size="sm" variant="secondary" className="mt-4" onClick={() => onTabChange(onboardingBlockerDestination(item))}>{item.action_label || 'Open linked records'}</Button>
             </article>
           )
         })}
@@ -425,6 +538,70 @@ export default function ClientWorkspacePage() {
         queryClient.invalidateQueries('clients')
       },
       onError: (error) => toast.error(apiErrorMessage(error, 'Failed to save onboarding data')),
+    }
+  )
+
+  const structuredOnboardingMutation = useMutation(
+    (values) => clientsAPI.updateOnboardingData(clientId, values),
+    {
+      onSuccess: () => {
+        toast.success('Onboarding data saved')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to save onboarding data')),
+    }
+  )
+
+  const assetsAccessMutation = useMutation(
+    async ({ assets: assetRows = [], access: accessRows = [] }) => {
+      const uploadedAssets = []
+      for (const asset of assetRows) {
+        const { file, ...rest } = asset
+        if (file) {
+          const result = await clientsAPI.uploadDocument(clientId, file, `Brand Asset - ${rest.name}`)
+          const document = result?.document || {}
+          uploadedAssets.push({
+            ...rest,
+            status: rest.status === 'missing' || rest.status === 'requested' ? 'received' : rest.status,
+            reference: document.name || document.original_name || rest.reference,
+            file_url: document.url,
+            file_name: document.original_name || document.name,
+          })
+        } else {
+          uploadedAssets.push(rest)
+        }
+      }
+      return clientsAPI.updateOnboardingData(clientId, { assets: uploadedAssets, access: accessRows.map(({ file, ...rest }) => rest) })
+    },
+    {
+      onSuccess: () => {
+        toast.success('Assets and access updated')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to save assets and access')),
+    }
+  )
+
+  const primaryContactMutation = useMutation(
+    (contactId) => clientsAPI.setPrimaryContact(clientId, contactId),
+    {
+      onSuccess: () => {
+        toast.success('Primary contact updated')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to update primary contact')),
+    }
+  )
+
+  const createContactMutation = useMutation(
+    (payload) => crmApi.createContact(payload),
+    {
+      onSuccess: () => {
+        toast.success('Primary contact created')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries('crm-contacts')
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to create primary contact')),
     }
   )
 
@@ -600,10 +777,15 @@ export default function ClientWorkspacePage() {
         meetings={meetings}
         documents={documents}
         onSaveClient={(values) => onboardingSaveMutation.mutate(values)}
+        onSaveOnboarding={(values) => structuredOnboardingMutation.mutate(values)}
+        onSaveAssetsAccess={(values) => assetsAccessMutation.mutate(values)}
+        onSetPrimaryContact={(contactId) => primaryContactMutation.mutate(contactId)}
+        onCreateContact={(values) => createContactMutation.mutate(values)}
         onCreateProject={(values) => createProjectMutation.mutate(values)}
         onCreateMeeting={(values) => createMeetingMutation.mutate(values)}
         onGenerateDocument={() => onboardingDocumentMutation.mutate()}
-        saving={onboardingSaveMutation.isLoading}
+        saving={onboardingSaveMutation.isLoading || structuredOnboardingMutation.isLoading || primaryContactMutation.isLoading || assetsAccessMutation.isLoading}
+        creatingContact={createContactMutation.isLoading}
         creatingProject={createProjectMutation.isLoading}
         creatingMeeting={createMeetingMutation.isLoading}
         generatingDocument={onboardingDocumentMutation.isLoading}

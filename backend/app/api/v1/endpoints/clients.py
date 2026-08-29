@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 from app.crm.models import Client, ClientStatus, ClientType, SalesProspect
 from app.crm.client_identity import load_contacts_for_client
 from app.crm.client_lifecycle import client_lifecycle_rules, normalize_client_status, transition_client_status
-from app.crm.client_onboarding import build_onboarding_document, sync_client_onboarding
+from app.crm.client_onboarding import build_onboarding_document, merge_onboarding_data, sync_client_onboarding
 from app.models.client_onboarding import ClientOnboardingItem, ClientOnboardingItemStatus
 from app.models.user import User, UserRole
 from app.models.project import Project
@@ -481,6 +481,57 @@ async def generate_client_onboarding_document(
     return {"message": "Onboarding document generated", "document": document}
 
 
+@router.patch("/{client_id}/onboarding/data")
+async def update_client_onboarding_data(
+    client_id: str,
+    payload: dict,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Update structured onboarding data without using legacy notes as completion evidence."""
+    client = await Client.get(client_id)
+    if not client:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+    check_company_access(current_user, client.company_id)
+    allowed = {"commercial", "requirements", "assets", "access", "start_readiness"}
+    patch = {key: value for key, value in (payload or {}).items() if key in allowed}
+    if "start_readiness" in patch:
+        ready = bool((patch.get("start_readiness") or {}).get("ready"))
+        patch["start_readiness"] = {
+            **(patch.get("start_readiness") or {}),
+            "ready": ready,
+            "confirmed_by": str(current_user.id) if ready else None,
+            "confirmed_at": utc_now().isoformat() if ready else None,
+        }
+    merge_onboarding_data(client, patch)
+    client.updated_at = utc_now()
+    await client.save()
+    return {"client_id": str(client.id), "onboarding": await sync_client_onboarding(client, current_user)}
+
+
+@router.patch("/{client_id}/onboarding/primary-contact")
+async def set_client_primary_contact(
+    client_id: str,
+    contact_id: str = Form(...),
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Mark an existing CRM contact as the client primary contact."""
+    client = await Client.get(client_id)
+    if not client:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+    check_company_access(current_user, client.company_id)
+    contacts = await load_contacts_for_client(client)
+    selected = next((contact for contact in contacts if str(contact.id) == contact_id), None)
+    if not selected:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact must belong to the linked CRM company")
+    for contact in contacts:
+        if contact.is_primary_contact != (str(contact.id) == contact_id):
+            contact.is_primary_contact = str(contact.id) == contact_id
+            contact.updated_by = str(current_user.id)
+            contact.updated_at = utc_now()
+            await contact.save()
+    return {"client_id": str(client.id), "primary_contact_id": contact_id, "onboarding": await sync_client_onboarding(client, current_user)}
+
+
 @router.patch("/{client_id}/onboarding/items/{item_key}")
 async def update_client_onboarding_item(
     client_id: str,
@@ -505,6 +556,13 @@ async def update_client_onboarding_item(
         )
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Onboarding item not found")
+
+    manual_only = {"agreement", "documents"}
+    if item_key not in manual_only:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This onboarding item is derived from linked records or structured onboarding data.",
+        )
 
     old_status = item.status.value
     old_notes = item.notes

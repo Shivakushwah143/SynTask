@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from app.api.v1.endpoints.clients import _client_commercial_fields
 from app.crm.client_workspace import ClientWorkspaceService
+from app.crm import client_onboarding
 from app.crm.client_identity import ClientCompanyResolution, load_contacts_for_client, resolve_crm_company_for_client
 from app.crm import client_lifecycle
 from app.crm.client_lifecycle import normalize_client_status, transition_client_status
@@ -108,6 +109,7 @@ def _client(**overrides):
         sales_owner_id=None,
         assigned_to="0000000000000000000000a1",
         notes=None,
+        lifecycle_metadata={},
         tags=[],
         project_ids=[],
         projects_budget={},
@@ -238,6 +240,122 @@ def _lead(**overrides):
 
     lead.save = save
     return lead
+
+
+def _empty_items(*_args, **_kwargs):
+    return FakeQuery([])
+
+
+async def _no_contacts(_client):
+    return []
+
+
+async def _no_lead(_client):
+    return None
+
+
+async def _no_projects(_client):
+    return []
+
+
+async def _no_kickoff(_client):
+    return None
+
+
+async def _no_contract(*_args):
+    return None
+
+
+def _item_status(item):
+    return item["status"].value if hasattr(item["status"], "value") else item["status"]
+
+
+@pytest.mark.asyncio
+async def test_onboarding_commercial_requires_payment_terms_not_budget_only(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, budget=5000, lifecycle_metadata={"onboarding": {"commercial": {"deal_value": 5000, "billing_frequency": "monthly", "engagement_start_date": "2026-09-01"}}})
+    async def source_lead(_client):
+        return _lead(payment_terms=None)
+    monkeypatch.setattr(client_onboarding, "load_contacts_for_client", _no_contacts)
+    monkeypatch.setattr(client_onboarding, "_source_lead_for_client", source_lead)
+    monkeypatch.setattr(client_onboarding, "_projects_for_client", _no_projects)
+    monkeypatch.setattr(client_onboarding, "_kickoff_for_client", _no_kickoff)
+    monkeypatch.setattr(client_onboarding, "_contract_for_client", _no_contract)
+    monkeypatch.setattr(client_onboarding.ClientOnboardingItem, "find", _empty_items)
+
+    items = await client_onboarding.calculate_onboarding_items(client)
+    payment = next(item for item in items if item["key"] == "payment_terms")
+
+    assert _item_status(payment) != "confirmed"
+    assert payment["completion_percent"] < 100
+
+
+@pytest.mark.asyncio
+async def test_onboarding_primary_contact_requires_crm_contact(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, email="person@acme.test", contact="123")
+    monkeypatch.setattr(client_onboarding, "load_contacts_for_client", _no_contacts)
+    monkeypatch.setattr(client_onboarding, "_source_lead_for_client", _no_lead)
+    monkeypatch.setattr(client_onboarding, "_projects_for_client", _no_projects)
+    monkeypatch.setattr(client_onboarding, "_kickoff_for_client", _no_kickoff)
+    monkeypatch.setattr(client_onboarding, "_contract_for_client", _no_contract)
+    monkeypatch.setattr(client_onboarding.ClientOnboardingItem, "find", _empty_items)
+
+    items = await client_onboarding.calculate_onboarding_items(client)
+    primary = next(item for item in items if item["key"] == "primary_contact")
+
+    assert _item_status(primary) == "missing"
+    assert primary["linked_entity_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_onboarding_requirements_ignore_legacy_notes_and_calculate_partial(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, notes="legacy", lifecycle_metadata={"onboarding": {"requirements": {"business_objective": "Grow", "scope": "Launch"}}})
+    monkeypatch.setattr(client_onboarding, "load_contacts_for_client", _no_contacts)
+    monkeypatch.setattr(client_onboarding, "_source_lead_for_client", _no_lead)
+    monkeypatch.setattr(client_onboarding, "_projects_for_client", _no_projects)
+    monkeypatch.setattr(client_onboarding, "_kickoff_for_client", _no_kickoff)
+    monkeypatch.setattr(client_onboarding, "_contract_for_client", _no_contract)
+    monkeypatch.setattr(client_onboarding.ClientOnboardingItem, "find", _empty_items)
+
+    items = await client_onboarding.calculate_onboarding_items(client)
+    requirements = next(item for item in items if item["key"] == "requirements")
+
+    assert _item_status(requirements) == "partially_received"
+    assert requirements["completion_percent"] == 40
+
+
+@pytest.mark.asyncio
+async def test_onboarding_assets_and_access_ignore_documents_and_notes(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, documents=[{"type": "agreement"}], notes="has access")
+    monkeypatch.setattr(client_onboarding, "load_contacts_for_client", _no_contacts)
+    monkeypatch.setattr(client_onboarding, "_source_lead_for_client", _no_lead)
+    monkeypatch.setattr(client_onboarding, "_projects_for_client", _no_projects)
+    monkeypatch.setattr(client_onboarding, "_kickoff_for_client", _no_kickoff)
+    monkeypatch.setattr(client_onboarding, "_contract_for_client", _no_contract)
+    monkeypatch.setattr(client_onboarding.ClientOnboardingItem, "find", _empty_items)
+
+    items = await client_onboarding.calculate_onboarding_items(client)
+    assets = next(item for item in items if item["key"] == "brand_assets")
+    access = next(item for item in items if item["key"] == "required_access")
+
+    assert _item_status(assets) == "missing"
+    assert _item_status(access) == "missing"
+
+
+@pytest.mark.asyncio
+async def test_onboarding_start_date_alone_does_not_make_readiness_ready(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, start_date=datetime.utcnow())
+    monkeypatch.setattr(client_onboarding, "load_contacts_for_client", _no_contacts)
+    monkeypatch.setattr(client_onboarding, "_source_lead_for_client", _no_lead)
+    monkeypatch.setattr(client_onboarding, "_projects_for_client", _no_projects)
+    monkeypatch.setattr(client_onboarding, "_kickoff_for_client", _no_kickoff)
+    monkeypatch.setattr(client_onboarding, "_contract_for_client", _no_contract)
+    monkeypatch.setattr(client_onboarding.ClientOnboardingItem, "find", _empty_items)
+
+    items = await client_onboarding.calculate_onboarding_items(client)
+    readiness = next(item for item in items if item["key"] == "start_readiness")
+
+    assert _item_status(readiness) == "not_started"
+    assert readiness["completion_percent"] == 0
 
 
 @pytest.mark.asyncio

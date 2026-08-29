@@ -264,6 +264,7 @@ class ClientWorkspaceService:
                 "sales_owner_id": client.sales_owner_id,
                 "assigned_to_name": _display_name(await User.get(client.assigned_to)) if client.assigned_to else None,
                 "notes": client.notes,
+                "lifecycle_metadata": client.lifecycle_metadata or {},
                 "tags": client.tags or [],
                 "project_ids": client.project_ids or [],
                 "documents": client.documents or [],

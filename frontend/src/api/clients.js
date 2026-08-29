@@ -39,6 +39,18 @@ export const clientsAPI = {
     return response.data
   },
 
+  updateOnboardingData: async (clientId, values) => {
+    const response = await api.patch(`/clients/${clientId}/onboarding/data`, values)
+    return response.data
+  },
+
+  setPrimaryContact: async (clientId, contactId) => {
+    const formData = new FormData()
+    formData.append('contact_id', contactId)
+    const response = await api.patch(`/clients/${clientId}/onboarding/primary-contact`, formData)
+    return response.data
+  },
+
   generateOnboardingDocument: async (clientId) => {
     const response = await api.post(`/clients/${clientId}/onboarding/document/generate`)
     return response.data

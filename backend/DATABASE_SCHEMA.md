@@ -289,6 +289,8 @@ Indexes: `['company_id', 'email', 'status', 'assigned_to', 'created_by']`
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 | `created_by` | `str` | Yes | Yes | Model field |
 
+Onboarding Phase 3 stores additive structured data in `Client.lifecycle_metadata.onboarding` without adding a duplicate business collection. Current keys are `commercial`, `requirements`, `assets`, `access`, and `start_readiness`. `commercial` includes deal value, billing frequency, payment terms, engagement start date, and optional billing contact details. `requirements` includes business objective, scope, expected deliverables, target audience, important deadlines, competitors/references, preferences, special requirements, and client-facing notes. `assets` and `access` are lists of requirement rows with name, status (`missing`, `requested`, `received`, `verified`), and optional file/reference ids. `start_readiness` stores `ready`, `confirmed_by`, `confirmed_at`, and optional note. Access rows must never store plaintext passwords, tokens, or secrets.
+
 ### `companies`
 
 #### Model: `Company`
