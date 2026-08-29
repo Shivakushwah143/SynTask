@@ -11,6 +11,7 @@ from bson import ObjectId
 
 from app.crm.company_timeline import CRMCompanyTimelineService
 from app.crm.client_identity import load_contacts_for_client, resolve_crm_company_for_client
+from app.crm.client_activity import build_client_activity, load_client_communications
 from app.crm.client_deliverables import serialize_deliverable
 from app.crm.client_onboarding import sync_client_onboarding
 from app.crm.client_services import ensure_sales_handoff_service, serialize_client_service
@@ -73,6 +74,9 @@ def _meeting_summary(meeting: Meeting) -> Dict[str, Any]:
         "duration": meeting.duration,
         "host_id": meeting.host_id,
         "participant_ids": meeting.participant_ids or [],
+        "client_id": getattr(meeting, "client_id", None),
+        "project_id": getattr(meeting, "project_id", None),
+        "contact_id": getattr(meeting, "contact_id", None),
         "created_at": meeting.created_at,
         "updated_at": meeting.updated_at,
     }
@@ -128,9 +132,12 @@ class ClientWorkspaceService:
             projects.append(summary)
 
         meeting_matchers: List[Dict[str, Any]] = [
+            {"client_id": str(client.id)},
             {"title": f"Kickoff - {client.name}"},
             {"description": {"$regex": str(client.id), "$options": "i"}},
         ]
+        if project_ids:
+            meeting_matchers.append({"project_id": {"$in": project_ids}})
         project_names = [item["name"] for item in projects if item.get("name")]
         if project_names:
             meeting_matchers.append({"description": {"$in": [f"Kickoff meeting for {name}" for name in project_names]}})
@@ -228,6 +235,31 @@ class ClientWorkspaceService:
             summary["service_name"] = service_name_map.get(deliverable.service_id)
             deliverables.append(summary)
 
+        categorized_files = []
+        for index, document in enumerate(client.documents or []):
+            category = document.get("category") or document.get("type") or "Other"
+            categorized_files.append({**document, "id": document.get("id") or f"client-document-{index}", "category": category})
+        for deliverable in deliverables:
+            for file_index, file_item in enumerate(deliverable.get("linked_files") or []):
+                categorized_files.append({
+                    **file_item,
+                    "id": file_item.get("id") or f"deliverable-{deliverable.get('id')}-file-{file_index}",
+                    "category": "Deliverables",
+                    "deliverable_id": deliverable.get("id"),
+                })
+        communications = await load_client_communications(client, projects)
+        client_activity = await build_client_activity(
+            client,
+            projects=projects,
+            tasks=tasks,
+            meetings=meetings,
+            services=services,
+            deliverables=deliverables,
+            invoices=invoices,
+            communication=communications["communication"],
+            files=categorized_files,
+        )
+
         def _lead_budget_val(lead_item: Optional[SalesProspect]) -> Optional[float]:
             if not lead_item:
                 return None
@@ -315,6 +347,9 @@ class ClientWorkspaceService:
             ],
             "services": [serialize_client_service(service) for service in services],
             "deliverables": deliverables,
+            "communication": communications["communication"],
+            "internal_notes": communications["internal_notes"],
+            "files": categorized_files,
             "meetings": meetings,
             "onboarding": onboarding,
             "invoices": [
@@ -395,4 +430,5 @@ class ClientWorkspaceService:
                 },
             },
             "timeline": timeline,
+            "activity": client_activity,
         }

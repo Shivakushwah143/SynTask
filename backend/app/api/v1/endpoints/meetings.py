@@ -232,14 +232,20 @@ async def create_meeting(
             if not client or client.company_id != current_user.company_id:
                 raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid client")
         if project_id:
-            project = await Project.get(project_id)
+            try:
+                project = await Project.get(project_id)
+            except Exception:
+                project = None
             if not project:
                 project = await Project.find_one({"company_id": current_user.company_id, "project_id": project_id})
             if not project or project.company_id != current_user.company_id:
                 raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid project")
             project_id = str(project.id)
         if contact_id:
-            contact = await SalesContact.get(contact_id)
+            try:
+                contact = await SalesContact.get(contact_id)
+            except Exception:
+                contact = None
             if not contact or contact.company_id != current_user.company_id or contact.deleted:
                 raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid contact")
         
@@ -463,14 +469,26 @@ async def update_meeting(
             raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid client")
         meeting.client_id = client_id or None
     if project_id is not None:
-        project = await Project.get(project_id) if project_id else None
+        if project_id:
+            try:
+                project = await Project.get(project_id)
+            except Exception:
+                project = None
+        else:
+            project = None
         if project_id and not project:
             project = await Project.find_one({"company_id": current_user.company_id, "project_id": project_id})
         if project_id and (not project or project.company_id != current_user.company_id):
             raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid project")
         meeting.project_id = str(project.id) if project else None
     if contact_id is not None:
-        contact = await SalesContact.get(contact_id) if contact_id else None
+        if contact_id:
+            try:
+                contact = await SalesContact.get(contact_id)
+            except Exception:
+                contact = None
+        else:
+            contact = None
         if contact_id and (not contact or contact.company_id != current_user.company_id or contact.deleted):
             raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid contact")
         meeting.contact_id = contact_id or None

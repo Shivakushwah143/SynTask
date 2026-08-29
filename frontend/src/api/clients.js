@@ -30,6 +30,11 @@ export const clientsAPI = {
     return response.data
   },
 
+  getActivity: async (clientId, params = {}) => {
+    const response = await api.get(`/clients/${clientId}/activity`, { params })
+    return response.data
+  },
+
   saveOnboardingData: async (clientId, values) => {
     const formData = new FormData()
     Object.entries(values || {}).forEach(([key, value]) => {

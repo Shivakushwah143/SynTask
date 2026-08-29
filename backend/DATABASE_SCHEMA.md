@@ -646,7 +646,7 @@ Indexes: `['employee_id', 'company_id', 'employee_role', 'status', 'leave_type',
 
 #### Model: `Meeting`
 
-Indexes: `['company_id', 'created_by', 'meeting_date', 'status']`
+Indexes include `company_id`, `created_by`, `meeting_date`, `status`, `client_id`, `project_id`, `contact_id`, compound `(company_id, client_id, meeting_date)`, `(company_id, project_id, meeting_date)`, and `(company_id, contact_id, meeting_date)`.
 
 | Field | Type | Required | Indexed | Description |
 |---|---|---|---|---|
@@ -658,6 +658,9 @@ Indexes: `['company_id', 'created_by', 'meeting_date', 'status']`
 | `created_by` | `str` | Yes | Yes | Model field |
 | `host_id` | `str` | Yes | No | Model field |
 | `participant_ids` | `List[str]` | No | No | Model field |
+| `client_id` | `Optional[str]` | No | Yes | Explicit linked Client id for Client Workspace meeting history |
+| `project_id` | `Optional[str]` | No | Yes | Explicit linked Project id |
+| `contact_id` | `Optional[str]` | No | Yes | Explicit linked same-tenant CRM Contact id |
 | `meeting_date` | `datetime.datetime` | Yes | Yes | Model field |
 | `meeting_time` | `str` | Yes | No | Model field |
 | `duration` | `int` | No | No | Model field |
@@ -672,6 +675,8 @@ Indexes: `['company_id', 'created_by', 'meeting_date', 'status']`
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 | `started_at` | `Optional[datetime.datetime]` | No | No | Model field |
 | `ended_at` | `Optional[datetime.datetime]` | No | No | Model field |
+
+Phase 6 Client Activity is an aggregation layer, not a new collection. It reads tenant-scoped existing records from Client, CRM Company/Contact, `crm_activities`, Meta Inbox conversations/messages where linked to same-tenant CRM Contacts, Meetings, Projects, Tasks, Client Services, Client Deliverables, Client document references, and Invoices. Internal CRM notes remain separate from client-facing communication.
 
 ### `msas`
 

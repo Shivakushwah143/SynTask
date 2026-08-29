@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Form, UploadFile,
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from bson import ObjectId
+from beanie.exceptions import CollectionWasNotInitialized
 import logging
 import json
 from pathlib import Path
@@ -37,6 +38,7 @@ from app.crm.client_deliverables import (
     validate_service_project,
     validate_task_ids,
 )
+from app.crm.client_activity import build_client_activity, load_client_communications
 from app.models.client_onboarding import ClientOnboardingItem, ClientOnboardingItemStatus
 from app.models.client_deliverable import ClientApprovalStatus, ClientDeliverable, ClientDeliverableStatus
 from app.models.client_service import ClientService, ClientServiceStatus
@@ -44,6 +46,7 @@ from app.models.user import User, UserRole
 from app.models.project import Project
 from app.models.crm_company import CRMCompany
 from app.models.sales_contact import SalesContact
+from app.models.invoice import Invoice
 from app.crm.client_workspace import ClientWorkspaceService
 from app.api.dependencies import (
     get_current_user,
@@ -543,6 +546,44 @@ async def get_client_workspace(
 ):
     """Get client workspace with projects, meetings, tasks, leads, and timeline."""
     return await ClientWorkspaceService.load_workspace(current_user, client_id)
+
+
+@router.get("/{client_id}/activity")
+async def get_client_activity(
+    client_id: str,
+    category: str = Query("all"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(25, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+):
+    """Get paginated Client Activity built from existing related systems."""
+    if category not in {"all", "communication", "meetings", "work", "files", "finance"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid activity category")
+    workspace = await ClientWorkspaceService.load_workspace(current_user, client_id)
+    client = await load_client_for_user(client_id, current_user)
+    try:
+        invoices = await Invoice.find({"company_id": str(client.company_id), "client_id": str(client.id)}).sort("-updated_at").to_list()
+    except CollectionWasNotInitialized:
+        invoices = []
+    try:
+        services = await ClientService.find({"company_id": str(client.company_id), "client_id": str(client.id)}).sort("-updated_at").to_list()
+    except CollectionWasNotInitialized:
+        services = []
+    communication = workspace.get("communication") or (await load_client_communications(client, workspace.get("projects") or []))["communication"]
+    return await build_client_activity(
+        client,
+        projects=workspace.get("projects") or [],
+        tasks=workspace.get("tasks") or [],
+        meetings=workspace.get("meetings") or [],
+        services=services,
+        deliverables=workspace.get("deliverables") or [],
+        invoices=invoices,
+        communication=communication,
+        files=workspace.get("files") or [],
+        category=category,
+        skip=skip,
+        limit=limit,
+    )
 
 
 @router.post("/{client_id}/onboarding/document/generate")

@@ -72,6 +72,15 @@ Deliverable creation requires a same-tenant Client Service and Project. If the P
 
 Deliverable statuses move through `planned -> in_production -> internal_review -> client_review -> revision_required -> approved -> delivered` with backend transition checks. Starting Client Review stores approver/contact, sent timestamp, review token hash, and approval history, preferring a Client contact with role `Approver`. Approval marks the Deliverable approved; revision request stores the note, timestamp, history entry, and increments revision count. Approved Deliverables can then be marked delivered.
 
+### Client communication, meetings, files, and activity
+The Communication tab shows client-facing relationship communication from existing CRM activity records and supported Meta Inbox messages. Records are associated through explicit same-tenant Client, CRM Company, CRM Contact, and Project relationships; account owner alone is not enough to include a conversation. Email, call, meeting, follow-up, and supported message channels show channel, contact, sender/receiver, timestamp, preview, and related project/service where present. Internal notes are shown in a separate panel and are not mixed into client-facing communication.
+
+The Meetings tab schedules and completes meetings through the existing Meeting API. Client Workspace meetings resolve by explicit `client_id`, `project_id`, or `contact_id` links plus legacy kickoff/project context. Unrelated meetings are excluded even if the account owner hosted or attended them. Meeting creation validates same-tenant Client, Project, and CRM Contact references.
+
+The Files tab aggregates references from existing Client documents and Deliverable linked files. Categories are Agreements, Requirements, Brand Assets, Reports, Invoices, Deliverables, and Other. Files are referenced in place; the flow does not copy the same file into both Client and Project records just to make it visible in the workspace.
+
+The Activity tab is a chronological, lazy-loaded Client relationship feed with filters for All, Communication, Meetings, Work, Files, and Finance. Sources include Client creation/lifecycle and onboarding changes, Services, Projects, Tasks, Deliverables, Meetings, Communication, file/document additions, and existing invoice/payment events where available. Every source query is tenant scoped by the Client company key and existing linked-record authorization rules.
+
 ## Invoices
 - How the user reaches it: main navigation.
 - What they can do: create and manage invoices.

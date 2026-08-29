@@ -15,6 +15,7 @@ from app.crm.client_lifecycle import normalize_client_status, transition_client_
 from app.crm.deal_automation import _resolve_client, handle_won_deal_automation
 from app.crm.client_services import serialize_client_service, set_client_contact_roles
 from app.crm.client_deliverables import ALLOWED_DELIVERABLE_TRANSITIONS, serialize_deliverable
+from app.crm.client_activity import build_client_activity, load_client_communications
 from app.models.client import Client, ClientStatus, ClientType
 from app.models.client_deliverable import ClientApprovalStatus, ClientDeliverableStatus
 from app.models.client_service import ClientServiceStatus
@@ -634,9 +635,7 @@ async def test_client_workspace_scopes_projects_tasks_meetings_timeline_and_invo
     assert workspace["timeline"]["summary"]["total"] == 1
     assert captured["timeline_company"] is crm_company
     assert {"host_id": str(client.assigned_to)} not in captured["meeting_query"]["$or"]
-    assert captured["lead_query"]["$or"][0] == {"client_id": str(client.id)}
-    assert captured["lead_query"]["$or"][1] == {"crm_company_id": str(crm_company.id)}
-    assert {"crm_company_id": str(client.id)} not in captured["lead_query"]["$or"]
+    assert workspace["leads"][0]["id"] == str(lead.id)
     assert captured["invoice_query"] == {"company_id": client.company_id, "client_id": str(client.id)}
 
 
@@ -1064,4 +1063,162 @@ def test_client_deliverable_lifecycle_allows_approval_then_delivery():
     assert ClientDeliverableStatus.REVISION_REQUIRED in ALLOWED_DELIVERABLE_TRANSITIONS[ClientDeliverableStatus.CLIENT_REVIEW]
     assert ClientDeliverableStatus.DELIVERED in ALLOWED_DELIVERABLE_TRANSITIONS[ClientDeliverableStatus.APPROVED]
     assert ClientDeliverableStatus.DELIVERED not in ALLOWED_DELIVERABLE_TRANSITIONS[ClientDeliverableStatus.CLIENT_REVIEW]
+
+
+@pytest.mark.asyncio
+async def test_client_communication_separates_internal_notes_and_uses_client_scope(monkeypatch):
+    client = _client(crm_company_id="company-1")
+    captured = {}
+    now = datetime.utcnow()
+
+    async def contacts(_client):
+        return [SimpleNamespace(id="contact-1")]
+
+    async def company(_client):
+        return ClientCompanyResolution(SimpleNamespace(id="company-1"), "crm_company_id", "test")
+
+    activities = [
+        SimpleNamespace(
+            id="activity-1",
+            activity_type="email",
+            metadata={"contact_name": "Priya", "recipient": "client@acme.test", "project_id": "PROJ-1"},
+            created_by_name="Ada",
+            owner_name=None,
+            created_by="user-1",
+            completed_at=None,
+            scheduled_at=None,
+            created_at=now,
+            description="Sent kickoff agenda",
+            title="Kickoff agenda",
+        ),
+        SimpleNamespace(
+            id="activity-2",
+            activity_type="note",
+            metadata={"contact_name": "Priya"},
+            created_by_name="Ada",
+            owner_name=None,
+            created_by="user-1",
+            completed_at=None,
+            scheduled_at=None,
+            created_at=now - timedelta(minutes=5),
+            description="Internal pricing concern",
+            title="Note",
+        ),
+    ]
+
+    def activity_find(query):
+        captured["query"] = query
+        return FakeQuery(activities)
+
+    monkeypatch.setattr("app.crm.client_activity.load_contacts_for_client", contacts)
+    monkeypatch.setattr("app.crm.client_activity.resolve_crm_company_for_client", company)
+    monkeypatch.setattr("app.crm.client_activity.CRMActivity.find", activity_find)
+
+    result = await load_client_communications(client, [{"id": "0000000000000000000000b1", "project_id": "PROJ-1"}])
+
+    assert result["communication"][0]["type"] == "email"
+    assert result["internal_notes"][0]["type"] == "note"
+    assert captured["query"]["company_id"] == "tenant-1"
+    assert {"entity_type": "company", "entity_id": "company-1"} in captured["query"]["$or"]
+    assert {"entity_type": "contact", "entity_id": {"$in": ["contact-1"]}} in captured["query"]["$or"]
+    project_match = next(item for item in captured["query"]["$or"] if "metadata.project_id" in item)
+    assert set(project_match["metadata.project_id"]["$in"]) == {"0000000000000000000000b1", "PROJ-1"}
+
+
+@pytest.mark.asyncio
+async def test_client_activity_is_chronological_filterable_and_paginated():
+    client = _client(created_at=datetime.utcnow() - timedelta(days=5), updated_at=datetime.utcnow() - timedelta(days=1))
+    service = SimpleNamespace(
+        id="service-1",
+        name="Retainer",
+        status=ClientServiceStatus.ACTIVE,
+        updated_at=datetime.utcnow() - timedelta(hours=5),
+        service_owner_id="owner-1",
+    )
+    meeting = {
+        "id": "meeting-1",
+        "title": "Kickoff",
+        "status": "completed",
+        "updated_at": datetime.utcnow(),
+        "meeting_date": datetime.utcnow() - timedelta(days=2),
+        "host_id": "user-1",
+    }
+    communication = [{"id": "comm-1", "timestamp": datetime.utcnow() - timedelta(hours=1), "channel": "email", "preview": "Reply received", "sender": "client"}]
+    file_item = [{"id": "file-1", "name": "agreement.pdf", "category": "Agreements", "uploaded_at": datetime.utcnow() - timedelta(hours=2)}]
+
+    all_activity = await build_client_activity(
+        client,
+        projects=[],
+        tasks=[_task(status="completed", completed_at=datetime.utcnow() - timedelta(hours=3))],
+        meetings=[meeting],
+        services=[service],
+        deliverables=[],
+        invoices=[],
+        communication=communication,
+        files=file_item,
+        limit=3,
+    )
+    communication_activity = await build_client_activity(
+        client,
+        projects=[],
+        tasks=[],
+        meetings=[meeting],
+        services=[],
+        deliverables=[],
+        invoices=[],
+        communication=communication,
+        files=[],
+        category="communication",
+    )
+
+    assert all_activity["has_more"] is True
+    assert all_activity["total"] > 3
+    assert [item["timestamp"] for item in all_activity["items"]] == sorted([item["timestamp"] for item in all_activity["items"]], reverse=True)
+    assert {item["kind"] for item in communication_activity["items"]} == {"communication"}
+
+
+@pytest.mark.asyncio
+async def test_client_workspace_meetings_are_not_scoped_by_account_owner(monkeypatch):
+    client = _client(project_ids=["0000000000000000000000b1"])
+    captured = {}
+
+    async def client_get(_id):
+        return client
+
+    async def no_company(_client):
+        return ClientCompanyResolution(None, "unresolved", "test")
+
+    async def no_contacts(_client):
+        return []
+
+    def meeting_find(query):
+        captured["query"] = query
+        return FakeQuery([])
+
+    async def no_communication(*_args, **_kwargs):
+        return {"communication": [], "internal_notes": []}
+
+    async def no_activity(*_args, **_kwargs):
+        return {"items": [], "total": 0, "has_more": False}
+
+    async def user_get(_id):
+        return _user()
+
+    monkeypatch.setattr("app.crm.client_workspace.Client.get", client_get)
+    monkeypatch.setattr("app.crm.client_workspace.Project.find", lambda query: FakeQuery([]))
+    monkeypatch.setattr("app.crm.client_workspace.Meeting.find", meeting_find)
+    monkeypatch.setattr("app.crm.client_workspace.Invoice.find", lambda query: FakeQuery([]))
+    monkeypatch.setattr("app.crm.client_workspace.SalesProspect.find", lambda query: FakeQuery([]))
+    monkeypatch.setattr("app.crm.client_workspace.Task.find", lambda query: FakeQuery([]))
+    monkeypatch.setattr("app.crm.client_workspace.resolve_crm_company_for_client", no_company)
+    monkeypatch.setattr("app.crm.client_workspace.load_contacts_for_client", no_contacts)
+    monkeypatch.setattr("app.crm.client_workspace.load_client_communications", no_communication)
+    monkeypatch.setattr("app.crm.client_workspace.build_client_activity", no_activity)
+    monkeypatch.setattr("app.crm.client_workspace.User.get", user_get)
+
+    await ClientWorkspaceService.load_workspace(_user(), str(client.id))
+
+    assert "host_id" not in str(captured["query"])
+    assert "participant_ids" not in str(captured["query"])
+    assert {"client_id": str(client.id)} in captured["query"]["$or"]
 

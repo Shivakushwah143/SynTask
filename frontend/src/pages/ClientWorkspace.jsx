@@ -11,7 +11,6 @@ import { projectsApi } from '../api/projects'
 import { tasksAPI } from '../api/tasks'
 import { Button, EmptyState, Modal, Skeleton } from '../components/ui'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../components/crm'
-import { CompanyTimeline } from './crm/companies/components'
 import { formatCurrency } from './crm/pipeline/utils'
 import { toFormData } from './phase4Utils'
 import { onboardingBlockerDestination } from './clientOnboardingNavigation'
@@ -25,6 +24,7 @@ const TABS = [
   { key: 'contacts', label: 'Contacts' },
   { key: 'services', label: 'Services' },
   { key: 'deliverables', label: 'Deliverables' },
+  { key: 'communication', label: 'Communication' },
   { key: 'onboarding', label: 'Onboarding' },
   { key: 'projects', label: 'Projects' },
   { key: 'tasks', label: 'Tasks' },
@@ -36,6 +36,7 @@ const TABS = [
 
 const CONTACT_ROLE_OPTIONS = ['Primary Contact', 'Decision Maker', 'Finance Contact', 'Project Contact', 'Technical Contact', 'Approver']
 const DELIVERABLE_STATUSES = ['planned', 'in_production', 'internal_review', 'client_review', 'revision_required', 'approved', 'delivered']
+const ACTIVITY_FILTERS = ['all', 'communication', 'meetings', 'work', 'files', 'finance']
 
 function formatDate(value) {
   if (!value) return 'N/A'
@@ -494,6 +495,10 @@ export default function ClientWorkspacePage() {
   const [editingContactId, setEditingContactId] = useState(null)
   const [editingServiceId, setEditingServiceId] = useState(null)
   const [deliverableFilters, setDeliverableFilters] = useState({ project: '', service: '', status: '', approval: '', due: '' })
+  const [activityFilter, setActivityFilter] = useState('all')
+  const [activityLimit, setActivityLimit] = useState(25)
+  const [communicationFilter, setCommunicationFilter] = useState('all')
+  const [fileFilter, setFileFilter] = useState('all')
 
   const workspaceQuery = useQuery(
     ['client-workspace', clientId],
@@ -514,13 +519,27 @@ export default function ClientWorkspacePage() {
   const services = useMemo(() => (Array.isArray(workspace.services) ? workspace.services : []), [workspace.services])
   const deliverables = useMemo(() => (Array.isArray(workspace.deliverables) ? workspace.deliverables : []), [workspace.deliverables])
   const documents = useMemo(() => (Array.isArray(client?.documents) ? client.documents : []), [client?.documents])
+  const communication = useMemo(() => (Array.isArray(workspace.communication) ? workspace.communication : []), [workspace.communication])
+  const internalNotes = useMemo(() => (Array.isArray(workspace.internal_notes) ? workspace.internal_notes : []), [workspace.internal_notes])
+  const files = useMemo(() => (Array.isArray(workspace.files) ? workspace.files : documents), [workspace.files, documents])
   const invoices = useMemo(() => (Array.isArray(workspace.invoices) ? workspace.invoices : []), [workspace.invoices])
   const meetings = useMemo(() => (Array.isArray(workspace.meetings) ? workspace.meetings : []), [workspace.meetings])
   const onboarding = workspace.onboarding || null
   const onboardingItems = useMemo(() => (Array.isArray(onboarding?.items) ? onboarding.items : []), [onboarding?.items])
   const timeline = workspace.timeline || {}
+  const activityFeed = workspace.activity || { items: [] }
   const summary = workspace.summary || {}
   const errorStatus = workspaceQuery.error?.response?.status
+
+  const activityQuery = useQuery(
+    ['client-activity', clientId, activityFilter, activityLimit],
+    () => clientsAPI.getActivity(clientId, { category: activityFilter, limit: activityLimit }),
+    {
+      enabled: Boolean(clientId) && activeTab === 'timeline',
+      keepPreviousData: true,
+      staleTime: 60 * 1000,
+    }
+  )
 
   const statusMutation = useMutation(
     (nextStatus) => clientsAPI.updateClientStatus(clientId, nextStatus),
@@ -798,6 +817,18 @@ export default function ClientWorkspacePage() {
     }
   )
 
+  const completeMeetingMutation = useMutation(
+    (meetingId) => meetingsApi.complete(meetingId),
+    {
+      onSuccess: () => {
+        toast.success('Meeting completed')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries('meetings')
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to complete meeting')),
+    }
+  )
+
   const onboardingDocumentMutation = useMutation(
     () => clientsAPI.generateOnboardingDocument(clientId),
     {
@@ -835,23 +866,30 @@ export default function ClientWorkspacePage() {
   const totalServices = services.length || 0
   const activeServices = services.filter((service) => service.status === 'active')
   const totalDeliverables = deliverables.length || 0
-  const totalDocuments = documents.length || 0
+  const totalFiles = files.length || 0
   const totalInvoices = invoices.length || 0
   const outstandingAmount = summary.invoices?.outstanding_amount || invoices.reduce((sum, invoice) => sum + Number(invoice.outstanding_amount || 0), 0)
+  const activityData = activityQuery.data || (activityFilter === 'all' ? activityFeed : { items: [], total: 0, has_more: false })
+  const activityItems = Array.isArray(activityData.items) ? activityData.items : []
+  const communicationChannels = ['all', ...Array.from(new Set(communication.map((item) => item.channel || item.type).filter(Boolean)))]
+  const visibleCommunication = communication.filter((item) => communicationFilter === 'all' || (item.channel || item.type) === communicationFilter)
+  const fileCategories = ['all', ...Array.from(new Set(files.map((item) => item.category || 'Other').filter(Boolean)))]
+  const visibleFiles = files.filter((item) => fileFilter === 'all' || (item.category || 'Other') === fileFilter)
   const tabCounts = {
     overview: 4,
     details: 1,
     contacts: totalContacts,
     services: totalServices,
     deliverables: totalDeliverables,
+    communication: communication.length,
     onboarding: onboardingItems.length,
     projects: totalProjects,
     tasks: totalTasks,
     leads: totalLeads,
-    documents: totalDocuments,
+    documents: totalFiles,
     invoices: totalInvoices,
     meetings: meetings.length,
-    timeline: Array.isArray(timeline?.grouped_by_day) ? timeline.grouped_by_day.length : 0,
+    timeline: activityData.total || activityItems.length || (Array.isArray(timeline?.grouped_by_day) ? timeline.grouped_by_day.length : 0),
   }
   const transitionMissingFields = Array.isArray(transitionBlocker?.missing_fields) ? transitionBlocker.missing_fields : []
   const primaryContact = contacts.find((contact) => contact.is_primary_contact)
@@ -982,6 +1020,23 @@ export default function ClientWorkspacePage() {
         due_date: data.get('due_date') || undefined,
         project_id: project?.project_id || project?.id || deliverable.project_id,
       },
+    })
+    event.currentTarget.reset()
+  }
+
+  const handleMeetingSubmit = (event) => {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    createMeetingMutation.mutate({
+      title: data.get('title'),
+      description: data.get('description') || undefined,
+      meeting_date: data.get('meeting_date'),
+      meeting_time: data.get('meeting_time'),
+      duration: data.get('duration') || 30,
+      client_id: client.id,
+      project_id: data.get('project_id') || undefined,
+      contact_id: data.get('contact_id') || undefined,
+      participant_ids: '',
     })
     event.currentTarget.reset()
   }
@@ -1327,6 +1382,47 @@ export default function ClientWorkspacePage() {
         </div>
       </CRMSection>
     )
+  } else if (activeTab === 'communication') {
+    tabBody = (
+      <CRMSection title="Communication" description="Client-facing communication from CRM activity and connected inboxes.">
+        <div className="mb-4 flex flex-wrap gap-2">
+          {communicationChannels.map((channel) => (
+            <Button key={channel} type="button" size="sm" variant={communicationFilter === channel ? 'primary' : 'secondary'} onClick={() => setCommunicationFilter(channel)}>
+              {channel === 'all' ? 'All' : channel.replace('_', ' ')}
+            </Button>
+          ))}
+        </div>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="space-y-3">
+            {visibleCommunication.map((item) => (
+              <article key={`${item.source}-${item.id}`} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold capitalize text-gray-900 dark:text-gray-100">{item.channel || item.type}</p>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{item.preview || 'No preview available'}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.contact || 'No contact'} | {item.sender || 'Unknown sender'} to {item.receiver || 'Unknown receiver'}</p>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{formatDateTime(item.timestamp)}</p>
+                </div>
+              </article>
+            ))}
+            {!visibleCommunication.length ? <CRMEmptyState icon={Mail} title="No client communication" description="Emails, calls, meetings, and connected messages linked to this client will appear here." /> : null}
+          </div>
+          <div className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Internal notes</p>
+            <div className="mt-3 space-y-3">
+              {internalNotes.map((note) => (
+                <div key={note.id} className="rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-800">
+                  <p className="text-gray-700 dark:text-gray-200">{note.preview || 'No note text'}</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatDateTime(note.timestamp)} | {note.sender || 'Unknown actor'}</p>
+                </div>
+              ))}
+              {!internalNotes.length ? <p className="text-sm text-gray-500 dark:text-gray-400">No internal notes linked to this client.</p> : null}
+            </div>
+          </div>
+        </div>
+      </CRMSection>
+    )
   } else if (activeTab === 'onboarding') {
     tabBody = onboarding ? (
       <OnboardingWorkspace
@@ -1497,15 +1593,22 @@ export default function ClientWorkspacePage() {
     )
   } else if (activeTab === 'documents') {
     tabBody = (
-      <CRMSection title="Documents" description="Files attached to the client account.">
-        {documents.length ? (
+      <CRMSection title="Files" description="Referenced client files and documents from onboarding, delivery, finance, and approvals.">
+        <div className="mb-4 flex flex-wrap gap-2">
+          {fileCategories.map((category) => (
+            <Button key={category} type="button" size="sm" variant={fileFilter === category ? 'primary' : 'secondary'} onClick={() => setFileFilter(category)}>
+              {category === 'all' ? 'All' : category}
+            </Button>
+          ))}
+        </div>
+        {visibleFiles.length ? (
           <div className="grid gap-3">
-            {documents.map((document, index) => (
+            {visibleFiles.map((document, index) => (
               <article key={`${document.url || document.name || index}`} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{document.name || document.original_name || 'Document'}</p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{document.type || 'file'} - {document.size ? `${(Number(document.size) / 1024).toFixed(2)} KB` : 'Size unavailable'}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{document.category || 'Other'} | {document.type || 'file'} | {document.size ? `${(Number(document.size) / 1024).toFixed(2)} KB` : 'Size unavailable'}</p>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatDateTime(document.uploaded_at)}</p>
                   </div>
                   {document.url ? (
@@ -1519,7 +1622,7 @@ export default function ClientWorkspacePage() {
             ))}
           </div>
         ) : (
-          <CRMEmptyState icon={FileText} title="No documents yet" description="Uploaded client documents will appear here." />
+          <CRMEmptyState icon={FileText} title="No files yet" description="Client agreements, requirements, assets, reports, invoices, and deliverable references will appear here." />
         )}
       </CRMSection>
     )
@@ -1562,32 +1665,63 @@ export default function ClientWorkspacePage() {
     )
   } else if (activeTab === 'meetings') {
     tabBody = (
-      <CRMSection title="Meetings" description="Company meetings relevant to this client.">
+      <CRMSection title="Meetings" description="Meetings explicitly connected to this client, project, or client contact.">
+        <form onSubmit={handleMeetingSubmit} className="mb-5 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <input name="title" placeholder="Meeting title" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+            <input name="meeting_date" type="date" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+            <input name="meeting_time" type="time" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+            <input name="duration" type="number" min="15" step="15" defaultValue="30" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+            <select name="project_id" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">
+              <option value="">No linked project</option>
+              {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+            </select>
+            <select name="contact_id" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">
+              <option value="">No linked contact</option>
+              {contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.email}</option>)}
+            </select>
+            <textarea name="description" rows={2} placeholder="Notes or expected result" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm md:col-span-2 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+          </div>
+          <Button type="submit" size="sm" className="mt-3" disabled={createMeetingMutation.isLoading}>Schedule meeting</Button>
+        </form>
         {meetings.length ? (
           <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
                 <thead className="bg-gray-50 dark:bg-gray-950">
                   <tr>
-                    {['Meeting', 'Status', 'Date', 'Time', 'Duration', 'Participants'].map((header) => (
+                    {['Meeting', 'Status', 'Date', 'Time', 'Duration', 'Linked', 'Actions'].map((header) => (
                       <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{header}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                  {meetings.map((meeting) => (
-                    <tr key={meeting.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900 dark:text-gray-100">{meeting.title}</p>
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{meeting.description || 'No description'}</p>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{meeting.status || 'N/A'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(meeting.meeting_date)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{meeting.meeting_time || 'N/A'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{meeting.duration ? `${meeting.duration} min` : 'N/A'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{meeting.participant_ids?.length || 0}</td>
-                    </tr>
-                  ))}
+                  {meetings.map((meeting) => {
+                    const linkedProject = projects.find((project) => project.id === meeting.project_id || project.project_id === meeting.project_id)
+                    const linkedContact = contacts.find((contact) => contact.id === meeting.contact_id)
+                    return (
+                      <tr key={meeting.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-gray-900 dark:text-gray-100">{meeting.title}</p>
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{meeting.description || 'No notes recorded'}</p>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{meeting.status || 'N/A'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(meeting.meeting_date)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{meeting.meeting_time || 'N/A'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{meeting.duration ? `${meeting.duration} min` : 'N/A'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                          <p>{linkedProject?.name || (meeting.project_id ? 'Project linked' : 'No project')}</p>
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{linkedContact?.full_name || (meeting.contact_id ? 'Contact linked' : 'No contact')}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            {meeting.join_url ? <a className="btn btn-secondary btn-sm inline-flex items-center gap-2" href={meeting.join_url} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3 w-3" />Open</a> : null}
+                            {meeting.status !== 'completed' ? <Button type="button" size="sm" variant="secondary" onClick={() => completeMeetingMutation.mutate(meeting.id)} disabled={completeMeetingMutation.isLoading}>Complete</Button> : null}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1599,8 +1733,46 @@ export default function ClientWorkspacePage() {
     )
   } else if (activeTab === 'timeline') {
     tabBody = (
-      <CRMSection title="Timeline" description="Chronological client activity from the CRM and delivery stack.">
-        <CompanyTimeline timeline={timeline} />
+      <CRMSection title="Activity" description="Chronological client activity from CRM, delivery, meetings, files, and finance.">
+        <div className="mb-4 flex flex-wrap gap-2">
+          {ACTIVITY_FILTERS.map((filter) => (
+            <Button key={filter} type="button" size="sm" variant={activityFilter === filter ? 'primary' : 'secondary'} onClick={() => { setActivityFilter(filter); setActivityLimit(25) }}>
+              {filter === 'all' ? 'All' : filter}
+            </Button>
+          ))}
+        </div>
+        {activityQuery.isLoading && activeTab === 'timeline' ? (
+          <div className="space-y-3">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        ) : activityQuery.isError ? (
+          <CRMEmptyState icon={AlertTriangle} title="Activity could not load" description={apiErrorMessage(activityQuery.error, 'Refresh the workspace and try again.')} />
+        ) : activityItems.length ? (
+          <div className="space-y-3">
+            {activityItems.map((event, index) => (
+              <article key={`${event.related_type}-${event.related_id}-${index}`} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{event.action}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{event.kind} | {event.related_type} | {event.actor || 'System'}</p>
+                    {event.context?.title || event.context?.name || event.context?.preview ? (
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{event.context.title || event.context.name || event.context.preview}</p>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{formatDateTime(event.timestamp)}</p>
+                </div>
+              </article>
+            ))}
+            {activityData.has_more ? (
+              <Button type="button" variant="secondary" onClick={() => setActivityLimit((value) => value + 25)} disabled={activityQuery.isFetching}>
+                Load more
+              </Button>
+            ) : null}
+          </div>
+        ) : (
+          <CRMEmptyState icon={Activity} title="No activity yet" description="Client lifecycle, communication, work, meetings, files, and finance events will appear here." />
+        )}
       </CRMSection>
     )
   } else {
@@ -1640,7 +1812,7 @@ export default function ClientWorkspacePage() {
                 <p>{projects.length} project(s)</p>
                 <p>{tasks.length} task(s)</p>
                 <p>{meetings.length} meeting(s)</p>
-                <p>{totalDocuments} document(s)</p>
+                <p>{totalFiles} file(s)</p>
               </div>
             </article>
           </div>
