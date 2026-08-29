@@ -7,6 +7,7 @@ from app.timeline.publisher import publish_crm_timeline_event
 from app.models.capability import get_capabilities_for_role
 from app.models.department import Department
 from app.crm.client_identity import resolve_crm_company_for_lead
+from app.crm.client_services import ensure_sales_handoff_service
 from app.crm.models import Client, ClientStatus, ClientType
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.crm_deal import CRMDeal
@@ -517,6 +518,11 @@ async def handle_won_deal_automation(current_user: User, lead: SalesProspect, de
         client.updated_at = now
         await client.save()
     project = await _resolve_project(current_user, lead, client, deal)
+    service = await ensure_sales_handoff_service(client, current_user)
+    if service and str(project.id) not in (service.linked_project_ids or []):
+        service.linked_project_ids = list(service.linked_project_ids or []) + [str(project.id)]
+        service.updated_at = utc_now()
+        await service.save()
 
     existing_activity = await CRMActivity.find_one(
         {

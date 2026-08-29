@@ -44,10 +44,45 @@ export const clientsAPI = {
     return response.data
   },
 
+  updateProfile: async (clientId, values) => {
+    const response = await api.patch(`/clients/${clientId}/profile`, values)
+    return response.data
+  },
+
   setPrimaryContact: async (clientId, contactId) => {
     const formData = new FormData()
     formData.append('contact_id', contactId)
     const response = await api.patch(`/clients/${clientId}/onboarding/primary-contact`, formData)
+    return response.data
+  },
+
+  updateContactRoles: async (clientId, contactId, roles) => {
+    const response = await api.patch(`/clients/${clientId}/contacts/${contactId}/roles`, { roles })
+    return response.data
+  },
+
+  listServices: async (clientId) => {
+    const response = await api.get(`/clients/${clientId}/services`)
+    return response.data
+  },
+
+  createService: async (clientId, payload) => {
+    const response = await api.post(`/clients/${clientId}/services`, payload)
+    return response.data
+  },
+
+  updateService: async (clientId, serviceId, payload) => {
+    const response = await api.patch(`/clients/${clientId}/services/${serviceId}`, payload)
+    return response.data
+  },
+
+  updateServiceStatus: async (clientId, serviceId, action) => {
+    const response = await api.post(`/clients/${clientId}/services/${serviceId}/${action}`)
+    return response.data
+  },
+
+  linkServiceProject: async (clientId, serviceId, projectId) => {
+    const response = await api.post(`/clients/${clientId}/services/${serviceId}/projects`, { project_id: projectId })
     return response.data
   },
 

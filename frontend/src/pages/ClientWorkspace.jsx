@@ -20,15 +20,19 @@ const TAB_KEY = 'tab'
 const ONBOARDING_TAB_KEY = 'onboardingTab'
 const TABS = [
   { key: 'overview', label: 'Overview' },
+  { key: 'details', label: 'Details' },
+  { key: 'contacts', label: 'Contacts' },
+  { key: 'services', label: 'Services' },
   { key: 'onboarding', label: 'Onboarding' },
   { key: 'projects', label: 'Projects' },
   { key: 'tasks', label: 'Tasks' },
-  { key: 'leads', label: 'Leads' },
-  { key: 'documents', label: 'Documents' },
-  { key: 'invoices', label: 'Invoices' },
   { key: 'meetings', label: 'Meetings' },
-  { key: 'timeline', label: 'Timeline' },
+  { key: 'documents', label: 'Files/Documents' },
+  { key: 'invoices', label: 'Finance' },
+  { key: 'timeline', label: 'Activity' },
 ]
+
+const CONTACT_ROLE_OPTIONS = ['Primary Contact', 'Decision Maker', 'Finance Contact', 'Project Contact', 'Technical Contact', 'Approver']
 
 function formatDate(value) {
   if (!value) return 'N/A'
@@ -484,6 +488,8 @@ export default function ClientWorkspacePage() {
 
   const activeTab = searchParams.get(TAB_KEY) || 'overview'
   const activeOnboardingTab = searchParams.get(ONBOARDING_TAB_KEY) || 'overview'
+  const [editingContactId, setEditingContactId] = useState(null)
+  const [editingServiceId, setEditingServiceId] = useState(null)
 
   const workspaceQuery = useQuery(
     ['client-workspace', clientId],
@@ -500,6 +506,8 @@ export default function ClientWorkspacePage() {
   const projects = useMemo(() => (Array.isArray(workspace.projects) ? workspace.projects : []), [workspace.projects])
   const tasks = useMemo(() => (Array.isArray(workspace.tasks) ? workspace.tasks : []), [workspace.tasks])
   const leads = useMemo(() => (Array.isArray(workspace.leads) ? workspace.leads : []), [workspace.leads])
+  const contacts = useMemo(() => (Array.isArray(workspace.contacts) ? workspace.contacts : []), [workspace.contacts])
+  const services = useMemo(() => (Array.isArray(workspace.services) ? workspace.services : []), [workspace.services])
   const documents = useMemo(() => (Array.isArray(client?.documents) ? client.documents : []), [client?.documents])
   const invoices = useMemo(() => (Array.isArray(workspace.invoices) ? workspace.invoices : []), [workspace.invoices])
   const meetings = useMemo(() => (Array.isArray(workspace.meetings) ? workspace.meetings : []), [workspace.meetings])
@@ -605,6 +613,45 @@ export default function ClientWorkspacePage() {
     }
   )
 
+  const updateContactMutation = useMutation(
+    ({ contactId, payload }) => crmApi.updateContact(contactId, payload),
+    {
+      onSuccess: () => {
+        toast.success('Contact updated')
+        setEditingContactId(null)
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries('crm-contacts')
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to update contact')),
+    }
+  )
+
+  const contactRolesMutation = useMutation(
+    ({ contactId, roles }) => clientsAPI.updateContactRoles(clientId, contactId, roles),
+    {
+      onSuccess: () => {
+        toast.success('Contact roles updated')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to update contact roles')),
+    }
+  )
+
+  const profileMutation = useMutation(
+    ({ clientValues, profileValues }) => Promise.all([
+      clientsAPI.updateClient(clientId, toFormData(clientValues)),
+      clientsAPI.updateProfile(clientId, profileValues),
+    ]),
+    {
+      onSuccess: () => {
+        toast.success('Client details saved')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries('clients')
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to save client details')),
+    }
+  )
+
   const createProjectMutation = useMutation(
     (values) => projectsApi.createProject(values),
     {
@@ -614,6 +661,41 @@ export default function ClientWorkspacePage() {
         queryClient.invalidateQueries('projects')
       },
       onError: (error) => toast.error(apiErrorMessage(error, 'Failed to create project')),
+    }
+  )
+
+  const serviceMutation = useMutation(
+    ({ serviceId, payload }) => serviceId ? clientsAPI.updateService(clientId, serviceId, payload) : clientsAPI.createService(clientId, payload),
+    {
+      onSuccess: () => {
+        toast.success('Client service saved')
+        setEditingServiceId(null)
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to save client service')),
+    }
+  )
+
+  const serviceStatusMutation = useMutation(
+    ({ serviceId, action }) => clientsAPI.updateServiceStatus(clientId, serviceId, action),
+    {
+      onSuccess: () => {
+        toast.success('Service status updated')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to update service status')),
+    }
+  )
+
+  const serviceProjectMutation = useMutation(
+    ({ serviceId, projectId }) => clientsAPI.linkServiceProject(clientId, serviceId, projectId),
+    {
+      onSuccess: () => {
+        toast.success('Project linked to service')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries('projects')
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to link project')),
     }
   )
 
@@ -662,11 +744,17 @@ export default function ClientWorkspacePage() {
   const totalProjects = projects.length || client?.project_ids?.length || 0
   const totalTasks = tasks.length || 0
   const totalLeads = leads.length || 0
+  const totalContacts = contacts.length || 0
+  const totalServices = services.length || 0
+  const activeServices = services.filter((service) => service.status === 'active')
   const totalDocuments = documents.length || 0
   const totalInvoices = invoices.length || 0
   const outstandingAmount = summary.invoices?.outstanding_amount || invoices.reduce((sum, invoice) => sum + Number(invoice.outstanding_amount || 0), 0)
   const tabCounts = {
     overview: 4,
+    details: 1,
+    contacts: totalContacts,
+    services: totalServices,
     onboarding: onboardingItems.length,
     projects: totalProjects,
     tasks: totalTasks,
@@ -677,6 +765,79 @@ export default function ClientWorkspacePage() {
     timeline: Array.isArray(timeline?.grouped_by_day) ? timeline.grouped_by_day.length : 0,
   }
   const transitionMissingFields = Array.isArray(transitionBlocker?.missing_fields) ? transitionBlocker.missing_fields : []
+  const primaryContact = contacts.find((contact) => contact.is_primary_contact)
+  const upcomingMeeting = meetings
+    .filter((meeting) => meeting.meeting_date)
+    .sort((a, b) => new Date(a.meeting_date) - new Date(b.meeting_date))[0]
+  const serviceValue = summary.services?.total_value || services.reduce((sum, service) => sum + Number(service.pricing_value || 0), 0)
+
+  const handleDetailsSubmit = (event) => {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    profileMutation.mutate({
+      clientValues: {
+        name: data.get('name'),
+        company_name: data.get('company_name'),
+        account_owner_id: data.get('account_owner_id'),
+        sales_owner_id: data.get('sales_owner_id'),
+        client_type: data.get('client_type'),
+        budget: data.get('budget'),
+        start_date: data.get('start_date'),
+        address: data.get('address'),
+        city: data.get('city'),
+        state: data.get('state'),
+        country: data.get('country'),
+        zip_code: data.get('zip_code'),
+        industry: data.get('industry'),
+      },
+      profileValues: {
+        commercial_summary: data.get('commercial_summary'),
+        relationship_information: data.get('relationship_information'),
+      },
+    })
+  }
+
+  const handleContactSubmit = (event, contactId = null) => {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    const payload = {
+      first_name: data.get('first_name'),
+      last_name: data.get('last_name'),
+      email: data.get('email') || undefined,
+      country_code: data.get('country_code') || '+91',
+      phone: data.get('phone'),
+      designation: data.get('designation') || undefined,
+      crm_company_id: client?.crm_company_id,
+      company_name: client?.company_name || client?.name,
+    }
+    if (contactId) {
+      updateContactMutation.mutate({ contactId, payload })
+    } else {
+      createContactMutation.mutate(payload)
+      event.currentTarget.reset()
+    }
+  }
+
+  const handleServiceSubmit = (event, serviceId = null) => {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    const linkedProjectIds = data.get('linked_project_id') ? [data.get('linked_project_id')] : []
+    serviceMutation.mutate({
+      serviceId,
+      payload: {
+        name: data.get('name'),
+        service_type: data.get('service_type') || undefined,
+        status: data.get('status') || undefined,
+        pricing_value: data.get('pricing_value') ? Number(data.get('pricing_value')) : undefined,
+        billing_cycle: data.get('billing_cycle') || undefined,
+        start_date: data.get('start_date') || undefined,
+        end_date: data.get('end_date') || undefined,
+        service_owner_id: data.get('service_owner_id') || undefined,
+        linked_project_ids: linkedProjectIds,
+        notes: data.get('notes') || undefined,
+      },
+    })
+  }
 
   if (!clientId) {
     return (
@@ -765,7 +926,165 @@ export default function ClientWorkspacePage() {
     : 'No billing activity yet'
 
   let tabBody
-  if (activeTab === 'onboarding') {
+  if (activeTab === 'details') {
+    const profile = client.profile || client.lifecycle_metadata?.profile || {}
+    tabBody = (
+      <CRMSection title="Client Details" description="Maintain the account profile used by delivery, finance, and CRM handoff.">
+        <form onSubmit={handleDetailsSubmit} className="rounded-2xl border border-surface-border/80 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Client name<input name="name" defaultValue={client.name || ''} required className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Company<input name="company_name" defaultValue={client.company_name || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Industry<input name="industry" defaultValue={client.industry || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Account Owner ID<input name="account_owner_id" defaultValue={client.account_owner_id || client.assigned_to || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Sales Owner ID<input name="sales_owner_id" defaultValue={client.sales_owner_id || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Client type<select name="client_type" defaultValue={client.client_type || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Select type</option><option value="monthly">Monthly</option><option value="one_time">One Time</option></select></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Start date<input name="start_date" type="date" defaultValue={client.start_date ? String(client.start_date).slice(0, 10) : ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Client value<input name="budget" type="number" min="0" step="0.01" defaultValue={client.budget || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Address<input name="address" defaultValue={client.address || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">City<input name="city" defaultValue={client.city || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">State<input name="state" defaultValue={client.state || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Country<input name="country" defaultValue={client.country || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">ZIP / Postal code<input name="zip_code" defaultValue={client.zip_code || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200 md:col-span-2">Commercial summary<textarea name="commercial_summary" rows={4} defaultValue={profile.commercial_summary || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-200 md:col-span-2">Relationship information<textarea name="relationship_information" rows={4} defaultValue={profile.relationship_information || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+          </div>
+          <div className="mt-5 flex justify-end"><Button type="submit" disabled={profileMutation.isLoading}>Save details</Button></div>
+        </form>
+      </CRMSection>
+    )
+  } else if (activeTab === 'contacts') {
+    tabBody = (
+      <CRMSection title="Contacts" description="Use CRM contacts linked to this client's CRM Company.">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-3">
+            {contacts.map((contact) => (
+              <article key={contact.id} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">{contact.full_name}</p>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{contact.designation || 'No designation'} · {contact.email || 'No email'} · {contact.phone || 'No phone'}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => primaryContactMutation.mutate(contact.id)} disabled={contact.is_primary_contact || primaryContactMutation.isLoading}>{contact.is_primary_contact ? 'Primary' : 'Make primary'}</Button>
+                    <Button size="sm" variant="secondary" onClick={() => setEditingContactId(editingContactId === contact.id ? null : contact.id)}>Edit</Button>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {CONTACT_ROLE_OPTIONS.map((role) => {
+                    const checked = (contact.roles || []).includes(role) || (role === 'Primary Contact' && contact.is_primary_contact)
+                    return (
+                      <label key={role} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 dark:border-gray-700 dark:text-gray-200">
+                        <input type="checkbox" checked={checked} onChange={(event) => {
+                          const currentRoles = new Set(contact.roles || [])
+                          if (event.target.checked) currentRoles.add(role)
+                          else currentRoles.delete(role)
+                          contactRolesMutation.mutate({ contactId: contact.id, roles: Array.from(currentRoles) })
+                        }} />
+                        {role}
+                      </label>
+                    )
+                  })}
+                </div>
+                {editingContactId === contact.id ? (
+                  <form onSubmit={(event) => handleContactSubmit(event, contact.id)} className="mt-4 grid gap-3 md:grid-cols-2">
+                    <input name="first_name" defaultValue={contact.first_name || ''} required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                    <input name="last_name" defaultValue={contact.last_name || ''} required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                    <input name="email" type="email" defaultValue={contact.email || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                    <input name="phone" defaultValue={contact.phone || ''} required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                    <input name="country_code" defaultValue={contact.country_code || '+91'} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                    <input name="designation" defaultValue={contact.designation || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                    <div className="md:col-span-2 flex justify-end"><Button type="submit" size="sm" disabled={updateContactMutation.isLoading}>Save contact</Button></div>
+                  </form>
+                ) : null}
+              </article>
+            ))}
+            {!contacts.length ? <CRMEmptyState icon={Users} title="No CRM contacts yet" description="Add a contact to the linked CRM Company." /> : null}
+          </div>
+          <form onSubmit={(event) => handleContactSubmit(event)} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Add CRM contact</p>
+            <div className="mt-3 space-y-3">
+              <input name="first_name" placeholder="First name" required className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <input name="last_name" placeholder="Last name" required className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <input name="designation" placeholder="Role/title" className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <input name="email" type="email" placeholder="Email" className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <div className="grid grid-cols-[90px_1fr] gap-2">
+                <input name="country_code" defaultValue="+91" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <input name="phone" placeholder="Phone" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              </div>
+              <Button type="submit" className="w-full" disabled={createContactMutation.isLoading || !client?.crm_company_id}>Add contact</Button>
+            </div>
+          </form>
+        </div>
+      </CRMSection>
+    )
+  } else if (activeTab === 'services') {
+    tabBody = (
+      <CRMSection title="Services" description="Manage purchased services and link them to delivery projects.">
+        <div className="space-y-4">
+          <form onSubmit={(event) => handleServiceSubmit(event)} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <input name="name" placeholder="Service name" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <input name="service_type" placeholder="Service type/category" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <select name="status" defaultValue="planned" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="planned">Planned</option><option value="active">Active</option><option value="paused">Paused</option><option value="ended">Ended</option></select>
+              <input name="pricing_value" type="number" min="0" step="0.01" placeholder="Pricing/value" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <input name="billing_cycle" placeholder="Billing cycle" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <input name="start_date" type="date" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <input name="end_date" type="date" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <input name="service_owner_id" placeholder="Service owner ID" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <select name="linked_project_id" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Link existing project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
+              <textarea name="notes" rows={2} placeholder="Notes" className="md:col-span-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+            </div>
+            <div className="mt-4 flex justify-end"><Button type="submit" disabled={serviceMutation.isLoading}>Add service</Button></div>
+          </form>
+          {services.map((service) => (
+            <article key={service.id} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-gray-900 dark:text-gray-100">{service.name}</p>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{service.service_type || 'General service'} · {formatCurrency(service.pricing_value || 0)} · {service.billing_cycle || 'No billing cycle'}</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{service.linked_project_ids?.length || 0} linked project(s)</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => serviceStatusMutation.mutate({ serviceId: service.id, action: 'activate' })}>Activate</Button>
+                  <Button size="sm" variant="secondary" onClick={() => serviceStatusMutation.mutate({ serviceId: service.id, action: 'pause' })}>Pause</Button>
+                  <Button size="sm" variant="secondary" onClick={() => serviceStatusMutation.mutate({ serviceId: service.id, action: 'end' })}>End</Button>
+                  <Button size="sm" variant="secondary" onClick={() => setEditingServiceId(editingServiceId === service.id ? null : service.id)}>Edit</Button>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                <span className="rounded-lg border border-gray-200 px-2 py-1 text-xs font-semibold uppercase dark:border-gray-700">{service.status || 'planned'}</span>
+                <span>Start {formatDate(service.start_date)}</span>
+                <span>End {formatDate(service.end_date)}</span>
+              </div>
+              <form onSubmit={(event) => {
+                event.preventDefault()
+                const selected = new FormData(event.currentTarget).get('project_id')
+                if (selected) serviceProjectMutation.mutate({ serviceId: service.id, projectId: selected })
+              }} className="mt-3 flex flex-wrap gap-2">
+                <select name="project_id" className="min-w-60 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Link another project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
+                <Button type="submit" size="sm" variant="secondary" disabled={serviceProjectMutation.isLoading}>Link project</Button>
+              </form>
+              {editingServiceId === service.id ? (
+                <form onSubmit={(event) => handleServiceSubmit(event, service.id)} className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <input name="name" defaultValue={service.name || ''} required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                  <input name="service_type" defaultValue={service.service_type || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                  <select name="status" defaultValue={service.status || 'planned'} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="planned">Planned</option><option value="active">Active</option><option value="paused">Paused</option><option value="ended">Ended</option></select>
+                  <input name="pricing_value" type="number" min="0" step="0.01" defaultValue={service.pricing_value || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                  <input name="billing_cycle" defaultValue={service.billing_cycle || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                  <input name="start_date" type="date" defaultValue={service.start_date ? String(service.start_date).slice(0, 10) : ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                  <input name="end_date" type="date" defaultValue={service.end_date ? String(service.end_date).slice(0, 10) : ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                  <input name="service_owner_id" defaultValue={service.service_owner_id || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                  <textarea name="notes" rows={2} defaultValue={service.notes || ''} className="md:col-span-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                  <div className="xl:col-span-4 flex justify-end"><Button type="submit" size="sm" disabled={serviceMutation.isLoading}>Save service</Button></div>
+                </form>
+              ) : null}
+            </article>
+          ))}
+          {!services.length ? <CRMEmptyState icon={FolderKanban} title="No services yet" description="Add the services sold to this client before linking delivery projects." /> : null}
+        </div>
+      </CRMSection>
+    )
+  } else if (activeTab === 'onboarding') {
     tabBody = onboarding ? (
       <OnboardingWorkspace
         onboarding={onboarding}

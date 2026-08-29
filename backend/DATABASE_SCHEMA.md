@@ -17,6 +17,7 @@ Recruitment models under `backend/app/recruitment/models.py` also define tenant-
 | `chat_messages` | ChatMessage | Chat message records. |
 | `client_onboarding_items` | ClientOnboardingItem | Client onboarding layer items, derived status, validation metadata, links, and audit history. |
 | `client_onboardings` | ClientOnboarding | Client onboarding progress summary and activation blockers. |
+| `client_services` | ClientService | Purchased/active Client service records linked to existing Projects. |
 | `clients` | Client | Client CRM records and linked projects/documents. |
 | `companies` | Company | Tenant/company registration and account metadata. |
 | `company_subscriptions` | CompanySubscription | Company subscription state, module entitlements, usage counters. |
@@ -290,6 +291,29 @@ Indexes: `['company_id', 'email', 'status', 'assigned_to', 'created_by']`
 | `created_by` | `str` | Yes | Yes | Model field |
 
 Onboarding Phase 3 stores additive structured data in `Client.lifecycle_metadata.onboarding` without adding a duplicate business collection. Current keys are `commercial`, `requirements`, `assets`, `access`, and `start_readiness`. `commercial` includes deal value, billing frequency, payment terms, engagement start date, and optional billing contact details. `requirements` includes business objective, scope, expected deliverables, target audience, important deadlines, competitors/references, preferences, special requirements, and client-facing notes. `assets` and `access` are lists of requirement rows with name, status (`missing`, `requested`, `received`, `verified`), and optional file/reference ids. `start_readiness` stores `ready`, `confirmed_by`, `confirmed_at`, and optional note. Access rows must never store plaintext passwords, tokens, or secrets.
+
+Phase 4 stores profile-only details in `Client.lifecycle_metadata.profile` with `commercial_summary` and `relationship_information`. Contact role assignments are stored in `Client.lifecycle_metadata.contact_roles` keyed by existing same-tenant `SalesContact` id; contact identities, primary contact flags, and CRM company membership stay in `sales_contacts`.
+
+### `client_services`
+| Field | Type | Required | Indexed | Notes |
+|---|---|---|---|---|
+| `client_id` | `str` | Yes | Yes | Parent Client id |
+| `company_id` | `str` | Yes | Yes | Tenant key |
+| `name` | `str` | Yes | No | Service name |
+| `service_type` | `str` | No | No | Service category/type |
+| `status` | `str` | Yes | Yes | `planned`, `active`, `paused`, `ended` |
+| `pricing_value` | `float` | No | No | Service value |
+| `billing_cycle` | `str` | No | No | Billing cadence or payment terms |
+| `start_date`, `end_date` | `datetime` | No | No | Service window |
+| `service_owner_id` | `str` | No | Yes | Same-tenant user id |
+| `team_member_ids` | `list[str]` | No | Yes | Same-tenant users where applicable |
+| `linked_project_ids` | `list[str]` | No | Yes | Existing Project document ids |
+| `source_lead_id` | `str` | No | Yes | Sales handoff source for idempotency |
+| `source_category_id` | `str` | No | No | Sold category reference when available |
+| `notes` | `str` | No | No | Internal service notes |
+| `created_by`, `created_at`, `updated_at` | mixed | Yes | No | Audit timestamps/actor |
+
+Indexes include `company_id`, `client_id`, `status`, `service_owner_id`, `team_member_ids`, `linked_project_ids`, `source_lead_id`, compound `(company_id, client_id, updated_at)`, `(company_id, client_id, status)`, and `(company_id, source_lead_id)`. Tenant isolation is enforced by matching `Client.company_id`, `ClientService.company_id`, linked `Project.company_id`, and owner/team user `company_id`; cross-tenant project or user ids are rejected.
 
 ### `companies`
 

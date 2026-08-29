@@ -15,6 +15,7 @@ flowchart TD
 ## Clients
 - How the user reaches it: main navigation or sales/CRM adjacent links.
 - What they can do: manage clients, inspect details, open related records.
+- Workspace sections: Overview, Details, Contacts, Services, Projects, Tasks, Meetings, Files/Documents, Finance, Activity, plus Onboarding when applicable.
 - What happens after every action:
   - Create/edit opens a guided modal sequence with two steps: Contact setup for required identity fields, then Client details for ownership, budget, schedule, address, tags, and notes.
   - Required name and email format validation run before the user can continue to Details or submit.
@@ -56,6 +57,13 @@ When a Client is in `onboarding`, its workspace exposes secondary tabs for Overv
 Project readiness derives from an actual linked Project. Team readiness derives from a linked Project plus real Client account owner/assignment or Project lead/assignment/team members. Kickoff uses an existing linked/safely matched Meeting where `scheduled` is partial and `completed` is complete; duplicate kickoff meetings are not required. Start readiness requires explicit confirmation stored with `ready`, `confirmed_by`, `confirmed_at`, and optional note; a start date alone is not operational readiness. The Onboarding Document tab generates or regenerates a PDF snapshot from current verified onboarding data and excludes sensitive credentials and internal-only notes. If verified onboarding data changes after generation, the client document is marked stale and the UI shows `Update Available / Regeneration Required`. Each item stores required/optional state, layer status, completion percentage, owner/link metadata, timestamps, validation data, and audit entries.
 
 The onboarding list view shows compact progress and the next required action beside onboarding-stage Clients. Required progress is calculated as completed required items divided by total required items; optional layers never block activation. Tenant isolation is enforced by the Client and linked-record company key, and onboarding edits use the existing company-admin/lead permission gate.
+
+### Client profile, contacts, and services
+The Client Workspace Details tab edits canonical Client fields for company/account name, account owner, sales owner, client type, start date, value, address/location, industry, and notes that belong to the client relationship. Commercial summary and relationship information are stored in `Client.lifecycle_metadata.profile`; CRM Company and CRM Contact identity fields remain in their existing collections and are not copied into a separate client profile store.
+
+The Contacts tab lists contacts from the linked same-tenant CRM Company using existing `SalesContact` records. Users can add or edit CRM contacts, mark one contact as primary, and assign relationship roles: Primary Contact, Decision Maker, Finance Contact, Project Contact, Technical Contact, and Approver. Primary contact remains the `SalesContact.is_primary_contact` flag. Other roles are lightweight relationship metadata under `Client.lifecycle_metadata.contact_roles`, keyed by contact id. Contacts from another tenant or unrelated CRM Company are rejected.
+
+The Services tab manages `ClientService` records beneath a Client. A service captures name/type, status, pricing or value, billing cycle, start/end dates, service owner, team, linked Project ids, source Sales lead/category, and notes. Service status can move through planned, active, paused, and ended. Existing Projects can be linked to services and remain the execution source of truth; project records are not duplicated. Sales Won handoff carries the sold service/category from the source lead into one idempotent Client Service record and links the generated/existing Project when available.
 
 ## Invoices
 - How the user reaches it: main navigation.

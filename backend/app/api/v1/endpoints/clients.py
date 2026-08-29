@@ -2,7 +2,7 @@
 Client Management Endpoints
 """
 from fastapi import APIRouter, HTTPException, status, Depends, Form, UploadFile, File, Query
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from bson import ObjectId
 import logging
@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import uuid
 import re
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +18,21 @@ from app.crm.models import Client, ClientStatus, ClientType, SalesProspect
 from app.crm.client_identity import load_contacts_for_client
 from app.crm.client_lifecycle import client_lifecycle_rules, normalize_client_status, transition_client_status
 from app.crm.client_onboarding import build_onboarding_document, merge_onboarding_data, sync_client_onboarding
+from app.crm.client_services import (
+    CONTACT_ROLE_OPTIONS,
+    load_client_for_user,
+    load_client_service_for_user,
+    serialize_client_service,
+    set_client_contact_roles,
+    validate_project_for_client,
+    validate_same_tenant_user_ids,
+)
 from app.models.client_onboarding import ClientOnboardingItem, ClientOnboardingItemStatus
+from app.models.client_service import ClientService, ClientServiceStatus
 from app.models.user import User, UserRole
 from app.models.project import Project
 from app.models.crm_company import CRMCompany
+from app.models.sales_contact import SalesContact
 from app.crm.client_workspace import ClientWorkspaceService
 from app.api.dependencies import (
     get_current_user,
@@ -36,6 +48,33 @@ from app.services.file_service import FileService
 from app.services.cloudinary_storage import CloudinaryStorage
 
 router = APIRouter()
+
+
+class ClientProfilePayload(BaseModel):
+    commercial_summary: Optional[str] = None
+    relationship_information: Optional[str] = None
+
+
+class ContactRolesPayload(BaseModel):
+    roles: List[str] = []
+
+
+class ClientServicePayload(BaseModel):
+    name: Optional[str] = None
+    service_type: Optional[str] = None
+    status: Optional[str] = None
+    pricing_value: Optional[float] = None
+    billing_cycle: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    service_owner_id: Optional[str] = None
+    team_member_ids: List[str] = []
+    linked_project_ids: List[str] = []
+    notes: Optional[str] = None
+
+
+class ClientServiceProjectPayload(BaseModel):
+    project_id: str
 
 # Get upload directory
 BACKEND_DIR = Path(__file__).resolve().parents[4]
@@ -530,6 +569,201 @@ async def set_client_primary_contact(
             contact.updated_at = utc_now()
             await contact.save()
     return {"client_id": str(client.id), "primary_contact_id": contact_id, "onboarding": await sync_client_onboarding(client, current_user)}
+
+
+@router.patch("/{client_id}/profile")
+async def update_client_profile(
+    client_id: str,
+    payload: ClientProfilePayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Update client profile notes that do not duplicate CRM Company fields."""
+    client = await load_client_for_user(client_id, current_user)
+    metadata = dict(client.lifecycle_metadata or {})
+    profile = dict(metadata.get("profile") or {})
+    for key, value in payload.dict(exclude_unset=True).items():
+        profile[key] = value.strip() if isinstance(value, str) else value
+    metadata["profile"] = profile
+    client.lifecycle_metadata = metadata
+    client.updated_at = utc_now()
+    await client.save()
+    return {"client_id": str(client.id), "profile": profile}
+
+
+@router.patch("/{client_id}/contacts/{contact_id}/roles")
+async def update_client_contact_roles(
+    client_id: str,
+    contact_id: str,
+    payload: ContactRolesPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Assign client relationship roles to an existing CRM contact."""
+    client = await load_client_for_user(client_id, current_user)
+    contacts = await load_contacts_for_client(client)
+    selected = next((contact for contact in contacts if str(contact.id) == contact_id), None)
+    if not selected:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact must belong to the linked CRM company")
+    result = await set_client_contact_roles(client, contact_id, payload.roles, current_user)
+    return {"client_id": str(client.id), "allowed_roles": sorted(CONTACT_ROLE_OPTIONS), **result}
+
+
+@router.get("/{client_id}/services")
+async def list_client_services(
+    client_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """List services under a client account."""
+    client = await load_client_for_user(client_id, current_user)
+    services = await ClientService.find({"company_id": str(client.company_id), "client_id": str(client.id)}).sort("-updated_at").to_list()
+    return {"services": [serialize_client_service(service) for service in services]}
+
+
+@router.post("/{client_id}/services")
+async def create_client_service(
+    client_id: str,
+    payload: ClientServicePayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Create a client service without duplicating project execution records."""
+    client = await load_client_for_user(client_id, current_user)
+    if not payload.name or not payload.name.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service name is required")
+    owner_id = None
+    if payload.service_owner_id:
+        owner_id = (await validate_same_tenant_user_ids([payload.service_owner_id], current_user, "service owner"))[0]
+    team_ids = await validate_same_tenant_user_ids(payload.team_member_ids, current_user, "team member")
+    linked_project_ids: list[str] = []
+    for project_id in payload.linked_project_ids or []:
+        project = await validate_project_for_client(client, project_id)
+        if not project.client_id:
+            project.client_id = str(client.id)
+            project.updated_at = utc_now()
+            await project.save()
+        linked_project_ids.append(str(project.id))
+    now = utc_now()
+    try:
+        service_status = ClientServiceStatus(payload.status) if payload.status else ClientServiceStatus.PLANNED
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid service status") from exc
+
+    service = ClientService(
+        client_id=str(client.id),
+        company_id=str(client.company_id),
+        name=payload.name.strip(),
+        service_type=(payload.service_type or "").strip() or None,
+        status=service_status,
+        pricing_value=payload.pricing_value,
+        billing_cycle=(payload.billing_cycle or "").strip() or None,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        service_owner_id=owner_id,
+        team_member_ids=team_ids,
+        linked_project_ids=list(dict.fromkeys(linked_project_ids)),
+        notes=(payload.notes or "").strip() or None,
+        created_by=str(current_user.id),
+        created_at=now,
+        updated_at=now,
+    )
+    await service.insert()
+    return {"message": "Client service created", "service": serialize_client_service(service)}
+
+
+@router.patch("/{client_id}/services/{service_id}")
+async def update_client_service(
+    client_id: str,
+    service_id: str,
+    payload: ClientServicePayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Edit a client service."""
+    client, service = await load_client_service_for_user(client_id, service_id, current_user)
+    data = payload.dict(exclude_unset=True)
+    if "name" in data:
+        if not (data["name"] or "").strip():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service name is required")
+        service.name = data["name"].strip()
+    if "service_type" in data:
+        service.service_type = (data["service_type"] or "").strip() or None
+    if "status" in data and data["status"]:
+        try:
+            service.status = ClientServiceStatus(data["status"])
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid service status") from exc
+    if "pricing_value" in data:
+        service.pricing_value = data["pricing_value"]
+    if "billing_cycle" in data:
+        service.billing_cycle = (data["billing_cycle"] or "").strip() or None
+    if "start_date" in data:
+        service.start_date = data["start_date"]
+    if "end_date" in data:
+        service.end_date = data["end_date"]
+    if "service_owner_id" in data:
+        service.service_owner_id = (await validate_same_tenant_user_ids([data["service_owner_id"]], current_user, "service owner"))[0] if data["service_owner_id"] else None
+    if "team_member_ids" in data:
+        service.team_member_ids = await validate_same_tenant_user_ids(data["team_member_ids"], current_user, "team member")
+    if "linked_project_ids" in data:
+        linked_project_ids = []
+        for project_id in data["linked_project_ids"] or []:
+            project = await validate_project_for_client(client, project_id)
+            if not project.client_id:
+                project.client_id = str(client.id)
+                project.updated_at = utc_now()
+                await project.save()
+            linked_project_ids.append(str(project.id))
+        service.linked_project_ids = list(dict.fromkeys(linked_project_ids))
+    if "notes" in data:
+        service.notes = (data["notes"] or "").strip() or None
+    service.updated_at = utc_now()
+    await service.save()
+    return {"message": "Client service updated", "service": serialize_client_service(service)}
+
+
+@router.post("/{client_id}/services/{service_id}/projects")
+async def link_project_to_client_service(
+    client_id: str,
+    service_id: str,
+    payload: ClientServiceProjectPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Link an existing Project to a Client Service."""
+    client, service = await load_client_service_for_user(client_id, service_id, current_user)
+    project = await validate_project_for_client(client, payload.project_id)
+    project_id = str(project.id)
+    if project_id not in (service.linked_project_ids or []):
+        service.linked_project_ids = list(service.linked_project_ids or []) + [project_id]
+        service.updated_at = utc_now()
+        await service.save()
+    if not project.client_id:
+        project.client_id = str(client.id)
+        project.updated_at = utc_now()
+        await project.save()
+    return {"message": "Project linked to client service", "service": serialize_client_service(service)}
+
+
+@router.post("/{client_id}/services/{service_id}/{action}")
+async def change_client_service_status(
+    client_id: str,
+    service_id: str,
+    action: str,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Activate, pause, or end a client service."""
+    _, service = await load_client_service_for_user(client_id, service_id, current_user)
+    transitions = {
+        "activate": ClientServiceStatus.ACTIVE,
+        "pause": ClientServiceStatus.PAUSED,
+        "end": ClientServiceStatus.ENDED,
+    }
+    if action not in transitions:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown service action")
+    service.status = transitions[action]
+    if action == "activate" and not service.start_date:
+        service.start_date = utc_now()
+    if action == "end":
+        service.end_date = utc_now()
+    service.updated_at = utc_now()
+    await service.save()
+    return {"message": "Client service status updated", "service": serialize_client_service(service)}
 
 
 @router.patch("/{client_id}/onboarding/items/{item_key}")

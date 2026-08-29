@@ -13,7 +13,9 @@ from app.crm.client_identity import ClientCompanyResolution, load_contacts_for_c
 from app.crm import client_lifecycle
 from app.crm.client_lifecycle import normalize_client_status, transition_client_status
 from app.crm.deal_automation import _resolve_client, handle_won_deal_automation
+from app.crm.client_services import serialize_client_service, set_client_contact_roles
 from app.models.client import Client, ClientStatus, ClientType
+from app.models.client_service import ClientServiceStatus
 from app.models.invoice import InvoiceStatus, InvoiceType
 from app.models.meeting import MeetingStatus
 from app.models.sales_prospect import ProspectStatus
@@ -959,4 +961,61 @@ async def test_client_workspace_budget_fallback_from_projects_and_leads(monkeypa
 
     assert workspace["client"]["budget"] == 150000
     assert workspace["client"]["source_budget"] == "projects"
+
+
+def test_client_service_serializer_keeps_project_links_and_status():
+    service = SimpleNamespace(
+        id="service-1",
+        client_id="client-1",
+        company_id="tenant-1",
+        name="SEO Retainer",
+        status=ClientServiceStatus.ACTIVE,
+        pricing_value=75000,
+        billing_cycle="monthly",
+        linked_project_ids=["project-1"],
+        team_member_ids=[],
+        created_by="user-1",
+        start_date=None,
+        end_date=None,
+        service_type="SEO",
+        service_owner_id=None,
+        source_lead_id=None,
+        source_category_id=None,
+        notes=None,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+
+    payload = serialize_client_service(service)
+
+    assert payload["client_id"] == "client-1"
+    assert payload["company_id"] == "tenant-1"
+    assert payload["status"] == "active"
+    assert payload["linked_project_ids"] == ["project-1"]
+    assert payload["pricing_value"] == 75000
+
+
+@pytest.mark.asyncio
+async def test_client_contact_roles_are_lightweight_relationship_metadata():
+    client = _client()
+    saved = {"client": 0}
+
+    async def save():
+        saved["client"] += 1
+
+    client.save = save
+
+    result = await set_client_contact_roles(client, "contact-1", ["Finance Contact", "Approver"], _user())
+
+    assert result == {"contact_id": "contact-1", "roles": ["Finance Contact", "Approver"]}
+    assert client.lifecycle_metadata["contact_roles"]["contact-1"] == ["Finance Contact", "Approver"]
+    assert saved["client"] == 1
+
+
+@pytest.mark.asyncio
+async def test_client_contact_roles_reject_unknown_role():
+    client = _client()
+
+    with pytest.raises(HTTPException):
+        await set_client_contact_roles(client, "contact-1", ["Unknown"], _user())
 

@@ -6,13 +6,16 @@ import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
+from beanie.exceptions import CollectionWasNotInitialized
 from bson import ObjectId
 
 from app.crm.company_timeline import CRMCompanyTimelineService
 from app.crm.client_identity import load_contacts_for_client, resolve_crm_company_for_client
 from app.crm.client_onboarding import sync_client_onboarding
+from app.crm.client_services import ensure_sales_handoff_service, serialize_client_service
 from app.crm.models import Client
 from app.models.client import ClientStatus
+from app.models.client_service import ClientService
 from app.models.invoice import Invoice
 from app.models.meeting import Meeting
 from app.models.project import Project
@@ -200,6 +203,13 @@ class ClientWorkspaceService:
                 source_lead = None
         if not source_lead and lead_candidates:
             source_lead = next((l for l in lead_candidates if str(l.id) == getattr(client, "source_lead_id", None)), None)
+        await ensure_sales_handoff_service(client, current_user)
+        try:
+            services = await ClientService.find(
+                {"company_id": str(client.company_id), "client_id": str(client.id)}
+            ).sort("-updated_at").to_list()
+        except CollectionWasNotInitialized:
+            services = []
 
         def _lead_budget_val(lead_item: Optional[SalesProspect]) -> Optional[float]:
             if not lead_item:
@@ -265,6 +275,7 @@ class ClientWorkspaceService:
                 "assigned_to_name": _display_name(await User.get(client.assigned_to)) if client.assigned_to else None,
                 "notes": client.notes,
                 "lifecycle_metadata": client.lifecycle_metadata or {},
+                "profile": (client.lifecycle_metadata or {}).get("profile") or {},
                 "tags": client.tags or [],
                 "project_ids": client.project_ids or [],
                 "documents": client.documents or [],
@@ -278,7 +289,14 @@ class ClientWorkspaceService:
                 "created_by": client.created_by,
             },
             "projects": projects,
-            "contacts": [_contact_summary(contact) for contact in contacts],
+            "contacts": [
+                {
+                    **_contact_summary(contact),
+                    "roles": ((client.lifecycle_metadata or {}).get("contact_roles") or {}).get(str(contact.id), []),
+                }
+                for contact in contacts
+            ],
+            "services": [serialize_client_service(service) for service in services],
             "meetings": meetings,
             "onboarding": onboarding,
             "invoices": [
@@ -332,6 +350,15 @@ class ClientWorkspaceService:
                 "leads": lead_counts,
                 "tasks": dict(task_counts),
                 "documents": len(client.documents or []),
+                "services": {
+                    "total": len(services),
+                    "active": sum(1 for service in services if getattr(service, "status", None) and service.status.value == "active"),
+                    "planned": sum(1 for service in services if getattr(service, "status", None) and service.status.value == "planned"),
+                    "paused": sum(1 for service in services if getattr(service, "status", None) and service.status.value == "paused"),
+                    "ended": sum(1 for service in services if getattr(service, "status", None) and service.status.value == "ended"),
+                    "active_value": sum(float(service.pricing_value or 0) for service in services if getattr(service, "status", None) and service.status.value == "active"),
+                    "total_value": sum(float(service.pricing_value or 0) for service in services),
+                },
                 "meetings": len(meetings),
                 "invoices": {
                     "total": len(invoices),
