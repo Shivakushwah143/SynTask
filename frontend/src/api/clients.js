@@ -86,6 +86,51 @@ export const clientsAPI = {
     return response.data
   },
 
+  unlinkServiceProject: async (clientId, serviceId, projectId) => {
+    const response = await api.delete(`/clients/${clientId}/services/${serviceId}/projects/${projectId}`)
+    return response.data
+  },
+
+  listDeliverables: async (clientId, params = {}) => {
+    const response = await api.get(`/clients/${clientId}/deliverables`, { params })
+    return response.data
+  },
+
+  createDeliverable: async (clientId, payload) => {
+    const response = await api.post(`/clients/${clientId}/deliverables`, payload)
+    return response.data
+  },
+
+  updateDeliverable: async (clientId, deliverableId, payload) => {
+    const response = await api.patch(`/clients/${clientId}/deliverables/${deliverableId}`, payload)
+    return response.data
+  },
+
+  linkDeliverableTasks: async (clientId, deliverableId, taskIds) => {
+    const response = await api.post(`/clients/${clientId}/deliverables/${deliverableId}/tasks`, { task_ids: taskIds })
+    return response.data
+  },
+
+  updateDeliverableStatus: async (clientId, deliverableId, status) => {
+    const response = await api.post(`/clients/${clientId}/deliverables/${deliverableId}/status`, { status })
+    return response.data
+  },
+
+  sendDeliverableReview: async (clientId, deliverableId, payload = {}) => {
+    const response = await api.post(`/clients/${clientId}/deliverables/${deliverableId}/send-review`, payload)
+    return response.data
+  },
+
+  approveDeliverable: async (clientId, deliverableId, payload = {}) => {
+    const response = await api.post(`/clients/${clientId}/deliverables/${deliverableId}/approve`, payload)
+    return response.data
+  },
+
+  requestDeliverableRevision: async (clientId, deliverableId, payload = {}) => {
+    const response = await api.post(`/clients/${clientId}/deliverables/${deliverableId}/request-revision`, payload)
+    return response.data
+  },
+
   generateOnboardingDocument: async (clientId) => {
     const response = await api.post(`/clients/${clientId}/onboarding/document/generate`)
     return response.data

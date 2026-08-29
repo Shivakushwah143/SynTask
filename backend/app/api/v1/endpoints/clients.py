@@ -27,7 +27,18 @@ from app.crm.client_services import (
     validate_project_for_client,
     validate_same_tenant_user_ids,
 )
+from app.crm.client_deliverables import (
+    ALLOWED_DELIVERABLE_TRANSITIONS,
+    create_public_review_token,
+    default_approver_contact_id,
+    load_deliverable_by_review_token,
+    load_deliverable_for_user,
+    serialize_deliverable,
+    validate_service_project,
+    validate_task_ids,
+)
 from app.models.client_onboarding import ClientOnboardingItem, ClientOnboardingItemStatus
+from app.models.client_deliverable import ClientApprovalStatus, ClientDeliverable, ClientDeliverableStatus
 from app.models.client_service import ClientService, ClientServiceStatus
 from app.models.user import User, UserRole
 from app.models.project import Project
@@ -75,6 +86,34 @@ class ClientServicePayload(BaseModel):
 
 class ClientServiceProjectPayload(BaseModel):
     project_id: str
+
+
+class ClientDeliverablePayload(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    service_id: Optional[str] = None
+    project_id: Optional[str] = None
+    owner_id: Optional[str] = None
+    due_date: Optional[datetime] = None
+    linked_files: List[Dict[str, Any]] = []
+    linked_task_ids: List[str] = []
+
+
+class DeliverableTaskPayload(BaseModel):
+    task_ids: List[str] = []
+
+
+class DeliverableStatusPayload(BaseModel):
+    status: str
+
+
+class DeliverableReviewPayload(BaseModel):
+    approver_contact_id: Optional[str] = None
+    revision_note: Optional[str] = None
+
+
+class PublicDeliverableReviewPayload(BaseModel):
+    revision_note: Optional[str] = None
 
 # Get upload directory
 BACKEND_DIR = Path(__file__).resolve().parents[4]
@@ -740,6 +779,32 @@ async def link_project_to_client_service(
     return {"message": "Project linked to client service", "service": serialize_client_service(service)}
 
 
+@router.delete("/{client_id}/services/{service_id}/projects/{project_id}")
+async def unlink_project_from_client_service(
+    client_id: str,
+    service_id: str,
+    project_id: str,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Unlink a Project from a Client Service only when no deliverables depend on it."""
+    client, service = await load_client_service_for_user(client_id, service_id, current_user)
+    project = await validate_project_for_client(client, project_id)
+    dependent = await ClientDeliverable.find_one(
+        {
+            "company_id": str(client.company_id),
+            "client_id": str(client.id),
+            "service_id": str(service.id),
+            "project_id": str(project.id),
+        }
+    )
+    if dependent:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Project has deliverables and cannot be unlinked from this service")
+    service.linked_project_ids = [item for item in (service.linked_project_ids or []) if item not in {str(project.id), str(project.project_id or "")}]
+    service.updated_at = utc_now()
+    await service.save()
+    return {"message": "Project unlinked from client service", "service": serialize_client_service(service)}
+
+
 @router.post("/{client_id}/services/{service_id}/{action}")
 async def change_client_service_status(
     client_id: str,
@@ -764,6 +829,259 @@ async def change_client_service_status(
     service.updated_at = utc_now()
     await service.save()
     return {"message": "Client service status updated", "service": serialize_client_service(service)}
+
+
+@router.get("/{client_id}/deliverables")
+async def list_client_deliverables(
+    client_id: str,
+    service_id: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None),
+    deliverable_status: Optional[str] = Query(None, alias="status"),
+    approval_status: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+):
+    """List deliverables scoped to one Client and optional Service/Project filters."""
+    client = await load_client_for_user(client_id, current_user)
+    query: Dict[str, Any] = {"company_id": str(client.company_id), "client_id": str(client.id)}
+    if service_id:
+        query["service_id"] = service_id
+    if project_id:
+        query["project_id"] = project_id
+    if deliverable_status:
+        query["status"] = deliverable_status
+    if approval_status:
+        query["approval_status"] = approval_status
+    deliverables = await ClientDeliverable.find(query).sort("-updated_at").to_list()
+    return {"deliverables": [serialize_deliverable(deliverable) for deliverable in deliverables]}
+
+
+@router.post("/{client_id}/deliverables")
+async def create_client_deliverable(
+    client_id: str,
+    payload: ClientDeliverablePayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Create a deliverable under a Client Service and existing Project."""
+    if not payload.title or not payload.title.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Deliverable title is required")
+    if not payload.service_id or not payload.project_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service and project are required")
+    client, service = await load_client_service_for_user(client_id, payload.service_id, current_user)
+    project = await validate_service_project(client, service, payload.project_id)
+    task_ids = await validate_task_ids(project, payload.linked_task_ids)
+    owner_id = None
+    if payload.owner_id:
+        owner_id = (await validate_same_tenant_user_ids([payload.owner_id], current_user, "deliverable owner"))[0]
+    now = utc_now()
+    deliverable = ClientDeliverable(
+        client_id=str(client.id),
+        service_id=str(service.id),
+        project_id=str(project.id),
+        company_id=str(client.company_id),
+        title=payload.title.strip(),
+        description=(payload.description or "").strip() or None,
+        owner_id=owner_id,
+        due_date=payload.due_date,
+        linked_files=payload.linked_files or [],
+        linked_task_ids=task_ids,
+        created_by=str(current_user.id),
+        created_at=now,
+        updated_at=now,
+    )
+    await deliverable.insert()
+    return {"message": "Deliverable created", "deliverable": serialize_deliverable(deliverable)}
+
+
+@router.patch("/{client_id}/deliverables/{deliverable_id}")
+async def update_client_deliverable(
+    client_id: str,
+    deliverable_id: str,
+    payload: ClientDeliverablePayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Edit a deliverable without duplicating tasks or files."""
+    client, deliverable = await load_deliverable_for_user(client_id, deliverable_id, current_user)
+    service = await ClientService.get(deliverable.service_id)
+    if not service:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service not found")
+    data = payload.dict(exclude_unset=True)
+    if "service_id" in data and data["service_id"] and data["service_id"] != deliverable.service_id:
+        client, service = await load_client_service_for_user(client_id, data["service_id"], current_user)
+        deliverable.service_id = str(service.id)
+    project = await validate_service_project(client, service, data.get("project_id") or deliverable.project_id)
+    deliverable.project_id = str(project.id)
+    if "title" in data:
+        if not (data["title"] or "").strip():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Deliverable title is required")
+        deliverable.title = data["title"].strip()
+    if "description" in data:
+        deliverable.description = (data["description"] or "").strip() or None
+    if "owner_id" in data:
+        deliverable.owner_id = (await validate_same_tenant_user_ids([data["owner_id"]], current_user, "deliverable owner"))[0] if data["owner_id"] else None
+    if "due_date" in data:
+        deliverable.due_date = data["due_date"]
+    if "linked_files" in data:
+        deliverable.linked_files = data["linked_files"] or []
+    if "linked_task_ids" in data:
+        deliverable.linked_task_ids = await validate_task_ids(project, data["linked_task_ids"])
+    deliverable.updated_at = utc_now()
+    await deliverable.save()
+    return {"message": "Deliverable updated", "deliverable": serialize_deliverable(deliverable)}
+
+
+@router.post("/{client_id}/deliverables/{deliverable_id}/tasks")
+async def link_tasks_to_deliverable(
+    client_id: str,
+    deliverable_id: str,
+    payload: DeliverableTaskPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Link existing Work tasks to a deliverable."""
+    _, deliverable = await load_deliverable_for_user(client_id, deliverable_id, current_user)
+    project = await Project.get(deliverable.project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Project not found")
+    task_ids = await validate_task_ids(project, payload.task_ids)
+    deliverable.linked_task_ids = list(dict.fromkeys([*(deliverable.linked_task_ids or []), *task_ids]))
+    deliverable.updated_at = utc_now()
+    await deliverable.save()
+    return {"message": "Tasks linked to deliverable", "deliverable": serialize_deliverable(deliverable)}
+
+
+@router.post("/{client_id}/deliverables/{deliverable_id}/status")
+async def change_deliverable_status(
+    client_id: str,
+    deliverable_id: str,
+    payload: DeliverableStatusPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Move a deliverable through the Phase 5 lifecycle."""
+    _, deliverable = await load_deliverable_for_user(client_id, deliverable_id, current_user)
+    try:
+        next_status = ClientDeliverableStatus(payload.status)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid deliverable status") from exc
+    current_status = deliverable.status
+    if next_status != current_status and next_status not in ALLOWED_DELIVERABLE_TRANSITIONS.get(current_status, set()):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid deliverable status transition")
+    deliverable.status = next_status
+    if next_status == ClientDeliverableStatus.CLIENT_REVIEW:
+        deliverable.approval_status = ClientApprovalStatus.SENT
+        deliverable.sent_at = deliverable.sent_at or utc_now()
+        deliverable.approver_contact_id = deliverable.approver_contact_id or await default_approver_contact_id(await Client.get(deliverable.client_id))
+    if next_status == ClientDeliverableStatus.DELIVERED:
+        deliverable.delivered_at = utc_now()
+    deliverable.updated_at = utc_now()
+    await deliverable.save()
+    return {"message": "Deliverable status updated", "deliverable": serialize_deliverable(deliverable)}
+
+
+@router.post("/{client_id}/deliverables/{deliverable_id}/send-review")
+async def send_deliverable_for_client_review(
+    client_id: str,
+    deliverable_id: str,
+    payload: DeliverableReviewPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Send a deliverable for client review and create a secure review token."""
+    client, deliverable = await load_deliverable_for_user(client_id, deliverable_id, current_user)
+    approver_contact_id = payload.approver_contact_id or await default_approver_contact_id(client)
+    if approver_contact_id:
+        contacts = await load_contacts_for_client(client)
+        if not any(str(contact.id) == approver_contact_id for contact in contacts):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Approver contact must belong to this client")
+    token = await create_public_review_token(deliverable)
+    now = utc_now()
+    deliverable.status = ClientDeliverableStatus.CLIENT_REVIEW
+    deliverable.approval_status = ClientApprovalStatus.SENT
+    deliverable.approver_contact_id = approver_contact_id
+    deliverable.sent_at = now
+    deliverable.approval_history.append({"action": "sent", "actor_id": str(current_user.id), "at": now, "approver_contact_id": approver_contact_id})
+    deliverable.updated_at = now
+    await deliverable.save()
+    return {"message": "Deliverable sent for client review", "review_token": token, "deliverable": serialize_deliverable(deliverable)}
+
+
+@router.post("/{client_id}/deliverables/{deliverable_id}/approve")
+async def approve_client_deliverable(
+    client_id: str,
+    deliverable_id: str,
+    payload: DeliverableReviewPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Record client approval for a deliverable."""
+    _, deliverable = await load_deliverable_for_user(client_id, deliverable_id, current_user)
+    now = utc_now()
+    deliverable.status = ClientDeliverableStatus.APPROVED
+    deliverable.approval_status = ClientApprovalStatus.APPROVED
+    deliverable.approved_at = now
+    deliverable.approval_history.append({"action": "approved", "actor_id": str(current_user.id), "at": now, "approver_contact_id": payload.approver_contact_id or deliverable.approver_contact_id})
+    deliverable.updated_at = now
+    await deliverable.save()
+    return {"message": "Deliverable approved", "deliverable": serialize_deliverable(deliverable)}
+
+
+@router.post("/{client_id}/deliverables/{deliverable_id}/request-revision")
+async def request_deliverable_revision(
+    client_id: str,
+    deliverable_id: str,
+    payload: DeliverableReviewPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Record a client revision request for a deliverable."""
+    _, deliverable = await load_deliverable_for_user(client_id, deliverable_id, current_user)
+    now = utc_now()
+    deliverable.status = ClientDeliverableStatus.REVISION_REQUIRED
+    deliverable.approval_status = ClientApprovalStatus.REVISION_REQUESTED
+    deliverable.rejected_at = now
+    deliverable.revision_note = (payload.revision_note or "").strip() or None
+    deliverable.revision_count = int(deliverable.revision_count or 0) + 1
+    deliverable.approval_history.append({"action": "revision_requested", "actor_id": str(current_user.id), "at": now, "note": deliverable.revision_note, "approver_contact_id": payload.approver_contact_id or deliverable.approver_contact_id})
+    deliverable.updated_at = now
+    await deliverable.save()
+    return {"message": "Revision requested", "deliverable": serialize_deliverable(deliverable)}
+
+
+@router.get("/public-review/{token}")
+async def view_public_deliverable_review(token: str):
+    """View a deliverable through its secure review token."""
+    deliverable = await load_deliverable_by_review_token(token)
+    if deliverable.approval_status == ClientApprovalStatus.SENT:
+        deliverable.approval_status = ClientApprovalStatus.VIEWED
+        deliverable.viewed_at = utc_now()
+        deliverable.updated_at = utc_now()
+        await deliverable.save()
+    return {"deliverable": serialize_deliverable(deliverable)}
+
+
+@router.post("/public-review/{token}/approve")
+async def approve_public_deliverable_review(token: str):
+    """Approve a deliverable through its secure review token."""
+    deliverable = await load_deliverable_by_review_token(token)
+    now = utc_now()
+    deliverable.status = ClientDeliverableStatus.APPROVED
+    deliverable.approval_status = ClientApprovalStatus.APPROVED
+    deliverable.approved_at = now
+    deliverable.approval_history.append({"action": "approved", "actor_id": "client_review_link", "at": now, "approver_contact_id": deliverable.approver_contact_id})
+    deliverable.updated_at = now
+    await deliverable.save()
+    return {"message": "Deliverable approved", "deliverable": serialize_deliverable(deliverable)}
+
+
+@router.post("/public-review/{token}/request-revision")
+async def request_public_deliverable_revision(token: str, payload: PublicDeliverableReviewPayload):
+    """Request deliverable revision through its secure review token."""
+    deliverable = await load_deliverable_by_review_token(token)
+    now = utc_now()
+    deliverable.status = ClientDeliverableStatus.REVISION_REQUIRED
+    deliverable.approval_status = ClientApprovalStatus.REVISION_REQUESTED
+    deliverable.rejected_at = now
+    deliverable.revision_note = (payload.revision_note or "").strip() or None
+    deliverable.revision_count = int(deliverable.revision_count or 0) + 1
+    deliverable.approval_history.append({"action": "revision_requested", "actor_id": "client_review_link", "at": now, "note": deliverable.revision_note, "approver_contact_id": deliverable.approver_contact_id})
+    deliverable.updated_at = now
+    await deliverable.save()
+    return {"message": "Revision requested", "deliverable": serialize_deliverable(deliverable)}
 
 
 @router.patch("/{client_id}/onboarding/items/{item_key}")

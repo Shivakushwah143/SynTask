@@ -8,6 +8,7 @@ import { clientsAPI } from '../api/clients'
 import { crmApi } from '../api/crm'
 import { meetingsApi } from '../api/meetings'
 import { projectsApi } from '../api/projects'
+import { tasksAPI } from '../api/tasks'
 import { Button, EmptyState, Modal, Skeleton } from '../components/ui'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../components/crm'
 import { CompanyTimeline } from './crm/companies/components'
@@ -23,6 +24,7 @@ const TABS = [
   { key: 'details', label: 'Details' },
   { key: 'contacts', label: 'Contacts' },
   { key: 'services', label: 'Services' },
+  { key: 'deliverables', label: 'Deliverables' },
   { key: 'onboarding', label: 'Onboarding' },
   { key: 'projects', label: 'Projects' },
   { key: 'tasks', label: 'Tasks' },
@@ -33,6 +35,7 @@ const TABS = [
 ]
 
 const CONTACT_ROLE_OPTIONS = ['Primary Contact', 'Decision Maker', 'Finance Contact', 'Project Contact', 'Technical Contact', 'Approver']
+const DELIVERABLE_STATUSES = ['planned', 'in_production', 'internal_review', 'client_review', 'revision_required', 'approved', 'delivered']
 
 function formatDate(value) {
   if (!value) return 'N/A'
@@ -490,6 +493,7 @@ export default function ClientWorkspacePage() {
   const activeOnboardingTab = searchParams.get(ONBOARDING_TAB_KEY) || 'overview'
   const [editingContactId, setEditingContactId] = useState(null)
   const [editingServiceId, setEditingServiceId] = useState(null)
+  const [deliverableFilters, setDeliverableFilters] = useState({ project: '', service: '', status: '', approval: '', due: '' })
 
   const workspaceQuery = useQuery(
     ['client-workspace', clientId],
@@ -508,6 +512,7 @@ export default function ClientWorkspacePage() {
   const leads = useMemo(() => (Array.isArray(workspace.leads) ? workspace.leads : []), [workspace.leads])
   const contacts = useMemo(() => (Array.isArray(workspace.contacts) ? workspace.contacts : []), [workspace.contacts])
   const services = useMemo(() => (Array.isArray(workspace.services) ? workspace.services : []), [workspace.services])
+  const deliverables = useMemo(() => (Array.isArray(workspace.deliverables) ? workspace.deliverables : []), [workspace.deliverables])
   const documents = useMemo(() => (Array.isArray(client?.documents) ? client.documents : []), [client?.documents])
   const invoices = useMemo(() => (Array.isArray(workspace.invoices) ? workspace.invoices : []), [workspace.invoices])
   const meetings = useMemo(() => (Array.isArray(workspace.meetings) ? workspace.meetings : []), [workspace.meetings])
@@ -699,6 +704,88 @@ export default function ClientWorkspacePage() {
     }
   )
 
+  const serviceProjectUnlinkMutation = useMutation(
+    ({ serviceId, projectId }) => clientsAPI.unlinkServiceProject(clientId, serviceId, projectId),
+    {
+      onSuccess: () => {
+        toast.success('Project unlinked from service')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Project cannot be unlinked')),
+    }
+  )
+
+  const createServiceProjectMutation = useMutation(
+    async ({ serviceId, values }) => {
+      const response = await projectsApi.createProject(values)
+      const projectId = response?.data?.id || response?.data?.project_id || response?.id || response?.project_id
+      if (projectId) await clientsAPI.linkServiceProject(clientId, serviceId, projectId)
+      return response
+    },
+    {
+      onSuccess: () => {
+        toast.success('Project created and linked')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries('projects')
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to create service project')),
+    }
+  )
+
+  const deliverableMutation = useMutation(
+    (payload) => clientsAPI.createDeliverable(clientId, payload),
+    {
+      onSuccess: () => {
+        toast.success('Deliverable created')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to create deliverable')),
+    }
+  )
+
+  const deliverableStatusMutation = useMutation(
+    ({ deliverableId, nextStatus }) => clientsAPI.updateDeliverableStatus(clientId, deliverableId, nextStatus),
+    {
+      onSuccess: () => {
+        toast.success('Deliverable status updated')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to update deliverable status')),
+    }
+  )
+
+  const deliverableReviewMutation = useMutation(
+    ({ deliverableId, action, payload }) => {
+      if (action === 'approve') return clientsAPI.approveDeliverable(clientId, deliverableId, payload)
+      if (action === 'revision') return clientsAPI.requestDeliverableRevision(clientId, deliverableId, payload)
+      return clientsAPI.sendDeliverableReview(clientId, deliverableId, payload)
+    },
+    {
+      onSuccess: () => {
+        toast.success('Approval workflow updated')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to update approval workflow')),
+    }
+  )
+
+  const deliverableTaskMutation = useMutation(
+    async ({ deliverableId, taskPayload }) => {
+      const result = await tasksAPI.createTask(taskPayload)
+      const taskId = result?.task_id || result?.id || result?.task?.id
+      if (taskId) await clientsAPI.linkDeliverableTasks(clientId, deliverableId, [taskId])
+      return result
+    },
+    {
+      onSuccess: () => {
+        toast.success('Task created and linked')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries('tasks')
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to create deliverable task')),
+    }
+  )
+
   const createMeetingMutation = useMutation(
     (values) => meetingsApi.create(toFormData(values)),
     {
@@ -747,6 +834,7 @@ export default function ClientWorkspacePage() {
   const totalContacts = contacts.length || 0
   const totalServices = services.length || 0
   const activeServices = services.filter((service) => service.status === 'active')
+  const totalDeliverables = deliverables.length || 0
   const totalDocuments = documents.length || 0
   const totalInvoices = invoices.length || 0
   const outstandingAmount = summary.invoices?.outstanding_amount || invoices.reduce((sum, invoice) => sum + Number(invoice.outstanding_amount || 0), 0)
@@ -755,6 +843,7 @@ export default function ClientWorkspacePage() {
     details: 1,
     contacts: totalContacts,
     services: totalServices,
+    deliverables: totalDeliverables,
     onboarding: onboardingItems.length,
     projects: totalProjects,
     tasks: totalTasks,
@@ -770,6 +859,15 @@ export default function ClientWorkspacePage() {
     .filter((meeting) => meeting.meeting_date)
     .sort((a, b) => new Date(a.meeting_date) - new Date(b.meeting_date))[0]
   const serviceValue = summary.services?.total_value || services.reduce((sum, service) => sum + Number(service.pricing_value || 0), 0)
+  const visibleDeliverables = deliverables.filter((item) => {
+    const dueDate = item.due_date ? new Date(item.due_date) : null
+    const isOverdue = dueDate && dueDate < new Date() && !['approved', 'delivered'].includes(item.status)
+    return (!deliverableFilters.project || item.project_id === deliverableFilters.project)
+      && (!deliverableFilters.service || item.service_id === deliverableFilters.service)
+      && (!deliverableFilters.status || item.status === deliverableFilters.status)
+      && (!deliverableFilters.approval || item.approval_status === deliverableFilters.approval)
+      && (!deliverableFilters.due || (deliverableFilters.due === 'overdue' ? isOverdue : Boolean(dueDate)))
+  })
 
   const handleDetailsSubmit = (event) => {
     event.preventDefault()
@@ -837,6 +935,55 @@ export default function ClientWorkspacePage() {
         notes: data.get('notes') || undefined,
       },
     })
+  }
+
+  const handleCreateServiceProject = (event, service) => {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    createServiceProjectMutation.mutate({
+      serviceId: service.id,
+      values: {
+        name: data.get('name'),
+        key: data.get('key'),
+        project_id: data.get('project_id'),
+        description: data.get('description'),
+        client_id: client.id,
+      },
+    })
+    event.currentTarget.reset()
+  }
+
+  const handleDeliverableSubmit = (event) => {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    deliverableMutation.mutate({
+      title: data.get('title'),
+      description: data.get('description') || undefined,
+      service_id: data.get('service_id'),
+      project_id: data.get('project_id'),
+      owner_id: data.get('owner_id') || undefined,
+      due_date: data.get('due_date') || undefined,
+      linked_task_ids: data.get('task_id') ? [data.get('task_id')] : [],
+    })
+    event.currentTarget.reset()
+  }
+
+  const handleCreateDeliverableTask = (event, deliverable) => {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    const project = projects.find((item) => item.id === deliverable.project_id || item.project_id === deliverable.project_id)
+    deliverableTaskMutation.mutate({
+      deliverableId: deliverable.id,
+      taskPayload: {
+        title: data.get('title'),
+        description: data.get('description') || undefined,
+        assigned_to: data.get('assigned_to') || undefined,
+        priority: data.get('priority') || 'medium',
+        due_date: data.get('due_date') || undefined,
+        project_id: project?.project_id || project?.id || deliverable.project_id,
+      },
+    })
+    event.currentTarget.reset()
   }
 
   if (!clientId) {
@@ -1056,6 +1203,20 @@ export default function ClientWorkspacePage() {
                 <span>Start {formatDate(service.start_date)}</span>
                 <span>End {formatDate(service.end_date)}</span>
               </div>
+              {service.linked_project_ids?.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {service.linked_project_ids.map((linkedProjectId) => {
+                    const linkedProject = projects.find((project) => project.id === linkedProjectId || project.project_id === linkedProjectId)
+                    return (
+                      <span key={linkedProjectId} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 dark:border-gray-700 dark:text-gray-200">
+                        {linkedProject?.name || linkedProjectId}
+                        {linkedProject ? <Link to={`/projects/${projectBoardId(linkedProject)}/board`} className="font-semibold text-primary-600 hover:underline dark:text-primary-400">Open</Link> : null}
+                        <button type="button" className="font-semibold text-rose-600 dark:text-rose-300" onClick={() => serviceProjectUnlinkMutation.mutate({ serviceId: service.id, projectId: linkedProjectId })}>Unlink</button>
+                      </span>
+                    )
+                  })}
+                </div>
+              ) : null}
               <form onSubmit={(event) => {
                 event.preventDefault()
                 const selected = new FormData(event.currentTarget).get('project_id')
@@ -1063,6 +1224,13 @@ export default function ClientWorkspacePage() {
               }} className="mt-3 flex flex-wrap gap-2">
                 <select name="project_id" className="min-w-60 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Link another project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
                 <Button type="submit" size="sm" variant="secondary" disabled={serviceProjectMutation.isLoading}>Link project</Button>
+              </form>
+              <form onSubmit={(event) => handleCreateServiceProject(event, service)} className="mt-3 grid gap-2 md:grid-cols-4">
+                <input name="name" placeholder="New Work project name" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <input name="key" placeholder="Key" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <input name="project_id" placeholder="Project ID" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <Button type="submit" size="sm" variant="secondary" disabled={createServiceProjectMutation.isLoading}>Create project</Button>
+                <textarea name="description" rows={2} placeholder="Project description" className="md:col-span-4 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
               </form>
               {editingServiceId === service.id ? (
                 <form onSubmit={(event) => handleServiceSubmit(event, service.id)} className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -1081,6 +1249,81 @@ export default function ClientWorkspacePage() {
             </article>
           ))}
           {!services.length ? <CRMEmptyState icon={FolderKanban} title="No services yet" description="Add the services sold to this client before linking delivery projects." /> : null}
+        </div>
+      </CRMSection>
+    )
+  } else if (activeTab === 'deliverables') {
+    tabBody = (
+      <CRMSection title="Deliverables" description="Client-facing outputs linked to services, projects, and Work tasks.">
+        <div className="space-y-4">
+          <div className="grid gap-2 rounded-2xl border border-surface-border/80 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 md:grid-cols-5">
+            <select value={deliverableFilters.project} onChange={(event) => setDeliverableFilters((state) => ({ ...state, project: event.target.value }))} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">All projects</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
+            <select value={deliverableFilters.service} onChange={(event) => setDeliverableFilters((state) => ({ ...state, service: event.target.value }))} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">All services</option>{services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select>
+            <select value={deliverableFilters.status} onChange={(event) => setDeliverableFilters((state) => ({ ...state, status: event.target.value }))} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">All statuses</option>{DELIVERABLE_STATUSES.map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}</select>
+            <select value={deliverableFilters.approval} onChange={(event) => setDeliverableFilters((state) => ({ ...state, approval: event.target.value }))} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">All approvals</option>{['not_sent', 'sent', 'viewed', 'approved', 'revision_requested'].map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}</select>
+            <select value={deliverableFilters.due} onChange={(event) => setDeliverableFilters((state) => ({ ...state, due: event.target.value }))} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Any due date</option><option value="due">Has due date</option><option value="overdue">Overdue</option></select>
+          </div>
+
+          <form onSubmit={handleDeliverableSubmit} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <input name="title" placeholder="Deliverable title" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <select name="service_id" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Service</option>{services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select>
+              <select name="project_id" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
+              <input name="owner_id" placeholder="Owner ID" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <input name="due_date" type="date" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              <select name="task_id" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Link existing task</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select>
+              <textarea name="description" rows={2} placeholder="Description" className="md:col-span-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+            </div>
+            <div className="mt-4 flex justify-end"><Button type="submit" disabled={deliverableMutation.isLoading}>Add deliverable</Button></div>
+          </form>
+
+          {visibleDeliverables.length ? (
+            <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                  <thead className="bg-gray-50 dark:bg-gray-950">
+                    <tr>{['Deliverable', 'Service', 'Project', 'Owner', 'Due Date', 'Status', 'Approval', 'Revisions', 'Actions'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{header}</th>)}</tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                    {visibleDeliverables.map((deliverable) => {
+                      const project = projects.find((item) => item.id === deliverable.project_id)
+                      const service = services.find((item) => item.id === deliverable.service_id)
+                      return (
+                        <tr key={deliverable.id} className="align-top hover:bg-gray-50 dark:hover:bg-gray-800/80">
+                          <td className="px-4 py-3"><p className="font-medium text-gray-900 dark:text-gray-100">{deliverable.title}</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{deliverable.linked_task_ids?.length || 0} task(s)</p></td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{service?.name || deliverable.service_name || deliverable.service_id}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{project ? <Link className="font-medium text-primary-600 hover:underline dark:text-primary-400" to={`/projects/${projectBoardId(project)}/board`}>{project.name}</Link> : deliverable.project_name || deliverable.project_id}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{deliverable.owner_id || 'Unassigned'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(deliverable.due_date)}</td>
+                          <td className="px-4 py-3"><select value={deliverable.status || 'planned'} onChange={(event) => deliverableStatusMutation.mutate({ deliverableId: deliverable.id, nextStatus: event.target.value })} className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">{DELIVERABLE_STATUSES.map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}</select></td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{(deliverable.approval_status || 'not_sent').replaceAll('_', ' ')}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{deliverable.revision_count || 0}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <Button type="button" size="sm" variant="secondary" onClick={() => deliverableReviewMutation.mutate({ deliverableId: deliverable.id, action: 'send', payload: {} })}>Send review</Button>
+                              <Button type="button" size="sm" variant="secondary" onClick={() => deliverableReviewMutation.mutate({ deliverableId: deliverable.id, action: 'approve', payload: {} })}>Approve</Button>
+                              <Button type="button" size="sm" variant="secondary" onClick={() => deliverableReviewMutation.mutate({ deliverableId: deliverable.id, action: 'revision', payload: { revision_note: 'Revision requested from client workspace' } })}>Revision</Button>
+                              {project ? <Link className="btn btn-secondary btn-sm inline-flex items-center gap-2" to={`/projects/${projectBoardId(project)}/board`}><ExternalLink className="h-3 w-3" />Work</Link> : null}
+                            </div>
+                            <form onSubmit={(event) => handleCreateDeliverableTask(event, deliverable)} className="mt-3 grid gap-2">
+                              <input name="title" placeholder="New task for this deliverable" required className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                              <div className="grid grid-cols-2 gap-2">
+                                <select name="priority" defaultValue="medium" className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select>
+                                <input name="due_date" type="date" className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                              </div>
+                              <input name="assigned_to" placeholder="Assignee ID" className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                              <textarea name="description" rows={2} placeholder="Task notes" className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                              <Button type="submit" size="sm" variant="secondary" disabled={deliverableTaskMutation.isLoading}>Create task</Button>
+                            </form>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : <CRMEmptyState icon={FileText} title="No deliverables yet" description="Create deliverables under a service and project to track client review." />}
         </div>
       </CRMSection>
     )

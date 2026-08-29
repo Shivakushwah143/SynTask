@@ -17,6 +17,7 @@ Recruitment models under `backend/app/recruitment/models.py` also define tenant-
 | `chat_messages` | ChatMessage | Chat message records. |
 | `client_onboarding_items` | ClientOnboardingItem | Client onboarding layer items, derived status, validation metadata, links, and audit history. |
 | `client_onboardings` | ClientOnboarding | Client onboarding progress summary and activation blockers. |
+| `client_deliverables` | ClientDeliverable | Client-facing outputs linked to a Client Service, Project, Tasks, files, and approval state. |
 | `client_services` | ClientService | Purchased/active Client service records linked to existing Projects. |
 | `clients` | Client | Client CRM records and linked projects/documents. |
 | `companies` | Company | Tenant/company registration and account metadata. |
@@ -314,6 +315,31 @@ Phase 4 stores profile-only details in `Client.lifecycle_metadata.profile` with 
 | `created_by`, `created_at`, `updated_at` | mixed | Yes | No | Audit timestamps/actor |
 
 Indexes include `company_id`, `client_id`, `status`, `service_owner_id`, `team_member_ids`, `linked_project_ids`, `source_lead_id`, compound `(company_id, client_id, updated_at)`, `(company_id, client_id, status)`, and `(company_id, source_lead_id)`. Tenant isolation is enforced by matching `Client.company_id`, `ClientService.company_id`, linked `Project.company_id`, and owner/team user `company_id`; cross-tenant project or user ids are rejected.
+
+### `client_deliverables`
+| Field | Type | Required | Indexed | Notes |
+|---|---|---|---|---|
+| `client_id` | `str` | Yes | Yes | Parent Client id |
+| `service_id` | `str` | Yes | Yes | Parent ClientService id |
+| `project_id` | `str` | Yes | Yes | Existing Project document id |
+| `company_id` | `str` | Yes | Yes | Tenant key |
+| `title` | `str` | Yes | Text | Client-facing output title |
+| `description` | `str` | No | Text | Deliverable description |
+| `owner_id` | `str` | No | Yes | Same-tenant owner |
+| `due_date` | `datetime` | No | Yes | Due date |
+| `status` | `str` | Yes | Yes | `planned`, `in_production`, `internal_review`, `client_review`, `revision_required`, `approved`, `delivered` |
+| `linked_files` | `list[dict]` | No | No | References to existing file/document records or URLs |
+| `linked_task_ids` | `list[str]` | No | Yes | Existing Work Task ids from the same Project |
+| `approval_status` | `str` | Yes | Yes | `not_sent`, `sent`, `viewed`, `approved`, `revision_requested` |
+| `approver_contact_id` | `str` | No | No | Existing CRM/SalesContact id |
+| `sent_at`, `viewed_at`, `approved_at`, `rejected_at`, `delivered_at` | `datetime` | No | No | Lifecycle timestamps |
+| `revision_note` | `str` | No | No | Last revision note |
+| `revision_count` | `int` | Yes | No | Incremented on revision requests |
+| `approval_history` | `list[dict]` | No | No | Approval/revision audit trail |
+| `public_token_hash`, `public_token_created_at` | mixed | No | No | Secure review token hash and creation timestamp |
+| `created_by`, `created_at`, `updated_at` | mixed | Yes | No | Audit timestamps/actor |
+
+Indexes include `company_id`, `client_id`, `service_id`, `project_id`, `status`, `approval_status`, `owner_id`, `due_date`, `linked_task_ids`, compound `(company_id, client_id, updated_at)`, `(company_id, service_id, project_id)`, and `(company_id, approval_status, due_date)`. Relationship validation requires the Service and Project to belong to the same Client tenant; linked Tasks must belong to the selected Project. Safe Project unlinking from a Service is blocked when a `client_deliverables` record references that service/project pair.
 
 ### `companies`
 

@@ -15,7 +15,7 @@ flowchart TD
 ## Clients
 - How the user reaches it: main navigation or sales/CRM adjacent links.
 - What they can do: manage clients, inspect details, open related records.
-- Workspace sections: Overview, Details, Contacts, Services, Projects, Tasks, Meetings, Files/Documents, Finance, Activity, plus Onboarding when applicable.
+- Workspace sections: Overview, Details, Contacts, Services, Deliverables, Projects, Tasks, Meetings, Files/Documents, Finance, Activity, plus Onboarding when applicable.
 - What happens after every action:
   - Create/edit opens a guided modal sequence with two steps: Contact setup for required identity fields, then Client details for ownership, budget, schedule, address, tags, and notes.
   - Required name and email format validation run before the user can continue to Details or submit.
@@ -64,6 +64,13 @@ The Client Workspace Details tab edits canonical Client fields for company/accou
 The Contacts tab lists contacts from the linked same-tenant CRM Company using existing `SalesContact` records. Users can add or edit CRM contacts, mark one contact as primary, and assign relationship roles: Primary Contact, Decision Maker, Finance Contact, Project Contact, Technical Contact, and Approver. Primary contact remains the `SalesContact.is_primary_contact` flag. Other roles are lightweight relationship metadata under `Client.lifecycle_metadata.contact_roles`, keyed by contact id. Contacts from another tenant or unrelated CRM Company are rejected.
 
 The Services tab manages `ClientService` records beneath a Client. A service captures name/type, status, pricing or value, billing cycle, start/end dates, service owner, team, linked Project ids, source Sales lead/category, and notes. Service status can move through planned, active, paused, and ended. Existing Projects can be linked to services and remain the execution source of truth; project records are not duplicated. Sales Won handoff carries the sold service/category from the source lead into one idempotent Client Service record and links the generated/existing Project when available.
+
+### Client deliverables and approval
+The Deliverables tab tracks Client-facing outputs beneath the selected Client Service and Project. A Deliverable is distinct from a Task: for example, `Instagram Reel #04` is the Deliverable while `Write Script`, `Edit Video`, and `Internal Review` are existing Work Tasks linked to it. The tab shows Deliverable, Service, Project, Owner, Due Date, Status, Approval, and Revision count, with filters for project, service, status, approval state, and due/overdue.
+
+Deliverable creation requires a same-tenant Client Service and Project. If the Project is already known, the Client does not need to be selected again; the backend validates that Service, Project, Client, and tenant match and links the Project to the Service when safe. Users can link multiple existing Work Tasks or create a new Work Task from the Deliverable row; the Task remains in the Work module and opens through the existing project/task routes.
+
+Deliverable statuses move through `planned -> in_production -> internal_review -> client_review -> revision_required -> approved -> delivered` with backend transition checks. Starting Client Review stores approver/contact, sent timestamp, review token hash, and approval history, preferring a Client contact with role `Approver`. Approval marks the Deliverable approved; revision request stores the note, timestamp, history entry, and increments revision count. Approved Deliverables can then be marked delivered.
 
 ## Invoices
 - How the user reaches it: main navigation.

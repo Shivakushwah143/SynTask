@@ -14,7 +14,9 @@ from app.crm import client_lifecycle
 from app.crm.client_lifecycle import normalize_client_status, transition_client_status
 from app.crm.deal_automation import _resolve_client, handle_won_deal_automation
 from app.crm.client_services import serialize_client_service, set_client_contact_roles
+from app.crm.client_deliverables import ALLOWED_DELIVERABLE_TRANSITIONS, serialize_deliverable
 from app.models.client import Client, ClientStatus, ClientType
+from app.models.client_deliverable import ClientApprovalStatus, ClientDeliverableStatus
 from app.models.client_service import ClientServiceStatus
 from app.models.invoice import InvoiceStatus, InvoiceType
 from app.models.meeting import MeetingStatus
@@ -1018,4 +1020,48 @@ async def test_client_contact_roles_reject_unknown_role():
 
     with pytest.raises(HTTPException):
         await set_client_contact_roles(client, "contact-1", ["Unknown"], _user())
+
+
+def test_client_deliverable_serializer_keeps_task_links_and_approval_state():
+    deliverable = SimpleNamespace(
+        id="deliverable-1",
+        client_id="client-1",
+        service_id="service-1",
+        project_id="project-1",
+        company_id="tenant-1",
+        title="Instagram Reel #04",
+        description="Final client-facing reel",
+        owner_id="user-1",
+        due_date=datetime.utcnow(),
+        status=ClientDeliverableStatus.CLIENT_REVIEW,
+        linked_files=[{"name": "reel.mp4", "url": "/files/reel.mp4"}],
+        linked_task_ids=["task-1", "task-2"],
+        approval_status=ClientApprovalStatus.SENT,
+        approver_contact_id="contact-1",
+        sent_at=datetime.utcnow(),
+        viewed_at=None,
+        approved_at=None,
+        rejected_at=None,
+        revision_note=None,
+        revision_count=0,
+        approval_history=[],
+        delivered_at=None,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+
+    payload = serialize_deliverable(deliverable)
+
+    assert payload["title"] == "Instagram Reel #04"
+    assert payload["status"] == "client_review"
+    assert payload["approval_status"] == "sent"
+    assert payload["linked_task_ids"] == ["task-1", "task-2"]
+    assert payload["linked_files"][0]["name"] == "reel.mp4"
+
+
+def test_client_deliverable_lifecycle_allows_approval_then_delivery():
+    assert ClientDeliverableStatus.APPROVED in ALLOWED_DELIVERABLE_TRANSITIONS[ClientDeliverableStatus.CLIENT_REVIEW]
+    assert ClientDeliverableStatus.REVISION_REQUIRED in ALLOWED_DELIVERABLE_TRANSITIONS[ClientDeliverableStatus.CLIENT_REVIEW]
+    assert ClientDeliverableStatus.DELIVERED in ALLOWED_DELIVERABLE_TRANSITIONS[ClientDeliverableStatus.APPROVED]
+    assert ClientDeliverableStatus.DELIVERED not in ALLOWED_DELIVERABLE_TRANSITIONS[ClientDeliverableStatus.CLIENT_REVIEW]
 

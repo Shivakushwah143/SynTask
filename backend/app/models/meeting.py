@@ -28,6 +28,11 @@ class Meeting(Document):
     
     # Participants
     participant_ids: List[str] = []  # User IDs of participants
+
+    # Relationship links
+    client_id: Optional[str] = None
+    project_id: Optional[str] = None
+    contact_id: Optional[str] = None
     
     # Meeting Details
     meeting_date: datetime
@@ -62,7 +67,13 @@ class Meeting(Document):
             "status",
             "host_id",
             "participant_ids",
+            "client_id",
+            "project_id",
+            "contact_id",
             IndexModel([("company_id", ASCENDING), ("meeting_date", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("client_id", ASCENDING), ("meeting_date", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING), ("meeting_date", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("contact_id", ASCENDING), ("meeting_date", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("meeting_date", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("created_by", ASCENDING), ("meeting_date", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("host_id", ASCENDING), ("meeting_date", DESCENDING)]),
