@@ -39,6 +39,15 @@ from app.crm.client_deliverables import (
     validate_task_ids,
 )
 from app.crm.client_activity import build_client_activity, load_client_communications
+from app.crm.client_commercial import (
+    CHURN_REASONS,
+    RENEWAL_STATUSES,
+    archive_client,
+    load_client_finance,
+    mark_client_churned,
+    mark_client_renewed,
+    save_renewal_details,
+)
 from app.models.client_onboarding import ClientOnboardingItem, ClientOnboardingItemStatus
 from app.models.client_deliverable import ClientApprovalStatus, ClientDeliverable, ClientDeliverableStatus
 from app.models.client_service import ClientService, ClientServiceStatus
@@ -71,6 +80,29 @@ class ClientProfilePayload(BaseModel):
 
 class ContactRolesPayload(BaseModel):
     roles: List[str] = []
+
+
+class RenewalPayload(BaseModel):
+    renewal_date: Optional[str] = None
+    contract_end_date: Optional[str] = None
+    renewal_owner_id: Optional[str] = None
+    renewal_status: Optional[str] = None
+    renewal_value: Optional[float] = None
+    payment_terms: Optional[str] = None
+    billing_frequency: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ChurnPayload(BaseModel):
+    churn_reason: str
+    end_date: str
+    notes: Optional[str] = None
+    revenue_lost: Optional[float] = None
+    end_active_services: bool = True
+
+
+class ArchivePayload(BaseModel):
+    reason: str
 
 
 class ClientServicePayload(BaseModel):
@@ -584,6 +616,87 @@ async def get_client_activity(
         skip=skip,
         limit=limit,
     )
+
+
+@router.get("/{client_id}/finance")
+async def get_client_finance(
+    client_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Get aggregated Client Finance from existing invoices, payments, services, and MSAs."""
+    client = await load_client_for_user(client_id, current_user)
+    return {"client_id": str(client.id), "finance": await load_client_finance(client)}
+
+
+@router.patch("/{client_id}/renewal")
+async def update_client_renewal(
+    client_id: str,
+    payload: RenewalPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Create or update lightweight Client renewal tracking metadata."""
+    client = await load_client_for_user(client_id, current_user)
+    data = payload.dict(exclude_unset=True)
+    if data.get("renewal_owner_id"):
+        await _validate_same_tenant_user_id(data["renewal_owner_id"], current_user, "renewal owner")
+    renewal = await save_renewal_details(client, current_user, data)
+    return {"client_id": str(client.id), "renewal": renewal, "allowed_statuses": sorted(RENEWAL_STATUSES)}
+
+
+@router.post("/{client_id}/renewal/start")
+async def start_client_renewal(
+    client_id: str,
+    payload: RenewalPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Start a renewal discussion and move the Client to Renewal Due when action is required."""
+    client = await load_client_for_user(client_id, current_user)
+    data = payload.dict(exclude_unset=True)
+    if data.get("renewal_owner_id"):
+        await _validate_same_tenant_user_id(data["renewal_owner_id"], current_user, "renewal owner")
+    renewal = await save_renewal_details(client, current_user, {**data, "renewal_status": data.get("renewal_status") or "discussion_started"}, mark_started=True)
+    if client.status != ClientStatus.RENEWAL_DUE:
+        await transition_client_status(client, ClientStatus.RENEWAL_DUE, current_user, data.get("notes") or "Renewal action started")
+    return {"client_id": str(client.id), "status": client.status.value, "renewal": renewal}
+
+
+@router.post("/{client_id}/renewal/renewed")
+async def renew_client(
+    client_id: str,
+    payload: RenewalPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Mark a Renewal Due Client renewed and return it to Active while preserving renewal history."""
+    client = await load_client_for_user(client_id, current_user)
+    renewal = await mark_client_renewed(client, current_user, payload.dict(exclude_unset=True))
+    return {"client_id": str(client.id), "status": client.status.value, "renewal": renewal}
+
+
+@router.post("/{client_id}/churn")
+async def churn_client(
+    client_id: str,
+    payload: ChurnPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Mark a Client churned without deleting relationship history."""
+    client = await load_client_for_user(client_id, current_user)
+    data = payload.dict(exclude_unset=True)
+    churn = await mark_client_churned(client, current_user, data, end_active_services=payload.end_active_services)
+    return {"client_id": str(client.id), "status": client.status.value, "churn": churn, "allowed_reasons": sorted(CHURN_REASONS)}
+
+
+@router.post("/{client_id}/archive")
+async def archive_client_record(
+    client_id: str,
+    payload: ArchivePayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Archive a Client record as read-mostly history without deleting data."""
+    client = await load_client_for_user(client_id, current_user)
+    if client.status != ClientStatus.CHURNED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only churned clients can be archived from this workflow")
+    archive = await archive_client(client, current_user, payload.reason)
+    return {"client_id": str(client.id), "status": client.status.value, "archive": archive}
 
 
 @router.post("/{client_id}/onboarding/document/generate")

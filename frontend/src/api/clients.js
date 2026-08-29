@@ -35,6 +35,36 @@ export const clientsAPI = {
     return response.data
   },
 
+  getFinance: async (clientId) => {
+    const response = await api.get(`/clients/${clientId}/finance`)
+    return response.data
+  },
+
+  updateRenewal: async (clientId, payload) => {
+    const response = await api.patch(`/clients/${clientId}/renewal`, payload)
+    return response.data
+  },
+
+  startRenewal: async (clientId, payload = {}) => {
+    const response = await api.post(`/clients/${clientId}/renewal/start`, payload)
+    return response.data
+  },
+
+  markRenewed: async (clientId, payload = {}) => {
+    const response = await api.post(`/clients/${clientId}/renewal/renewed`, payload)
+    return response.data
+  },
+
+  markChurned: async (clientId, payload) => {
+    const response = await api.post(`/clients/${clientId}/churn`, payload)
+    return response.data
+  },
+
+  archiveClient: async (clientId, payload) => {
+    const response = await api.post(`/clients/${clientId}/archive`, payload)
+    return response.data
+  },
+
   saveOnboardingData: async (clientId, values) => {
     const formData = new FormData()
     Object.entries(values || {}).forEach(([key, value]) => {

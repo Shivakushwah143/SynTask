@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from beanie.exceptions import CollectionWasNotInitialized
 
+from app.core.clock import utc_now
 from app.crm.client_identity import load_contacts_for_client, resolve_crm_company_for_client
 from app.models.client import Client
 from app.models.client_deliverable import ClientDeliverable
@@ -159,6 +160,14 @@ async def build_client_activity(
     lifecycle_reason = getattr(client, "lifecycle_reason", None)
     if lifecycle_reason or client.status:
         events.append(_event("work", "Lifecycle state updated", client.updated_at, "client", str(client.id), {"status": getattr(client.status, "value", client.status), "reason": lifecycle_reason}, client.assigned_to))
+    metadata = client.lifecycle_metadata or {}
+    for entry in metadata.get("renewal_history") or []:
+        action = "Client renewed" if entry.get("action") == "renewed" else "Renewal updated"
+        events.append(_event("finance", action, entry.get("at"), "renewal", str(client.id), entry.get("snapshot") or {}, entry.get("actor")))
+    for entry in metadata.get("churn_history") or []:
+        events.append(_event("finance", "Client churned", entry.get("at"), "churn", str(client.id), entry.get("snapshot") or {}, entry.get("actor")))
+    for entry in metadata.get("archive_history") or []:
+        events.append(_event("finance", "Client archived", entry.get("at"), "archive", str(client.id), entry.get("snapshot") or {}, entry.get("actor")))
     for service in services:
         events.append(_event("work", "Service updated", service.updated_at, "service", str(service.id), {"name": service.name, "status": getattr(service.status, "value", service.status)}, service.service_owner_id))
     for project in projects:
@@ -199,7 +208,13 @@ async def build_client_activity(
     for file_item in files:
         events.append(_event("files", "File/document added", file_item.get("uploaded_at") or file_item.get("created_at"), "file", file_item.get("id") or file_item.get("url") or file_item.get("name"), {"name": file_item.get("name"), "category": file_item.get("category")}, file_item.get("uploaded_by")))
     for invoice in invoices:
-        events.append(_event("finance", "Invoice/payment updated", invoice.updated_at, "invoice", str(invoice.id), {"invoice_number": invoice.invoice_number, "status": getattr(invoice.status, "value", invoice.status), "outstanding_amount": invoice.outstanding_amount}, None))
+        status_value = getattr(getattr(invoice, "status", None), "value", getattr(invoice, "status", None))
+        action = "Invoice/payment updated"
+        if status_value == "paid" or float(getattr(invoice, "total_received", 0) or 0) > 0:
+            action = "Payment received"
+        if status_value not in {"paid", "cancelled"} and getattr(invoice, "due_date", None) and invoice.due_date < utc_now() and float(getattr(invoice, "outstanding_amount", 0) or 0) > 0:
+            action = "Invoice overdue"
+        events.append(_event("finance", action, getattr(invoice, "updated_at", None), "invoice", str(invoice.id), {"invoice_number": invoice.invoice_number, "status": status_value, "outstanding_amount": getattr(invoice, "outstanding_amount", 0), "total_received": getattr(invoice, "total_received", 0)}, None))
 
     if category != "all":
         events = [event for event in events if event["kind"] == category]

@@ -12,6 +12,7 @@ from bson import ObjectId
 from app.crm.company_timeline import CRMCompanyTimelineService
 from app.crm.client_identity import load_contacts_for_client, resolve_crm_company_for_client
 from app.crm.client_activity import build_client_activity, load_client_communications
+from app.crm.client_commercial import load_client_finance, renewal_due_hint
 from app.crm.client_deliverables import serialize_deliverable
 from app.crm.client_onboarding import sync_client_onboarding
 from app.crm.client_services import ensure_sales_handoff_service, serialize_client_service
@@ -248,6 +249,8 @@ class ClientWorkspaceService:
                     "deliverable_id": deliverable.get("id"),
                 })
         communications = await load_client_communications(client, projects)
+        finance = await load_client_finance(client, invoices, services)
+        commercial_lifecycle = renewal_due_hint(client, finance)
         client_activity = await build_client_activity(
             client,
             projects=projects,
@@ -350,6 +353,10 @@ class ClientWorkspaceService:
             "communication": communications["communication"],
             "internal_notes": communications["internal_notes"],
             "files": categorized_files,
+            "finance": finance,
+            "renewal": commercial_lifecycle["renewal"],
+            "churn": commercial_lifecycle["churn"],
+            "commercial_lifecycle": commercial_lifecycle,
             "meetings": meetings,
             "onboarding": onboarding,
             "invoices": [
@@ -427,6 +434,10 @@ class ClientWorkspaceService:
                     "paid": sum(1 for invoice in invoices if invoice.status.value == "paid"),
                     "cancelled": sum(1 for invoice in invoices if invoice.status.value == "cancelled"),
                     "outstanding_amount": sum(float(invoice.outstanding_amount or 0) for invoice in invoices),
+                    "paid_amount": finance["total_paid"],
+                    "overdue_amount": finance["overdue"],
+                    "overdue_count": finance["overdue_count"],
+                    "next_invoice": finance["next_invoice"],
                 },
             },
             "timeline": timeline,

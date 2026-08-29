@@ -295,6 +295,8 @@ Onboarding Phase 3 stores additive structured data in `Client.lifecycle_metadata
 
 Phase 4 stores profile-only details in `Client.lifecycle_metadata.profile` with `commercial_summary` and `relationship_information`. Contact role assignments are stored in `Client.lifecycle_metadata.contact_roles` keyed by existing same-tenant `SalesContact` id; contact identities, primary contact flags, and CRM company membership stay in `sales_contacts`.
 
+Phase 7 stores renewal, churn, and archive workflow metadata in `Client.lifecycle_metadata` instead of introducing duplicate accounting records. `renewal` contains renewal date, contract/service end date, owner, status, value, payment terms, billing frequency, notes, updated actor/time, and append-only `renewal_history`. `churn` contains reason, end date, notes, calculated/provided revenue lost, actor/time, and append-only `churn_history`. `archive` contains reason, actor/time, and append-only `archive_history`. Finance totals are computed from existing `invoices.payments`, `client_services`, and `msas`; payments and invoice truth remain in their source collections.
+
 ### `client_services`
 | Field | Type | Required | Indexed | Notes |
 |---|---|---|---|---|

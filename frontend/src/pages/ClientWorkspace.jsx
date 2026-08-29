@@ -37,6 +37,8 @@ const TABS = [
 const CONTACT_ROLE_OPTIONS = ['Primary Contact', 'Decision Maker', 'Finance Contact', 'Project Contact', 'Technical Contact', 'Approver']
 const DELIVERABLE_STATUSES = ['planned', 'in_production', 'internal_review', 'client_review', 'revision_required', 'approved', 'delivered']
 const ACTIVITY_FILTERS = ['all', 'communication', 'meetings', 'work', 'files', 'finance']
+const RENEWAL_STATUSES = ['upcoming', 'discussion_started', 'terms_sent', 'renewed', 'renewal_failed', 'churned']
+const CHURN_REASONS = ['Price', 'Budget', 'Poor Service', 'Delivery Delay', 'Communication Issue', 'Competitor', 'No Longer Needed', 'Business Closed', 'Other']
 
 function formatDate(value) {
   if (!value) return 'N/A'
@@ -523,6 +525,9 @@ export default function ClientWorkspacePage() {
   const internalNotes = useMemo(() => (Array.isArray(workspace.internal_notes) ? workspace.internal_notes : []), [workspace.internal_notes])
   const files = useMemo(() => (Array.isArray(workspace.files) ? workspace.files : documents), [workspace.files, documents])
   const invoices = useMemo(() => (Array.isArray(workspace.invoices) ? workspace.invoices : []), [workspace.invoices])
+  const finance = workspace.finance || {}
+  const renewal = workspace.renewal || client?.lifecycle_metadata?.renewal || {}
+  const churn = workspace.churn || client?.lifecycle_metadata?.churn || {}
   const meetings = useMemo(() => (Array.isArray(workspace.meetings) ? workspace.meetings : []), [workspace.meetings])
   const onboarding = workspace.onboarding || null
   const onboardingItems = useMemo(() => (Array.isArray(onboarding?.items) ? onboarding.items : []), [onboarding?.items])
@@ -829,6 +834,49 @@ export default function ClientWorkspacePage() {
     }
   )
 
+  const renewalMutation = useMutation(
+    ({ action, payload }) => {
+      if (action === 'start') return clientsAPI.startRenewal(clientId, payload)
+      if (action === 'renewed') return clientsAPI.markRenewed(clientId, payload)
+      return clientsAPI.updateRenewal(clientId, payload)
+    },
+    {
+      onSuccess: () => {
+        toast.success('Renewal updated')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries(['client-activity', clientId])
+        queryClient.invalidateQueries('clients')
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to update renewal')),
+    }
+  )
+
+  const churnMutation = useMutation(
+    (payload) => clientsAPI.markChurned(clientId, payload),
+    {
+      onSuccess: () => {
+        toast.success('Client churned')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries(['client-activity', clientId])
+        queryClient.invalidateQueries('clients')
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to churn client')),
+    }
+  )
+
+  const archiveMutation = useMutation(
+    (payload) => clientsAPI.archiveClient(clientId, payload),
+    {
+      onSuccess: () => {
+        toast.success('Client archived')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+        queryClient.invalidateQueries(['client-activity', clientId])
+        queryClient.invalidateQueries('clients')
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to archive client')),
+    }
+  )
+
   const onboardingDocumentMutation = useMutation(
     () => clientsAPI.generateOnboardingDocument(clientId),
     {
@@ -868,7 +916,7 @@ export default function ClientWorkspacePage() {
   const totalDeliverables = deliverables.length || 0
   const totalFiles = files.length || 0
   const totalInvoices = invoices.length || 0
-  const outstandingAmount = summary.invoices?.outstanding_amount || invoices.reduce((sum, invoice) => sum + Number(invoice.outstanding_amount || 0), 0)
+  const outstandingAmount = finance.outstanding ?? summary.invoices?.outstanding_amount ?? invoices.reduce((sum, invoice) => sum + Number(invoice.outstanding_amount || 0), 0)
   const activityData = activityQuery.data || (activityFilter === 'all' ? activityFeed : { items: [], total: 0, has_more: false })
   const activityItems = Array.isArray(activityData.items) ? activityData.items : []
   const communicationChannels = ['all', ...Array.from(new Set(communication.map((item) => item.channel || item.type).filter(Boolean)))]
@@ -1039,6 +1087,48 @@ export default function ClientWorkspacePage() {
       participant_ids: '',
     })
     event.currentTarget.reset()
+  }
+
+  const renewalPayloadFromForm = (form) => {
+    const data = new FormData(form)
+    return {
+      renewal_date: data.get('renewal_date') || undefined,
+      contract_end_date: data.get('contract_end_date') || undefined,
+      renewal_owner_id: data.get('renewal_owner_id') || undefined,
+      renewal_status: data.get('renewal_status') || undefined,
+      renewal_value: data.get('renewal_value') ? Number(data.get('renewal_value')) : undefined,
+      payment_terms: data.get('payment_terms') || undefined,
+      billing_frequency: data.get('billing_frequency') || undefined,
+      notes: data.get('notes') || undefined,
+    }
+  }
+
+  const handleRenewalSubmit = (event, action = 'update') => {
+    event.preventDefault()
+    renewalMutation.mutate({ action, payload: renewalPayloadFromForm(event.currentTarget) })
+  }
+
+  const submitRenewalFormAction = (form, action) => {
+    if (!form) return
+    renewalMutation.mutate({ action, payload: renewalPayloadFromForm(form) })
+  }
+
+  const handleChurnSubmit = (event) => {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    churnMutation.mutate({
+      churn_reason: data.get('churn_reason'),
+      end_date: data.get('end_date'),
+      notes: data.get('notes') || undefined,
+      revenue_lost: data.get('revenue_lost') ? Number(data.get('revenue_lost')) : undefined,
+      end_active_services: data.get('end_active_services') === 'on',
+    })
+  }
+
+  const handleArchiveSubmit = (event) => {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    archiveMutation.mutate({ reason: data.get('reason') })
   }
 
   if (!clientId) {
@@ -1628,7 +1718,15 @@ export default function ClientWorkspacePage() {
     )
   } else if (activeTab === 'invoices') {
     tabBody = (
-      <CRMSection title="Invoices" description="Billing raised for this client.">
+      <CRMSection title="Finance" description="Commercial lifecycle, invoices, payments, renewal, and churn controls.">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <CRMStatCard icon={DollarSign} label="Contract value" value={formatCurrency(finance.contract_value || 0)} tone="emerald" helper={finance.payment_terms || 'No payment terms'} />
+          <CRMStatCard icon={DollarSign} label="Monthly value" value={formatCurrency(finance.monthly_value || 0)} tone="blue" helper={finance.billing_frequency || 'No billing frequency'} />
+          <CRMStatCard icon={DollarSign} label="Paid" value={formatCurrency(finance.total_paid || 0)} tone="green" helper={`${formatCurrency(finance.total_invoiced || 0)} invoiced`} />
+          <CRMStatCard icon={AlertTriangle} label="Outstanding" value={formatCurrency(finance.outstanding || 0)} tone="amber" helper={`${formatCurrency(finance.overdue || 0)} overdue`} />
+        </div>
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="space-y-4">
         {invoices.length ? (
           <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div className="overflow-x-auto">
@@ -1661,6 +1759,62 @@ export default function ClientWorkspacePage() {
         ) : (
           <CRMEmptyState icon={DollarSign} title="No invoices yet" description="Invoices generated for this client will appear here." />
         )}
+            <div className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Next invoice</p>
+              {finance.next_invoice ? (
+                <div className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{finance.next_invoice.invoice_number}</p>
+                  <p>Due {formatDate(finance.next_invoice.due_date)} | {formatCurrency(finance.next_invoice.outstanding_amount || 0)} outstanding</p>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">No upcoming unpaid invoice.</p>
+              )}
+            </div>
+          </div>
+          <div className="space-y-4">
+            <form onSubmit={(event) => handleRenewalSubmit(event, 'update')} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Renewal</p>
+              <div className="mt-3 grid gap-3">
+                <input name="renewal_date" type="date" defaultValue={renewal.renewal_date ? String(renewal.renewal_date).slice(0, 10) : ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <input name="contract_end_date" type="date" defaultValue={renewal.contract_end_date ? String(renewal.contract_end_date).slice(0, 10) : ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <input name="renewal_owner_id" placeholder="Renewal owner ID" defaultValue={renewal.renewal_owner_id || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <select name="renewal_status" defaultValue={renewal.status || 'upcoming'} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">
+                  {RENEWAL_STATUSES.map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}
+                </select>
+                <input name="renewal_value" type="number" min="0" step="0.01" placeholder="Renewal value" defaultValue={renewal.renewal_value || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <input name="payment_terms" placeholder="Payment terms" defaultValue={renewal.payment_terms || finance.payment_terms || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <input name="billing_frequency" placeholder="Billing frequency" defaultValue={renewal.billing_frequency || finance.billing_frequency || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <textarea name="notes" rows={3} placeholder="Renewal notes" defaultValue={renewal.notes || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button type="submit" size="sm" variant="secondary" disabled={renewalMutation.isLoading}>Save</Button>
+                <Button type="button" size="sm" variant="secondary" onClick={(event) => submitRenewalFormAction(event.currentTarget.closest('form'), 'start')} disabled={renewalMutation.isLoading}>Start renewal</Button>
+                <Button type="button" size="sm" onClick={(event) => submitRenewalFormAction(event.currentTarget.closest('form'), 'renewed')} disabled={renewalMutation.isLoading}>Mark renewed</Button>
+              </div>
+            </form>
+            <form onSubmit={handleChurnSubmit} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Churn</p>
+              <div className="mt-3 grid gap-3">
+                <select name="churn_reason" defaultValue={churn.reason || ''} required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">
+                  <option value="">Select churn reason</option>
+                  {CHURN_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+                </select>
+                <input name="end_date" type="date" defaultValue={churn.end_date ? String(churn.end_date).slice(0, 10) : ''} required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <input name="revenue_lost" type="number" min="0" step="0.01" placeholder="Revenue/value lost" defaultValue={churn.revenue_lost || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <textarea name="notes" rows={3} placeholder="Churn notes" defaultValue={churn.notes || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input name="end_active_services" type="checkbox" defaultChecked /> End active services safely</label>
+              </div>
+              <Button type="submit" size="sm" variant="secondary" className="mt-3" disabled={churnMutation.isLoading}>Mark churned</Button>
+            </form>
+            {client.status === 'churned' ? (
+              <form onSubmit={handleArchiveSubmit} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Archive</p>
+                <input name="reason" required placeholder="Archive reason" className="mt-3 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <Button type="submit" size="sm" variant="secondary" className="mt-3" disabled={archiveMutation.isLoading}>Archive client</Button>
+              </form>
+            ) : null}
+          </div>
+        </div>
       </CRMSection>
     )
   } else if (activeTab === 'meetings') {

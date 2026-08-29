@@ -16,6 +16,13 @@ from app.crm.deal_automation import _resolve_client, handle_won_deal_automation
 from app.crm.client_services import serialize_client_service, set_client_contact_roles
 from app.crm.client_deliverables import ALLOWED_DELIVERABLE_TRANSITIONS, serialize_deliverable
 from app.crm.client_activity import build_client_activity, load_client_communications
+from app.crm.client_commercial import (
+    archive_client,
+    load_client_finance,
+    mark_client_churned,
+    mark_client_renewed,
+    save_renewal_details,
+)
 from app.models.client import Client, ClientStatus, ClientType
 from app.models.client_deliverable import ClientApprovalStatus, ClientDeliverableStatus
 from app.models.client_service import ClientServiceStatus
@@ -1063,6 +1070,128 @@ def test_client_deliverable_lifecycle_allows_approval_then_delivery():
     assert ClientDeliverableStatus.REVISION_REQUIRED in ALLOWED_DELIVERABLE_TRANSITIONS[ClientDeliverableStatus.CLIENT_REVIEW]
     assert ClientDeliverableStatus.DELIVERED in ALLOWED_DELIVERABLE_TRANSITIONS[ClientDeliverableStatus.APPROVED]
     assert ClientDeliverableStatus.DELIVERED not in ALLOWED_DELIVERABLE_TRANSITIONS[ClientDeliverableStatus.CLIENT_REVIEW]
+
+
+@pytest.mark.asyncio
+async def test_client_finance_aggregates_existing_invoices_services_and_terms():
+    now = datetime.utcnow()
+    client = _client(
+        budget=12000,
+        client_type=ClientType.MONTHLY,
+        lifecycle_metadata={"onboarding": {"commercial": {"payment_terms": "Net 15", "billing_frequency": "monthly"}}},
+    )
+    invoices = [
+        SimpleNamespace(
+            id="invoice-1",
+            status=InvoiceStatus.SENT,
+            total_amount=1000,
+            total_received=250,
+            outstanding_amount=750,
+            due_date=now - timedelta(days=2),
+            invoice_date=now - timedelta(days=20),
+            invoice_number="INV-1",
+        ),
+        SimpleNamespace(
+            id="invoice-2",
+            status=InvoiceStatus.PAID,
+            total_amount=500,
+            total_received=500,
+            outstanding_amount=0,
+            due_date=now + timedelta(days=10),
+            invoice_date=now,
+            invoice_number="INV-2",
+        ),
+    ]
+    services = [
+        SimpleNamespace(id="service-1", status=ClientServiceStatus.ACTIVE, pricing_value=3000),
+        SimpleNamespace(id="service-2", status=ClientServiceStatus.ENDED, pricing_value=1500),
+    ]
+
+    finance = await load_client_finance(client, invoices, services)
+
+    assert finance["contract_value"] == 12000
+    assert finance["monthly_value"] == 3000
+    assert finance["total_invoiced"] == 1500
+    assert finance["total_paid"] == 750
+    assert finance["outstanding"] == 750
+    assert finance["overdue"] == 750
+    assert finance["overdue_count"] == 1
+    assert finance["payment_terms"] == "Net 15"
+    assert finance["billing_frequency"] == "monthly"
+
+
+@pytest.mark.asyncio
+async def test_renewal_update_and_renewed_preserve_history_and_return_active():
+    client = _client(status=ClientStatus.RENEWAL_DUE, lifecycle_metadata={})
+    actor = _user()
+
+    renewal = await save_renewal_details(
+        client,
+        actor,
+        {"renewal_date": "2026-09-30", "contract_end_date": "2026-12-31", "renewal_status": "terms_sent", "renewal_value": 25000, "notes": "Sent terms"},
+    )
+    renewed = await mark_client_renewed(client, actor, {"contract_end_date": "2027-12-31", "renewal_value": 30000, "notes": "Accepted"})
+
+    assert renewal["status"] == "terms_sent"
+    assert renewed["status"] == "renewed"
+    assert client.status == ClientStatus.ACTIVE
+    assert client.budget == 30000
+    assert len(client.lifecycle_metadata["renewal_history"]) == 2
+    assert client.lifecycle_metadata["renewal_history"][1]["previous"]["status"] == "terms_sent"
+
+
+@pytest.mark.asyncio
+async def test_churn_requires_reason_and_end_date():
+    client = _client(status=ClientStatus.ACTIVE)
+
+    with pytest.raises(HTTPException):
+        await mark_client_churned(client, _user(), {"churn_reason": "Price"})
+
+    with pytest.raises(HTTPException):
+        await mark_client_churned(client, _user(), {"churn_reason": "", "end_date": "2026-10-01"})
+
+
+@pytest.mark.asyncio
+async def test_churn_preserves_history_and_ends_active_services(monkeypatch):
+    client = _client(status=ClientStatus.ACTIVE, documents=[{"name": "agreement.pdf"}], project_ids=["project-1"])
+    active_service = SimpleNamespace(id="service-1", status=ClientServiceStatus.ACTIVE, end_date=None, pricing_value=5000, saved=False)
+
+    async def save_service():
+        active_service.saved = True
+
+    active_service.save = save_service
+
+    monkeypatch.setattr("app.crm.client_commercial.ClientService.find", lambda query: FakeQuery([active_service]))
+    monkeypatch.setattr("app.crm.client_commercial.Invoice.find", lambda query: FakeQuery([]))
+    monkeypatch.setattr("app.crm.client_commercial.MSA.find", lambda query: FakeQuery([]))
+
+    churn = await mark_client_churned(
+        client,
+        _user(),
+        {"churn_reason": "Budget", "end_date": "2026-10-01", "notes": "Budget paused"},
+    )
+
+    assert client.status == ClientStatus.CHURNED
+    assert client.documents == [{"name": "agreement.pdf"}]
+    assert client.project_ids == ["project-1"]
+    assert client.lifecycle_metadata["churn"]["reason"] == "Budget"
+    assert client.lifecycle_metadata["churn_history"][0]["action"] == "churned"
+    assert active_service.status == ClientServiceStatus.ENDED
+    assert active_service.saved is True
+    assert churn["ended_service_ids"] == ["service-1"]
+
+
+@pytest.mark.asyncio
+async def test_archive_churned_client_is_non_destructive():
+    client = _client(status=ClientStatus.CHURNED, documents=[{"name": "brief.pdf"}], project_ids=["project-1"])
+
+    archive = await archive_client(client, _user(), "Historical account")
+
+    assert client.status == ClientStatus.ARCHIVED
+    assert client.documents == [{"name": "brief.pdf"}]
+    assert client.project_ids == ["project-1"]
+    assert archive["reason"] == "Historical account"
+    assert client.lifecycle_metadata["archive_history"][0]["action"] == "archived"
 
 
 @pytest.mark.asyncio

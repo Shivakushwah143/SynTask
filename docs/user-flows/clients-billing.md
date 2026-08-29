@@ -81,6 +81,13 @@ The Files tab aggregates references from existing Client documents and Deliverab
 
 The Activity tab is a chronological, lazy-loaded Client relationship feed with filters for All, Communication, Meetings, Work, Files, and Finance. Sources include Client creation/lifecycle and onboarding changes, Services, Projects, Tasks, Deliverables, Meetings, Communication, file/document additions, and existing invoice/payment events where available. Every source query is tenant scoped by the Client company key and existing linked-record authorization rules.
 
+### Client finance, renewal, and churn
+The Finance tab summarizes commercial data from existing Invoices, Invoice payment records, Client Services, Client fields, and signed/completed MSAs. It shows contract/client value, monthly value, total invoiced, total paid, outstanding, overdue amount/count, next invoice, payment terms, and billing frequency. Invoices and payments remain the source of truth; the Client record stores no duplicate invoice or payment rows.
+
+Renewal tracking is lightweight Client lifecycle metadata. Users can save renewal date, contract/service end date, renewal owner, status, value, payment terms, billing frequency, and notes. Starting renewal moves the Client to `renewal_due` only when action is required. Marking renewed preserves the previous renewal snapshot in history, updates supplied value/dates, and returns the Client to `active`.
+
+Churn requires a reason and end date. Supported reasons are Price, Budget, Poor Service, Delivery Delay, Communication Issue, Competitor, No Longer Needed, Business Closed, and Other. Churn records notes and lost value where supplied or calculable, preserves Contacts, Services, Projects, Tasks, Deliverables, Communication, Files, Finance, and Activity, and may safely move active Client Services to Ended. Churned Clients can be archived as historical records; archive does not delete Client data.
+
 ## Invoices
 - How the user reaches it: main navigation.
 - What they can do: create and manage invoices.
