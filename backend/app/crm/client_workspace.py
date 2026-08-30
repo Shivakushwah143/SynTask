@@ -14,6 +14,7 @@ from app.crm.client_identity import load_contacts_for_client, resolve_crm_compan
 from app.crm.client_activity import build_client_activity, load_client_communications
 from app.crm.client_commercial import load_client_finance, renewal_due_hint
 from app.crm.client_deliverables import serialize_deliverable
+from app.crm.client_health import calculate_client_health, sync_client_health
 from app.crm.client_onboarding import sync_client_onboarding
 from app.crm.client_services import ensure_sales_handoff_service, serialize_client_service
 from app.crm.models import Client
@@ -251,6 +252,18 @@ class ClientWorkspaceService:
         communications = await load_client_communications(client, projects)
         finance = await load_client_finance(client, invoices, services)
         commercial_lifecycle = renewal_due_hint(client, finance)
+        health_snapshot = calculate_client_health(
+            client,
+            projects=projects,
+            tasks=tasks,
+            meetings=meetings,
+            deliverables=deliverables,
+            invoices=invoices,
+            communication=communications["communication"],
+            finance=finance,
+            renewal=commercial_lifecycle["renewal"],
+        )
+        health = await sync_client_health(client, current_user, health_snapshot)
         client_activity = await build_client_activity(
             client,
             projects=projects,
@@ -354,6 +367,9 @@ class ClientWorkspaceService:
             "internal_notes": communications["internal_notes"],
             "files": categorized_files,
             "finance": finance,
+            "health": health,
+            "next_action": (client.lifecycle_metadata or {}).get("client_next_action") or health.get("next_action"),
+            "active_escalation": (client.lifecycle_metadata or {}).get("client_health_escalation") or health.get("active_escalation"),
             "renewal": commercial_lifecycle["renewal"],
             "churn": commercial_lifecycle["churn"],
             "commercial_lifecycle": commercial_lifecycle,

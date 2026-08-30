@@ -168,6 +168,11 @@ async def build_client_activity(
         events.append(_event("finance", "Client churned", entry.get("at"), "churn", str(client.id), entry.get("snapshot") or {}, entry.get("actor")))
     for entry in metadata.get("archive_history") or []:
         events.append(_event("finance", "Client archived", entry.get("at"), "archive", str(client.id), entry.get("snapshot") or {}, entry.get("actor")))
+    for entry in metadata.get("client_health_history") or []:
+        snapshot = entry.get("snapshot") or {}
+        events.append(_event("work", "Client health calculated", entry.get("at"), "client_health", str(client.id), {"score": snapshot.get("score"), "level": snapshot.get("level"), "reasons": snapshot.get("reasons") or []}, None))
+    for entry in metadata.get("client_health_level_history") or []:
+        events.append(_event("work", "Client health level changed", entry.get("at"), "client_health", str(client.id), {"from": entry.get("from"), "to": entry.get("to"), "reasons": entry.get("reasons") or []}, entry.get("actor_id")))
     for service in services:
         events.append(_event("work", "Service updated", service.updated_at, "service", str(service.id), {"name": service.name, "status": getattr(service.status, "value", service.status)}, service.service_owner_id))
     for project in projects:

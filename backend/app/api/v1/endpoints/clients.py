@@ -48,8 +48,11 @@ from app.crm.client_commercial import (
     mark_client_renewed,
     save_renewal_details,
 )
+from app.crm.client_health import complete_client_next_action
+from app.crm.client_portfolio import build_client_portfolio_overview, list_client_saved_views, run_client_automation
 from app.models.client_onboarding import ClientOnboardingItem, ClientOnboardingItemStatus
 from app.models.client_deliverable import ClientApprovalStatus, ClientDeliverable, ClientDeliverableStatus
+from app.models.client_saved_view import ClientSavedView
 from app.models.client_service import ClientService, ClientServiceStatus
 from app.models.user import User, UserRole
 from app.models.project import Project
@@ -103,6 +106,15 @@ class ChurnPayload(BaseModel):
 
 class ArchivePayload(BaseModel):
     reason: str
+
+
+class NextActionStatusPayload(BaseModel):
+    status: str = "completed"
+
+
+class ClientSavedViewPayload(BaseModel):
+    name: str
+    filters: Dict[str, Any] = {}
 
 
 class ClientServicePayload(BaseModel):
@@ -162,6 +174,81 @@ async def get_client_lifecycle_rules():
     return {"rules": client_lifecycle_rules()}
 PROJECT_UPLOAD_DIR = BACKEND_DIR / settings.UPLOAD_DIR / "projects"
 PROJECT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@router.get("/overview/dashboard")
+async def get_client_overview_dashboard(
+    limit: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+):
+    """Return server-side Client Overview KPIs, attention items, insights, and daily actions."""
+    return await build_client_portfolio_overview(current_user, limit=limit)
+
+
+@router.get("/insights/summary")
+async def get_client_insights_summary(
+    limit: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+):
+    """Return Client-focused insights separate from Sales pipeline reporting."""
+    overview = await build_client_portfolio_overview(current_user, limit=limit)
+    return {"insights": overview["insights"]}
+
+
+@router.post("/automation/run")
+async def run_client_automation_actions(
+    limit: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Run built-in Client automation using existing Task and Notification records."""
+    return await run_client_automation(current_user, limit=limit)
+
+
+@router.get("/saved-views")
+async def get_client_saved_views(
+    current_user: User = Depends(get_current_user),
+):
+    """List built-in and user-saved Client filter views."""
+    return await list_client_saved_views(current_user)
+
+
+@router.post("/saved-views")
+async def create_client_saved_view(
+    payload: ClientSavedViewPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Create a saved Client filter view without copying Client records."""
+    view = ClientSavedView(name=payload.name.strip(), filters=payload.filters or {}, company_id=str(current_user.company_id), owner_id=str(current_user.id))
+    await view.insert()
+    return {"view": {"id": str(view.id), "name": view.name, "filters": view.filters}}
+
+
+@router.patch("/saved-views/{view_id}")
+async def update_client_saved_view(
+    view_id: str,
+    payload: ClientSavedViewPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    view = await ClientSavedView.get(view_id)
+    if not view or str(view.owner_id) != str(current_user.id) or str(view.company_id) != str(current_user.company_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved view not found")
+    view.name = payload.name.strip()
+    view.filters = payload.filters or {}
+    view.updated_at = utc_now()
+    await view.save()
+    return {"view": {"id": str(view.id), "name": view.name, "filters": view.filters}}
+
+
+@router.delete("/saved-views/{view_id}")
+async def delete_client_saved_view(
+    view_id: str,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    view = await ClientSavedView.get(view_id)
+    if not view or str(view.owner_id) != str(current_user.id) or str(view.company_id) != str(current_user.company_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved view not found")
+    await view.delete()
+    return {"message": "Saved view deleted"}
 
 
 async def _validate_crm_company_id(crm_company_id: Optional[str], current_user: User) -> Optional[str]:
@@ -578,6 +665,33 @@ async def get_client_workspace(
 ):
     """Get client workspace with projects, meetings, tasks, leads, and timeline."""
     return await ClientWorkspaceService.load_workspace(current_user, client_id)
+
+
+@router.get("/{client_id}/health")
+async def get_client_health(
+    client_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Calculate and return explainable Client Health without changing lifecycle status."""
+    workspace = await ClientWorkspaceService.load_workspace(current_user, client_id)
+    return {
+        "client_id": client_id,
+        "health": workspace.get("health"),
+        "next_action": workspace.get("next_action"),
+        "active_escalation": workspace.get("active_escalation"),
+    }
+
+
+@router.post("/{client_id}/next-action/status")
+async def update_client_next_action_status(
+    client_id: str,
+    payload: NextActionStatusPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Complete or reopen the current generated Client next action."""
+    client = await load_client_for_user(client_id, current_user)
+    action = await complete_client_next_action(client, current_user, payload.status)
+    return {"client_id": str(client.id), "next_action": action}
 
 
 @router.get("/{client_id}/activity")

@@ -24,6 +24,41 @@ export const clientsAPI = {
     return response.data
   },
 
+  getOverviewDashboard: async (params = {}) => {
+    const response = await api.get('/clients/overview/dashboard', { params })
+    return response.data
+  },
+
+  getInsights: async (params = {}) => {
+    const response = await api.get('/clients/insights/summary', { params })
+    return response.data
+  },
+
+  runAutomation: async (params = {}) => {
+    const response = await api.post('/clients/automation/run', null, { params })
+    return response.data
+  },
+
+  listSavedViews: async () => {
+    const response = await api.get('/clients/saved-views')
+    return response.data
+  },
+
+  createSavedView: async (payload) => {
+    const response = await api.post('/clients/saved-views', payload)
+    return response.data
+  },
+
+  updateSavedView: async (viewId, payload) => {
+    const response = await api.patch(`/clients/saved-views/${viewId}`, payload)
+    return response.data
+  },
+
+  deleteSavedView: async (viewId) => {
+    const response = await api.delete(`/clients/saved-views/${viewId}`)
+    return response.data
+  },
+
   // Get client workspace
   getWorkspace: async (clientId) => {
     const response = await api.get(`/clients/${clientId}/workspace`)
@@ -37,6 +72,14 @@ export const clientsAPI = {
 
   getFinance: async (clientId) => {
     const response = await api.get(`/clients/${clientId}/finance`)
+    return response.data
+  },
+  getHealth: async (clientId) => {
+    const response = await api.get(`/clients/${clientId}/health`)
+    return response.data
+  },
+  updateNextActionStatus: async (clientId, payload) => {
+    const response = await api.post(`/clients/${clientId}/next-action/status`, payload)
     return response.data
   },
 

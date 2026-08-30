@@ -39,6 +39,12 @@ const DELIVERABLE_STATUSES = ['planned', 'in_production', 'internal_review', 'cl
 const ACTIVITY_FILTERS = ['all', 'communication', 'meetings', 'work', 'files', 'finance']
 const RENEWAL_STATUSES = ['upcoming', 'discussion_started', 'terms_sent', 'renewed', 'renewal_failed', 'churned']
 const CHURN_REASONS = ['Price', 'Budget', 'Poor Service', 'Delivery Delay', 'Communication Issue', 'Competitor', 'No Longer Needed', 'Business Closed', 'Other']
+const HEALTH_TONES = {
+  healthy: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200',
+  attention_needed: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200',
+  at_risk: 'border-orange-200 bg-orange-50 text-orange-800 dark:border-orange-900/60 dark:bg-orange-950/30 dark:text-orange-200',
+  critical: 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200',
+}
 
 function formatDate(value) {
   if (!value) return 'N/A'
@@ -528,6 +534,9 @@ export default function ClientWorkspacePage() {
   const finance = workspace.finance || {}
   const renewal = workspace.renewal || client?.lifecycle_metadata?.renewal || {}
   const churn = workspace.churn || client?.lifecycle_metadata?.churn || {}
+  const health = workspace.health || client?.lifecycle_metadata?.client_health || {}
+  const nextAction = workspace.next_action || client?.lifecycle_metadata?.client_next_action || health.next_action || {}
+  const activeEscalation = workspace.active_escalation || client?.lifecycle_metadata?.client_health_escalation || health.active_escalation || null
   const meetings = useMemo(() => (Array.isArray(workspace.meetings) ? workspace.meetings : []), [workspace.meetings])
   const onboarding = workspace.onboarding || null
   const onboardingItems = useMemo(() => (Array.isArray(onboarding?.items) ? onboarding.items : []), [onboarding?.items])
@@ -877,6 +886,17 @@ export default function ClientWorkspacePage() {
     }
   )
 
+  const nextActionMutation = useMutation(
+    () => clientsAPI.updateNextActionStatus(clientId, { status: 'completed' }),
+    {
+      onSuccess: () => {
+        toast.success('Next action completed')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to update next action')),
+    }
+  )
+
   const onboardingDocumentMutation = useMutation(
     () => clientsAPI.generateOnboardingDocument(clientId),
     {
@@ -1213,9 +1233,13 @@ export default function ClientWorkspacePage() {
   const clientTypeLabel = formatClientType(client.client_type)
   const clientStatus = client.status || 'active'
   const clientStatusLabel = CLIENT_STATUS_OPTIONS.find((item) => item.value === clientStatus)?.label || clientStatus
-  const workspaceHealth = totalInvoices > 0
-    ? `${formatCurrency(outstandingAmount || 0)} outstanding`
-    : 'No billing activity yet'
+  const healthLevel = health.level || 'healthy'
+  const healthLabel = health.label || statusText(healthLevel)
+  const healthScore = Number.isFinite(Number(health.score)) ? Number(health.score) : 100
+  const healthReasons = Array.isArray(health.reasons) ? health.reasons : []
+  const healthTone = HEALTH_TONES[healthLevel] || HEALTH_TONES.healthy
+  const healthHistory = client.lifecycle_metadata?.client_health_history || []
+  const openNextAction = nextAction?.status !== 'completed' ? nextAction : null
 
   let tabBody
   if (activeTab === 'details') {
@@ -1961,12 +1985,18 @@ export default function ClientWorkspacePage() {
               </div>
             </article>
             <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Delivery state</p>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Client health</p>
+                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${healthTone}`}>{healthScore} - {healthLabel}</span>
+              </div>
               <div className="mt-3 space-y-2 text-sm text-gray-700 dark:text-gray-200">
-                <p>{projects.length} project(s)</p>
-                <p>{tasks.length} task(s)</p>
-                <p>{meetings.length} meeting(s)</p>
-                <p>{totalFiles} file(s)</p>
+                {healthReasons.slice(0, 3).map((reason) => (
+                  <button key={`${reason.type}-${reason.related_id || reason.message}`} type="button" onClick={() => setTab(reason.tab || 'overview')} className="block text-left text-sm font-medium text-primary-700 hover:underline dark:text-primary-300">
+                    {reason.message}
+                  </button>
+                ))}
+                {!healthReasons.length ? <p>No active risk reasons.</p> : null}
+                <p className="text-xs text-gray-500 dark:text-gray-400">{healthHistory.length ? `${healthHistory.length} health snapshot(s)` : 'First health snapshot'}</p>
               </div>
             </article>
           </div>
@@ -1978,6 +2008,38 @@ export default function ClientWorkspacePage() {
           <CRMStatCard icon={Users} label="Leads" value={String(totalLeads)} tone="amber" helper={summary.leads ? `${summary.leads.active || 0} active` : 'No linked leads yet'} />
           <CRMStatCard icon={DollarSign} label="Outstanding" value={formatCurrency(outstandingAmount || 0)} tone="slate" helper={`${totalInvoices} invoice(s)`} />
         </div>
+
+        <CRMSection title="Next Action" description="Generated from current client risk signals; lifecycle status remains separate.">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{openNextAction?.action || 'No open action'}</p>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    Owner: {openNextAction?.owner_id || 'Unassigned'} | Due: {formatDate(openNextAction?.due_date)} | Priority: {openNextAction?.priority || 'low'}
+                  </p>
+                </div>
+                {openNextAction ? <Button size="sm" variant="secondary" onClick={() => nextActionMutation.mutate()} disabled={nextActionMutation.isLoading}>Complete</Button> : null}
+              </div>
+              {openNextAction?.related_entity?.tab ? (
+                <button type="button" onClick={() => setTab(openNextAction.related_entity.tab)} className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-primary-700 hover:underline dark:text-primary-300">
+                  Open source <ExternalLink className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </article>
+            <article className={`rounded-2xl border p-4 shadow-sm ${activeEscalation ? 'border-orange-200 bg-orange-50 dark:border-orange-900/60 dark:bg-orange-950/30' : 'border-surface-border/80 bg-white dark:border-gray-800 dark:bg-gray-900'}`}>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Escalation</p>
+              {activeEscalation ? (
+                <div className="mt-3 space-y-2 text-sm text-gray-700 dark:text-gray-200">
+                  <p className="font-semibold text-gray-900 dark:text-gray-100">{activeEscalation.reason || 'Active health escalation'}</p>
+                  <p>Assigned: {activeEscalation.assigned_to || 'Unassigned'}</p>
+                  <p>Due: {formatDate(activeEscalation.due_date)}</p>
+                  <p>Action: {activeEscalation.recommended_action || 'Review client risk'}</p>
+                </div>
+              ) : <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No active escalation.</p>}
+            </article>
+          </div>
+        </CRMSection>
       </div>
     )
   }
@@ -2066,8 +2128,8 @@ export default function ClientWorkspacePage() {
             </article>
             <article className="rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Health</p>
-              <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{workspaceHealth}</p>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{primaryPhone}</p>
+              <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{healthScore} - {healthLabel}</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{healthReasons[0]?.message || primaryPhone}</p>
             </article>
           </div>
         </div>

@@ -88,6 +88,16 @@ Renewal tracking is lightweight Client lifecycle metadata. Users can save renewa
 
 Churn requires a reason and end date. Supported reasons are Price, Budget, Poor Service, Delivery Delay, Communication Issue, Competitor, No Longer Needed, Business Closed, and Other. Churn records notes and lost value where supplied or calculable, preserves Contacts, Services, Projects, Tasks, Deliverables, Communication, Files, Finance, and Activity, and may safely move active Client Services to Ended. Churned Clients can be archived as historical records; archive does not delete Client data.
 
+### Client health, next action, and escalation
+The Client Overview shows Client Health separately from lifecycle stage. Health is calculated from existing same-tenant records: overdue Tasks, overdue Deliverables, Client approval delays, overdue invoices/payments, communication inactivity, missed meetings, renewal risk, and deliverable revision volume where data exists. The user sees both score and level, plus source-linked reasons such as Finance, Deliverables, Meetings, Communication, or Tasks.
+
+Each operational Client receives one generated next action with owner, due date, priority, related entity, and status. Completing the action updates `Client.lifecycle_metadata.client_next_action` and closes the matching open health escalation metadata. At Risk or Critical health creates one open escalation per unresolved issue key, assigned to the account owner or assigned Client owner where available. Escalations recommend action but do not silently change lifecycle; users must use the existing authorized lifecycle transition flow to move a Client to At Risk.
+
+### Client overview, insights, saved views, and automation
+The Clients Overview dashboard uses backend aggregation rather than loading all Clients into the browser for management KPIs. It shows tenant-scoped totals for Clients, active Clients, lifecycle At Risk, Renewal Due, outstanding revenue, MRR, active Projects, and average Client Health. Needs Attention items link back to the relevant Client Workspace source tab for overdue payment, critical health, delayed delivery, approval delay, renewal, inactivity, or escalation.
+
+Client Insights stay separate from Sales pipeline reporting. They summarize new, active, churned, renewal, churn reason, revenue/MRR, outstanding, risk/critical health, delayed delivery, and top Client value data where existing Client/Finance records support it. Saved views persist only filter JSON in `client_saved_views`; they do not copy Client records. Built-in automation reuses existing Tasks, Notifications, and AutomationExecution idempotency for payment follow-up, renewal reminders, health escalation, approval delay, and no-activity follow-up.
+
 ## Invoices
 - How the user reaches it: main navigation.
 - What they can do: create and manage invoices.

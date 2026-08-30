@@ -177,6 +177,8 @@ const Clients = () => {
   })
   const [creatingKickoffMeeting, setCreatingKickoffMeeting] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const [portfolioOverview, setPortfolioOverview] = useState(null)
+  const [savedViews, setSavedViews] = useState({ defaults: [], views: [] })
 
   const statusMeta = {
     new: {
@@ -277,6 +279,21 @@ const Clients = () => {
     }
   }, [columnFilters.type, effectiveStatusFilter, searchQuery])
 
+  const loadClientManagement = useCallback(async () => {
+    try {
+      const [overview, views] = await Promise.all([
+        clientsAPI.getOverviewDashboard({ limit: 8 }),
+        clientsAPI.listSavedViews(),
+      ])
+      setPortfolioOverview(overview)
+      setSavedViews(views)
+    } catch (error) {
+      console.error('Error loading client overview:', error)
+      setPortfolioOverview(null)
+      setSavedViews({ defaults: [], views: [] })
+    }
+  }, [])
+
   const loadLeads = useCallback(async () => {
     try {
       const data = await usersAPI.listUsers(null, 'lead')
@@ -312,10 +329,11 @@ const Clients = () => {
   useEffect(() => {
     if (!isAuthenticated) return
     loadClients()
+    loadClientManagement()
     loadLeads()
     loadAssignableUsers()
     loadLifecycleRules()
-  }, [isAuthenticated, loadClients, loadLeads, loadAssignableUsers, loadLifecycleRules])
+  }, [isAuthenticated, loadClients, loadClientManagement, loadLeads, loadAssignableUsers, loadLifecycleRules])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -852,6 +870,36 @@ const Clients = () => {
   }
 
   const activeColumnFilterCount = Object.values(columnFilters).filter(Boolean).length + (!routeStatus && statusFilter ? 1 : 0)
+  const applySavedView = (filters = {}) => {
+    if (!routeStatus) setStatusFilter(filters.status || '')
+    setColumnFilters((prev) => ({ ...prev, type: filters.client_type || '', projects: prev.projects, budget: prev.budget, start_date: '', delivery_date: '' }))
+    if (filters.mine && user?.id) setSearchQuery('')
+    if (filters.health_level || filters.attention_type || filters.renewal_window) {
+      toast.success('Saved view applied to dashboard signals')
+    }
+  }
+
+  const saveCurrentView = async () => {
+    const name = window.prompt('Saved view name')
+    if (!name) return
+    try {
+      await clientsAPI.createSavedView({ name, filters: { status: effectiveStatusFilter, client_type: columnFilters.type, search: searchQuery } })
+      toast.success('Client view saved')
+      await loadClientManagement()
+    } catch (error) {
+      toast.error('Failed to save view')
+    }
+  }
+
+  const runClientAutomation = async () => {
+    try {
+      const result = await clientsAPI.runAutomation({ limit: 50 })
+      toast.success(`${result.created_count || 0} client automation action(s) created`)
+      await loadClientManagement()
+    } catch (error) {
+      toast.error('Failed to run client automation')
+    }
+  }
 
   const clearColumnFilters = () => {
     setColumnFilters({
@@ -910,6 +958,10 @@ const Clients = () => {
   const safePage = Math.min(currentPage, totalPages)
   const paginatedClients = filteredClients.slice((safePage - 1) * CLIENT_PAGE_SIZE, safePage * CLIENT_PAGE_SIZE)
 
+  const kpis = portfolioOverview?.kpis || {}
+  const insights = portfolioOverview?.insights || {}
+  const attentionItems = portfolioOverview?.needs_attention || []
+  const dailyActions = portfolioOverview?.daily_actions || []
   const activeCount = useMemo(() => clients.filter(c => (c.status || 'active') === 'active').length, [clients])
   const totalPortfolioBudget = useMemo(() => clients.reduce((sum, c) => sum + getTotalBudget(c), 0), [clients])
   const totalProjectsCount = useMemo(() => clients.reduce((sum, c) => sum + (c.projects?.length || c.project_ids?.length || 0), 0), [clients])
@@ -957,6 +1009,73 @@ const Clients = () => {
         <StatCard label="Active Accounts" value={activeCount} icon={CheckCircle2} color="emerald" subtitle="In Operations" />
         <StatCard label="Portfolio Budget" value={`₹${totalPortfolioBudget > 0 ? totalPortfolioBudget.toLocaleString() : '0'}`} icon={DollarSign} color="amber" subtitle="Total Contract Value" />
         <StatCard label="Linked Projects" value={totalProjectsCount} icon={FolderKanban} color="purple" subtitle="Active Deliverables" />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+        <StatCard label="Tenant Clients" value={kpis.total_clients ?? clients.length} icon={Users} color="indigo" subtitle="Server KPI" />
+        <StatCard label="Active" value={kpis.active_clients ?? 0} icon={CheckCircle2} color="emerald" subtitle="Operational" />
+        <StatCard label="At Risk" value={kpis.at_risk ?? 0} icon={AlertTriangle} color="rose" subtitle="Lifecycle" />
+        <StatCard label="Renewal Due" value={kpis.renewal_due ?? 0} icon={Calendar} color="purple" subtitle="Commercial" />
+        <StatCard label="Outstanding" value={`₹${Number(kpis.outstanding_revenue || 0).toLocaleString()}`} icon={DollarSign} color="amber" subtitle="Invoices" />
+        <StatCard label="MRR" value={`₹${Number(kpis.mrr || 0).toLocaleString()}`} icon={DollarSign} color="emerald" subtitle="Recurring" />
+        <StatCard label="Active Projects" value={kpis.active_projects ?? 0} icon={FolderKanban} color="purple" subtitle="Delivery" />
+        <StatCard label="Health" value={kpis.overall_health ?? 100} icon={CheckCircle2} color="indigo" subtitle="Average" />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Needs Attention</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Source-linked risks from client health, finance, delivery, approvals, and renewal.</p>
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant="secondary" onClick={saveCurrentView}>Save View</Button>
+              {(isCompanyAdmin || isLead) && <Button type="button" size="sm" onClick={runClientAutomation}>Run Automation</Button>}
+            </div>
+          </div>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {attentionItems.length ? attentionItems.map((item) => (
+              <button key={`${item.client?.id}-${item.type}-${item.message}`} type="button" onClick={() => navigate(item.url || `/clients/${item.client?.id}/workspace`)} className="rounded-lg border border-gray-200 p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 dark:border-gray-800 dark:hover:bg-gray-800">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{item.client?.name || 'Client'} - {item.message}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.type?.replace(/_/g, ' ')} | severity {item.severity}</p>
+              </button>
+            )) : <p className="rounded-lg border border-dashed border-gray-200 p-4 text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">No current client attention items.</p>}
+          </div>
+        </section>
+        <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">Your Client Actions Today</h2>
+          <div className="mt-3 space-y-2">
+            {dailyActions.length ? dailyActions.map((action) => (
+              <button key={`${action.client?.id}-${action.action}`} type="button" onClick={() => navigate(action.url || `/clients/${action.client?.id}/workspace`)} className="block w-full rounded-lg border border-gray-200 p-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{action.client?.name} - {action.action}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{action.priority || 'medium'} | due {action.due_date ? timeService.formatDateOnly(action.due_date) : 'soon'}</p>
+              </button>
+            )) : <p className="text-sm text-gray-500 dark:text-gray-400">No open client actions.</p>}
+          </div>
+        </section>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">Saved Views</h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {[...(savedViews.defaults || []), ...(savedViews.views || [])].map((view) => (
+              <button key={`${view.id || 'default'}-${view.name}`} type="button" onClick={() => applySavedView(view.filters)} className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-indigo-300 hover:text-indigo-700 dark:border-gray-800 dark:text-gray-300">
+                {view.name}
+              </button>
+            ))}
+          </div>
+        </section>
+        <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">Client Insights</h2>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="New" value={insights.new_clients ?? 0} icon={Plus} color="indigo" subtitle="Client stage" />
+            <StatCard label="Churned" value={insights.churned ?? 0} icon={X} color="rose" subtitle={`${insights.churn_rate ?? 0}% churn rate`} />
+            <StatCard label="Risk/Critical" value={insights.at_risk_or_critical ?? 0} icon={AlertTriangle} color="amber" subtitle="Health" />
+            <StatCard label="Delayed Work" value={insights.delayed_delivery ?? 0} icon={Clock} color="purple" subtitle="Tasks/deliverables" />
+          </div>
+        </section>
       </div>
 
       {/* Search & Filter Controls Surface */}

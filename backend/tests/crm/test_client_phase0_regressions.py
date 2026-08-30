@@ -23,6 +23,7 @@ from app.crm.client_commercial import (
     mark_client_renewed,
     save_renewal_details,
 )
+from app.crm.client_health import calculate_client_health, complete_client_next_action, sync_client_health
 from app.models.client import Client, ClientStatus, ClientType
 from app.models.client_deliverable import ClientApprovalStatus, ClientDeliverableStatus
 from app.models.client_service import ClientServiceStatus
@@ -1350,4 +1351,95 @@ async def test_client_workspace_meetings_are_not_scoped_by_account_owner(monkeyp
     assert "host_id" not in str(captured["query"])
     assert "participant_ids" not in str(captured["query"])
     assert {"client_id": str(client.id)} in captured["query"]["$or"]
+
+
+@pytest.mark.asyncio
+async def test_client_health_uses_real_signals_and_keeps_lifecycle_separate():
+    now = datetime.utcnow()
+    client = _client(status=ClientStatus.ACTIVE)
+    task = _task(status=TaskStatus.IN_PROGRESS, due_date=now - timedelta(days=4))
+    deliverable = serialize_deliverable(SimpleNamespace(
+        id="deliverable-1",
+        title="Launch report",
+        description=None,
+        client_id=str(client.id),
+        service_id="service-1",
+        project_id="project-1",
+        company_id="tenant-1",
+        owner_id="owner-1",
+        due_date=now - timedelta(days=3),
+        status=ClientDeliverableStatus.CLIENT_REVIEW,
+        linked_files=[],
+        linked_task_ids=[],
+        approval_status=ClientApprovalStatus.SENT,
+        approver_contact_id=None,
+        sent_at=now - timedelta(days=5),
+        viewed_at=None,
+        approved_at=None,
+        rejected_at=None,
+        revision_note=None,
+        revision_count=3,
+        approval_history=[],
+        public_token_hash=None,
+        public_token_created_at=None,
+        delivered_at=None,
+        created_by="owner-1",
+        created_at=now - timedelta(days=6),
+        updated_at=now - timedelta(days=5),
+    ))
+    invoice = SimpleNamespace(
+        id="invoice-1",
+        status=InvoiceStatus.SENT,
+        due_date=now - timedelta(days=8),
+        outstanding_amount=5000,
+        total_received=0,
+    )
+
+    health = calculate_client_health(
+        client,
+        projects=[],
+        tasks=[task],
+        meetings=[],
+        deliverables=[deliverable],
+        invoices=[invoice],
+        communication=[],
+        finance={"overdue": 5000, "overdue_count": 1},
+        renewal={"contract_end_date": now + timedelta(days=10), "status": "discussion_started"},
+        now=now,
+    )
+
+    assert client.status == ClientStatus.ACTIVE
+    assert health["level"] in {"at_risk", "critical"}
+    assert health["score"] < 60
+    assert {reason["type"] for reason in health["reasons"]} >= {"task_overdue", "deliverable_overdue", "invoice_overdue", "communication_inactive", "renewal_risk"}
+    assert health["next_action"]["action"] in {"Follow up overdue payment", "Complete delayed deliverable", "Complete delayed task"}
+    assert health["active_escalation"]["status"] == "open"
+
+
+@pytest.mark.asyncio
+async def test_client_health_history_next_action_and_escalation_are_preserved_without_duplicates():
+    now = datetime.utcnow()
+    client = _client(account_owner_id="owner-1")
+    health = calculate_client_health(
+        client,
+        projects=[],
+        tasks=[_task(status=TaskStatus.TODO, due_date=now - timedelta(days=5))],
+        meetings=[],
+        deliverables=[],
+        invoices=[],
+        communication=[],
+        finance={},
+        renewal={},
+        now=now,
+    )
+
+    first = await sync_client_health(client, _user(), health)
+    second = await sync_client_health(client, _user(), health)
+    completed = await complete_client_next_action(client, _user(), "completed")
+
+    assert first["level"] == second["level"]
+    assert len(client.lifecycle_metadata["client_health_history"]) == 1
+    assert client.lifecycle_metadata["client_health_escalation"]["status"] == "completed"
+    assert completed["status"] == "completed"
+    assert completed["completed_by"] == str(_user().id)
 

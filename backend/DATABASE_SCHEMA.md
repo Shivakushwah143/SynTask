@@ -297,6 +297,21 @@ Phase 4 stores profile-only details in `Client.lifecycle_metadata.profile` with 
 
 Phase 7 stores renewal, churn, and archive workflow metadata in `Client.lifecycle_metadata` instead of introducing duplicate accounting records. `renewal` contains renewal date, contract/service end date, owner, status, value, payment terms, billing frequency, notes, updated actor/time, and append-only `renewal_history`. `churn` contains reason, end date, notes, calculated/provided revenue lost, actor/time, and append-only `churn_history`. `archive` contains reason, actor/time, and append-only `archive_history`. Finance totals are computed from existing `invoices.payments`, `client_services`, and `msas`; payments and invoice truth remain in their source collections.
 
+Phase 8 stores explainable Client Health metadata under `Client.lifecycle_metadata` instead of adding a duplicate health collection. `client_health` contains calculated score, level (`healthy`, `attention_needed`, `at_risk`, `critical`), reasons, source tabs, signal counts, calculated timestamp, next action, and active escalation reference. `client_health_history` and `client_health_level_history` preserve snapshots and level changes. `client_next_action` stores action, owner, due date, priority, related entity, status, and completion metadata. `client_health_escalation` stores one open escalation per unresolved issue key. Health calculations are tenant-scoped and derive from existing Tasks, Projects, Client Deliverables/approvals, Meetings, CRM/Inbox communication, Finance/Invoices, and Renewal metadata; Client lifecycle status is not overwritten by health.
+
+### `client_saved_views`
+| Field | Type | Required | Indexed | Notes |
+|---|---|---|---|---|
+| `name` | `str` | Yes | No | View label |
+| `company_id` | `str` | Yes | Yes | Tenant key |
+| `owner_id` | `str` | Yes | Yes | User who owns the view |
+| `filters` | `Dict[str, Any]` | No | No | Saved Client filters only; no Client records are copied |
+| `is_default` | `bool` | No | No | Reserved for seeded/default views |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `updated_at` | `datetime.datetime` | No | No | Update timestamp |
+
+Phase 9 uses `client_saved_views` for custom Client filter persistence. Built-in views such as My Clients, At Risk, Critical, Renewals This Month, Payment Follow-up, Delayed Delivery, and No Recent Activity are returned by API without duplicating Client rows. Built-in Client automation creates existing `tasks` and `notifications` and records idempotency in `automation_executions`.
+
 ### `client_services`
 | Field | Type | Required | Indexed | Notes |
 |---|---|---|---|---|
