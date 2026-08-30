@@ -50,6 +50,7 @@ from app.crm.client_commercial import (
 )
 from app.crm.client_health import complete_client_next_action
 from app.crm.client_portfolio import build_client_portfolio_overview, list_client_saved_views, run_client_automation
+from app.crm.client_ai import answer_client_question, build_client_ai_brief, build_client_ai_context, client_ai_cleanup_audit
 from app.models.client_onboarding import ClientOnboardingItem, ClientOnboardingItemStatus
 from app.models.client_deliverable import ClientApprovalStatus, ClientDeliverable, ClientDeliverableStatus
 from app.models.client_saved_view import ClientSavedView
@@ -110,6 +111,11 @@ class ArchivePayload(BaseModel):
 
 class NextActionStatusPayload(BaseModel):
     status: str = "completed"
+
+
+class ClientAIQuestionPayload(BaseModel):
+    question: str
+    days: int = 7
 
 
 class ClientSavedViewPayload(BaseModel):
@@ -680,6 +686,45 @@ async def get_client_health(
         "next_action": workspace.get("next_action"),
         "active_escalation": workspace.get("active_escalation"),
     }
+
+
+@router.get("/{client_id}/ai/brief")
+async def get_client_ai_brief(
+    client_id: str,
+    days: int = Query(7, ge=1, le=90),
+    current_user: User = Depends(get_current_user),
+):
+    """Return a grounded AI Client Brief from existing tenant-scoped workspace data."""
+    context = await build_client_ai_context(current_user, client_id, days=days)
+    return {
+        "client_id": client_id,
+        "brief": build_client_ai_brief(context),
+        "context_window_days": context["window_days"],
+        "security": context["security"],
+    }
+
+
+@router.post("/{client_id}/ai/ask")
+async def ask_client_ai(
+    client_id: str,
+    payload: ClientAIQuestionPayload,
+    current_user: User = Depends(get_current_user),
+):
+    """Answer Client questions with cited, tenant-scoped Client relationship context."""
+    if not payload.question or not payload.question.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question is required")
+    context = await build_client_ai_context(current_user, client_id, days=payload.days)
+    return answer_client_question(context, payload.question)
+
+
+@router.get("/{client_id}/ai/cleanup-audit")
+async def get_client_ai_cleanup_audit(
+    client_id: str,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Preview Phase 10 cleanup status without deleting or rewriting Client data."""
+    workspace = await ClientWorkspaceService.load_workspace(current_user, client_id)
+    return client_ai_cleanup_audit(workspace)
 
 
 @router.post("/{client_id}/next-action/status")

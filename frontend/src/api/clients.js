@@ -78,6 +78,14 @@ export const clientsAPI = {
     const response = await api.get(`/clients/${clientId}/health`)
     return response.data
   },
+  getAIBrief: async (clientId, params = {}) => {
+    const response = await api.get(`/clients/${clientId}/ai/brief`, { params })
+    return response.data
+  },
+  askAI: async (clientId, payload) => {
+    const response = await api.post(`/clients/${clientId}/ai/ask`, payload)
+    return response.data
+  },
   updateNextActionStatus: async (clientId, payload) => {
     const response = await api.post(`/clients/${clientId}/next-action/status`, payload)
     return response.data

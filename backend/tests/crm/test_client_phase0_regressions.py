@@ -24,6 +24,7 @@ from app.crm.client_commercial import (
     save_renewal_details,
 )
 from app.crm.client_health import calculate_client_health, complete_client_next_action, sync_client_health
+from app.crm.client_ai import INSUFFICIENT_DATA, answer_client_question, build_client_ai_brief, client_ai_cleanup_audit
 from app.models.client import Client, ClientStatus, ClientType
 from app.models.client_deliverable import ClientApprovalStatus, ClientDeliverableStatus
 from app.models.client_service import ClientServiceStatus
@@ -197,6 +198,36 @@ def _task(**overrides):
     )
     data.update(overrides)
     return SimpleNamespace(**data)
+
+
+def _ai_context(**overrides):
+    base = {
+        "window_days": 7,
+        "client": {"id": "client-1", "name": "Acme", "lifecycle_stage": "active", "start_date": "2026-01-01T00:00:00", "account_owner_id": "owner-1"},
+        "primary_contact": {"id": "contact-1", "name": "Priya", "email": "priya@example.test", "roles": ["Primary Contact"]},
+        "health": {
+            "score": 62,
+            "level": "at_risk",
+            "label": "At Risk",
+            "reasons": [{"type": "invoice_overdue", "message": "Invoice INV-1 is overdue", "tab": "invoices", "related_id": "invoice-1"}],
+        },
+        "next_action": {"action": "Follow up on payment", "reason": "Invoice INV-1 is overdue", "related_entity": {"type": "invoice", "id": "invoice-1", "tab": "invoices"}},
+        "active_escalation": None,
+        "finance": {"total_outstanding": 1200, "overdue_amount": 1200, "mrr": 500, "client_value": 6000, "invoice_count": 1},
+        "renewal": {"renewal_date": "2026-09-15T00:00:00", "status": "upcoming", "days_until_renewal": 16},
+        "services": [{"id": "service-1", "name": "SEO", "status": "active", "value": 500}],
+        "projects": [{"id": "project-1", "name": "SEO Delivery", "status": "active"}],
+        "deliverables": [{"id": "deliverable-1", "title": "Monthly report password=abc123", "status": "client_review", "approval_status": "sent"}],
+        "communication": [{"id": "comm-1", "channel": "email", "timestamp": "2026-08-30T10:00:00", "preview": "Shared update token: xyz"}],
+        "meetings": [{"id": "meeting-1", "title": "Review", "status": "completed", "meeting_date": "2026-08-29T10:00:00"}],
+        "last_meeting": {"type": "meeting", "id": "meeting-1", "label": "Review", "tab": "meetings"},
+        "next_meeting": None,
+        "activity": [{"action": "Communication recorded", "timestamp": "2026-08-30T10:00:00", "kind": "communication", "related_type": "communication", "related_id": "comm-1", "context": {}}],
+        "files_summary": {"Reports": 1},
+        "security": {"tenant_scoped": True, "internal_note_content_included": False, "file_contents_included": False, "finance_scope": "aggregates_only"},
+    }
+    base.update(overrides)
+    return base
 
 
 def _meeting(**overrides):
@@ -1442,4 +1473,48 @@ async def test_client_health_history_next_action_and_escalation_are_preserved_wi
     assert client.lifecycle_metadata["client_health_escalation"]["status"] == "completed"
     assert completed["status"] == "completed"
     assert completed["completed_by"] == str(_user().id)
+
+
+def test_client_ai_brief_is_grounded_and_redacts_sensitive_text():
+    brief = build_client_ai_brief(_ai_context())
+
+    rendered = " ".join(brief["summary"]) + " " + " ".join(ref["label"] for ref in brief["references"])
+    assert brief["grounded"] is True
+    assert "1 active service" in rendered
+    assert "password=abc123" not in rendered
+    assert "[REDACTED]" in rendered
+    assert any(ref["type"] == "deliverable" and ref["tab"] == "deliverables" for ref in brief["references"])
+
+
+def test_client_ai_question_returns_source_references_for_recent_activity():
+    result = answer_client_question(_ai_context(), "What happened with Acme this week?")
+
+    assert result["grounded"] is True
+    assert result["references"][0]["id"] == "comm-1"
+    assert "Communication recorded" in result["answer"][0]
+    assert result["security"]["internal_note_content_included"] is False
+
+
+def test_client_ai_next_action_is_recommendation_only_and_explains_why():
+    result = answer_client_question(_ai_context(), "What should I do next?")
+
+    assert result["recommendations"][0]["action"] == "Follow up on payment"
+    assert result["recommendations"][0]["why"] == "Invoice INV-1 is overdue"
+    assert result["recommendations"][0]["source"]["tab"] == "invoices"
+
+
+def test_client_ai_uses_health_as_source_of_truth_and_reports_insufficient_data():
+    health = answer_client_question(_ai_context(), "Explain client health")
+    renewal = answer_client_question(_ai_context(renewal={}, health={"score": 100, "level": "healthy", "label": "Healthy", "reasons": []}), "Any upsell opportunity?")
+
+    assert health["answer"][0] == "Client Health is At Risk with score 62."
+    assert renewal["answer"] == [INSUFFICIENT_DATA]
+
+
+def test_client_ai_cleanup_audit_is_non_destructive():
+    audit = client_ai_cleanup_audit({"client": {"id": "client-1", "lifecycle_metadata": {}}, "health": {"score": 100}})
+
+    assert audit["safe_to_run"] is True
+    assert audit["destructive_changes"] is False
+    assert audit["checks"]["duplicate_client_contact_store_required"] is False
 

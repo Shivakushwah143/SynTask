@@ -63,7 +63,7 @@ docs/                    Testing guide and diagrams
 - Task management with comments, attachments, statuses, subtasks, watchers, versions, components, workflows, automation, backlog, epics, and sprints
 - Project Kanban boards and project files/pages
 - Ticketing system with assignments, comments, priorities, escalation fields, and reporting
-- Client CRM with profile, CRM contacts, services, deliverables, client approval, communication, meetings, files/documents, activity, finance, renewal/churn, health, next action, escalation, overview insights, saved views, automation, and project links
+- Client CRM with profile, CRM contacts, services, deliverables, client approval, communication, meetings, files/documents, activity, finance, renewal/churn, health, next action, escalation, overview insights, saved views, automation, AI client intelligence, and project links
 - Invoicing, ledger, MSA generation/signing, and payment tracking
 - Chat conversations and group chat
 - Meetings and calendar endpoints

@@ -312,6 +312,8 @@ Phase 8 stores explainable Client Health metadata under `Client.lifecycle_metada
 
 Phase 9 uses `client_saved_views` for custom Client filter persistence. Built-in views such as My Clients, At Risk, Critical, Renewals This Month, Payment Follow-up, Delayed Delivery, and No Recent Activity are returned by API without duplicating Client rows. Built-in Client automation creates existing `tasks` and `notifications` and records idempotency in `automation_executions`.
 
+Phase 10 AI Client Intelligence does not add a new database collection. Briefs and answers are generated from compact same-tenant context loaded through `ClientWorkspaceService`, which reuses `clients`, `crm_companies`, `sales_contacts`, `client_services`, `projects`, `tasks`, `client_deliverables`, `meetings`, `crm_activities`, `invoices`, file references stored on existing records, and `Client.lifecycle_metadata` for Health, Next Action, Escalation, Renewal, Churn, and history. AI context excludes internal-note bodies and file contents, uses finance aggregates only, and redacts credential-like text before response generation.
+
 ### `client_services`
 | Field | Type | Required | Indexed | Notes |
 |---|---|---|---|---|

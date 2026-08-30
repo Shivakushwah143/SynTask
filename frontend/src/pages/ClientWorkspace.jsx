@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, Activity, Building2, CalendarDays, Clock3, DollarSign, ExternalLink, FileText, FolderKanban, Mail, Phone, Users } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Activity, Building2, CalendarDays, Clock3, DollarSign, ExternalLink, FileText, FolderKanban, Mail, Phone, Send, Sparkles, Users } from 'lucide-react'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { clientsAPI } from '../api/clients'
@@ -507,6 +507,8 @@ export default function ClientWorkspacePage() {
   const [activityLimit, setActivityLimit] = useState(25)
   const [communicationFilter, setCommunicationFilter] = useState('all')
   const [fileFilter, setFileFilter] = useState('all')
+  const [aiQuestion, setAiQuestion] = useState('')
+  const [aiAnswer, setAiAnswer] = useState(null)
 
   const workspaceQuery = useQuery(
     ['client-workspace', clientId],
@@ -552,6 +554,15 @@ export default function ClientWorkspacePage() {
       enabled: Boolean(clientId) && activeTab === 'timeline',
       keepPreviousData: true,
       staleTime: 60 * 1000,
+    }
+  )
+
+  const aiBriefQuery = useQuery(
+    ['client-ai-brief', clientId],
+    () => clientsAPI.getAIBrief(clientId, { days: 7 }),
+    {
+      enabled: Boolean(clientId) && activeTab === 'overview',
+      staleTime: 5 * 60 * 1000,
     }
   )
 
@@ -897,6 +908,14 @@ export default function ClientWorkspacePage() {
     }
   )
 
+  const aiAskMutation = useMutation(
+    (question) => clientsAPI.askAI(clientId, { question, days: 7 }),
+    {
+      onSuccess: (data) => setAiAnswer(data),
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to answer client question')),
+    }
+  )
+
   const onboardingDocumentMutation = useMutation(
     () => clientsAPI.generateOnboardingDocument(clientId),
     {
@@ -974,6 +993,16 @@ export default function ClientWorkspacePage() {
       && (!deliverableFilters.approval || item.approval_status === deliverableFilters.approval)
       && (!deliverableFilters.due || (deliverableFilters.due === 'overdue' ? isOverdue : Boolean(dueDate)))
   })
+  const aiBrief = aiBriefQuery.data?.brief || null
+  const aiSummary = Array.isArray(aiBrief?.summary) ? aiBrief.summary : []
+  const aiReferences = Array.isArray(aiBrief?.references) ? aiBrief.references : []
+
+  const handleAIQuestionSubmit = (event) => {
+    event.preventDefault()
+    const question = aiQuestion.trim()
+    if (!question) return
+    aiAskMutation.mutate(question)
+  }
 
   const handleDetailsSubmit = (event) => {
     event.preventDefault()
@@ -2008,6 +2037,76 @@ export default function ClientWorkspacePage() {
           <CRMStatCard icon={Users} label="Leads" value={String(totalLeads)} tone="amber" helper={summary.leads ? `${summary.leads.active || 0} active` : 'No linked leads yet'} />
           <CRMStatCard icon={DollarSign} label="Outstanding" value={formatCurrency(outstandingAmount || 0)} tone="slate" helper={`${totalInvoices} invoice(s)`} />
         </div>
+
+        <CRMSection title="AI Client Brief" description="Grounded summary from this client workspace.">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+            <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                <Sparkles className="h-4 w-4 text-primary-500" />
+                Client intelligence
+              </div>
+              {aiBriefQuery.isLoading ? (
+                <div className="mt-4 space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /><Skeleton className="h-4 w-3/4" /></div>
+              ) : aiBriefQuery.isError ? (
+                <CRMEmptyState icon={AlertTriangle} title="AI brief could not load" description={apiErrorMessage(aiBriefQuery.error, 'Refresh the workspace and try again.')} />
+              ) : (
+                <div className="mt-4 space-y-3">
+                  <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-200">
+                    {aiSummary.map((line) => <li key={line} className="leading-6">{line}</li>)}
+                    {!aiSummary.length ? <li>No grounded client brief is available yet.</li> : null}
+                  </ul>
+                  <div className="flex flex-wrap gap-2">
+                    {aiReferences.slice(0, 6).map((ref) => (
+                      <button key={`${ref.type}-${ref.id}`} type="button" onClick={() => setTab(ref.tab || 'overview')} className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-50 dark:border-gray-700 dark:text-primary-300 dark:hover:bg-gray-800">
+                        {ref.label || ref.type}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Tenant scoped | internal note bodies excluded | file contents excluded | finance aggregates only
+                  </p>
+                </div>
+              )}
+            </article>
+            <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <form onSubmit={handleAIQuestionSubmit} className="space-y-3">
+                <label className="text-sm font-semibold text-gray-900 dark:text-gray-100" htmlFor="client-ai-question">Ask about this client</label>
+                <textarea
+                  id="client-ai-question"
+                  value={aiQuestion}
+                  onChange={(event) => setAiQuestion(event.target.value)}
+                  rows={3}
+                  placeholder="What happened this week?"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                />
+                <Button type="submit" size="sm" disabled={aiAskMutation.isLoading || !aiQuestion.trim()}>
+                  <Send className="h-4 w-4" />
+                  Ask
+                </Button>
+              </form>
+              {aiAnswer ? (
+                <div className="mt-4 space-y-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+                  <div className="space-y-2 text-sm text-gray-700 dark:text-gray-200">
+                    {(aiAnswer.answer || []).map((line) => <p key={line}>{line}</p>)}
+                    {(aiAnswer.recommendations || []).map((item) => (
+                      <div key={`${item.action}-${item.why}`} className="rounded-lg border border-gray-200 p-2 dark:border-gray-700">
+                        <p className="font-semibold text-gray-900 dark:text-gray-100">{item.action}</p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.why}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(aiAnswer.references || []).slice(0, 5).map((ref) => (
+                      <button key={`${ref.type}-${ref.id}-${ref.label}`} type="button" onClick={() => setTab(ref.tab || 'timeline')} className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-50 dark:border-gray-700 dark:text-primary-300 dark:hover:bg-gray-800">
+                        {ref.label || ref.type}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </article>
+          </div>
+        </CRMSection>
 
         <CRMSection title="Next Action" description="Generated from current client risk signals; lifecycle status remains separate.">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">

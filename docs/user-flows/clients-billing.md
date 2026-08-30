@@ -98,6 +98,9 @@ The Clients Overview dashboard uses backend aggregation rather than loading all 
 
 Client Insights stay separate from Sales pipeline reporting. They summarize new, active, churned, renewal, churn reason, revenue/MRR, outstanding, risk/critical health, delayed delivery, and top Client value data where existing Client/Finance records support it. Saved views persist only filter JSON in `client_saved_views`; they do not copy Client records. Built-in automation reuses existing Tasks, Notifications, and AutomationExecution idempotency for payment follow-up, renewal reminders, health escalation, approval delay, and no-activity follow-up.
 
+### AI client intelligence
+Client Workspace Overview includes an AI Client Brief generated from the same tenant-scoped workspace data the user can already access. The brief summarizes lifecycle, Health and reasons, active services/projects, pending deliverables, finance aggregates, recent client-facing communication, last/next meeting, renewal, and current next action. Users can ask about what happened recently, what to do next, Health, risk, renewal, or upsell; answers include source references and do not execute actions. Internal-note bodies, file contents, secrets, and credential-like values are excluded or redacted before AI context is built. Admins and leads can run the cleanup audit endpoint to confirm canonical Phase 0-9 Client systems are in use without deleting data.
+
 ## Invoices
 - How the user reaches it: main navigation.
 - What they can do: create and manage invoices.
