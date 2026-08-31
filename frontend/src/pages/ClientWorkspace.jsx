@@ -18,21 +18,50 @@ import { timeService } from '@/services/timeService'
 
 const TAB_KEY = 'tab'
 const ONBOARDING_TAB_KEY = 'onboardingTab'
+const WORK_TAB_KEY = 'workTab'
+const COMMUNICATION_TAB_KEY = 'communicationTab'
 const TABS = [
   { key: 'overview', label: 'Overview' },
-  { key: 'details', label: 'Details' },
   { key: 'contacts', label: 'Contacts' },
   { key: 'services', label: 'Services' },
-  { key: 'deliverables', label: 'Deliverables' },
+  { key: 'work', label: 'Work' },
   { key: 'communication', label: 'Communication' },
-  { key: 'onboarding', label: 'Onboarding' },
-  { key: 'projects', label: 'Projects' },
-  { key: 'tasks', label: 'Tasks' },
-  { key: 'meetings', label: 'Meetings' },
-  { key: 'documents', label: 'Files/Documents' },
-  { key: 'invoices', label: 'Finance' },
-  { key: 'timeline', label: 'Activity' },
+  { key: 'files', label: 'Files' },
+  { key: 'finance', label: 'Finance' },
+  { key: 'activity', label: 'Activity' },
 ]
+const WORK_TABS = [
+  { key: 'projects', label: 'Projects' },
+  { key: 'deliverables', label: 'Deliverables' },
+  { key: 'tasks', label: 'Tasks' },
+]
+const COMMUNICATION_TABS = [
+  { key: 'messages', label: 'Messages' },
+  { key: 'meetings', label: 'Meetings' },
+  { key: 'internal-notes', label: 'Internal Notes' },
+]
+const LEGACY_TAB_REMAP = {
+  details: 'overview',
+  projects: 'work',
+  deliverables: 'work',
+  tasks: 'work',
+  meetings: 'communication',
+  documents: 'files',
+  invoices: 'finance',
+  timeline: 'activity',
+  leads: 'contacts',
+}
+
+function normalizeClientTab(tab) {
+  if (!tab) return 'overview'
+  return LEGACY_TAB_REMAP[tab] || tab
+}
+
+function normalizeSecondaryTab(tab, options, fallback) {
+  if (options.some((item) => item.key === tab)) return tab
+  if (tab === 'messages') return 'messages'
+  return fallback
+}
 
 const CONTACT_ROLE_OPTIONS = ['Primary Contact', 'Decision Maker', 'Finance Contact', 'Project Contact', 'Technical Contact', 'Approver']
 const DELIVERABLE_STATUSES = ['planned', 'in_production', 'internal_review', 'client_review', 'revision_required', 'approved', 'delivered']
@@ -143,11 +172,12 @@ function projectBoardId(project) {
   return project?.id || project?.project_id || project?.key
 }
 
-function WorkspaceTabs({ activeTab, onTabChange, counts = {} }) {
+function WorkspaceTabs({ activeTab, onTabChange, counts = {}, extraTabs = [] }) {
+  const tabs = [...TABS, ...extraTabs]
   return (
     <nav aria-label="Client workspace sections" className="overflow-x-auto rounded-2xl border border-surface-border/80 bg-white/90 p-2 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
       <div className="flex min-w-max items-center gap-2">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const isActive = activeTab === tab.key
           const count = counts[tab.key]
           return (
@@ -594,8 +624,10 @@ export default function ClientWorkspacePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [transitionBlocker, setTransitionBlocker] = useState(null)
 
-  const activeTab = searchParams.get(TAB_KEY) || 'overview'
+  const activeTab = normalizeClientTab(searchParams.get(TAB_KEY) || 'overview')
   const activeOnboardingTab = searchParams.get(ONBOARDING_TAB_KEY) || 'overview'
+  const activeWorkTab = normalizeSecondaryTab(searchParams.get(WORK_TAB_KEY) || 'projects', WORK_TABS, 'projects')
+  const activeCommunicationTab = normalizeSecondaryTab(searchParams.get(COMMUNICATION_TAB_KEY) || 'messages', COMMUNICATION_TABS, 'messages')
   const [editingContactId, setEditingContactId] = useState(null)
   const [editingServiceId, setEditingServiceId] = useState(null)
   const [deliverableFilters, setDeliverableFilters] = useState({ project: '', service: '', status: '', approval: '', due: '' })
@@ -1082,10 +1114,31 @@ export default function ClientWorkspacePage() {
   )
 
   const setTab = (tab) => {
+    const normalized = normalizeClientTab(tab)
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
-      if (tab && tab !== 'overview') next.set(TAB_KEY, tab)
+      next.delete(WORK_TAB_KEY)
+      next.delete(COMMUNICATION_TAB_KEY)
+      if (normalized && normalized !== 'overview') next.set(TAB_KEY, normalized)
       else next.delete(TAB_KEY)
+      return next
+    }, { replace: true })
+  }
+
+  const setWorkTab = (tab) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.set(TAB_KEY, 'work')
+      next.set(WORK_TAB_KEY, normalizeSecondaryTab(tab, WORK_TABS, 'projects'))
+      return next
+    }, { replace: true })
+  }
+
+  const setCommunicationTab = (tab) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.set(TAB_KEY, 'communication')
+      next.set(COMMUNICATION_TAB_KEY, normalizeSecondaryTab(tab, COMMUNICATION_TABS, 'messages'))
       return next
     }, { replace: true })
   }
@@ -1100,6 +1153,8 @@ export default function ClientWorkspacePage() {
     }, { replace: true })
   }
 
+  const clientStatus = client?.status || 'active'
+  const clientStatusLabel = CLIENT_STATUS_OPTIONS.find((item) => item.value === clientStatus)?.label || clientStatus
   const totalProjects = projects.length || client?.project_ids?.length || 0
   const totalTasks = tasks.length || 0
   const totalLeads = leads.length || 0
@@ -1116,21 +1171,17 @@ export default function ClientWorkspacePage() {
   const visibleCommunication = communication.filter((item) => communicationFilter === 'all' || (item.channel || item.type) === communicationFilter)
   const fileCategories = ['all', ...Array.from(new Set(files.map((item) => item.category || 'Other').filter(Boolean)))]
   const visibleFiles = files.filter((item) => fileFilter === 'all' || (item.category || 'Other') === fileFilter)
+  const showOnboardingMainTab = ['new', 'onboarding'].includes(clientStatus)
   const tabCounts = {
     overview: 4,
-    details: 1,
     contacts: totalContacts,
     services: totalServices,
-    deliverables: totalDeliverables,
-    communication: communication.length,
+    work: totalProjects + totalTasks + totalDeliverables,
+    communication: communication.length + internalNotes.length + meetings.length,
+    files: totalFiles,
+    finance: totalInvoices,
+    activity: activityData.total || activityItems.length || (Array.isArray(timeline?.grouped_by_day) ? timeline.grouped_by_day.length : 0),
     onboarding: onboardingItems.length,
-    projects: totalProjects,
-    tasks: totalTasks,
-    leads: totalLeads,
-    documents: totalFiles,
-    invoices: totalInvoices,
-    meetings: meetings.length,
-    timeline: activityData.total || activityItems.length || (Array.isArray(timeline?.grouped_by_day) ? timeline.grouped_by_day.length : 0),
   }
   const transitionMissingFields = Array.isArray(transitionBlocker?.missing_fields) ? transitionBlocker.missing_fields : []
   const primaryContact = contacts.find((contact) => contact.is_primary_contact)
@@ -1414,8 +1465,6 @@ export default function ClientWorkspacePage() {
     ? 'Client account value'
     : 'No budget set'
   const clientTypeLabel = formatClientType(client.client_type)
-  const clientStatus = client.status || 'active'
-  const clientStatusLabel = CLIENT_STATUS_OPTIONS.find((item) => item.value === clientStatus)?.label || clientStatus
   const healthLevel = health.level || 'healthy'
   const healthLabel = health.label || statusText(healthLevel)
   const healthScore = Number.isFinite(Number(health.score)) ? Number(health.score) : 100
@@ -1425,32 +1474,8 @@ export default function ClientWorkspacePage() {
   const openNextAction = nextAction?.status !== 'completed' ? nextAction : null
 
   let tabBody
-  if (activeTab === 'details') {
-    const profile = client.profile || client.lifecycle_metadata?.profile || {}
-    tabBody = (
-      <CRMSection title="Client Details" description="Maintain the account profile used by delivery, finance, and CRM handoff.">
-        <form onSubmit={handleDetailsSubmit} className="rounded-2xl border border-surface-border/80 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Client name<input name="name" defaultValue={client.name || ''} required className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Company<input name="company_name" defaultValue={client.company_name || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Industry<input name="industry" defaultValue={client.industry || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Account Owner ID<input name="account_owner_id" defaultValue={client.account_owner_id || client.assigned_to || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Sales Owner ID<input name="sales_owner_id" defaultValue={client.sales_owner_id || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Client type<select name="client_type" defaultValue={client.client_type || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Select type</option><option value="monthly">Monthly</option><option value="one_time">One Time</option></select></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Start date<input name="start_date" type="date" defaultValue={client.start_date ? String(client.start_date).slice(0, 10) : ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Client value<input name="budget" type="number" min="0" step="0.01" defaultValue={client.budget || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Address<input name="address" defaultValue={client.address || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">City<input name="city" defaultValue={client.city || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">State<input name="state" defaultValue={client.state || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Country<input name="country" defaultValue={client.country || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">ZIP / Postal code<input name="zip_code" defaultValue={client.zip_code || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200 md:col-span-2">Commercial summary<textarea name="commercial_summary" rows={4} defaultValue={profile.commercial_summary || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200 md:col-span-2">Relationship information<textarea name="relationship_information" rows={4} defaultValue={profile.relationship_information || ''} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-          </div>
-          <div className="mt-5 flex justify-end"><Button type="submit" disabled={profileMutation.isLoading}>Save details</Button></div>
-        </form>
-      </CRMSection>
-    )
+  if (activeTab === 'overview') {
+    tabBody = null
   } else if (activeTab === 'contacts') {
     tabBody = (
       <CRMSection title="Contacts" description="Use CRM contacts linked to this client's CRM Company.">
@@ -1694,31 +1719,126 @@ export default function ClientWorkspacePage() {
       </CRMSection>
     )
   } else if (activeTab === 'communication') {
+    const isNotes = activeCommunicationTab === 'internal-notes'
+    const isMeetings = activeCommunicationTab === 'meetings'
+    const isMessages = activeCommunicationTab === 'messages'
     tabBody = (
       <CRMSection title="Communication" description="Client-facing communication from CRM activity and connected inboxes.">
         <div className="mb-4 flex flex-wrap gap-2">
-          {communicationChannels.map((channel) => (
-            <Button key={channel} type="button" size="sm" variant={communicationFilter === channel ? 'primary' : 'secondary'} onClick={() => setCommunicationFilter(channel)}>
-              {channel === 'all' ? 'All' : channel.replace('_', ' ')}
+          {COMMUNICATION_TABS.map((tab) => (
+            <Button key={tab.key} type="button" size="sm" variant={activeCommunicationTab === tab.key ? 'primary' : 'secondary'} onClick={() => setCommunicationTab(tab.key)}>
+              {tab.label}
             </Button>
           ))}
         </div>
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <div className="space-y-3">
-            {visibleCommunication.map((item) => (
-              <article key={`${item.source}-${item.id}`} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold capitalize text-gray-900 dark:text-gray-100">{item.channel || item.type}</p>
-                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{item.preview || 'No preview available'}</p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.contact || 'No contact'} | {item.sender || 'Unknown sender'} to {item.receiver || 'Unknown receiver'}</p>
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{formatDateTime(item.timestamp)}</p>
+        {isMessages ? (
+          <>
+            <div className="mb-4 flex flex-wrap gap-2">
+              {communicationChannels.map((channel) => (
+                <Button key={channel} type="button" size="sm" variant={communicationFilter === channel ? 'primary' : 'secondary'} onClick={() => setCommunicationFilter(channel)}>
+                  {channel === 'all' ? 'All' : channel.replace('_', ' ')}
+                </Button>
+              ))}
+            </div>
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+              <div className="space-y-3">
+                {visibleCommunication.map((item) => (
+                  <article key={`${item.source}-${item.id}`} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold capitalize text-gray-900 dark:text-gray-100">{item.channel || item.type}</p>
+                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{item.preview || 'No preview available'}</p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.contact || 'No contact'} | {item.sender || 'Unknown sender'} to {item.receiver || 'Unknown receiver'}</p>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{formatDateTime(item.timestamp)}</p>
+                    </div>
+                  </article>
+                ))}
+                {!visibleCommunication.length ? <CRMEmptyState icon={Mail} title="No client communication" description="Emails, calls, meetings, and connected messages linked to this client will appear here." /> : null}
+              </div>
+              <div className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Internal notes</p>
+                <div className="mt-3 space-y-3">
+                  {internalNotes.map((note) => (
+                    <div key={note.id} className="rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-800">
+                      <p className="text-gray-700 dark:text-gray-200">{note.preview || 'No note text'}</p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatDateTime(note.timestamp)} | {note.sender || 'Unknown actor'}</p>
+                    </div>
+                  ))}
+                  {!internalNotes.length ? <p className="text-sm text-gray-500 dark:text-gray-400">No internal notes linked to this client.</p> : null}
                 </div>
-              </article>
-            ))}
-            {!visibleCommunication.length ? <CRMEmptyState icon={Mail} title="No client communication" description="Emails, calls, meetings, and connected messages linked to this client will appear here." /> : null}
+              </div>
+            </div>
+          </>
+        ) : null}
+        {isMeetings ? (
+          <div className="space-y-4">
+            <form onSubmit={handleMeetingSubmit} className="mb-5 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <input name="title" placeholder="Meeting title" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <input name="meeting_date" type="date" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <input name="meeting_time" type="time" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <input name="duration" type="number" min="15" step="15" defaultValue="30" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                <select name="project_id" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">
+                  <option value="">No linked project</option>
+                  {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                </select>
+                <select name="contact_id" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">
+                  <option value="">No linked contact</option>
+                  {contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.email}</option>)}
+                </select>
+                <textarea name="description" rows={2} placeholder="Notes or expected result" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm md:col-span-2 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+              </div>
+              <Button type="submit" size="sm" className="mt-3" disabled={createMeetingMutation.isLoading}>Schedule meeting</Button>
+            </form>
+            {meetings.length ? (
+              <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                    <thead className="bg-gray-50 dark:bg-gray-950">
+                      <tr>
+                        {['Meeting', 'Status', 'Date', 'Time', 'Duration', 'Linked', 'Actions'].map((header) => (
+                          <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{header}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                      {meetings.map((meeting) => {
+                        const linkedProject = projects.find((project) => project.id === meeting.project_id || project.project_id === meeting.project_id)
+                        const linkedContact = contacts.find((contact) => contact.id === meeting.contact_id)
+                        return (
+                          <tr key={meeting.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
+                            <td className="px-4 py-3">
+                              <p className="font-medium text-gray-900 dark:text-gray-100">{meeting.title}</p>
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{meeting.description || 'No notes recorded'}</p>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{meeting.status || 'N/A'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(meeting.meeting_date)}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{meeting.meeting_time || 'N/A'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{meeting.duration ? `${meeting.duration} min` : 'N/A'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                              <p>{linkedProject?.name || (meeting.project_id ? 'Project linked' : 'No project')}</p>
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{linkedContact?.full_name || (meeting.contact_id ? 'Contact linked' : 'No contact')}</p>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-wrap gap-2">
+                                {meeting.join_url ? <a className="btn btn-secondary btn-sm inline-flex items-center gap-2" href={meeting.join_url} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3 w-3" />Open</a> : null}
+                                {meeting.status !== 'completed' ? <Button type="button" size="sm" variant="secondary" onClick={() => completeMeetingMutation.mutate(meeting.id)} disabled={completeMeetingMutation.isLoading}>Complete</Button> : null}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <CRMEmptyState icon={CalendarDays} title="No meetings yet" description="Meetings connected to this client account will appear here." />
+            )}
           </div>
+        ) : null}
+        {isNotes ? (
           <div className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Internal notes</p>
             <div className="mt-3 space-y-3">
@@ -1731,7 +1851,7 @@ export default function ClientWorkspacePage() {
               {!internalNotes.length ? <p className="text-sm text-gray-500 dark:text-gray-400">No internal notes linked to this client.</p> : null}
             </div>
           </div>
-        </div>
+        ) : null}
       </CRMSection>
     )
   } else if (activeTab === 'onboarding') {
@@ -1766,54 +1886,232 @@ export default function ClientWorkspacePage() {
         generatingDocument={onboardingDocumentMutation.isLoading}
       />
     ) : <CRMEmptyState title="Onboarding is not active" description="Start onboarding from the New client stage to create the onboarding workspace." />
-  } else if (activeTab === 'projects') {
-    tabBody = (
-      <CRMSection title="Projects" description="Projects linked to this client account.">
-        {projects.length ? (
-          <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
-                <thead className="bg-gray-50 dark:bg-gray-950">
-                  <tr>
-                    {['Project', 'Status', 'Budget', 'Start', 'Delivery', 'Actions'].map((header) => (
-                      <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{header}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                  {projects.map((project) => (
-                    <tr key={project.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
-                      <td className="px-4 py-3">
-                        <Link
-                          to={`/projects/${projectBoardId(project)}/board`}
-                          className="font-medium text-gray-900 hover:text-primary-600 hover:underline dark:text-gray-100 dark:hover:text-primary-400"
-                        >
-                          {project.name}
-                        </Link>
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{project.key || project.project_id || project.id}</p>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{project.status || 'N/A'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{project.budget ? formatCurrency(project.budget) : 'N/A'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(project.start_date)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(project.delivery_date)}</td>
-                      <td className="px-4 py-3">
-                        <Link className="btn btn-secondary btn-sm inline-flex items-center gap-2" to={`/projects/${projectBoardId(project)}/board`}>
-                          <ExternalLink className="h-3 w-3" />
-                          Open
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+  } else if (activeTab === 'work') {
+    const workSubTabs = WORK_TABS
+    const renderWorkContent = () => {
+      if (activeWorkTab === 'deliverables') {
+        return (
+          <CRMSection title="Deliverables" description="Client-facing outputs linked to services, projects, and Work tasks.">
+            <div className="space-y-4">
+              <div className="grid gap-2 rounded-2xl border border-surface-border/80 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 md:grid-cols-5">
+                <select value={deliverableFilters.project} onChange={(event) => setDeliverableFilters((state) => ({ ...state, project: event.target.value }))} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">All projects</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
+                <select value={deliverableFilters.service} onChange={(event) => setDeliverableFilters((state) => ({ ...state, service: event.target.value }))} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">All services</option>{services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select>
+                <select value={deliverableFilters.status} onChange={(event) => setDeliverableFilters((state) => ({ ...state, status: event.target.value }))} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">All statuses</option>{DELIVERABLE_STATUSES.map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}</select>
+                <select value={deliverableFilters.approval} onChange={(event) => setDeliverableFilters((state) => ({ ...state, approval: event.target.value }))} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">All approvals</option>{['not_sent', 'sent', 'viewed', 'approved', 'revision_requested'].map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}</select>
+                <select value={deliverableFilters.due} onChange={(event) => setDeliverableFilters((state) => ({ ...state, due: event.target.value }))} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Any due date</option><option value="due">Has due date</option><option value="overdue">Overdue</option></select>
+              </div>
+
+              <form onSubmit={handleDeliverableSubmit} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <input name="title" placeholder="Deliverable title" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                  <select name="service_id" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Service</option>{services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select>
+                  <select name="project_id" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
+                  <input name="owner_id" placeholder="Owner ID" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                  <input name="due_date" type="date" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                  <select name="task_id" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Link existing task</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select>
+                  <textarea name="description" rows={2} placeholder="Description" className="md:col-span-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                </div>
+                <div className="mt-4 flex justify-end"><Button type="submit" disabled={deliverableMutation.isLoading}>Add deliverable</Button></div>
+              </form>
+
+              {visibleDeliverables.length ? (
+                <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                      <thead className="bg-gray-50 dark:bg-gray-950">
+                        <tr>{['Deliverable', 'Service', 'Project', 'Owner', 'Due Date', 'Status', 'Approval', 'Revisions', 'Actions'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{header}</th>)}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                        {visibleDeliverables.map((deliverable) => {
+                          const project = projects.find((item) => item.id === deliverable.project_id)
+                          const service = services.find((item) => item.id === deliverable.service_id)
+                          return (
+                            <tr key={deliverable.id} className="align-top hover:bg-gray-50 dark:hover:bg-gray-800/80">
+                              <td className="px-4 py-3"><p className="font-medium text-gray-900 dark:text-gray-100">{deliverable.title}</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{deliverable.linked_task_ids?.length || 0} task(s)</p></td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{service?.name || deliverable.service_name || deliverable.service_id}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{project ? <Link className="font-medium text-primary-600 hover:underline dark:text-primary-400" to={`/projects/${projectBoardId(project)}/board`}>{project.name}</Link> : deliverable.project_name || deliverable.project_id}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{deliverable.owner_id || 'Unassigned'}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(deliverable.due_date)}</td>
+                              <td className="px-4 py-3"><select value={deliverable.status || 'planned'} onChange={(event) => deliverableStatusMutation.mutate({ deliverableId: deliverable.id, nextStatus: event.target.value })} className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">{DELIVERABLE_STATUSES.map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}</select></td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{(deliverable.approval_status || 'not_sent').replaceAll('_', ' ')}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{deliverable.revision_count || 0}</td>
+                              <td className="px-4 py-3">
+                                <div className="flex flex-wrap gap-2">
+                                  <Button type="button" size="sm" variant="secondary" onClick={() => deliverableReviewMutation.mutate({ deliverableId: deliverable.id, action: 'send', payload: {} })}>Send review</Button>
+                                  <Button type="button" size="sm" variant="secondary" onClick={() => deliverableReviewMutation.mutate({ deliverableId: deliverable.id, action: 'approve', payload: {} })}>Approve</Button>
+                                  <Button type="button" size="sm" variant="secondary" onClick={() => deliverableReviewMutation.mutate({ deliverableId: deliverable.id, action: 'revision', payload: { revision_note: 'Revision requested from client workspace' } })}>Revision</Button>
+                                  {project ? <Link className="btn btn-secondary btn-sm inline-flex items-center gap-2" to={`/projects/${projectBoardId(project)}/board`}><ExternalLink className="h-3 w-3" />Work</Link> : null}
+                                </div>
+                                <form onSubmit={(event) => handleCreateDeliverableTask(event, deliverable)} className="mt-3 grid gap-2">
+                                  <input name="title" placeholder="New task for this deliverable" required className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <select name="priority" defaultValue="medium" className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select>
+                                    <input name="due_date" type="date" className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                                  </div>
+                                  <input name="assigned_to" placeholder="Assignee ID" className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                                  <textarea name="description" rows={2} placeholder="Task notes" className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
+                                  <Button type="submit" size="sm" variant="secondary" disabled={deliverableTaskMutation.isLoading}>Create task</Button>
+                                </form>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : <CRMEmptyState icon={FileText} title="No deliverables yet" description="Create deliverables under a service and project to track client review." />}
             </div>
+          </CRMSection>
+        )
+      }
+
+      if (activeWorkTab === 'tasks') {
+        return (
+          <CRMSection title="Tasks" description="Delivery tasks associated with the client projects.">
+            {tasks.length ? (
+              <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                    <thead className="bg-gray-50 dark:bg-gray-950">
+                      <tr>
+                        {['Task', 'Status', 'Priority', 'Project', 'Due', 'Updated'].map((header) => (
+                          <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{header}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                      {tasks.map((task) => (
+                        <tr key={task.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
+                          <td className="px-4 py-3">
+                            <Link
+                              to={
+                                task.project_object_id || task.project_id
+                                  ? `/projects/${task.project_object_id || task.project_id}/tasks/${task.id}`
+                                  : `/tasks/${task.id}`
+                              }
+                              className="font-medium text-gray-900 hover:text-primary-600 hover:underline dark:text-gray-100 dark:hover:text-primary-400"
+                            >
+                              {task.title}
+                            </Link>
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{task.id}</p>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{task.status || 'N/A'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{task.priority || 'N/A'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                            {task.project_object_id || task.project_id ? (
+                              <Link to={`/projects/${task.project_object_id || task.project_id}/board`} className="font-medium text-primary-600 hover:underline dark:text-primary-400">
+                                {task.project_id || task.project_object_id}
+                              </Link>
+                            ) : 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(task.due_date)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(task.updated_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <CRMEmptyState icon={Activity} title="No tasks yet" description="Tasks linked to client projects will appear here." />
+            )}
+          </CRMSection>
+        )
+      }
+
+      return (
+        <CRMSection title="Projects" description="Projects linked to this client account.">
+          {projects.length ? (
+            <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                  <thead className="bg-gray-50 dark:bg-gray-950">
+                    <tr>
+                      {['Project', 'Status', 'Budget', 'Start', 'Delivery', 'Actions'].map((header) => (
+                        <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{header}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                    {projects.map((project) => (
+                      <tr key={project.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
+                        <td className="px-4 py-3">
+                          <Link to={`/projects/${projectBoardId(project)}/board`} className="font-medium text-gray-900 hover:text-primary-600 hover:underline dark:text-gray-100 dark:hover:text-primary-400">
+                            {project.name}
+                          </Link>
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{project.key || project.project_id || project.id}</p>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{project.status || 'N/A'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{project.budget ? formatCurrency(project.budget) : 'N/A'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(project.start_date)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(project.delivery_date)}</td>
+                        <td className="px-4 py-3">
+                          <Link className="btn btn-secondary btn-sm inline-flex items-center gap-2" to={`/projects/${projectBoardId(project)}/board`}>
+                            <ExternalLink className="h-3 w-3" />Open
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <CRMEmptyState icon={FolderKanban} title="No projects yet" description="Projects will appear here once they are linked to this client." />
+          )}
+        </CRMSection>
+      )
+    }
+
+    tabBody = (
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {workSubTabs.map((tab) => (
+            <Button key={tab.key} type="button" size="sm" variant={activeWorkTab === tab.key ? 'primary' : 'secondary'} onClick={() => setWorkTab(tab.key)}>
+              {tab.label}
+            </Button>
+          ))}
+        </div>
+        {renderWorkContent()}
+      </div>
+    )
+  } else if (activeTab === 'files') {
+    tabBody = (
+      <CRMSection title="Files" description="Referenced client files and documents from onboarding, delivery, finance, and approvals.">
+        <div className="mb-4 flex flex-wrap gap-2">
+          {fileCategories.map((category) => (
+            <Button key={category} type="button" size="sm" variant={fileFilter === category ? 'primary' : 'secondary'} onClick={() => setFileFilter(category)}>
+              {category === 'all' ? 'All' : category}
+            </Button>
+          ))}
+        </div>
+        {visibleFiles.length ? (
+          <div className="grid gap-3">
+            {visibleFiles.map((document, index) => (
+              <article key={`${document.url || document.name || index}`} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{document.name || document.original_name || 'Document'}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{document.category || 'Other'} | {document.type || 'file'} | {document.size ? `${(Number(document.size) / 1024).toFixed(2)} KB` : 'Size unavailable'}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatDateTime(document.uploaded_at)}</p>
+                  </div>
+                  {document.url ? (
+                    <a className="btn btn-secondary btn-sm inline-flex items-center gap-2" href={clientFileUrl(document.url)} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-3 w-3" />
+                      {String(document.type || document.mime_type || '').toLowerCase().includes('pdf') ? 'Preview PDF' : 'Open'}
+                    </a>
+                  ) : null}
+                </div>
+              </article>
+            ))}
           </div>
         ) : (
-          <CRMEmptyState icon={FolderKanban} title="No projects yet" description="Projects will appear here once they are linked to this client." />
+          <CRMEmptyState icon={FileText} title="No files yet" description="Client agreements, requirements, assets, reports, invoices, and deliverable references will appear here." />
         )}
       </CRMSection>
     )
-  } else if (activeTab === 'tasks') {
+  } else if (activeTab === 'finance') {
     tabBody = (
       <CRMSection title="Tasks" description="Delivery tasks associated with the client projects.">
         {tasks.length ? (
@@ -1943,7 +2241,7 @@ export default function ClientWorkspacePage() {
         )}
       </CRMSection>
     )
-  } else if (activeTab === 'invoices') {
+  } else if (activeTab === 'finance') {
     tabBody = (
       <CRMSection title="Finance" description="Commercial lifecycle, invoices, payments, renewal, and churn controls.">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -2044,75 +2342,7 @@ export default function ClientWorkspacePage() {
         </div>
       </CRMSection>
     )
-  } else if (activeTab === 'meetings') {
-    tabBody = (
-      <CRMSection title="Meetings" description="Meetings explicitly connected to this client, project, or client contact.">
-        <form onSubmit={handleMeetingSubmit} className="mb-5 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <input name="title" placeholder="Meeting title" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
-            <input name="meeting_date" type="date" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
-            <input name="meeting_time" type="time" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
-            <input name="duration" type="number" min="15" step="15" defaultValue="30" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
-            <select name="project_id" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">
-              <option value="">No linked project</option>
-              {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-            </select>
-            <select name="contact_id" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">
-              <option value="">No linked contact</option>
-              {contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.email}</option>)}
-            </select>
-            <textarea name="description" rows={2} placeholder="Notes or expected result" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm md:col-span-2 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
-          </div>
-          <Button type="submit" size="sm" className="mt-3" disabled={createMeetingMutation.isLoading}>Schedule meeting</Button>
-        </form>
-        {meetings.length ? (
-          <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
-                <thead className="bg-gray-50 dark:bg-gray-950">
-                  <tr>
-                    {['Meeting', 'Status', 'Date', 'Time', 'Duration', 'Linked', 'Actions'].map((header) => (
-                      <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{header}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                  {meetings.map((meeting) => {
-                    const linkedProject = projects.find((project) => project.id === meeting.project_id || project.project_id === meeting.project_id)
-                    const linkedContact = contacts.find((contact) => contact.id === meeting.contact_id)
-                    return (
-                      <tr key={meeting.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-gray-900 dark:text-gray-100">{meeting.title}</p>
-                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{meeting.description || 'No notes recorded'}</p>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{meeting.status || 'N/A'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(meeting.meeting_date)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{meeting.meeting_time || 'N/A'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{meeting.duration ? `${meeting.duration} min` : 'N/A'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
-                          <p>{linkedProject?.name || (meeting.project_id ? 'Project linked' : 'No project')}</p>
-                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{linkedContact?.full_name || (meeting.contact_id ? 'Contact linked' : 'No contact')}</p>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-2">
-                            {meeting.join_url ? <a className="btn btn-secondary btn-sm inline-flex items-center gap-2" href={meeting.join_url} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3 w-3" />Open</a> : null}
-                            {meeting.status !== 'completed' ? <Button type="button" size="sm" variant="secondary" onClick={() => completeMeetingMutation.mutate(meeting.id)} disabled={completeMeetingMutation.isLoading}>Complete</Button> : null}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : (
-          <CRMEmptyState icon={CalendarDays} title="No meetings yet" description="Meetings connected to this client account will appear here." />
-        )}
-      </CRMSection>
-    )
-  } else if (activeTab === 'timeline') {
+  } else if (activeTab === 'activity') {
     tabBody = (
       <CRMSection title="Activity" description="Chronological client activity from CRM, delivery, meetings, files, and finance.">
         <div className="mb-4 flex flex-wrap gap-2">
@@ -2416,7 +2646,12 @@ export default function ClientWorkspacePage() {
         <CRMStatCard icon={Clock3} label="Updated" value={formatDate(client.updated_at)} tone="slate" helper="Workspace freshness" />
       </div>
 
-      <WorkspaceTabs activeTab={activeTab} onTabChange={setTab} counts={tabCounts} />
+      <WorkspaceTabs
+        activeTab={activeTab}
+        onTabChange={setTab}
+        counts={tabCounts}
+        extraTabs={showOnboardingMainTab ? [{ key: 'onboarding', label: 'Onboarding' }] : []}
+      />
 
       {tabBody}
 

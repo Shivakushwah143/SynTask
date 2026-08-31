@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 import uuid
 import re
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 logger = logging.getLogger(__name__)
 
