@@ -10,7 +10,7 @@ from beanie.exceptions import CollectionWasNotInitialized
 from bson import ObjectId
 
 from app.crm.company_timeline import CRMCompanyTimelineService
-from app.crm.client_identity import load_contacts_for_client, resolve_crm_company_for_client
+from app.crm.client_identity import load_contacts_for_client, persist_resolved_crm_company_for_client, resolve_crm_company_for_client
 from app.crm.client_activity import build_client_activity, load_client_communications
 from app.crm.client_commercial import load_client_finance, renewal_due_hint
 from app.crm.client_deliverables import serialize_deliverable
@@ -20,11 +20,13 @@ from app.crm.client_services import ensure_sales_handoff_service, serialize_clie
 from app.crm.models import Client
 from app.models.client import ClientStatus
 from app.models.client_deliverable import ClientDeliverable
+from app.models.crm_document import CRMDocument
 from app.models.client_service import ClientService
 from app.models.invoice import Invoice
 from app.models.meeting import Meeting
 from app.models.project import Project
 from app.crm.models import ProspectStatus, SalesProspect
+from app.models.sales_lead_file import SalesLeadFile
 from app.models.task import Task
 from app.models.user import User, UserRole
 
@@ -99,6 +101,54 @@ def _contact_summary(contact: Any) -> Dict[str, Any]:
     }
 
 
+def _document_kind(document_type: Any) -> str:
+    value = getattr(document_type, "value", document_type)
+    if value == "quotation":
+        return "Proposal"
+    if value == "contract":
+        return "Agreement"
+    return str(value or "Document").replace("_", " ").title()
+
+
+def _sales_file_summary(file_record: SalesLeadFile) -> Dict[str, Any]:
+    return {
+        "id": f"sales-file-{file_record.id}",
+        "source": "sales_lead_file",
+        "lead_id": file_record.lead_id,
+        "name": file_record.original_name or file_record.file_name or "Sales file",
+        "original_name": file_record.original_name,
+        "category": "Sales Handoff",
+        "type": file_record.file_type or file_record.mime_type or "file",
+        "mime_type": file_record.mime_type,
+        "size": file_record.file_size,
+        "url": file_record.file_url,
+        "uploaded_at": file_record.created_at,
+        "updated_at": file_record.updated_at,
+    }
+
+
+def _crm_document_summary(document: CRMDocument) -> Dict[str, Any]:
+    kind = _document_kind(document.document_type)
+    url = document.pdf_file_path or document.source_file_url or document.source_file_path
+    file_name = document.source_file_name or (f"{document.document_number}.pdf" if document.pdf_file_path else None)
+    return {
+        "id": f"crm-document-{document.id}",
+        "source": "crm_document",
+        "lead_id": document.lead_id,
+        "document_id": str(document.id),
+        "document_number": document.document_number,
+        "name": document.title or file_name or kind,
+        "original_name": file_name,
+        "category": kind,
+        "type": "pdf" if document.pdf_file_path else _document_kind(document.document_type).lower(),
+        "status": getattr(document.status, "value", document.status),
+        "size": None,
+        "url": url,
+        "uploaded_at": document.created_at,
+        "updated_at": document.updated_at,
+    }
+
+
 class ClientWorkspaceService:
     @staticmethod
     async def load_workspace(current_user: User, client_id: str) -> Dict[str, Any]:
@@ -157,6 +207,8 @@ class ClientWorkspaceService:
 
         company_resolution = await resolve_crm_company_for_client(client)
         crm_company = company_resolution.crm_company
+        if crm_company:
+            await persist_resolved_crm_company_for_client(client, company_resolution)
         contacts = await load_contacts_for_client(client)
         client_account_name = client.company_name or client.name
         escaped_account_name = re.escape(client_account_name)
@@ -241,6 +293,22 @@ class ClientWorkspaceService:
         for index, document in enumerate(client.documents or []):
             category = document.get("category") or document.get("type") or "Other"
             categorized_files.append({**document, "id": document.get("id") or f"client-document-{index}", "category": category})
+        lead_ids = list(dict.fromkeys([str(lead.id) for lead in lead_candidates if getattr(lead, "id", None)]))
+        if lead_ids:
+            try:
+                sales_files = await SalesLeadFile.find(
+                    {"company_id": client.company_id, "lead_id": {"$in": lead_ids}, "deleted": False}
+                ).sort("-created_at").to_list()
+            except CollectionWasNotInitialized:
+                sales_files = []
+            categorized_files.extend(_sales_file_summary(file_record) for file_record in sales_files)
+            try:
+                crm_documents = await CRMDocument.find(
+                    {"company_id": client.company_id, "lead_id": {"$in": lead_ids}}
+                ).sort("-created_at").to_list()
+            except CollectionWasNotInitialized:
+                crm_documents = []
+            categorized_files.extend(_crm_document_summary(document) for document in crm_documents)
         for deliverable in deliverables:
             for file_index, file_item in enumerate(deliverable.get("linked_files") or []):
                 categorized_files.append({
@@ -333,7 +401,18 @@ class ClientWorkspaceService:
                 "industry": client.industry,
                 "status": client.status.value,
                 "assigned_to": client.assigned_to,
-                "crm_company_id": client.crm_company_id,
+                "crm_company_id": str(crm_company.id) if crm_company else client.crm_company_id,
+                "resolved_crm_company_id": str(crm_company.id) if crm_company else None,
+                "crm_company": {
+                    "id": str(crm_company.id),
+                    "name": crm_company.name,
+                    "reason": company_resolution.reason,
+                    "status": company_resolution.status,
+                } if crm_company else None,
+                "crm_company_resolution": {
+                    "status": company_resolution.status,
+                    "reason": company_resolution.reason,
+                },
                 "source_lead_id": client.source_lead_id,
                 "account_owner_id": client.account_owner_id,
                 "sales_owner_id": client.sales_owner_id,

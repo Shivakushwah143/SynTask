@@ -130,6 +130,55 @@ export const clientsAPI = {
     return response.data
   },
 
+  getOnboardingAssets: async (clientId) => {
+    const response = await api.get(`/clients/${clientId}/onboarding/assets`)
+    return response.data
+  },
+
+  addAssetSubmission: async (clientId, payload) => {
+    const formData = new FormData()
+    formData.append('source', payload.source || 'manual_upload')
+    formData.append('requirement_ids', JSON.stringify(payload.requirement_ids || []))
+    if (payload.received_from_contact_id) formData.append('received_from_contact_id', payload.received_from_contact_id)
+    if (payload.received_by_user_id) formData.append('received_by_user_id', payload.received_by_user_id)
+    if (payload.received_date) formData.append('received_date', payload.received_date)
+    if (payload.notes) formData.append('notes', payload.notes)
+    Array.from(payload.files || []).forEach((file) => formData.append('files', file))
+    const response = await api.post(`/clients/${clientId}/onboarding/assets/submissions`, formData)
+    return response.data
+  },
+
+  updateAssetRequirement: async (clientId, requirementId, payload) => {
+    const response = await api.patch(`/clients/${clientId}/onboarding/assets/requirements/${requirementId}`, payload)
+    return response.data
+  },
+
+  uploadAssetRequirementFiles: async (clientId, requirementId, payload) => {
+    const formData = new FormData()
+    formData.append('source', payload.source || 'manual_upload')
+    if (payload.received_from_contact_id) formData.append('received_from_contact_id', payload.received_from_contact_id)
+    if (payload.received_date) formData.append('received_date', payload.received_date)
+    if (payload.notes) formData.append('notes', payload.notes)
+    Array.from(payload.files || []).forEach((file) => formData.append('files', file))
+    const response = await api.post(`/clients/${clientId}/onboarding/assets/requirements/${requirementId}/files`, formData)
+    return response.data
+  },
+
+  linkAssetRequirementFile: async (clientId, requirementId, payload) => {
+    const response = await api.post(`/clients/${clientId}/onboarding/assets/requirements/${requirementId}/file-links`, payload)
+    return response.data
+  },
+
+  generateAssetRequestLink: async (clientId, requirementId) => {
+    const response = await api.post(`/clients/${clientId}/onboarding/assets/requirements/${requirementId}/request-link`)
+    return response.data
+  },
+
+  revokeAssetRequestLink: async (clientId, requirementId) => {
+    const response = await api.post(`/clients/${clientId}/onboarding/assets/requirements/${requirementId}/request-link/revoke`)
+    return response.data
+  },
+
   updateProfile: async (clientId, values) => {
     const response = await api.patch(`/clients/${clientId}/profile`, values)
     return response.data

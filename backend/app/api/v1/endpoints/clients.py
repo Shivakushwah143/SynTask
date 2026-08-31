@@ -18,7 +18,19 @@ logger = logging.getLogger(__name__)
 from app.crm.models import Client, ClientStatus, ClientType, SalesProspect
 from app.crm.client_identity import load_contacts_for_client
 from app.crm.client_lifecycle import client_lifecycle_rules, normalize_client_status, transition_client_status
-from app.crm.client_onboarding import build_onboarding_document, merge_onboarding_data, sync_client_onboarding
+from app.crm.client_onboarding import (
+    add_asset_submission,
+    add_asset_submission_by_token,
+    build_onboarding_document,
+    ensure_asset_requirements,
+    generate_asset_request_link,
+    link_existing_asset_file,
+    load_asset_request_by_token,
+    merge_onboarding_data,
+    revoke_asset_request_link,
+    sync_client_onboarding,
+    update_asset_requirement,
+)
 from app.crm.client_services import (
     CONTACT_ROLE_OPTIONS,
     load_client_for_user,
@@ -86,6 +98,15 @@ class ContactRolesPayload(BaseModel):
     roles: List[str] = []
 
 
+class AssetExistingFilePayload(BaseModel):
+    url: str
+    name: Optional[str] = None
+    original_name: Optional[str] = None
+    type: Optional[str] = None
+    size: Optional[int] = None
+    notes: Optional[str] = None
+
+
 class RenewalPayload(BaseModel):
     renewal_date: Optional[str] = None
     contract_end_date: Optional[str] = None
@@ -121,6 +142,15 @@ class ClientAIQuestionPayload(BaseModel):
 class ClientSavedViewPayload(BaseModel):
     name: str
     filters: Dict[str, Any] = {}
+
+
+class ClientAssetRequirementPayload(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    required: Optional[bool] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    note: Optional[str] = None
 
 
 class ClientServicePayload(BaseModel):
@@ -897,6 +927,271 @@ async def update_client_onboarding_data(
     client.updated_at = utc_now()
     await client.save()
     return {"client_id": str(client.id), "onboarding": await sync_client_onboarding(client, current_user)}
+
+
+async def _validate_client_contact(client: Client, contact_id: Optional[str]) -> Optional[str]:
+    if not contact_id:
+        return None
+    contacts = await load_contacts_for_client(client)
+    if not any(str(contact.id) == str(contact_id) for contact in contacts):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact must belong to the linked CRM company")
+    return str(contact_id)
+
+
+def _parse_requirement_ids(raw: str) -> List[str]:
+    value = (raw or "").strip()
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed if str(item).strip()]
+    except json.JSONDecodeError:
+        pass
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+@router.get("/{client_id}/onboarding/assets")
+async def get_client_onboarding_assets(
+    client_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Return Client onboarding asset requirements and submissions."""
+    client = await load_client_for_user(client_id, current_user)
+    assets = await ensure_asset_requirements(client)
+    await client.save()
+    onboarding = await sync_client_onboarding(client, current_user)
+    return {"client_id": str(client.id), "assets": assets, "onboarding": onboarding}
+
+
+@router.post("/{client_id}/onboarding/assets/submissions")
+async def create_client_asset_submission(
+    client_id: str,
+    source: str = Form("manual_upload"),
+    requirement_ids: str = Form(...),
+    received_from_contact_id: Optional[str] = Form(None),
+    received_by_user_id: Optional[str] = Form(None),
+    received_date: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    files: List[UploadFile] = File(default=[]),
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Add an internal Client onboarding asset submission and map it to one or more requirements."""
+    client = await load_client_for_user(client_id, current_user)
+    contact_id = await _validate_client_contact(client, received_from_contact_id)
+    received_by = await _validate_same_tenant_user_id(received_by_user_id, current_user, "received_by_user_id") if received_by_user_id else str(current_user.id)
+    uploaded_files: List[Dict[str, Any]] = []
+    client.documents = list(client.documents or [])
+    for file in files or []:
+        stored = await FileService.store_uploaded_file(file, upload_dir=UPLOAD_DIR, url_prefix="/api/v1/files/clients")
+        uploaded_files.append({
+            "name": stored.get("filename"),
+            "original_name": file.filename,
+            "url": stored.get("file_url"),
+            "type": (stored.get("extension") or "").lstrip("."),
+            "size": stored.get("size"),
+            "uploaded_at": utc_now().isoformat(),
+            "uploaded_by": str(current_user.id),
+        })
+        client.documents.append({
+            "name": file.filename or stored.get("filename"),
+            "original_name": file.filename,
+            "url": stored.get("file_url"),
+            "type": (stored.get("extension") or "").lstrip("."),
+            "category": "asset_submission",
+            "status": "received",
+            "uploaded_at": utc_now().isoformat(),
+            "uploaded_by": str(current_user.id),
+        })
+    try:
+        result = await add_asset_submission(client, {
+            "source": source,
+            "requirement_ids": _parse_requirement_ids(requirement_ids),
+            "received_from_contact_id": contact_id,
+            "received_by_user_id": received_by,
+            "received_date": received_date,
+            "notes": notes,
+            "files": uploaded_files,
+        }, current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"client_id": str(client.id), "assets": result, "onboarding": await sync_client_onboarding(client, current_user)}
+
+
+@router.post("/{client_id}/onboarding/assets/requirements/{requirement_id}/files")
+async def upload_client_asset_requirement_files(
+    client_id: str,
+    requirement_id: str,
+    source: str = Form("manual_upload"),
+    received_from_contact_id: Optional[str] = Form(None),
+    received_date: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    files: List[UploadFile] = File(default=[]),
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Upload files directly against one asset requirement."""
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one file is required")
+    client = await load_client_for_user(client_id, current_user)
+    contact_id = await _validate_client_contact(client, received_from_contact_id)
+    uploaded_files: List[Dict[str, Any]] = []
+    client.documents = list(client.documents or [])
+    for file in files or []:
+        stored = await FileService.store_uploaded_file(file, upload_dir=UPLOAD_DIR, url_prefix="/api/v1/files/clients")
+        uploaded_files.append({
+            "name": stored.get("filename"),
+            "original_name": file.filename,
+            "url": stored.get("file_url"),
+            "type": (stored.get("extension") or "").lstrip("."),
+            "size": stored.get("size"),
+            "uploaded_at": utc_now().isoformat(),
+            "uploaded_by": str(current_user.id),
+        })
+        client.documents.append({
+            "name": file.filename or stored.get("filename"),
+            "original_name": file.filename,
+            "url": stored.get("file_url"),
+            "type": (stored.get("extension") or "").lstrip("."),
+            "category": "asset_submission",
+            "status": "received",
+            "uploaded_at": utc_now().isoformat(),
+            "uploaded_by": str(current_user.id),
+        })
+    try:
+        result = await add_asset_submission(client, {
+            "source": source,
+            "requirement_ids": [requirement_id],
+            "received_from_contact_id": contact_id,
+            "received_by_user_id": str(current_user.id),
+            "received_date": received_date,
+            "notes": notes,
+            "files": uploaded_files,
+        }, current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"client_id": str(client.id), "assets": result, "onboarding": await sync_client_onboarding(client, current_user)}
+
+
+@router.post("/{client_id}/onboarding/assets/requirements/{requirement_id}/file-links")
+async def link_client_asset_requirement_file(
+    client_id: str,
+    requirement_id: str,
+    payload: AssetExistingFilePayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Link an existing same-client file to one asset requirement without copying the file."""
+    client = await load_client_for_user(client_id, current_user)
+    try:
+        result = await link_existing_asset_file(client, requirement_id, payload.dict(exclude_unset=True), current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"client_id": str(client.id), "assets": result, "onboarding": await sync_client_onboarding(client, current_user)}
+
+
+@router.post("/{client_id}/onboarding/assets/requirements/{requirement_id}/request-link")
+async def create_client_asset_request_link(
+    client_id: str,
+    requirement_id: str,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Generate or regenerate a secure upload request token for one asset requirement."""
+    client = await load_client_for_user(client_id, current_user)
+    try:
+        result = await generate_asset_request_link(client, requirement_id, current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"client_id": str(client.id), "assets": result, "onboarding": await sync_client_onboarding(client, current_user)}
+
+
+@router.post("/{client_id}/onboarding/assets/requirements/{requirement_id}/request-link/revoke")
+async def revoke_client_asset_request_link(
+    client_id: str,
+    requirement_id: str,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Revoke the current secure upload request token for one asset requirement."""
+    client = await load_client_for_user(client_id, current_user)
+    try:
+        result = await revoke_asset_request_link(client, requirement_id, current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"client_id": str(client.id), "assets": result, "onboarding": await sync_client_onboarding(client, current_user)}
+
+
+@router.get("/asset-upload/{token}")
+async def get_asset_upload_request(token: str):
+    """Public metadata for one secure asset upload request."""
+    try:
+        client, requirement = await load_asset_request_by_token(token)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return {
+        "client": {"id": str(client.id), "name": client.name, "company_name": client.company_name},
+        "requirement": {
+            "id": requirement.get("id"),
+            "name": requirement.get("name"),
+            "description": requirement.get("description"),
+            "required": requirement.get("required", True),
+            "status": requirement.get("status", "missing"),
+        },
+        "expires_at": requirement.get("request_link_expires_at"),
+    }
+
+
+@router.post("/asset-upload/{token}")
+async def upload_asset_request_files(
+    token: str,
+    notes: Optional[str] = Form(None),
+    files: List[UploadFile] = File(default=[]),
+):
+    """Public upload receiver for one secure asset requirement request."""
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one file is required")
+    try:
+        client, requirement = await load_asset_request_by_token(token)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    uploaded_files: List[Dict[str, Any]] = []
+    client.documents = list(client.documents or [])
+    for file in files or []:
+        stored = await FileService.store_uploaded_file(file, upload_dir=UPLOAD_DIR, url_prefix="/api/v1/files/clients")
+        uploaded_files.append({
+            "name": stored.get("filename"),
+            "original_name": file.filename,
+            "url": stored.get("file_url"),
+            "type": (stored.get("extension") or "").lstrip("."),
+            "size": stored.get("size"),
+            "uploaded_at": utc_now().isoformat(),
+            "uploaded_by": None,
+        })
+        client.documents.append({
+            "name": file.filename or stored.get("filename"),
+            "original_name": file.filename,
+            "url": stored.get("file_url"),
+            "type": (stored.get("extension") or "").lstrip("."),
+            "category": "asset_submission",
+            "status": "received",
+            "uploaded_at": utc_now().isoformat(),
+            "uploaded_by": None,
+        })
+    result = await add_asset_submission_by_token(client, requirement["id"], uploaded_files, notes)
+    return {"message": "Asset uploaded", "requirement_id": requirement["id"], "assets": result}
+
+
+@router.patch("/{client_id}/onboarding/assets/requirements/{requirement_id}")
+async def patch_client_asset_requirement(
+    client_id: str,
+    requirement_id: str,
+    payload: ClientAssetRequirementPayload,
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Update an asset requirement or move it through requested/verified/replacement status."""
+    client = await load_client_for_user(client_id, current_user)
+    try:
+        result = await update_asset_requirement(client, requirement_id, payload.dict(exclude_unset=True), current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"client_id": str(client.id), "assets": result, "onboarding": await sync_client_onboarding(client, current_user)}
 
 
 @router.patch("/{client_id}/onboarding/primary-contact")

@@ -479,7 +479,7 @@ async def test_move_lead_to_won_updates_closed_fields_and_triggers_automation(mo
     async def fake_handle_won_deal_automation(current_user, lead_arg, deal_arg):
         automation_capture["lead_id"] = lead_arg.id
         automation_capture["deal_id"] = deal_arg.id
-        return {"status": "completed"}
+        return {"status": "completed", "client": SimpleNamespace(id="client-1")}
 
     lead.save = fake_save
     deal.save = fake_deal_save

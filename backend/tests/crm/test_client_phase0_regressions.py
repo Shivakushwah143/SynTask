@@ -6,10 +6,10 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.endpoints.clients import _client_commercial_fields
+from app.api.v1.endpoints.clients import _client_commercial_fields, _validate_client_contact
 from app.crm.client_workspace import ClientWorkspaceService
 from app.crm import client_onboarding
-from app.crm.client_identity import ClientCompanyResolution, load_contacts_for_client, resolve_crm_company_for_client
+from app.crm.client_identity import ClientCompanyResolution, ensure_crm_company_for_won_lead, load_contacts_for_client, resolve_crm_company_for_client
 from app.crm import client_lifecycle
 from app.crm.client_lifecycle import normalize_client_status, transition_client_status
 from app.crm.deal_automation import _resolve_client, handle_won_deal_automation
@@ -386,6 +386,222 @@ async def test_onboarding_assets_and_access_ignore_documents_and_notes(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_onboarding_asset_submission_maps_one_pdf_to_multiple_requirements_and_logs_activity(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, lifecycle_metadata={})
+    actor = _user()
+    activities = []
+
+    class FakeCRMActivity:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        async def insert(self):
+            activities.append(self)
+
+    monkeypatch.setattr(client_onboarding, "CRMActivity", FakeCRMActivity)
+    assets = await client_onboarding.ensure_asset_requirements(client)
+    requirement_ids = [item["id"] for item in assets["requirements"][:4]]
+
+    result = await client_onboarding.add_asset_submission(client, {
+        "source": "whatsapp",
+        "requirement_ids": requirement_ids,
+        "received_from_contact_id": "contact-1",
+        "received_by_user_id": str(actor.id),
+        "files": [{"name": "onboarding-assets.pdf", "url": "/api/v1/files/clients/onboarding-assets.pdf", "type": "pdf"}],
+        "notes": "Received in WhatsApp",
+    }, actor)
+
+    assert result["submission"]["source"] == "whatsapp"
+    assert result["submission"]["requirement_ids"] == requirement_ids
+    assert all(item["status"] == "received" for item in result["requirements"] if item["id"] in requirement_ids)
+    assert all(item["file_refs"][0]["url"] == "/api/v1/files/clients/onboarding-assets.pdf" for item in result["requirements"] if item["id"] in requirement_ids)
+    assert result["progress"]["percent"] == 0
+    assert result["progress"]["required_verified"] == 0
+    assert any(activity.metadata["onboarding_asset_action"] == "submission_added" for activity in activities)
+    assert any(activity.metadata["onboarding_asset_action"] == "file_uploaded" for activity in activities)
+
+
+@pytest.mark.asyncio
+async def test_onboarding_asset_requirement_allows_multiple_files_replacement_and_verified_readiness(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, lifecycle_metadata={})
+    actor = _user()
+
+    class FakeCRMActivity:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        async def insert(self):
+            return None
+
+    monkeypatch.setattr(client_onboarding, "CRMActivity", FakeCRMActivity)
+    assets = await client_onboarding.ensure_asset_requirements(client)
+    logo_id = assets["requirements"][0]["id"]
+
+    await client_onboarding.add_asset_submission(client, {
+        "source": "manual_upload",
+        "requirement_ids": [logo_id],
+        "files": [{"name": "logo-v1.png", "url": "/api/v1/files/clients/logo-v1.png"}],
+    }, actor)
+    await client_onboarding.update_asset_requirement(client, logo_id, {"status": "replacement_required", "note": "Low resolution"}, actor)
+    second = await client_onboarding.add_asset_submission(client, {
+        "source": "email",
+        "requirement_ids": [logo_id],
+        "files": [{"name": "logo-v2.png", "url": "/api/v1/files/clients/logo-v2.png"}],
+    }, actor)
+    verified = await client_onboarding.update_asset_requirement(client, logo_id, {"status": "verified", "note": "Usable"}, actor)
+
+    linked = [submission for submission in second["submissions"] if logo_id in submission["requirement_ids"]]
+    logo = next(item for item in verified["requirements"] if item["id"] == logo_id)
+    assert len(linked) == 2
+    assert logo["status"] == "verified"
+    assert logo["verified_by"] == str(actor.id)
+    assert verified["progress"]["required_verified"] == 1
+    assert verified["progress"]["required_ready"] is False
+
+
+@pytest.mark.asyncio
+async def test_onboarding_asset_can_link_existing_file_to_multiple_asset_cards(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, lifecycle_metadata={})
+    client.documents = [{"name": "onboarding-assets.pdf", "url": "/api/v1/files/clients/onboarding-assets.pdf", "type": "pdf"}]
+    actor = _user()
+
+    class NoopActivity:
+        def __init__(self, **kwargs):
+            self.metadata = kwargs.get("metadata", {})
+
+        async def insert(self):
+            return None
+
+    monkeypatch.setattr(client_onboarding, "CRMActivity", NoopActivity)
+    assets = await client_onboarding.ensure_asset_requirements(client)
+    logo_id = assets["requirements"][0]["id"]
+    brand_id = assets["requirements"][1]["id"]
+    await client_onboarding.link_existing_asset_file(client, logo_id, client.documents[0], actor)
+    result = await client_onboarding.link_existing_asset_file(client, brand_id, client.documents[0], actor)
+
+    logo = next(item for item in result["requirements"] if item["id"] == logo_id)
+    brand = next(item for item in result["requirements"] if item["id"] == brand_id)
+    assert logo["file_refs"][0]["url"] == client.documents[0]["url"]
+    assert brand["file_refs"][0]["url"] == client.documents[0]["url"]
+    assert len([submission for submission in result["submissions"] if client.documents[0]["url"] in [file["url"] for file in submission["files"]]]) == 2
+
+
+@pytest.mark.asyncio
+async def test_onboarding_asset_existing_file_rejects_other_client_file(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, lifecycle_metadata={})
+    client.documents = [{"name": "owned.pdf", "url": "/api/v1/files/clients/owned.pdf"}]
+    actor = _user()
+    assets = await client_onboarding.ensure_asset_requirements(client)
+
+    with pytest.raises(ValueError):
+        await client_onboarding.link_existing_asset_file(
+            client,
+            assets["requirements"][0]["id"],
+            {"name": "other.pdf", "url": "/api/v1/files/clients/other.pdf"},
+            actor,
+        )
+
+
+@pytest.mark.asyncio
+async def test_onboarding_asset_request_link_is_hashed_and_revoke_is_idempotent(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, lifecycle_metadata={})
+    actor = _user()
+
+    class NoopActivity:
+        def __init__(self, **kwargs):
+            self.metadata = kwargs.get("metadata", {})
+
+        async def insert(self):
+            return None
+
+    monkeypatch.setattr(client_onboarding, "CRMActivity", NoopActivity)
+    assets = await client_onboarding.ensure_asset_requirements(client)
+    requirement_id = assets["requirements"][0]["id"]
+    generated = await client_onboarding.generate_asset_request_link(client, requirement_id, actor)
+    requirement = next(item for item in generated["requirements"] if item["id"] == requirement_id)
+
+    assert generated["token"]
+    assert generated["token"] != requirement["request_token_hash"]
+    assert requirement["status"] == "requested"
+    revoked = await client_onboarding.revoke_asset_request_link(client, requirement_id, actor)
+    revoked_requirement = next(item for item in revoked["requirements"] if item["id"] == requirement_id)
+    assert revoked_requirement["request_link_revoked_at"]
+
+
+@pytest.mark.asyncio
+async def test_onboarding_asset_request_token_loads_single_asset_and_rejects_revoked(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, lifecycle_metadata={})
+    actor = _user()
+
+    class NoopActivity:
+        def __init__(self, **kwargs):
+            self.metadata = kwargs.get("metadata", {})
+
+        async def insert(self):
+            return None
+
+    monkeypatch.setattr(client_onboarding, "CRMActivity", NoopActivity)
+    assets = await client_onboarding.ensure_asset_requirements(client)
+    requirement_id = assets["requirements"][0]["id"]
+    generated = await client_onboarding.generate_asset_request_link(client, requirement_id, actor)
+    token = generated["token"]
+
+    async def find_one(query):
+        assert "lifecycle_metadata.onboarding.asset_requirements.request_token_hash" in query
+        return client
+
+    monkeypatch.setattr(client_onboarding.Client, "find_one", find_one)
+    loaded_client, loaded_requirement = await client_onboarding.load_asset_request_by_token(token)
+    assert loaded_client is client
+    assert loaded_requirement["id"] == requirement_id
+
+    await client_onboarding.revoke_asset_request_link(client, requirement_id, actor)
+    with pytest.raises(ValueError):
+        await client_onboarding.load_asset_request_by_token(token)
+
+
+@pytest.mark.asyncio
+async def test_onboarding_assets_ready_only_when_required_assets_verified(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, lifecycle_metadata={})
+    actor = _user()
+
+    class NoopActivity:
+        def __init__(self, **kwargs):
+            self.metadata = kwargs.get("metadata", {})
+
+        async def insert(self):
+            return None
+
+    monkeypatch.setattr(client_onboarding, "CRMActivity", NoopActivity)
+    assets = await client_onboarding.ensure_asset_requirements(client)
+    required_ids = [item["id"] for item in assets["requirements"] if item.get("required")]
+    optional_id = next(item["id"] for item in assets["requirements"] if not item.get("required"))
+    await client_onboarding.update_asset_requirement(client, optional_id, {"status": "verified"}, actor)
+    partial = await client_onboarding.update_asset_requirement(client, required_ids[0], {"status": "verified"}, actor)
+    assert partial["progress"]["required_ready"] is False
+
+    for requirement_id in required_ids[1:]:
+        final = await client_onboarding.update_asset_requirement(client, requirement_id, {"status": "verified"}, actor)
+    assert final["progress"]["required_ready"] is True
+    assert final["progress"]["required_verified"] == len(required_ids)
+
+
+@pytest.mark.asyncio
+async def test_onboarding_asset_submission_rejects_unrelated_contact(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, crm_company_id="company-1")
+
+    async def contacts(_client):
+        return [SimpleNamespace(id="contact-1", company_id="tenant-1", crm_company_id="company-1")]
+
+    monkeypatch.setattr("app.api.v1.endpoints.clients.load_contacts_for_client", contacts)
+
+    with pytest.raises(HTTPException) as exc:
+        await _validate_client_contact(client, "cross-tenant-contact")
+
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_onboarding_start_date_alone_does_not_make_readiness_ready(monkeypatch):
     client = _client(status=ClientStatus.ONBOARDING, start_date=datetime.utcnow())
     monkeypatch.setattr(client_onboarding, "load_contacts_for_client", _no_contacts)
@@ -438,14 +654,14 @@ async def test_won_deal_client_creation_uses_lead_tenant_and_company(monkeypatch
             return None
 
     monkeypatch.setattr("app.crm.deal_automation.Client", FakeClientModel)
-    async def resolve_lead_company(_lead):
+    async def resolve_lead_company(_lead, _actor_id=None):
         return ClientCompanyResolution(
             SimpleNamespace(id="0000000000000000000000aa", company_id="tenant-1", name="Acme Inc"),
             "resolved",
             "test",
         )
 
-    monkeypatch.setattr("app.crm.deal_automation.resolve_crm_company_for_lead", resolve_lead_company)
+    monkeypatch.setattr("app.crm.deal_automation.ensure_crm_company_for_won_lead", resolve_lead_company)
 
     client = await _resolve_client(_user(), lead, deal=None)
 
@@ -528,6 +744,80 @@ async def test_client_company_resolution_does_not_link_ambiguous_name(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_won_lead_without_existing_company_creates_and_persists_crm_company(monkeypatch):
+    lead = _lead(crm_company_id=None, client_id=None, company_name="Acme Inc")
+    created = []
+
+    class FakeCRMCompany:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+            self.id = "0000000000000000000000bb"
+            self.deleted = False
+
+        @staticmethod
+        def find(_query):
+            return FakeQuery([])
+
+        async def insert(self):
+            created.append(self)
+
+    monkeypatch.setattr("app.crm.client_identity.CRMCompany", FakeCRMCompany)
+
+    resolution = await ensure_crm_company_for_won_lead(lead, "0000000000000000000000a1")
+
+    assert resolution.status == "resolved"
+    assert resolution.reason == "lead.company_created"
+    assert lead.crm_company_id == "0000000000000000000000bb"
+    assert lead.saved is True
+    assert created[0].company_id == "tenant-1"
+    assert created[0].name == "Acme Inc"
+    assert created[0].email == lead.email
+
+
+@pytest.mark.asyncio
+async def test_old_sales_client_missing_company_creates_from_source_lead(monkeypatch):
+    client = _client(crm_company_id=None, source_lead_id="0000000000000000000000d1")
+    lead = _lead(crm_company_id=None, client_id=str(client.id), company_name="Acme Inc")
+    created = []
+
+    async def lead_get(lead_id):
+        assert lead_id == str(lead.id)
+        return lead
+
+    class FakeCRMCompany:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+            self.id = "0000000000000000000000bc"
+            self.deleted = False
+
+        @staticmethod
+        async def get(company_id):
+            return next((company for company in created if str(company.id) == str(company_id)), None)
+
+        @staticmethod
+        def find(_query):
+            return FakeQuery([])
+
+        async def insert(self):
+            created.append(self)
+
+    monkeypatch.setattr("app.crm.client_identity.SalesProspect.get", lead_get)
+    monkeypatch.setattr("app.crm.client_identity.CRMCompany", FakeCRMCompany)
+    monkeypatch.setattr("app.crm.client_identity.SalesContact.find", lambda _query: FakeQuery([]))
+
+    resolution = await resolve_crm_company_for_client(client)
+    await load_contacts_for_client(client)
+
+    assert resolution.status == "resolved"
+    assert resolution.reason == "lead.company_created"
+    assert lead.crm_company_id == "0000000000000000000000bc"
+    assert client.crm_company_id == "0000000000000000000000bc"
+    assert lead.saved is True
+    assert client.saved is True
+    assert created[0].company_id == "tenant-1"
+
+
+@pytest.mark.asyncio
 async def test_backfill_resolution_is_idempotent_for_existing_link():
     client = {"_id": "client-1", "company_id": "tenant-1", "crm_company_id": "company-1"}
     database = {
@@ -599,6 +889,34 @@ async def test_client_workspace_scopes_projects_tasks_meetings_timeline_and_invo
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
     )
+    sales_file = SimpleNamespace(
+        id="0000000000000000000000f1",
+        lead_id=str(lead.id),
+        company_id="tenant-1",
+        file_url="/api/v1/files/proposal-upload.pdf",
+        file_name="proposal-upload.pdf",
+        original_name="Proposal Upload.pdf",
+        file_type="pdf",
+        mime_type="application/pdf",
+        file_size=2048,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    crm_document = SimpleNamespace(
+        id="0000000000000000000000e1",
+        lead_id=str(lead.id),
+        company_id="tenant-1",
+        document_type="contract",
+        document_number="CON-2026-001",
+        title="Signed Agreement",
+        status="signed",
+        pdf_file_path="/api/v1/files/signed-agreement.pdf",
+        source_file_url=None,
+        source_file_path=None,
+        source_file_name=None,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
     crm_company = SimpleNamespace(id="0000000000000000000000aa", company_id="tenant-1", name="Acme Inc")
     contact = SimpleNamespace(
         id="0000000000000000000000a5",
@@ -639,6 +957,14 @@ async def test_client_workspace_scopes_projects_tasks_meetings_timeline_and_invo
         captured["invoice_query"] = query
         return FakeQuery([invoice])
 
+    def sales_file_find(query):
+        captured["sales_file_query"] = query
+        return FakeQuery([sales_file])
+
+    def crm_document_find(query):
+        captured["crm_document_query"] = query
+        return FakeQuery([crm_document])
+
     async def timeline_load(current_user, company):
         captured["timeline_company"] = company
         return {"items": [{"id": "event-1"}], "grouped_by_day": [], "summary": {"total": 1}}
@@ -652,6 +978,8 @@ async def test_client_workspace_scopes_projects_tasks_meetings_timeline_and_invo
     monkeypatch.setattr("app.crm.client_workspace.Task.find", task_find)
     monkeypatch.setattr("app.crm.client_workspace.SalesProspect.find", lead_find)
     monkeypatch.setattr("app.crm.client_workspace.Invoice.find", invoice_find)
+    monkeypatch.setattr("app.crm.client_workspace.SalesLeadFile.find", sales_file_find)
+    monkeypatch.setattr("app.crm.client_workspace.CRMDocument.find", crm_document_find)
     async def resolve_client_company(_client):
         return ClientCompanyResolution(crm_company, "resolved", "test")
 
@@ -676,6 +1004,13 @@ async def test_client_workspace_scopes_projects_tasks_meetings_timeline_and_invo
     assert {"host_id": str(client.assigned_to)} not in captured["meeting_query"]["$or"]
     assert workspace["leads"][0]["id"] == str(lead.id)
     assert captured["invoice_query"] == {"company_id": client.company_id, "client_id": str(client.id)}
+    assert captured["sales_file_query"] == {"company_id": client.company_id, "lead_id": {"$in": [str(lead.id)]}, "deleted": False}
+    assert captured["crm_document_query"] == {"company_id": client.company_id, "lead_id": {"$in": [str(lead.id)]}}
+    handoff_files = {item["id"]: item for item in workspace["files"]}
+    assert handoff_files[f"sales-file-{sales_file.id}"]["category"] == "Sales Handoff"
+    assert handoff_files[f"sales-file-{sales_file.id}"]["url"] == "/api/v1/files/proposal-upload.pdf"
+    assert handoff_files[f"crm-document-{crm_document.id}"]["category"] == "Agreement"
+    assert handoff_files[f"crm-document-{crm_document.id}"]["url"] == "/api/v1/files/signed-agreement.pdf"
 
 
 @pytest.mark.asyncio
@@ -744,14 +1079,14 @@ async def test_won_deal_conversion_reuses_existing_client_and_links_project(monk
         return None
 
     monkeypatch.setattr("app.crm.deal_automation._eligible_account_manager_ids", no_account_managers)
-    async def resolve_lead_company(_lead):
+    async def resolve_lead_company(_lead, _actor_id=None):
         return ClientCompanyResolution(
             SimpleNamespace(id="0000000000000000000000aa", company_id="tenant-1", name="Acme Inc"),
             "resolved",
             "test",
         )
 
-    monkeypatch.setattr("app.crm.deal_automation.resolve_crm_company_for_lead", resolve_lead_company)
+    monkeypatch.setattr("app.crm.deal_automation.ensure_crm_company_for_won_lead", resolve_lead_company)
     async def client_find_one(query):
         assert query["deleted"] == {"$ne": True}
         return client

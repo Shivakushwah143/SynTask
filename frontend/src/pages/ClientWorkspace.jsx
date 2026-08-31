@@ -9,7 +9,7 @@ import { crmApi } from '../api/crm'
 import { meetingsApi } from '../api/meetings'
 import { projectsApi } from '../api/projects'
 import { tasksAPI } from '../api/tasks'
-import { Button, EmptyState, Modal, Skeleton } from '../components/ui'
+import { Button, EmptyState, Modal, PhoneInput, Skeleton } from '../components/ui'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../components/crm'
 import { formatCurrency } from './crm/pipeline/utils'
 import { toFormData } from './phase4Utils'
@@ -65,6 +65,12 @@ function clientFileUrl(url) {
   if (/^https?:\/\//i.test(url)) return url
   const baseUrl = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'
   return `${baseUrl}${url}`
+}
+
+function assetRequestUploadUrl(token) {
+  if (!token) return ''
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+  return `${apiUrl.replace(/\/$/, '')}/clients/asset-upload/${token}`
 }
 
 function apiErrorMessage(error, fallback) {
@@ -222,18 +228,94 @@ function OnboardingItemCard({ item, onOpenTab }) {
   )
 }
 
-function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, projects, contacts, meetings, documents, onSaveClient, onSaveOnboarding, onSaveAssetsAccess, onSetPrimaryContact, onCreateContact, onCreateProject, onCreateMeeting, onGenerateDocument, saving, creatingContact, creatingProject, creatingMeeting, generatingDocument }) {
+function AssetRequirementCard({ asset, existingFiles, requestUrl, onUpdateStatus, onUploadFiles, onLinkFile, onGenerateLink, onRevokeLink, saving }) {
+  const [selectedFileUrl, setSelectedFileUrl] = useState('')
+  const linkedFiles = asset.file_refs || []
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950/40">
+      <div className="grid gap-3 xl:grid-cols-[minmax(150px,1fr)_180px_minmax(260px,1.6fr)_auto] xl:items-end">
+        <div className="xl:self-center">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">{asset.name}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{asset.required ? 'Required' : 'Optional'} | {String(asset.status || 'missing').replace(/_/g, ' ')}</p>
+        </div>
+        <label className="text-xs font-medium text-gray-700 dark:text-gray-200">
+          Status
+          <select
+            value={asset.status || 'missing'}
+            onChange={(event) => onUpdateStatus(asset.id, { status: event.target.value })}
+            className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+          >
+            <option value="missing">Missing</option>
+            <option value="requested">Requested</option>
+            <option value="received">Received</option>
+            <option value="replacement_required">Replacement Required</option>
+            <option value="verified">Verified</option>
+          </select>
+        </label>
+
+        <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+          <form className="flex min-w-0 gap-2" onSubmit={(event) => {
+            event.preventDefault()
+            const form = event.currentTarget
+            onUploadFiles(asset.id, { source: 'manual_upload', files: form.elements.files.files })
+            form.reset()
+          }}>
+            <input name="files" type="file" multiple required className="min-w-0 flex-1 text-xs text-gray-600 file:mr-2 file:rounded-md file:border-0 file:bg-primary-50 file:px-2 file:py-1.5 file:text-xs file:font-semibold file:text-primary-700 hover:file:bg-primary-100 dark:text-gray-300 dark:file:bg-primary-950 dark:file:text-primary-200" />
+            <Button type="submit" size="sm" loading={saving} loadingText="...">Upload</Button>
+          </form>
+          <div className="flex gap-2">
+            <select value={selectedFileUrl} onChange={(event) => setSelectedFileUrl(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">
+              <option value="">Existing file</option>
+              {existingFiles.map((file) => <option key={file.url} value={file.url}>{file.original_name || file.name || file.url}</option>)}
+            </select>
+            <Button type="button" size="sm" variant="secondary" disabled={!selectedFileUrl} onClick={() => {
+              const selected = existingFiles.find((file) => file.url === selectedFileUrl)
+              onLinkFile(asset.id, selected)
+              setSelectedFileUrl('')
+            }}>Link</Button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" size="sm" variant="secondary" onClick={() => onGenerateLink(asset.id)}>Request</Button>
+          {requestUrl ? <Button type="button" size="sm" variant="secondary" onClick={() => navigator.clipboard?.writeText(requestUrl)}>Copy</Button> : null}
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+        {linkedFiles.length ? linkedFiles.slice(0, 3).map((file) => (
+          <a key={file.url || file.name} className="font-medium text-primary-700 hover:underline dark:text-primary-300" href={clientFileUrl(file.url)} target="_blank" rel="noopener noreferrer">{file.original_name || file.name || 'File'}</a>
+        )) : <span>No files</span>}
+        {linkedFiles.length > 3 ? <span>+{linkedFiles.length - 3} more</span> : null}
+        {asset.request_link_expires_at ? <span>Expires {formatDate(asset.request_link_expires_at)}</span> : null}
+        {asset.request_token_hash && !asset.request_link_revoked_at ? <Button type="button" size="sm" variant="ghost" onClick={() => onRevokeLink(asset.id)}>Revoke</Button> : null}
+      </div>
+    </div>
+  )
+}
+
+function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, projects, contacts, meetings, documents, files, assetRequestLinks, onSaveClient, onSaveOnboarding, onSaveAssetsAccess, onUploadAssetFiles, onLinkAssetFile, onGenerateAssetRequestLink, onRevokeAssetRequestLink, onUpdateAssetRequirement, onSetPrimaryContact, onCreateContact, onCreateProject, onCreateMeeting, onGenerateDocument, saving, creatingContact, creatingProject, creatingMeeting, generatingDocument }) {
+  const items = onboarding?.items || []
   const visibleItems = activeTab === 'overview'
-    ? onboarding?.items || []
-    : (onboarding?.items || []).filter((item) => item.tab === activeTab)
+    ? items
+    : items.filter((item) => item.tab === activeTab)
   const onboardingDocument = documents.find((item) => item.type === 'onboarding_document' || item.category === 'onboarding_document')
   const onboardingData = client?.lifecycle_metadata?.onboarding || {}
   const requirements = onboardingData.requirements || {}
   const commercial = onboardingData.commercial || {}
   const assets = onboardingData.assets || []
   const access = onboardingData.access || []
+  const assetItem = items.find((item) => item.key === 'brand_assets')
+  const assetValidation = assetItem?.validation || {}
+  const assetRequirements = assetValidation.assets || []
+  const assetProgress = assetValidation.progress || { required_verified: 0, required_total: 0, percent: 0 }
+  const existingAssetFiles = Array.from(new Map([...(documents || []), ...(files || [])].filter((file) => file?.url).map((file) => [file.url, file])).values())
   const primaryContact = contacts.find((contact) => contact.is_primary_contact)
   const [showContactForm, setShowContactForm] = useState(!contacts.length)
+  const [contactCountryCode, setContactCountryCode] = useState('+91')
+  const [contactPhone, setContactPhone] = useState('')
+  const resolvedCrmCompanyId = client?.resolved_crm_company_id || client?.crm_company?.id || client?.crm_company_id
+  const hasCrmCompany = Boolean(resolvedCrmCompanyId)
   const projectDefaults = projectSeed(client)
   const tomorrow = timeService.toUtcISOString(timeService.addDays(timeService.now(), 1)).slice(0, 10)
 
@@ -293,9 +375,19 @@ function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, proje
             <div>
               <p className="text-sm font-semibold text-gray-900 dark:text-white">Primary contact</p>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{primaryContact ? `${primaryContact.full_name} · ${primaryContact.designation || 'No designation'} · ${primaryContact.email || 'No email'} · ${primaryContact.phone || 'No phone'}` : `${contacts.length} CRM contact(s) linked.`}</p>
+              {hasCrmCompany ? <p className="mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">CRM Company linked: {client?.crm_company?.name || resolvedCrmCompanyId}</p> : null}
             </div>
-            <Button type="button" size="sm" variant="secondary" onClick={() => setShowContactForm((value) => !value)}>{showContactForm ? 'Select Existing' : 'Add Contact'}</Button>
+            <Button type="button" size="sm" variant="secondary" disabled={!hasCrmCompany} onClick={() => setShowContactForm((value) => !value)}>{showContactForm ? 'Select Existing' : 'Add Contact'}</Button>
           </div>
+          {!hasCrmCompany ? (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/60 dark:bg-amber-950/30">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Resolve this client's CRM Company before managing primary contacts.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link className="btn btn-secondary btn-sm" to="/crm/companies">Link Existing CRM Company</Link>
+                <Link className="btn btn-primary btn-sm" to={`/crm/companies?create=1&name=${encodeURIComponent(client?.company_name || client?.name || '')}`}>Create CRM Company</Link>
+              </div>
+            </div>
+          ) : null}
           {!showContactForm ? (
             <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={(event) => {
               event.preventDefault()
@@ -313,36 +405,37 @@ function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, proje
                 last_name: form.elements.last_name.value,
                 designation: form.elements.designation.value,
                 email: form.elements.email.value || null,
-                country_code: form.elements.country_code.value || '+91',
-                phone: form.elements.phone.value,
-                crm_company_id: client?.crm_company_id,
+                country_code: contactCountryCode,
+                phone: contactPhone,
+                crm_company_id: resolvedCrmCompanyId,
                 is_primary_contact: true,
               })
             }}>
-              {!client?.crm_company_id ? <p className="text-sm font-medium text-amber-700 dark:text-amber-300 md:col-span-2">Link this client to a CRM Company before adding CRM contacts.</p> : null}
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">First name<input name="first_name" required disabled={!client?.crm_company_id} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Last name<input name="last_name" required disabled={!client?.crm_company_id} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Designation<input name="designation" disabled={!client?.crm_company_id} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Email<input name="email" type="email" disabled={!client?.crm_company_id} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Country code<input name="country_code" defaultValue="+91" required disabled={!client?.crm_company_id} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Phone<input name="phone" required disabled={!client?.crm_company_id} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-              <div className="md:col-span-2"><Button type="submit" disabled={!client?.crm_company_id} loading={creatingContact} loadingText="Creating">Create & Mark Primary</Button></div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">First name<input name="first_name" required disabled={!hasCrmCompany} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Last name<input name="last_name" required disabled={!hasCrmCompany} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Designation<input name="designation" disabled={!hasCrmCompany} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Email<input name="email" type="email" disabled={!hasCrmCompany} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-200 md:col-span-2">
+                Phone
+                <div className="mt-1">
+                  <PhoneInput
+                    required
+                    disabled={!hasCrmCompany}
+                    countryCode={contactCountryCode}
+                    phoneNumber={contactPhone}
+                    onCountryCodeChange={setContactCountryCode}
+                    onPhoneNumberChange={setContactPhone}
+                    placeholder="Enter 10 digit number"
+                  />
+                </div>
+              </label>
+              <div className="md:col-span-2"><Button type="submit" disabled={!hasCrmCompany} loading={creatingContact} loadingText="Creating">Create & Mark Primary</Button></div>
             </form>
           )}
         </div>
       ) : null}
       {activeTab === 'assets-access' ? (
-        <form className="mt-5 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900" onSubmit={(event) => {
-          event.preventDefault()
-          const form = event.currentTarget
-          const row = (prefix) => [0, 1, 2, 3].map((index) => ({
-            name: form.elements[`${prefix}_name_${index}`]?.value,
-            status: form.elements[`${prefix}_status_${index}`]?.value,
-            reference: form.elements[`${prefix}_reference_${index}`]?.value,
-            file: form.elements[`${prefix}_file_${index}`]?.files?.[0],
-          })).filter((item) => item.name)
-          onSaveAssetsAccess({ assets: row('asset'), access: row('access') })
-        }}>
+        <div className="mt-5 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <div className="border-b border-gray-100 pb-4 dark:border-gray-800">
             <p className="text-sm font-semibold text-gray-900 dark:text-white">Collect launch materials and access</p>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Track what the client must provide before work starts. Use references for uploaded file names, ticket links, or secure vault/integration references only.</p>
@@ -350,25 +443,41 @@ function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, proje
 
           <div className="mt-5 space-y-5">
             <section>
-              <div className="mb-3">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Brand assets to collect</h3>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Mark each asset as requested, received, or verified after checking it is usable.</p>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Asset requirements</h3>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{assetProgress.required_verified || 0}/{assetProgress.required_total || 0} Required Assets Verified</p>
+                </div>
+                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-200">{assetProgress.percent || 0}%</span>
               </div>
               <div className="space-y-3">
-                {['Logo', 'Brand Guidelines', 'Images / Media', 'Reference Material'].map((name, index) => (
-                  <div key={name} className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950/40">
-                    <div className="grid gap-3 md:grid-cols-[1.1fr_160px_1.2fr_1.2fr]">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Asset needed<input name={`asset_name_${index}`} defaultValue={assets[index]?.name || name} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Stage<select name={`asset_status_${index}`} defaultValue={assets[index]?.status || 'missing'} className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="missing">Missing</option><option value="requested">Requested</option><option value="received">Received</option><option value="verified">Verified</option></select></label>
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Upload file<input name={`asset_file_${index}`} type="file" className="mt-1 block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-primary-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-primary-700 hover:file:bg-primary-100 dark:text-gray-300 dark:file:bg-primary-950 dark:file:text-primary-200" /></label>
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Uploaded file / reference<input name={`asset_reference_${index}`} defaultValue={assets[index]?.reference || ''} placeholder="Auto-filled after upload" className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" /></label>
-                    </div>
-                    {assets[index]?.file_url ? <a className="mt-2 inline-flex text-xs font-semibold text-primary-700 hover:underline dark:text-primary-300" href={clientFileUrl(assets[index].file_url)} target="_blank" rel="noopener noreferrer">Open uploaded file</a> : null}
-                  </div>
+                {assetRequirements.map((asset) => (
+                  <AssetRequirementCard
+                    key={asset.id}
+                    asset={asset}
+                    existingFiles={existingAssetFiles}
+                    requestUrl={assetRequestLinks[asset.id]}
+                    onUpdateStatus={onUpdateAssetRequirement}
+                    onUploadFiles={onUploadAssetFiles}
+                    onLinkFile={onLinkAssetFile}
+                    onGenerateLink={onGenerateAssetRequestLink}
+                    onRevokeLink={onRevokeAssetRequestLink}
+                    saving={saving}
+                  />
                 ))}
               </div>
             </section>
 
+            <form onSubmit={(event) => {
+              event.preventDefault()
+              const form = event.currentTarget
+              const accessRows = [0, 1, 2, 3].map((index) => ({
+                name: form.elements[`access_name_${index}`]?.value,
+                status: form.elements[`access_status_${index}`]?.value,
+                reference: form.elements[`access_reference_${index}`]?.value,
+              })).filter((item) => item.name)
+              onSaveAssetsAccess({ assets: assets, access: accessRows })
+            }}>
             <section>
               <div className="mb-3">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Access to request</h3>
@@ -386,12 +495,13 @@ function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, proje
                 ))}
               </div>
             </section>
-          </div>
 
-          <div className="mt-5 flex justify-end border-t border-gray-100 pt-4 dark:border-gray-800">
-            <Button type="submit" loading={saving} loadingText="Saving">Save Asset & Access Status</Button>
+            <div className="mt-5 flex justify-end border-t border-gray-100 pt-4 dark:border-gray-800">
+              <Button type="submit" loading={saving} loadingText="Saving">Save Access Status</Button>
+            </div>
+            </form>
           </div>
-        </form>
+        </div>
       ) : null}
       {activeTab === 'project-team' ? (
         <>
@@ -509,6 +619,7 @@ export default function ClientWorkspacePage() {
   const [fileFilter, setFileFilter] = useState('all')
   const [aiQuestion, setAiQuestion] = useState('')
   const [aiAnswer, setAiAnswer] = useState(null)
+  const [assetRequestLinks, setAssetRequestLinks] = useState({})
 
   const workspaceQuery = useQuery(
     ['client-workspace', clientId],
@@ -546,6 +657,8 @@ export default function ClientWorkspacePage() {
   const activityFeed = workspace.activity || { items: [] }
   const summary = workspace.summary || {}
   const errorStatus = workspaceQuery.error?.response?.status
+  const resolvedCrmCompanyId = client?.resolved_crm_company_id || client?.crm_company?.id || client?.crm_company_id
+  const hasCrmCompany = Boolean(resolvedCrmCompanyId)
 
   const activityQuery = useQuery(
     ['client-activity', clientId, activityFilter, activityLimit],
@@ -636,6 +749,72 @@ export default function ClientWorkspacePage() {
         queryClient.invalidateQueries(['client-workspace', clientId])
       },
       onError: (error) => toast.error(apiErrorMessage(error, 'Failed to save assets and access')),
+    }
+  )
+
+  const assetRequirementMutation = useMutation(
+    ({ requirementId, payload }) => clientsAPI.updateAssetRequirement(clientId, requirementId, payload),
+    {
+      onSuccess: () => {
+        toast.success('Asset status updated')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to update asset requirement')),
+    }
+  )
+
+  const assetFileMutation = useMutation(
+    ({ requirementId, payload }) => clientsAPI.uploadAssetRequirementFiles(clientId, requirementId, payload),
+    {
+      onSuccess: () => {
+        toast.success('Asset file uploaded')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to upload asset file')),
+    }
+  )
+
+  const assetFileLinkMutation = useMutation(
+    ({ requirementId, payload }) => clientsAPI.linkAssetRequirementFile(clientId, requirementId, payload),
+    {
+      onSuccess: () => {
+        toast.success('Existing file linked')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to link existing file')),
+    }
+  )
+
+  const assetRequestLinkMutation = useMutation(
+    (requirementId) => clientsAPI.generateAssetRequestLink(clientId, requirementId),
+    {
+      onSuccess: (data, requirementId) => {
+        const token = data?.assets?.token
+        const uploadUrl = assetRequestUploadUrl(token)
+        if (uploadUrl) {
+          setAssetRequestLinks((current) => ({ ...current, [requirementId]: uploadUrl }))
+          if (navigator.clipboard) navigator.clipboard.writeText(uploadUrl)
+        }
+        toast.success(token ? 'Request link copied' : 'Asset requested')
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to create request link')),
+    }
+  )
+
+  const assetRequestRevokeMutation = useMutation(
+    (requirementId) => clientsAPI.revokeAssetRequestLink(clientId, requirementId),
+    {
+      onSuccess: (_data, requirementId) => {
+        toast.success('Request link revoked')
+        setAssetRequestLinks((current) => {
+          const next = { ...current }
+          delete next[requirementId]
+          return next
+        })
+        queryClient.invalidateQueries(['client-workspace', clientId])
+      },
+      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to revoke request link')),
     }
   )
 
@@ -1040,7 +1219,7 @@ export default function ClientWorkspacePage() {
       country_code: data.get('country_code') || '+91',
       phone: data.get('phone'),
       designation: data.get('designation') || undefined,
-      crm_company_id: client?.crm_company_id,
+      crm_company_id: resolvedCrmCompanyId,
       company_name: client?.company_name || client?.name,
     }
     if (contactId) {
@@ -1300,6 +1479,20 @@ export default function ClientWorkspacePage() {
   } else if (activeTab === 'contacts') {
     tabBody = (
       <CRMSection title="Contacts" description="Use CRM contacts linked to this client's CRM Company.">
+        {!hasCrmCompany ? (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/60 dark:bg-amber-950/30">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Resolve this client's CRM Company before managing CRM contacts.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link className="btn btn-secondary btn-sm" to="/crm/companies">Link Existing CRM Company</Link>
+              <Link className="btn btn-primary btn-sm" to={`/crm/companies?create=1&name=${encodeURIComponent(client?.company_name || client?.name || '')}`}>Create CRM Company</Link>
+            </div>
+          </div>
+        ) : null}
+        {hasCrmCompany ? (
+          <p className="mb-4 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+            CRM Company linked: {client?.crm_company?.name || resolvedCrmCompanyId}
+          </p>
+        ) : null}
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-3">
             {contacts.map((contact) => (
@@ -1356,7 +1549,7 @@ export default function ClientWorkspacePage() {
                 <input name="country_code" defaultValue="+91" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
                 <input name="phone" placeholder="Phone" required className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
               </div>
-              <Button type="submit" className="w-full" disabled={createContactMutation.isLoading || !client?.crm_company_id}>Add contact</Button>
+              <Button type="submit" className="w-full" disabled={createContactMutation.isLoading || !hasCrmCompany}>Add contact</Button>
             </div>
           </form>
         </div>
@@ -1577,15 +1770,22 @@ export default function ClientWorkspacePage() {
         contacts={workspace.contacts || []}
         meetings={meetings}
         documents={documents}
+        files={files}
+        assetRequestLinks={assetRequestLinks}
         onSaveClient={(values) => onboardingSaveMutation.mutate(values)}
         onSaveOnboarding={(values) => structuredOnboardingMutation.mutate(values)}
         onSaveAssetsAccess={(values) => assetsAccessMutation.mutate(values)}
+        onUploadAssetFiles={(requirementId, payload) => assetFileMutation.mutate({ requirementId, payload })}
+        onLinkAssetFile={(requirementId, payload) => assetFileLinkMutation.mutate({ requirementId, payload })}
+        onGenerateAssetRequestLink={(requirementId) => assetRequestLinkMutation.mutate(requirementId)}
+        onRevokeAssetRequestLink={(requirementId) => assetRequestRevokeMutation.mutate(requirementId)}
+        onUpdateAssetRequirement={(requirementId, payload) => assetRequirementMutation.mutate({ requirementId, payload })}
         onSetPrimaryContact={(contactId) => primaryContactMutation.mutate(contactId)}
         onCreateContact={(values) => createContactMutation.mutate(values)}
         onCreateProject={(values) => createProjectMutation.mutate(values)}
         onCreateMeeting={(values) => createMeetingMutation.mutate(values)}
         onGenerateDocument={() => onboardingDocumentMutation.mutate()}
-        saving={onboardingSaveMutation.isLoading || structuredOnboardingMutation.isLoading || primaryContactMutation.isLoading || assetsAccessMutation.isLoading}
+        saving={onboardingSaveMutation.isLoading || structuredOnboardingMutation.isLoading || primaryContactMutation.isLoading || assetsAccessMutation.isLoading || assetRequirementMutation.isLoading || assetFileMutation.isLoading || assetFileLinkMutation.isLoading || assetRequestLinkMutation.isLoading || assetRequestRevokeMutation.isLoading}
         creatingContact={createContactMutation.isLoading}
         creatingProject={createProjectMutation.isLoading}
         creatingMeeting={createMeetingMutation.isLoading}
@@ -1757,7 +1957,7 @@ export default function ClientWorkspacePage() {
                   {document.url ? (
                     <a className="btn btn-secondary btn-sm inline-flex items-center gap-2" href={clientFileUrl(document.url)} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="h-3 w-3" />
-                      Open
+                      {String(document.type || document.mime_type || '').toLowerCase().includes('pdf') ? 'Preview PDF' : 'Open'}
                     </a>
                   ) : null}
                 </div>

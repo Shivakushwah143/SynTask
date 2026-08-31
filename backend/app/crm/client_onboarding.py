@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
 import json
 from pathlib import Path
+import secrets
 import uuid
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -15,6 +16,7 @@ from app.models.client_onboarding import (
     ClientOnboardingItemStatus,
     ClientOnboardingStatus,
 )
+from app.models.crm_activity import CRMActivity, CRMActivityStatus, CRMActivityType
 from app.models.crm_document import CRMDocument, CRMDocumentStatus, CRMDocumentType
 from app.models.meeting import Meeting, MeetingStatus
 from app.models.project import Project
@@ -37,6 +39,18 @@ ONBOARDING_ITEM_DEFINITIONS: List[Dict[str, Any]] = [
     {"key": "kickoff_meeting", "label": "Kickoff Meeting", "layer": "kickoff", "tab": "kickoff", "required": True, "action_label": "Open Kickoff"},
     {"key": "start_readiness", "label": "Initial Delivery / Start Readiness", "layer": "project_team", "tab": "project-team", "required": True, "action_label": "Set Start Readiness"},
 ]
+
+ASSET_REQUIREMENT_DEFAULTS: List[Dict[str, Any]] = [
+    {"name": "Logo", "category": "Logo", "required": True, "description": ""},
+    {"name": "Brand Guidelines", "category": "Brand Guidelines", "required": True, "description": ""},
+    {"name": "Product Images", "category": "Product Images", "required": True, "description": ""},
+    {"name": "Company Profile", "category": "Company Profile", "required": True, "description": ""},
+    {"name": "Reference Material", "category": "Reference Material", "required": False, "description": ""},
+]
+
+ASSET_STATUSES = {"missing", "requested", "received", "verified", "replacement_required"}
+ASSET_SUBMISSION_SOURCES = {"whatsapp", "email", "manual_upload", "drive", "client_portal", "physical", "other"}
+ASSET_REQUEST_LINK_TTL_DAYS = 14
 
 
 def _has_value(value: Any) -> bool:
@@ -139,6 +153,291 @@ def merge_onboarding_data(client: Client, patch: Dict[str, Any]) -> None:
     client.lifecycle_metadata = metadata
 
 
+def _asset_data(client: Client) -> Dict[str, Any]:
+    data = onboarding_data(client)
+    requirements = list(data.get("asset_requirements") or [])
+    legacy_assets = list(data.get("assets") or [])
+    now = utc_now().isoformat()
+    if not requirements:
+        for asset in legacy_assets:
+            name = str(asset.get("name") or "").strip()
+            if not name:
+                continue
+            requirements.append({
+                "id": asset.get("id") or uuid.uuid4().hex,
+                "name": name,
+                "category": asset.get("category") or name,
+                "required": bool(asset.get("required", True)),
+                "description": asset.get("description") or "",
+                "status": asset.get("status") if asset.get("status") in ASSET_STATUSES else "missing",
+                "requested_at": asset.get("requested_at"),
+                "received_at": asset.get("received_at"),
+                "verified_at": asset.get("verified_at"),
+                "verified_by": asset.get("verified_by"),
+                "verification_note": asset.get("verification_note"),
+                "replacement_note": asset.get("replacement_note"),
+                "file_refs": list(asset.get("file_refs") or []),
+                "created_at": asset.get("created_at") or now,
+                "updated_at": asset.get("updated_at") or now,
+            })
+    existing_names = {str(item.get("name") or "").strip().lower() for item in requirements}
+    for default in ASSET_REQUIREMENT_DEFAULTS:
+        if default["name"].lower() in existing_names:
+            continue
+        requirements.append({
+            "id": uuid.uuid4().hex,
+            **default,
+            "status": "missing",
+            "requested_at": None,
+            "received_at": None,
+            "verified_at": None,
+            "verified_by": None,
+            "file_refs": [],
+            "created_at": now,
+            "updated_at": now,
+        })
+    submissions = list(data.get("asset_submissions") or [])
+    return {"requirements": requirements, "submissions": submissions}
+
+
+def _save_asset_data(client: Client, requirements: List[Dict[str, Any]], submissions: List[Dict[str, Any]]) -> None:
+    merge_onboarding_data(client, {
+        "asset_requirements": requirements,
+        "asset_submissions": submissions,
+        "assets": [
+            {
+                "id": item.get("id"),
+                "name": item.get("name"),
+                "category": item.get("category"),
+                "required": item.get("required", True),
+                "status": item.get("status", "missing"),
+                "reference": item.get("reference"),
+                "file_url": item.get("file_url"),
+                "file_refs": item.get("file_refs") or [],
+            }
+            for item in requirements
+        ],
+    })
+
+
+def _asset_progress(requirements: List[Dict[str, Any]]) -> Dict[str, Any]:
+    required_items = [item for item in requirements if item.get("required", True)]
+    verified_required = [item for item in required_items if item.get("status") == "verified"]
+    return {
+        "required_total": len(required_items),
+        "required_verified": len(verified_required),
+        "required_ready": len(required_items) == len(verified_required),
+        "percent": int(round((len(verified_required) / len(required_items)) * 100)) if required_items else 100,
+    }
+
+
+async def log_asset_activity(client: Client, actor: Optional[User], action: str, title: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+    try:
+        activity = CRMActivity(
+            company_id=str(client.company_id),
+            entity_type="client",
+            entity_id=str(client.id),
+            activity_type=CRMActivityType.FILE if action in {"submission_added", "file_uploaded"} else CRMActivityType.NOTE,
+            title=title,
+            description=(metadata or {}).get("note"),
+            status=CRMActivityStatus.COMPLETED,
+            completed_at=utc_now(),
+            completed_by=str(getattr(actor, "id", "")) if actor else None,
+            completed_by_name=getattr(actor, "full_name", None) or str(getattr(actor, "email", "") or ""),
+            metadata={"client_id": str(client.id), "onboarding_asset_action": action, **(metadata or {})},
+            created_by=str(getattr(actor, "id", "")) if actor else None,
+            created_by_name=getattr(actor, "full_name", None) or str(getattr(actor, "email", "") or ""),
+        )
+        await activity.insert()
+    except CollectionWasNotInitialized:
+        return
+
+
+async def ensure_asset_requirements(client: Client) -> Dict[str, Any]:
+    assets = _asset_data(client)
+    _save_asset_data(client, assets["requirements"], assets["submissions"])
+    return {"requirements": assets["requirements"], "submissions": assets["submissions"], "progress": _asset_progress(assets["requirements"])}
+
+
+async def update_asset_requirement(client: Client, requirement_id: str, patch: Dict[str, Any], actor: Optional[User] = None) -> Dict[str, Any]:
+    assets = _asset_data(client)
+    now = utc_now().isoformat()
+    requirement = next((item for item in assets["requirements"] if item.get("id") == requirement_id), None)
+    if not requirement:
+        raise ValueError("Asset requirement not found")
+    old_status = requirement.get("status", "missing")
+    for key in ("name", "category", "description"):
+        if key in patch and patch[key] is not None:
+            requirement[key] = str(patch[key]).strip()
+    if "required" in patch:
+        requirement["required"] = bool(patch["required"])
+    if patch.get("status"):
+        new_status = str(patch["status"])
+        if new_status not in ASSET_STATUSES:
+            raise ValueError("Invalid asset status")
+        requirement["status"] = new_status
+        if new_status == "requested":
+            requirement["requested_at"] = requirement.get("requested_at") or now
+        elif new_status == "verified":
+            requirement["verified_at"] = now
+            requirement["verified_by"] = str(getattr(actor, "id", "")) if actor else None
+            requirement["verification_note"] = patch.get("note") or requirement.get("verification_note")
+        elif new_status == "replacement_required":
+            requirement["replacement_note"] = patch.get("note") or requirement.get("replacement_note")
+        if new_status != old_status:
+            requirement.setdefault("status_history", []).append({"from": old_status, "to": new_status, "at": now, "by": str(getattr(actor, "id", "")) if actor else None, "note": patch.get("note")})
+    requirement["updated_at"] = now
+    _save_asset_data(client, assets["requirements"], assets["submissions"])
+    client.updated_at = utc_now()
+    await client.save()
+    await log_asset_activity(client, actor, f"asset_{requirement.get('status')}", f"Asset {requirement.get('status')}: {requirement.get('name')}", {"requirement_id": requirement_id, "note": patch.get("note")})
+    return {"requirements": assets["requirements"], "submissions": assets["submissions"], "progress": _asset_progress(assets["requirements"])}
+
+
+async def add_asset_submission(client: Client, payload: Dict[str, Any], actor: Optional[User] = None) -> Dict[str, Any]:
+    assets = _asset_data(client)
+    requirement_ids = [rid for rid in payload.get("requirement_ids", []) if rid]
+    valid_ids = {item.get("id") for item in assets["requirements"]}
+    if not requirement_ids or any(rid not in valid_ids for rid in requirement_ids):
+        raise ValueError("Submission must map to one or more valid asset requirements")
+    source = str(payload.get("source") or "manual_upload")
+    if source not in ASSET_SUBMISSION_SOURCES:
+        raise ValueError("Invalid asset source")
+    now = utc_now().isoformat()
+    submission = {
+        "id": uuid.uuid4().hex,
+        "source": source,
+        "received_from_contact_id": payload.get("received_from_contact_id"),
+        "received_by_user_id": payload.get("received_by_user_id") or str(getattr(actor, "id", "")),
+        "received_date": payload.get("received_date") or now,
+        "requirement_ids": requirement_ids,
+        "files": list(payload.get("files") or []),
+        "notes": payload.get("notes"),
+        "created_at": now,
+        "created_by": str(getattr(actor, "id", "")) if actor else None,
+    }
+    assets["submissions"].append(submission)
+    for requirement in assets["requirements"]:
+        if requirement.get("id") not in requirement_ids:
+            continue
+        file_refs = requirement.setdefault("file_refs", [])
+        existing_urls = {item.get("url") for item in file_refs if isinstance(item, dict)}
+        for file_ref in submission["files"]:
+            if isinstance(file_ref, dict) and file_ref.get("url") not in existing_urls:
+                file_refs.append(file_ref)
+                existing_urls.add(file_ref.get("url"))
+        requirement["status"] = "received"
+        requirement["received_at"] = requirement.get("received_at") or submission["received_date"]
+        requirement["updated_at"] = now
+    _save_asset_data(client, assets["requirements"], assets["submissions"])
+    client.updated_at = utc_now()
+    await client.save()
+    await log_asset_activity(client, actor, "submission_added", "Asset submission added", {"submission_id": submission["id"], "requirement_ids": requirement_ids, "source": source, "files": submission["files"], "note": payload.get("notes")})
+    if submission["files"]:
+        await log_asset_activity(client, actor, "file_uploaded", "Asset file uploaded", {"submission_id": submission["id"], "files": submission["files"], "requirement_ids": requirement_ids})
+    return {"submission": submission, "requirements": assets["requirements"], "submissions": assets["submissions"], "progress": _asset_progress(assets["requirements"])}
+
+
+async def link_existing_asset_file(client: Client, requirement_id: str, file_ref: Dict[str, Any], actor: Optional[User] = None) -> Dict[str, Any]:
+    url = str(file_ref.get("url") or "").strip()
+    if not url:
+        raise ValueError("File URL is required")
+    client_docs = list(getattr(client, "documents", None) or [])
+    if not any(str(doc.get("url") or "") == url for doc in client_docs if isinstance(doc, dict)):
+        raise ValueError("File must belong to this client")
+    return await add_asset_submission(client, {
+        "source": "manual_upload",
+        "requirement_ids": [requirement_id],
+        "files": [{
+            "name": file_ref.get("name") or file_ref.get("original_name") or url.rsplit("/", 1)[-1],
+            "original_name": file_ref.get("original_name") or file_ref.get("name"),
+            "url": url,
+            "type": file_ref.get("type"),
+            "size": file_ref.get("size"),
+            "linked_existing": True,
+        }],
+        "notes": file_ref.get("notes") or "Existing client file linked to asset requirement.",
+    }, actor)
+
+
+async def generate_asset_request_link(client: Client, requirement_id: str, actor: Optional[User] = None) -> Dict[str, Any]:
+    assets = _asset_data(client)
+    requirement = next((item for item in assets["requirements"] if item.get("id") == requirement_id), None)
+    if not requirement:
+        raise ValueError("Asset requirement not found")
+    token = secrets.token_urlsafe(32)
+    now = utc_now()
+    requirement["request_token_hash"] = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    requirement["request_link_expires_at"] = (now + timedelta(days=ASSET_REQUEST_LINK_TTL_DAYS)).isoformat()
+    requirement["request_link_revoked_at"] = None
+    requirement["requested_at"] = requirement.get("requested_at") or now.isoformat()
+    requirement["status"] = "requested"
+    requirement["updated_at"] = now.isoformat()
+    _save_asset_data(client, assets["requirements"], assets["submissions"])
+    client.updated_at = utc_now()
+    await client.save()
+    await log_asset_activity(client, actor, "asset_requested", f"Asset requested: {requirement.get('name')}", {"requirement_id": requirement_id})
+    return {
+        "token": token,
+        "expires_at": requirement["request_link_expires_at"],
+        "requirements": assets["requirements"],
+        "submissions": assets["submissions"],
+        "progress": _asset_progress(assets["requirements"]),
+    }
+
+
+async def revoke_asset_request_link(client: Client, requirement_id: str, actor: Optional[User] = None) -> Dict[str, Any]:
+    assets = _asset_data(client)
+    requirement = next((item for item in assets["requirements"] if item.get("id") == requirement_id), None)
+    if not requirement:
+        raise ValueError("Asset requirement not found")
+    requirement["request_link_revoked_at"] = utc_now().isoformat()
+    requirement["updated_at"] = requirement["request_link_revoked_at"]
+    _save_asset_data(client, assets["requirements"], assets["submissions"])
+    client.updated_at = utc_now()
+    await client.save()
+    await log_asset_activity(client, actor, "asset_request_revoked", f"Asset request revoked: {requirement.get('name')}", {"requirement_id": requirement_id})
+    return {"requirements": assets["requirements"], "submissions": assets["submissions"], "progress": _asset_progress(assets["requirements"])}
+
+
+def _parse_asset_link_datetime(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+async def load_asset_request_by_token(token: str) -> tuple[Client, Dict[str, Any]]:
+    token_hash = hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
+    try:
+        client = await Client.find_one({"lifecycle_metadata.onboarding.asset_requirements.request_token_hash": token_hash, "deleted": {"$ne": True}})
+    except CollectionWasNotInitialized as exc:
+        raise ValueError("Asset request link is invalid") from exc
+    if not client:
+        raise ValueError("Asset request link is invalid")
+    assets = _asset_data(client)
+    requirement = next((item for item in assets["requirements"] if item.get("request_token_hash") == token_hash), None)
+    if not requirement or requirement.get("request_link_revoked_at"):
+        raise ValueError("Asset request link is invalid")
+    expires_at = _parse_asset_link_datetime(requirement.get("request_link_expires_at"))
+    if expires_at and expires_at < utc_now().replace(tzinfo=None):
+        raise ValueError("Asset request link has expired")
+    return client, requirement
+
+
+async def add_asset_submission_by_token(client: Client, requirement_id: str, files: List[Dict[str, Any]], notes: Optional[str] = None) -> Dict[str, Any]:
+    return await add_asset_submission(client, {
+        "source": "client_portal",
+        "requirement_ids": [requirement_id],
+        "files": files,
+        "notes": notes,
+    }, None)
+
+
 def _commercial_data(client: Client, source_lead: SalesProspect | None) -> Dict[str, Any]:
     data = dict(onboarding_data(client).get("commercial") or {})
     if client.budget not in (None, "", 0):
@@ -230,7 +529,19 @@ async def calculate_onboarding_items(client: Client) -> List[Dict[str, Any]]:
     readiness_confirmed = readiness.get("ready") is True and _has_value(readiness.get("confirmed_by")) and _has_value(readiness.get("confirmed_at"))
     commercial_fields = ["deal_value", "billing_frequency", "payment_terms", "engagement_start_date"]
     commercial_ready = _count_present(commercial, commercial_fields) == len(commercial_fields)
-    assets_status, assets_percent = _rollup_tracked_items(list(data.get("assets") or []))
+    asset_system = _asset_data(client)
+    asset_rollup = _asset_progress(asset_system["requirements"])
+    if asset_rollup["required_ready"]:
+        assets_status = ClientOnboardingItemStatus.CONFIRMED
+    elif asset_rollup["required_verified"]:
+        assets_status = ClientOnboardingItemStatus.PARTIALLY_RECEIVED
+    elif any(item.get("status") == "received" for item in asset_system["requirements"] if item.get("required", True)):
+        assets_status = ClientOnboardingItemStatus.VIEWED_RECEIVED
+    elif any(item.get("status") == "requested" for item in asset_system["requirements"] if item.get("required", True)):
+        assets_status = ClientOnboardingItemStatus.REQUESTED
+    else:
+        assets_status = ClientOnboardingItemStatus.MISSING
+    assets_percent = asset_rollup["percent"]
     access_status, access_percent = _rollup_tracked_items(list(data.get("access") or []))
 
     kickoff_status = ClientOnboardingItemStatus.MISSING
@@ -279,7 +590,7 @@ async def calculate_onboarding_items(client: Client) -> List[Dict[str, Any]]:
         _item_payload(definitions["primary_contact"], status=contact_status, percent=100 if primary_contact else 0, linked_entity_type="sales_contact" if primary_contact else None, linked_entity_id=str(primary_contact.id) if primary_contact else None),
         _item_payload(definitions["requirements"], status=requirement_status, percent=requirement_percent, linked_entity_type="client_onboarding", validation={"requirements": requirements, "required_fields": requirement_fields}),
         _item_payload(definitions["documents"], status=document_status, percent=document_percent, linked_entity_type="crm_document" if contract else "client_document" if client.documents else None, linked_entity_id=str(contract.id) if contract else None),
-        _item_payload(definitions["brand_assets"], status=assets_status, percent=assets_percent, required=False, validation={"assets": list(data.get("assets") or [])}),
+        _item_payload(definitions["brand_assets"], status=assets_status, percent=assets_percent, required=False, validation={"assets": asset_system["requirements"], "submissions": asset_system["submissions"], "progress": asset_rollup}),
         _item_payload(definitions["required_access"], status=access_status, percent=access_percent, required=False, validation={"access": list(data.get("access") or [])}),
         _item_payload(definitions["project_created"], status=ClientOnboardingItemStatus.CREATED if project_ready else ClientOnboardingItemStatus.NOT_STARTED, percent=100 if project_ready else 0, linked_entity_type="project" if projects else None, linked_entity_id=str(projects[0].id) if projects else None),
         _item_payload(definitions["team_assigned"], status=ClientOnboardingItemStatus.TEAM_ASSIGNED if team_ready else ClientOnboardingItemStatus.MISSING, percent=100 if team_ready else 0, assigned_owner_id=getattr(client, "account_owner_id", None) or getattr(client, "assigned_to", None)),
@@ -345,6 +656,9 @@ async def sync_client_onboarding(client: Client, actor: Optional[User] = None) -
         onboarding = ClientOnboarding(company_id=client.company_id, client_id=str(client.id))
         await onboarding.insert()
 
+    ensure_asset_requirements_payload = await ensure_asset_requirements(client)
+    if ensure_asset_requirements_payload:
+        await client.save()
     calculated = await calculate_onboarding_items(client)
     saved_items: List[ClientOnboardingItem] = []
     for payload in calculated:

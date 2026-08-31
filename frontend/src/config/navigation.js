@@ -150,7 +150,7 @@ export const SECTIONS = [
     items: [...SALES_JOURNEY_TAB_ITEMS, ...SALES_HIDDEN_TAB_ITEMS],
     overviewHref: SALES_OVERVIEW_HREF,
   },
-  { key: "clients", label: "Clients", items: ["All Clients", ...CLIENT_STAGE_ITEMS.map((item) => item.name), "Companies", "Contacts", "Client Calendar", "Client Insights"], overviewHref: "/clients" },
+  { key: "clients", label: "Clients", items: ["All Clients", ...CLIENT_STAGE_ITEMS.map((item) => item.name), "Companies", "Contacts", "Client Calendar", "Client Insights"], overviewHref: "/clients", hideOverviewTab: true },
   { key: "work", label: "Work", items: ["Projects", "Tasks", "Requests", "Scheduled Work", "Time Tracking", "Daily Updates"] },
   { key: "content", label: "Content", items: ["Content Calendar", "Content Studio"] },
   { key: "publishing", label: "Publishing", items: ["Publishing Centre", "Social Accounts", "Publishing Analytics", "Integrations"] },

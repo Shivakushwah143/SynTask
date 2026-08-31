@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from app.timeline.publisher import publish_crm_timeline_event
 from app.models.capability import get_capabilities_for_role
 from app.models.department import Department
-from app.crm.client_identity import resolve_crm_company_for_lead
+from app.crm.client_identity import ensure_crm_company_for_won_lead
 from app.crm.client_services import ensure_sales_handoff_service
 from app.crm.models import Client, ClientStatus, ClientType
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
@@ -251,7 +251,7 @@ async def _record_ownership_transfer(
 
 
 async def _resolve_client(current_user: User, lead: SalesProspect, deal: Optional[CRMDeal]) -> Client:
-    crm_resolution = await resolve_crm_company_for_lead(lead)
+    crm_resolution = await ensure_crm_company_for_won_lead(lead, str(getattr(current_user, "id", "") or "") or None)
     crm_company = crm_resolution.crm_company
     crm_company_id = str(crm_company.id) if crm_company else None
     company_name = _safe_text(getattr(lead, "company_name", None), "Client")
@@ -281,6 +281,10 @@ async def _resolve_client(current_user: User, lead: SalesProspect, deal: Optiona
     if existing_client:
         if crm_company_id and getattr(existing_client, "crm_company_id", None) != crm_company_id:
             existing_client.crm_company_id = crm_company_id
+        if crm_company_id and getattr(lead, "crm_company_id", None) != crm_company_id:
+            lead.crm_company_id = crm_company_id
+            lead.updated_at = utc_now()
+            await lead.save()
         if not getattr(existing_client, "source_lead_id", None):
             existing_client.source_lead_id = str(lead.id)
         if getattr(lead, "assigned_to", None) and not getattr(existing_client, "sales_owner_id", None):
@@ -324,6 +328,10 @@ async def _resolve_client(current_user: User, lead: SalesProspect, deal: Optiona
         updated_at=now,
     )
     await client.insert()
+    if crm_company_id and getattr(lead, "crm_company_id", None) != crm_company_id:
+        lead.crm_company_id = crm_company_id
+        lead.updated_at = utc_now()
+        await lead.save()
     return client
 
 
