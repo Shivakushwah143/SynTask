@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, Activity, Building2, CalendarDays, Clock3, DollarSign, ExternalLink, FileText, FolderKanban, Mail, Phone, Send, Sparkles, Users } from 'lucide-react'
@@ -258,6 +258,8 @@ function OnboardingItemCard({ item, onOpenTab }) {
 }
 
 function AssetRequirementCard({ asset, requestUrl, onUpdateStatus, onUploadFiles, onGenerateLink, onRevokeLink, saving }) {
+  const [selectedFiles, setSelectedFiles] = useState([])
+  const fileInputRef = useRef(null)
   const linkedFiles = asset.file_refs || []
 
   return (
@@ -282,16 +284,34 @@ function AssetRequirementCard({ asset, requestUrl, onUpdateStatus, onUploadFiles
           </select>
         </label>
 
-        <div>
-          <form className="flex min-w-0 gap-2" onSubmit={(event) => {
-            event.preventDefault()
-            const form = event.currentTarget
-            onUploadFiles(asset.id, { source: 'manual_upload', files: form.elements.files.files })
-            form.reset()
-          }}>
-            <input name="files" type="file" multiple required className="min-w-0 flex-1 text-xs text-gray-600 file:mr-2 file:rounded-md file:border-0 file:bg-primary-50 file:px-2 file:py-1.5 file:text-xs file:font-semibold file:text-primary-700 hover:file:bg-primary-100 dark:text-gray-300 dark:file:bg-primary-950 dark:file:text-primary-200" />
-            <Button type="submit" size="sm" loading={saving} loadingText="...">Upload</Button>
-          </form>
+        <div className="flex min-w-0 gap-2">
+          <input
+            ref={fileInputRef}
+            name={`asset_files_${asset.id}`}
+            type="file"
+            multiple
+            disabled={saving}
+            onChange={(event) => {
+              const files = Array.from(event.target.files || [])
+              setSelectedFiles(files)
+            }}
+            className="min-w-0 flex-1 text-xs text-gray-600 file:mr-2 file:rounded-md file:border-0 file:bg-primary-50 file:px-2 file:py-1.5 file:text-xs file:font-semibold file:text-primary-700 hover:file:bg-primary-100 dark:text-gray-300 dark:file:bg-primary-950 dark:file:text-primary-200"
+          />
+          <Button
+            type="button"
+            size="sm"
+            disabled={!selectedFiles.length || saving}
+            loading={saving}
+            loadingText="..."
+            onClick={() => {
+              if (!selectedFiles.length) return
+              onUploadFiles(asset.id, { source: 'manual_upload', files: selectedFiles })
+              setSelectedFiles([])
+              if (fileInputRef.current) fileInputRef.current.value = ''
+            }}
+          >
+            Upload
+          </Button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

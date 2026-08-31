@@ -154,13 +154,17 @@ export const clientsAPI = {
   },
 
   uploadAssetRequirementFiles: async (clientId, requirementId, payload) => {
+    const files = Array.from(payload.files || [])
+    if (!files.length) throw new Error('At least one file is required')
     const formData = new FormData()
     formData.append('source', payload.source || 'manual_upload')
     if (payload.received_from_contact_id) formData.append('received_from_contact_id', payload.received_from_contact_id)
     if (payload.received_date) formData.append('received_date', payload.received_date)
     if (payload.notes) formData.append('notes', payload.notes)
-    Array.from(payload.files || []).forEach((file) => formData.append('files', file))
-    const response = await api.post(`/clients/${clientId}/onboarding/assets/requirements/${requirementId}/files`, formData)
+    files.forEach((file) => formData.append('files', file))
+    const response = await api.post(`/clients/${clientId}/onboarding/assets/requirements/${requirementId}/files`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
     return response.data
   },
 
