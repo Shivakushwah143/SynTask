@@ -67,6 +67,20 @@ def _status_value(value: Any) -> str:
     return value.value if hasattr(value, "value") else str(value or "")
 
 
+def _actor_display_name(actor: Optional[User]) -> str:
+    if not actor:
+        return ""
+    full_name = getattr(actor, "full_name", None)
+    if callable(full_name):
+        full_name = full_name()
+    if isinstance(full_name, str) and full_name.strip():
+        return full_name.strip()
+    first_name = str(getattr(actor, "first_name", "") or "").strip()
+    last_name = str(getattr(actor, "last_name", "") or "").strip()
+    name = f"{first_name} {last_name}".strip()
+    return name or str(getattr(actor, "email", "") or "")
+
+
 async def _source_lead_for_client(client: Client) -> SalesProspect | None:
     company_id = str(getattr(client, "company_id", "") or "")
     source_lead_id = getattr(client, "source_lead_id", None)
@@ -233,6 +247,7 @@ def _asset_progress(requirements: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 async def log_asset_activity(client: Client, actor: Optional[User], action: str, title: str, metadata: Optional[Dict[str, Any]] = None) -> None:
     try:
+        actor_name = _actor_display_name(actor)
         activity = CRMActivity(
             company_id=str(client.company_id),
             entity_type="client",
@@ -243,10 +258,10 @@ async def log_asset_activity(client: Client, actor: Optional[User], action: str,
             status=CRMActivityStatus.COMPLETED,
             completed_at=utc_now(),
             completed_by=str(getattr(actor, "id", "")) if actor else None,
-            completed_by_name=getattr(actor, "full_name", None) or str(getattr(actor, "email", "") or ""),
+            completed_by_name=actor_name,
             metadata={"client_id": str(client.id), "onboarding_asset_action": action, **(metadata or {})},
             created_by=str(getattr(actor, "id", "")) if actor else None,
-            created_by_name=getattr(actor, "full_name", None) or str(getattr(actor, "email", "") or ""),
+            created_by_name=actor_name,
         )
         await activity.insert()
     except CollectionWasNotInitialized:

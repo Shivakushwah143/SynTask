@@ -417,6 +417,8 @@ async def test_onboarding_asset_submission_maps_one_pdf_to_multiple_requirements
     assert all(item["file_refs"][0]["url"] == "/api/v1/files/clients/onboarding-assets.pdf" for item in result["requirements"] if item["id"] in requirement_ids)
     assert result["progress"]["percent"] == 0
     assert result["progress"]["required_verified"] == 0
+    assert all(isinstance(activity.created_by_name, str) for activity in activities)
+    assert all(isinstance(activity.completed_by_name, str) for activity in activities)
     assert any(activity.metadata["onboarding_asset_action"] == "submission_added" for activity in activities)
     assert any(activity.metadata["onboarding_asset_action"] == "file_uploaded" for activity in activities)
 
