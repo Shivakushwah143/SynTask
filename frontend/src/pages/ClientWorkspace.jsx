@@ -1472,9 +1472,7 @@ export default function ClientWorkspacePage() {
   const openNextAction = nextAction?.status !== 'completed' ? nextAction : null
 
   let tabBody
-  if (activeTab === 'overview') {
-    tabBody = null
-  } else if (activeTab === 'contacts') {
+  if (activeTab === 'contacts') {
     tabBody = (
       <CRMSection title="Contacts" description="Use CRM contacts linked to this client's CRM Company.">
         {!hasCrmCompany ? (
