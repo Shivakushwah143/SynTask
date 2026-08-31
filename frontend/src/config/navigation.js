@@ -577,6 +577,4 @@ export const isNavItemActive = (item, location) => {
     (item.match && location.pathname.startsWith(item.match)) ||
     location.pathname.startsWith(`${itemPath}/`)
   );
-
-  
 };
