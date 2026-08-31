@@ -551,8 +551,7 @@ function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, proje
           </div>
           <div className="mt-5 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <p className="text-sm font-semibold text-gray-900 dark:text-white">Start readiness</p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Confirm only after the project, team, kickoff, commercial, contact, and requirements are operationally ready.</p>
-            <Button type="button" className="mt-3" loading={saving} loadingText="Saving" onClick={() => onSaveOnboarding({ start_readiness: { ready: true } })}>Confirm Ready</Button>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Automatically completes when project, team, commercial terms, primary contact, and requirements are set up.</p>
           </div>
         </>
       ) : null}

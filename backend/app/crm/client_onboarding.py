@@ -549,7 +549,6 @@ async def calculate_onboarding_items(client: Client) -> List[Dict[str, Any]]:
         or any(_has_value(getattr(project, "assigned_to", None)) or _has_value(getattr(project, "lead_id", None)) or _has_value(getattr(project, "team_member_ids", None)) for project in projects)
     )
     readiness = dict(data.get("start_readiness") or {})
-    readiness_confirmed = readiness.get("ready") is True and _has_value(readiness.get("confirmed_by")) and _has_value(readiness.get("confirmed_at"))
     commercial_fields = ["deal_value", "billing_frequency", "payment_terms", "engagement_start_date"]
     commercial_ready = _count_present(commercial, commercial_fields) == len(commercial_fields)
     asset_system = _asset_data(client)
@@ -570,21 +569,18 @@ async def calculate_onboarding_items(client: Client) -> List[Dict[str, Any]]:
     kickoff_status = ClientOnboardingItemStatus.MISSING
     kickoff_percent = 0
     if kickoff:
-        if _status_value(getattr(kickoff, "status", None)) == MeetingStatus.COMPLETED.value:
-            kickoff_status = ClientOnboardingItemStatus.COMPLETED
-            kickoff_percent = 100
-        else:
-            kickoff_status = ClientOnboardingItemStatus.SCHEDULED
-            kickoff_percent = 70
+        kickoff_status = ClientOnboardingItemStatus.SCHEDULED
+        kickoff_percent = 100
 
+    # Start readiness is automatically satisfied when core setup exists:
+    # project, team, commercial terms, primary contact, and requirements are all in place.
+    # No manual confirmation, kickoff completion, or extra approvals required.
     start_ready = (
-        readiness_confirmed
-        and commercial_ready
+        commercial_ready
         and bool(primary_contact)
         and requirement_percent >= 100
         and project_ready
         and team_ready
-        and kickoff_percent >= 100
     )
 
     document_status = ClientOnboardingItemStatus.MISSING
