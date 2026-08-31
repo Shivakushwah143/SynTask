@@ -172,8 +172,7 @@ function projectBoardId(project) {
   return project?.id || project?.project_id || project?.key
 }
 
-function WorkspaceTabs({ activeTab, onTabChange, counts = {}, extraTabs = [] }) {
-  const tabs = [...TABS, ...extraTabs]
+function WorkspaceTabs({ activeTab, onTabChange, counts = {}, tabs = TABS }) {
   return (
     <nav aria-label="Client workspace sections" className="overflow-x-auto rounded-2xl border border-surface-border/80 bg-white/90 p-2 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
       <div className="flex min-w-max items-center gap-2">
@@ -193,7 +192,7 @@ function WorkspaceTabs({ activeTab, onTabChange, counts = {}, extraTabs = [] }) 
               }`}
             >
               {tab.label}
-              {typeof count === 'number' ? (
+              {typeof count === 'number' && count > 0 ? (
                 <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${isActive ? 'bg-white/80 text-primary-700 dark:bg-gray-950/60 dark:text-primary-200' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300'}`}>
                   {count}
                 </span>
@@ -1171,6 +1170,9 @@ export default function ClientWorkspacePage() {
   const fileCategories = ['all', ...Array.from(new Set(files.map((item) => item.category || 'Other').filter(Boolean)))]
   const visibleFiles = files.filter((item) => fileFilter === 'all' || (item.category || 'Other') === fileFilter)
   const showOnboardingMainTab = ['new', 'onboarding'].includes(clientStatus)
+  const baseTabs = showOnboardingMainTab
+    ? [TABS[0], { key: 'onboarding', label: 'Onboarding' }, ...TABS.slice(1)]
+    : TABS
   const tabCounts = {
     overview: 4,
     contacts: totalContacts,
@@ -1179,8 +1181,6 @@ export default function ClientWorkspacePage() {
     communication: communication.length + internalNotes.length + meetings.length,
     files: totalFiles,
     finance: totalInvoices,
-    activity: activityData.total || activityItems.length || (Array.isArray(timeline?.grouped_by_day) ? timeline.grouped_by_day.length : 0),
-    onboarding: onboardingItems.length,
   }
   const transitionMissingFields = Array.isArray(transitionBlocker?.missing_fields) ? transitionBlocker.missing_fields : []
   const primaryContact = contacts.find((contact) => contact.is_primary_contact)
@@ -2644,7 +2644,7 @@ export default function ClientWorkspacePage() {
         activeTab={activeTab}
         onTabChange={setTab}
         counts={tabCounts}
-        extraTabs={showOnboardingMainTab ? [{ key: 'onboarding', label: 'Onboarding' }] : []}
+        tabs={baseTabs}
       />
 
       {tabBody}
