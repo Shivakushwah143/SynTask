@@ -1259,7 +1259,7 @@ export default function ClientWorkspacePage() {
   const handleServiceSubmit = (event, serviceId = null) => {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
-    const linkedProjectIds = data.get('linked_project_id') ? [data.get('linked_project_id')] : []
+    const linkedProjectIds = data.get('linked_project_id') ? [data.get('linked_project_id')].filter(Boolean) : []
     serviceMutation.mutate({
       serviceId,
       payload: {
@@ -1270,7 +1270,6 @@ export default function ClientWorkspacePage() {
         billing_cycle: data.get('billing_cycle') || undefined,
         start_date: data.get('start_date') || undefined,
         end_date: data.get('end_date') || undefined,
-        service_owner_id: data.get('service_owner_id') || undefined,
         linked_project_ids: linkedProjectIds,
         notes: data.get('notes') || undefined,
       },
@@ -1568,7 +1567,6 @@ export default function ClientWorkspacePage() {
               <input name="billing_cycle" placeholder="Billing cycle" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
               <input name="start_date" type="date" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
               <input name="end_date" type="date" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
-              <input name="service_owner_id" placeholder="Service owner ID" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
               <select name="linked_project_id" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"><option value="">Link existing project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
               <textarea name="notes" rows={2} placeholder="Notes" className="md:col-span-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
             </div>
@@ -1632,7 +1630,6 @@ export default function ClientWorkspacePage() {
                   <input name="billing_cycle" defaultValue={service.billing_cycle || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
                   <input name="start_date" type="date" defaultValue={service.start_date ? String(service.start_date).slice(0, 10) : ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
                   <input name="end_date" type="date" defaultValue={service.end_date ? String(service.end_date).slice(0, 10) : ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
-                  <input name="service_owner_id" defaultValue={service.service_owner_id || ''} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
                   <textarea name="notes" rows={2} defaultValue={service.notes || ''} className="md:col-span-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100" />
                   <div className="xl:col-span-4 flex justify-end"><Button type="submit" size="sm" disabled={serviceMutation.isLoading}>Save service</Button></div>
                 </form>

@@ -161,10 +161,16 @@ class ClientServicePayload(BaseModel):
     billing_cycle: Optional[str] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
-    service_owner_id: Optional[str] = None
     team_member_ids: List[str] = []
     linked_project_ids: List[str] = []
     notes: Optional[str] = None
+
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def _normalize_date_to_datetime(cls, v: Any) -> Any:
+        if isinstance(v, str) and len(v) == 10 and v.count("-") == 2:
+            return datetime.fromisoformat(v + "T00:00:00")
+        return v
 
 
 class ClientServiceProjectPayload(BaseModel):
@@ -180,6 +186,13 @@ class ClientDeliverablePayload(BaseModel):
     due_date: Optional[datetime] = None
     linked_files: List[Dict[str, Any]] = []
     linked_task_ids: List[str] = []
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def _normalize_date_to_datetime(cls, v: Any) -> Any:
+        if isinstance(v, str) and len(v) == 10 and v.count("-") == 2:
+            return datetime.fromisoformat(v + "T00:00:00")
+        return v
 
 
 class DeliverableTaskPayload(BaseModel):
@@ -1275,9 +1288,6 @@ async def create_client_service(
     client = await load_client_for_user(client_id, current_user)
     if not payload.name or not payload.name.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service name is required")
-    owner_id = None
-    if payload.service_owner_id:
-        owner_id = (await validate_same_tenant_user_ids([payload.service_owner_id], current_user, "service owner"))[0]
     team_ids = await validate_same_tenant_user_ids(payload.team_member_ids, current_user, "team member")
     linked_project_ids: list[str] = []
     for project_id in payload.linked_project_ids or []:
@@ -1303,7 +1313,6 @@ async def create_client_service(
         billing_cycle=(payload.billing_cycle or "").strip() or None,
         start_date=payload.start_date,
         end_date=payload.end_date,
-        service_owner_id=owner_id,
         team_member_ids=team_ids,
         linked_project_ids=list(dict.fromkeys(linked_project_ids)),
         notes=(payload.notes or "").strip() or None,
@@ -1344,8 +1353,6 @@ async def update_client_service(
         service.start_date = data["start_date"]
     if "end_date" in data:
         service.end_date = data["end_date"]
-    if "service_owner_id" in data:
-        service.service_owner_id = (await validate_same_tenant_user_ids([data["service_owner_id"]], current_user, "service owner"))[0] if data["service_owner_id"] else None
     if "team_member_ids" in data:
         service.team_member_ids = await validate_same_tenant_user_ids(data["team_member_ids"], current_user, "team member")
     if "linked_project_ids" in data:
