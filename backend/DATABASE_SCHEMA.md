@@ -17,6 +17,8 @@ Recruitment models under `backend/app/recruitment/models.py` also define tenant-
 | `chat_messages` | ChatMessage | Chat message records. |
 | `client_onboarding_items` | ClientOnboardingItem | Client onboarding layer items, derived status, validation metadata, links, and audit history. |
 | `client_onboardings` | ClientOnboarding | Client onboarding progress summary and activation blockers. |
+| `client_deliverables` | ClientDeliverable | Client-facing outputs linked to a Client Service, Project, Tasks, files, and approval state. |
+| `client_services` | ClientService | Purchased/active Client service records linked to existing Projects. |
 | `clients` | Client | Client CRM records and linked projects/documents. |
 | `companies` | Company | Tenant/company registration and account metadata. |
 | `company_subscriptions` | CompanySubscription | Company subscription state, module entitlements, usage counters. |
@@ -288,6 +290,75 @@ Indexes: `['company_id', 'email', 'status', 'assigned_to', 'created_by']`
 | `created_at` | `datetime.datetime` | No | No | Creation timestamp |
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 | `created_by` | `str` | Yes | Yes | Model field |
+
+Onboarding Phase 3 stores additive structured data in `Client.lifecycle_metadata.onboarding` without adding a duplicate business collection. Current keys are `commercial`, `requirements`, `asset_requirements`, `asset_submissions`, legacy-compatible `assets`, `access`, and `start_readiness`. `commercial` includes deal value, billing frequency, payment terms, engagement start date, and optional billing contact details. `requirements` includes business objective, scope, expected deliverables, target audience, important deadlines, competitors/references, preferences, special requirements, and client-facing notes. Asset requirements track name/category, required flag, description, status (`missing`, `requested`, `received`, `verified`, `replacement_required`), requested/received/verified timestamps, verifier, notes, same-client `file_refs`, and hashed per-asset request-link token metadata. Asset submissions track source, received contact/user/date, notes, files stored through existing Client file references, and many-to-many `requirement_ids`. Existing files can be linked to multiple asset requirements without duplicating the physical file. `access` remains a list of safe-reference rows with status and no plaintext secrets. `start_readiness` stores `ready`, `confirmed_by`, `confirmed_at`, and optional note.
+
+Phase 4 stores profile-only details in `Client.lifecycle_metadata.profile` with `commercial_summary` and `relationship_information`. Contact role assignments are stored in `Client.lifecycle_metadata.contact_roles` keyed by existing same-tenant `SalesContact` id; contact identities, primary contact flags, and CRM company membership stay in `sales_contacts`.
+
+Phase 7 stores renewal, churn, and archive workflow metadata in `Client.lifecycle_metadata` instead of introducing duplicate accounting records. `renewal` contains renewal date, contract/service end date, owner, status, value, payment terms, billing frequency, notes, updated actor/time, and append-only `renewal_history`. `churn` contains reason, end date, notes, calculated/provided revenue lost, actor/time, and append-only `churn_history`. `archive` contains reason, actor/time, and append-only `archive_history`. Finance totals are computed from existing `invoices.payments`, `client_services`, and `msas`; payments and invoice truth remain in their source collections.
+
+Phase 8 stores explainable Client Health metadata under `Client.lifecycle_metadata` instead of adding a duplicate health collection. `client_health` contains calculated score, level (`healthy`, `attention_needed`, `at_risk`, `critical`), reasons, source tabs, signal counts, calculated timestamp, next action, and active escalation reference. `client_health_history` and `client_health_level_history` preserve snapshots and level changes. `client_next_action` stores action, owner, due date, priority, related entity, status, and completion metadata. `client_health_escalation` stores one open escalation per unresolved issue key. Health calculations are tenant-scoped and derive from existing Tasks, Projects, Client Deliverables/approvals, Meetings, CRM/Inbox communication, Finance/Invoices, and Renewal metadata; Client lifecycle status is not overwritten by health.
+
+### `client_saved_views`
+| Field | Type | Required | Indexed | Notes |
+|---|---|---|---|---|
+| `name` | `str` | Yes | No | View label |
+| `company_id` | `str` | Yes | Yes | Tenant key |
+| `owner_id` | `str` | Yes | Yes | User who owns the view |
+| `filters` | `Dict[str, Any]` | No | No | Saved Client filters only; no Client records are copied |
+| `is_default` | `bool` | No | No | Reserved for seeded/default views |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `updated_at` | `datetime.datetime` | No | No | Update timestamp |
+
+Phase 9 uses `client_saved_views` for custom Client filter persistence. Built-in views such as My Clients, At Risk, Critical, Renewals This Month, Payment Follow-up, Delayed Delivery, and No Recent Activity are returned by API without duplicating Client rows. Built-in Client automation creates existing `tasks` and `notifications` and records idempotency in `automation_executions`.
+
+Phase 10 AI Client Intelligence does not add a new database collection. Briefs and answers are generated from compact same-tenant context loaded through `ClientWorkspaceService`, which reuses `clients`, `crm_companies`, `sales_contacts`, `client_services`, `projects`, `tasks`, `client_deliverables`, `meetings`, `crm_activities`, `invoices`, file references stored on existing records, and `Client.lifecycle_metadata` for Health, Next Action, Escalation, Renewal, Churn, and history. AI context excludes internal-note bodies and file contents, uses finance aggregates only, and redacts credential-like text before response generation.
+
+### `client_services`
+| Field | Type | Required | Indexed | Notes |
+|---|---|---|---|---|
+| `client_id` | `str` | Yes | Yes | Parent Client id |
+| `company_id` | `str` | Yes | Yes | Tenant key |
+| `name` | `str` | Yes | No | Service name |
+| `service_type` | `str` | No | No | Service category/type |
+| `status` | `str` | Yes | Yes | `planned`, `active`, `paused`, `ended` |
+| `pricing_value` | `float` | No | No | Service value |
+| `billing_cycle` | `str` | No | No | Billing cadence or payment terms |
+| `start_date`, `end_date` | `datetime` | No | No | Service window |
+| `service_owner_id` | `str` | No | Yes | Same-tenant user id |
+| `team_member_ids` | `list[str]` | No | Yes | Same-tenant users where applicable |
+| `linked_project_ids` | `list[str]` | No | Yes | Existing Project document ids |
+| `source_lead_id` | `str` | No | Yes | Sales handoff source for idempotency |
+| `source_category_id` | `str` | No | No | Sold category reference when available |
+| `notes` | `str` | No | No | Internal service notes |
+| `created_by`, `created_at`, `updated_at` | mixed | Yes | No | Audit timestamps/actor |
+
+Indexes include `company_id`, `client_id`, `status`, `service_owner_id`, `team_member_ids`, `linked_project_ids`, `source_lead_id`, compound `(company_id, client_id, updated_at)`, `(company_id, client_id, status)`, and `(company_id, source_lead_id)`. Tenant isolation is enforced by matching `Client.company_id`, `ClientService.company_id`, linked `Project.company_id`, and owner/team user `company_id`; cross-tenant project or user ids are rejected.
+
+### `client_deliverables`
+| Field | Type | Required | Indexed | Notes |
+|---|---|---|---|---|
+| `client_id` | `str` | Yes | Yes | Parent Client id |
+| `service_id` | `str` | Yes | Yes | Parent ClientService id |
+| `project_id` | `str` | Yes | Yes | Existing Project document id |
+| `company_id` | `str` | Yes | Yes | Tenant key |
+| `title` | `str` | Yes | Text | Client-facing output title |
+| `description` | `str` | No | Text | Deliverable description |
+| `owner_id` | `str` | No | Yes | Same-tenant owner |
+| `due_date` | `datetime` | No | Yes | Due date |
+| `status` | `str` | Yes | Yes | `planned`, `in_production`, `internal_review`, `client_review`, `revision_required`, `approved`, `delivered` |
+| `linked_files` | `list[dict]` | No | No | References to existing file/document records or URLs |
+| `linked_task_ids` | `list[str]` | No | Yes | Existing Work Task ids from the same Project |
+| `approval_status` | `str` | Yes | Yes | `not_sent`, `sent`, `viewed`, `approved`, `revision_requested` |
+| `approver_contact_id` | `str` | No | No | Existing CRM/SalesContact id |
+| `sent_at`, `viewed_at`, `approved_at`, `rejected_at`, `delivered_at` | `datetime` | No | No | Lifecycle timestamps |
+| `revision_note` | `str` | No | No | Last revision note |
+| `revision_count` | `int` | Yes | No | Incremented on revision requests |
+| `approval_history` | `list[dict]` | No | No | Approval/revision audit trail |
+| `public_token_hash`, `public_token_created_at` | mixed | No | No | Secure review token hash and creation timestamp |
+| `created_by`, `created_at`, `updated_at` | mixed | Yes | No | Audit timestamps/actor |
+
+Indexes include `company_id`, `client_id`, `service_id`, `project_id`, `status`, `approval_status`, `owner_id`, `due_date`, `linked_task_ids`, compound `(company_id, client_id, updated_at)`, `(company_id, service_id, project_id)`, and `(company_id, approval_status, due_date)`. Relationship validation requires the Service and Project to belong to the same Client tenant; linked Tasks must belong to the selected Project. Safe Project unlinking from a Service is blocked when a `client_deliverables` record references that service/project pair.
 
 ### `companies`
 
@@ -594,7 +665,7 @@ Indexes: `['employee_id', 'company_id', 'employee_role', 'status', 'leave_type',
 
 #### Model: `Meeting`
 
-Indexes: `['company_id', 'created_by', 'meeting_date', 'status']`
+Indexes include `company_id`, `created_by`, `meeting_date`, `status`, `client_id`, `project_id`, `contact_id`, compound `(company_id, client_id, meeting_date)`, `(company_id, project_id, meeting_date)`, and `(company_id, contact_id, meeting_date)`.
 
 | Field | Type | Required | Indexed | Description |
 |---|---|---|---|---|
@@ -606,6 +677,9 @@ Indexes: `['company_id', 'created_by', 'meeting_date', 'status']`
 | `created_by` | `str` | Yes | Yes | Model field |
 | `host_id` | `str` | Yes | No | Model field |
 | `participant_ids` | `List[str]` | No | No | Model field |
+| `client_id` | `Optional[str]` | No | Yes | Explicit linked Client id for Client Workspace meeting history |
+| `project_id` | `Optional[str]` | No | Yes | Explicit linked Project id |
+| `contact_id` | `Optional[str]` | No | Yes | Explicit linked same-tenant CRM Contact id |
 | `meeting_date` | `datetime.datetime` | Yes | Yes | Model field |
 | `meeting_time` | `str` | Yes | No | Model field |
 | `duration` | `int` | No | No | Model field |
@@ -620,6 +694,8 @@ Indexes: `['company_id', 'created_by', 'meeting_date', 'status']`
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 | `started_at` | `Optional[datetime.datetime]` | No | No | Model field |
 | `ended_at` | `Optional[datetime.datetime]` | No | No | Model field |
+
+Phase 6 Client Activity is an aggregation layer, not a new collection. It reads tenant-scoped existing records from Client, CRM Company/Contact, `crm_activities`, Meta Inbox conversations/messages where linked to same-tenant CRM Contacts, Meetings, Projects, Tasks, Client Services, Client Deliverables, Client document references, and Invoices. Internal CRM notes remain separate from client-facing communication.
 
 ### `msas`
 

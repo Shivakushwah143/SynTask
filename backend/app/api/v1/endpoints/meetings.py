@@ -7,6 +7,9 @@ from datetime import datetime, timedelta
 import logging
 
 from app.models.meeting import Meeting, MeetingStatus
+from app.models.client import Client
+from app.models.project import Project
+from app.models.sales_contact import SalesContact
 from app.models.notification import Notification, NotificationType
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.models.user import User, UserRole
@@ -129,6 +132,9 @@ def serialize_meeting(meeting: Meeting, host: Optional[User], participants: List
             "last_name": host.last_name if host else None,
         } if host else None,
         "participants": participants,
+        "client_id": getattr(meeting, "client_id", None),
+        "project_id": getattr(meeting, "project_id", None),
+        "contact_id": getattr(meeting, "contact_id", None),
         "zoom_meeting_url": meeting.zoom_meeting_url,
         "zoom_start_url": meeting.zoom_start_url if can_see_zoom_start_url(current_user, meeting) else None,
         "zoom_password": meeting.zoom_password,
@@ -188,6 +194,9 @@ async def create_meeting(
     meeting_time: str = Form(...),  # Format: HH:MM
     duration: int = Form(30),
     participant_ids: Optional[str] = Form(None),  # Comma-separated user IDs
+    client_id: Optional[str] = Form(None),
+    project_id: Optional[str] = Form(None),
+    contact_id: Optional[str] = Form(None),
     host_video_enabled: bool = Form(True),
     participant_video_enabled: bool = Form(True),
     current_user: User = Depends(get_current_company_admin_or_lead),
@@ -218,6 +227,27 @@ async def create_meeting(
                         detail=f"Participant {pid} is not in your company"
                     )
                 validate_meeting_participant_role(current_user, participant)
+        if client_id:
+            client = await Client.get(client_id)
+            if not client or client.company_id != current_user.company_id:
+                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid client")
+        if project_id:
+            try:
+                project = await Project.get(project_id)
+            except Exception:
+                project = None
+            if not project:
+                project = await Project.find_one({"company_id": current_user.company_id, "project_id": project_id})
+            if not project or project.company_id != current_user.company_id:
+                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid project")
+            project_id = str(project.id)
+        if contact_id:
+            try:
+                contact = await SalesContact.get(contact_id)
+            except Exception:
+                contact = None
+            if not contact or contact.company_id != current_user.company_id or contact.deleted:
+                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid contact")
         
         # Create Zoom meeting if credentials are configured
         zoom_data = {}
@@ -247,6 +277,9 @@ async def create_meeting(
             created_by=str(current_user.id),
             host_id=str(current_user.id),
             participant_ids=participant_list,
+            client_id=client_id,
+            project_id=project_id,
+            contact_id=contact_id,
             meeting_date=meeting_datetime,
             meeting_time=meeting_time,
             duration=duration,
@@ -320,6 +353,9 @@ async def list_meetings(
     limit: int = Query(20, ge=1, le=100),
     meeting_status: Optional[str] = Query(None, alias="status"),
     upcoming: bool = Query(False),
+    client_id: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None),
+    contact_id: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
 ):
     """List meetings for the current user's company"""
@@ -337,11 +373,18 @@ async def list_meetings(
 
     if upcoming:
         query["meeting_date"] = {"$gte": utc_now()}
+    if client_id:
+        query["client_id"] = client_id
+    if project_id:
+        query["project_id"] = project_id
+    if contact_id:
+        query["contact_id"] = contact_id
     
-    query["$or"] = [
-        {"host_id": str(current_user.id)},
-        {"participant_ids": str(current_user.id)}
-    ]
+    if not any([client_id, project_id, contact_id]):
+        query["$or"] = [
+            {"host_id": str(current_user.id)},
+            {"participant_ids": str(current_user.id)}
+        ]
     
     sort_direction = Meeting.meeting_date if upcoming else -Meeting.meeting_date
     meetings = await Meeting.find(query).sort(sort_direction).skip(skip).limit(limit).to_list()
@@ -381,6 +424,9 @@ async def update_meeting(
     meeting_time: Optional[str] = Form(None),
     duration: Optional[int] = Form(None),
     participant_ids: Optional[str] = Form(None),
+    client_id: Optional[str] = Form(None),
+    project_id: Optional[str] = Form(None),
+    contact_id: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead),
 ):
     """Update meeting details and reschedule when date/time changes"""
@@ -417,6 +463,35 @@ async def update_meeting(
                 raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail=f"Participant {pid} is not in your company")
             validate_meeting_participant_role(current_user, participant)
         meeting.participant_ids = participant_list
+    if client_id is not None:
+        client = await Client.get(client_id) if client_id else None
+        if client_id and (not client or client.company_id != current_user.company_id):
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid client")
+        meeting.client_id = client_id or None
+    if project_id is not None:
+        if project_id:
+            try:
+                project = await Project.get(project_id)
+            except Exception:
+                project = None
+        else:
+            project = None
+        if project_id and not project:
+            project = await Project.find_one({"company_id": current_user.company_id, "project_id": project_id})
+        if project_id and (not project or project.company_id != current_user.company_id):
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid project")
+        meeting.project_id = str(project.id) if project else None
+    if contact_id is not None:
+        if contact_id:
+            try:
+                contact = await SalesContact.get(contact_id)
+            except Exception:
+                contact = None
+        else:
+            contact = None
+        if contact_id and (not contact or contact.company_id != current_user.company_id or contact.deleted):
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid contact")
+        meeting.contact_id = contact_id or None
 
     meeting.updated_at = utc_now()
     await meeting.save()

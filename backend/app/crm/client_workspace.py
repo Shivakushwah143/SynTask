@@ -6,17 +6,27 @@ import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
+from beanie.exceptions import CollectionWasNotInitialized
 from bson import ObjectId
 
 from app.crm.company_timeline import CRMCompanyTimelineService
-from app.crm.client_identity import load_contacts_for_client, resolve_crm_company_for_client
+from app.crm.client_identity import load_contacts_for_client, persist_resolved_crm_company_for_client, resolve_crm_company_for_client
+from app.crm.client_activity import build_client_activity, load_client_communications
+from app.crm.client_commercial import load_client_finance, renewal_due_hint
+from app.crm.client_deliverables import serialize_deliverable
+from app.crm.client_health import calculate_client_health, sync_client_health
 from app.crm.client_onboarding import sync_client_onboarding
+from app.crm.client_services import ensure_sales_handoff_service, serialize_client_service
 from app.crm.models import Client
 from app.models.client import ClientStatus
+from app.models.client_deliverable import ClientDeliverable
+from app.models.crm_document import CRMDocument
+from app.models.client_service import ClientService
 from app.models.invoice import Invoice
 from app.models.meeting import Meeting
 from app.models.project import Project
 from app.crm.models import ProspectStatus, SalesProspect
+from app.models.sales_lead_file import SalesLeadFile
 from app.models.task import Task
 from app.models.user import User, UserRole
 
@@ -68,6 +78,9 @@ def _meeting_summary(meeting: Meeting) -> Dict[str, Any]:
         "duration": meeting.duration,
         "host_id": meeting.host_id,
         "participant_ids": meeting.participant_ids or [],
+        "client_id": getattr(meeting, "client_id", None),
+        "project_id": getattr(meeting, "project_id", None),
+        "contact_id": getattr(meeting, "contact_id", None),
         "created_at": meeting.created_at,
         "updated_at": meeting.updated_at,
     }
@@ -85,6 +98,54 @@ def _contact_summary(contact: Any) -> Dict[str, Any]:
         "designation": contact.designation,
         "crm_company_id": contact.crm_company_id,
         "is_primary_contact": contact.is_primary_contact,
+    }
+
+
+def _document_kind(document_type: Any) -> str:
+    value = getattr(document_type, "value", document_type)
+    if value == "quotation":
+        return "Proposal"
+    if value == "contract":
+        return "Agreement"
+    return str(value or "Document").replace("_", " ").title()
+
+
+def _sales_file_summary(file_record: SalesLeadFile) -> Dict[str, Any]:
+    return {
+        "id": f"sales-file-{file_record.id}",
+        "source": "sales_lead_file",
+        "lead_id": file_record.lead_id,
+        "name": file_record.original_name or file_record.file_name or "Sales file",
+        "original_name": file_record.original_name,
+        "category": "Sales Handoff",
+        "type": file_record.file_type or file_record.mime_type or "file",
+        "mime_type": file_record.mime_type,
+        "size": file_record.file_size,
+        "url": file_record.file_url,
+        "uploaded_at": file_record.created_at,
+        "updated_at": file_record.updated_at,
+    }
+
+
+def _crm_document_summary(document: CRMDocument) -> Dict[str, Any]:
+    kind = _document_kind(document.document_type)
+    url = document.pdf_file_path or document.source_file_url or document.source_file_path
+    file_name = document.source_file_name or (f"{document.document_number}.pdf" if document.pdf_file_path else None)
+    return {
+        "id": f"crm-document-{document.id}",
+        "source": "crm_document",
+        "lead_id": document.lead_id,
+        "document_id": str(document.id),
+        "document_number": document.document_number,
+        "name": document.title or file_name or kind,
+        "original_name": file_name,
+        "category": kind,
+        "type": "pdf" if document.pdf_file_path else _document_kind(document.document_type).lower(),
+        "status": getattr(document.status, "value", document.status),
+        "size": None,
+        "url": url,
+        "uploaded_at": document.created_at,
+        "updated_at": document.updated_at,
     }
 
 
@@ -123,9 +184,12 @@ class ClientWorkspaceService:
             projects.append(summary)
 
         meeting_matchers: List[Dict[str, Any]] = [
+            {"client_id": str(client.id)},
             {"title": f"Kickoff - {client.name}"},
             {"description": {"$regex": str(client.id), "$options": "i"}},
         ]
+        if project_ids:
+            meeting_matchers.append({"project_id": {"$in": project_ids}})
         project_names = [item["name"] for item in projects if item.get("name")]
         if project_names:
             meeting_matchers.append({"description": {"$in": [f"Kickoff meeting for {name}" for name in project_names]}})
@@ -143,6 +207,8 @@ class ClientWorkspaceService:
 
         company_resolution = await resolve_crm_company_for_client(client)
         crm_company = company_resolution.crm_company
+        if crm_company:
+            await persist_resolved_crm_company_for_client(client, company_resolution)
         contacts = await load_contacts_for_client(client)
         client_account_name = client.company_name or client.name
         escaped_account_name = re.escape(client_account_name)
@@ -200,6 +266,83 @@ class ClientWorkspaceService:
                 source_lead = None
         if not source_lead and lead_candidates:
             source_lead = next((l for l in lead_candidates if str(l.id) == getattr(client, "source_lead_id", None)), None)
+        await ensure_sales_handoff_service(client, current_user)
+        try:
+            services = await ClientService.find(
+                {"company_id": str(client.company_id), "client_id": str(client.id)}
+            ).sort("-updated_at").to_list()
+        except CollectionWasNotInitialized:
+            services = []
+        try:
+            deliverable_objects = await ClientDeliverable.find(
+                {"company_id": str(client.company_id), "client_id": str(client.id)}
+            ).sort("-updated_at").to_list()
+        except CollectionWasNotInitialized:
+            deliverable_objects = []
+        deliverables = []
+        project_name_map = {item["id"]: item["name"] for item in projects}
+        project_name_map.update({item["project_id"]: item["name"] for item in projects if item.get("project_id")})
+        service_name_map = {str(service.id): service.name for service in services}
+        for deliverable in deliverable_objects:
+            summary = serialize_deliverable(deliverable)
+            summary["project_name"] = project_name_map.get(deliverable.project_id)
+            summary["service_name"] = service_name_map.get(deliverable.service_id)
+            deliverables.append(summary)
+
+        categorized_files = []
+        for index, document in enumerate(client.documents or []):
+            category = document.get("category") or document.get("type") or "Other"
+            categorized_files.append({**document, "id": document.get("id") or f"client-document-{index}", "category": category})
+        lead_ids = list(dict.fromkeys([str(lead.id) for lead in lead_candidates if getattr(lead, "id", None)]))
+        if lead_ids:
+            try:
+                sales_files = await SalesLeadFile.find(
+                    {"company_id": client.company_id, "lead_id": {"$in": lead_ids}, "deleted": False}
+                ).sort("-created_at").to_list()
+            except CollectionWasNotInitialized:
+                sales_files = []
+            categorized_files.extend(_sales_file_summary(file_record) for file_record in sales_files)
+            try:
+                crm_documents = await CRMDocument.find(
+                    {"company_id": client.company_id, "lead_id": {"$in": lead_ids}}
+                ).sort("-created_at").to_list()
+            except CollectionWasNotInitialized:
+                crm_documents = []
+            categorized_files.extend(_crm_document_summary(document) for document in crm_documents)
+        for deliverable in deliverables:
+            for file_index, file_item in enumerate(deliverable.get("linked_files") or []):
+                categorized_files.append({
+                    **file_item,
+                    "id": file_item.get("id") or f"deliverable-{deliverable.get('id')}-file-{file_index}",
+                    "category": "Deliverables",
+                    "deliverable_id": deliverable.get("id"),
+                })
+        communications = await load_client_communications(client, projects)
+        finance = await load_client_finance(client, invoices, services)
+        commercial_lifecycle = renewal_due_hint(client, finance)
+        health_snapshot = calculate_client_health(
+            client,
+            projects=projects,
+            tasks=tasks,
+            meetings=meetings,
+            deliverables=deliverables,
+            invoices=invoices,
+            communication=communications["communication"],
+            finance=finance,
+            renewal=commercial_lifecycle["renewal"],
+        )
+        health = await sync_client_health(client, current_user, health_snapshot)
+        client_activity = await build_client_activity(
+            client,
+            projects=projects,
+            tasks=tasks,
+            meetings=meetings,
+            services=services,
+            deliverables=deliverables,
+            invoices=invoices,
+            communication=communications["communication"],
+            files=categorized_files,
+        )
 
         def _lead_budget_val(lead_item: Optional[SalesProspect]) -> Optional[float]:
             if not lead_item:
@@ -258,12 +401,25 @@ class ClientWorkspaceService:
                 "industry": client.industry,
                 "status": client.status.value,
                 "assigned_to": client.assigned_to,
-                "crm_company_id": client.crm_company_id,
+                "crm_company_id": str(crm_company.id) if crm_company else client.crm_company_id,
+                "resolved_crm_company_id": str(crm_company.id) if crm_company else None,
+                "crm_company": {
+                    "id": str(crm_company.id),
+                    "name": crm_company.name,
+                    "reason": company_resolution.reason,
+                    "status": company_resolution.status,
+                } if crm_company else None,
+                "crm_company_resolution": {
+                    "status": company_resolution.status,
+                    "reason": company_resolution.reason,
+                },
                 "source_lead_id": client.source_lead_id,
                 "account_owner_id": client.account_owner_id,
                 "sales_owner_id": client.sales_owner_id,
                 "assigned_to_name": _display_name(await User.get(client.assigned_to)) if client.assigned_to else None,
                 "notes": client.notes,
+                "lifecycle_metadata": client.lifecycle_metadata or {},
+                "profile": (client.lifecycle_metadata or {}).get("profile") or {},
                 "tags": client.tags or [],
                 "project_ids": client.project_ids or [],
                 "documents": client.documents or [],
@@ -277,7 +433,25 @@ class ClientWorkspaceService:
                 "created_by": client.created_by,
             },
             "projects": projects,
-            "contacts": [_contact_summary(contact) for contact in contacts],
+            "contacts": [
+                {
+                    **_contact_summary(contact),
+                    "roles": ((client.lifecycle_metadata or {}).get("contact_roles") or {}).get(str(contact.id), []),
+                }
+                for contact in contacts
+            ],
+            "services": [serialize_client_service(service) for service in services],
+            "deliverables": deliverables,
+            "communication": communications["communication"],
+            "internal_notes": communications["internal_notes"],
+            "files": categorized_files,
+            "finance": finance,
+            "health": health,
+            "next_action": (client.lifecycle_metadata or {}).get("client_next_action") or health.get("next_action"),
+            "active_escalation": (client.lifecycle_metadata or {}).get("client_health_escalation") or health.get("active_escalation"),
+            "renewal": commercial_lifecycle["renewal"],
+            "churn": commercial_lifecycle["churn"],
+            "commercial_lifecycle": commercial_lifecycle,
             "meetings": meetings,
             "onboarding": onboarding,
             "invoices": [
@@ -331,6 +505,22 @@ class ClientWorkspaceService:
                 "leads": lead_counts,
                 "tasks": dict(task_counts),
                 "documents": len(client.documents or []),
+                "services": {
+                    "total": len(services),
+                    "active": sum(1 for service in services if getattr(service, "status", None) and service.status.value == "active"),
+                    "planned": sum(1 for service in services if getattr(service, "status", None) and service.status.value == "planned"),
+                    "paused": sum(1 for service in services if getattr(service, "status", None) and service.status.value == "paused"),
+                    "ended": sum(1 for service in services if getattr(service, "status", None) and service.status.value == "ended"),
+                    "active_value": sum(float(service.pricing_value or 0) for service in services if getattr(service, "status", None) and service.status.value == "active"),
+                    "total_value": sum(float(service.pricing_value or 0) for service in services),
+                },
+                "deliverables": {
+                    "total": len(deliverables),
+                    "client_review": sum(1 for item in deliverables if item.get("status") == "client_review"),
+                    "approved": sum(1 for item in deliverables if item.get("approval_status") == "approved"),
+                    "revision_requested": sum(1 for item in deliverables if item.get("approval_status") == "revision_requested"),
+                    "delivered": sum(1 for item in deliverables if item.get("status") == "delivered"),
+                },
                 "meetings": len(meetings),
                 "invoices": {
                     "total": len(invoices),
@@ -339,7 +529,12 @@ class ClientWorkspaceService:
                     "paid": sum(1 for invoice in invoices if invoice.status.value == "paid"),
                     "cancelled": sum(1 for invoice in invoices if invoice.status.value == "cancelled"),
                     "outstanding_amount": sum(float(invoice.outstanding_amount or 0) for invoice in invoices),
+                    "paid_amount": finance["total_paid"],
+                    "overdue_amount": finance["overdue"],
+                    "overdue_count": finance["overdue_count"],
+                    "next_invoice": finance["next_invoice"],
                 },
             },
             "timeline": timeline,
+            "activity": client_activity,
         }

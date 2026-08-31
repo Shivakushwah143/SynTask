@@ -39,6 +39,9 @@ from app.models.changelog import ChangeLog
 from app.models.chat import Conversation, ChatMessage
 from app.models.page import Page
 from app.models.client import Client
+from app.models.client_saved_view import ClientSavedView
+from app.models.client_service import ClientService
+from app.models.client_deliverable import ClientDeliverable
 from app.models.client_onboarding import ClientOnboarding, ClientOnboardingItem
 from app.models.department import Department
 from app.models.capability import RoleCapability
@@ -229,6 +232,9 @@ async def init_db():
                 ChatMessage,
                 Page,
                 Client,
+                ClientSavedView,
+                ClientService,
+                ClientDeliverable,
                 ClientOnboarding,
                 ClientOnboardingItem,
                 Department,
