@@ -561,6 +561,44 @@ async def test_onboarding_asset_request_token_loads_single_asset_and_rejects_rev
 
 
 @pytest.mark.asyncio
+async def test_onboarding_asset_actions_accept_stale_validation_ids_by_asset_name(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, lifecycle_metadata={})
+    actor = _user()
+
+    class NoopActivity:
+        def __init__(self, **kwargs):
+            self.metadata = kwargs.get("metadata", {})
+
+        async def insert(self):
+            return None
+
+    class StaleItem:
+        validation = {"assets": [{"id": "old-logo-id", "name": "Logo"}]}
+
+    async def stale_find_one(query):
+        return StaleItem()
+
+    monkeypatch.setattr(client_onboarding, "CRMActivity", NoopActivity)
+    assets = await client_onboarding.ensure_asset_requirements(client)
+    logo = next(item for item in assets["requirements"] if item["name"] == "Logo")
+    assert logo["id"] != "old-logo-id"
+    monkeypatch.setattr(client_onboarding.ClientOnboardingItem, "find_one", stale_find_one)
+
+    requested = await client_onboarding.generate_asset_request_link(client, "old-logo-id", actor)
+    requested_logo = next(item for item in requested["requirements"] if item["id"] == logo["id"])
+    assert requested_logo["status"] == "requested"
+
+    uploaded = await client_onboarding.add_asset_submission(client, {
+        "source": "manual_upload",
+        "requirement_ids": ["old-logo-id"],
+        "files": [{"name": "logo.png", "url": "/api/v1/files/clients/logo.png"}],
+    }, actor)
+    uploaded_logo = next(item for item in uploaded["requirements"] if item["id"] == logo["id"])
+    assert uploaded_logo["status"] == "received"
+    assert uploaded_logo["file_refs"][0]["url"] == "/api/v1/files/clients/logo.png"
+
+
+@pytest.mark.asyncio
 async def test_onboarding_assets_ready_only_when_required_assets_verified(monkeypatch):
     client = _client(status=ClientStatus.ONBOARDING, lifecycle_metadata={})
     actor = _user()

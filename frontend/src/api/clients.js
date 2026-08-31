@@ -164,11 +164,6 @@ export const clientsAPI = {
     return response.data
   },
 
-  linkAssetRequirementFile: async (clientId, requirementId, payload) => {
-    const response = await api.post(`/clients/${clientId}/onboarding/assets/requirements/${requirementId}/file-links`, payload)
-    return response.data
-  },
-
   generateAssetRequestLink: async (clientId, requirementId) => {
     const response = await api.post(`/clients/${clientId}/onboarding/assets/requirements/${requirementId}/request-link`)
     return response.data

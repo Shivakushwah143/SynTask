@@ -228,8 +228,7 @@ function OnboardingItemCard({ item, onOpenTab }) {
   )
 }
 
-function AssetRequirementCard({ asset, existingFiles, requestUrl, onUpdateStatus, onUploadFiles, onLinkFile, onGenerateLink, onRevokeLink, saving }) {
-  const [selectedFileUrl, setSelectedFileUrl] = useState('')
+function AssetRequirementCard({ asset, requestUrl, onUpdateStatus, onUploadFiles, onGenerateLink, onRevokeLink, saving }) {
   const linkedFiles = asset.file_refs || []
 
   return (
@@ -254,7 +253,7 @@ function AssetRequirementCard({ asset, existingFiles, requestUrl, onUpdateStatus
           </select>
         </label>
 
-        <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+        <div>
           <form className="flex min-w-0 gap-2" onSubmit={(event) => {
             event.preventDefault()
             const form = event.currentTarget
@@ -264,17 +263,6 @@ function AssetRequirementCard({ asset, existingFiles, requestUrl, onUpdateStatus
             <input name="files" type="file" multiple required className="min-w-0 flex-1 text-xs text-gray-600 file:mr-2 file:rounded-md file:border-0 file:bg-primary-50 file:px-2 file:py-1.5 file:text-xs file:font-semibold file:text-primary-700 hover:file:bg-primary-100 dark:text-gray-300 dark:file:bg-primary-950 dark:file:text-primary-200" />
             <Button type="submit" size="sm" loading={saving} loadingText="...">Upload</Button>
           </form>
-          <div className="flex gap-2">
-            <select value={selectedFileUrl} onChange={(event) => setSelectedFileUrl(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100">
-              <option value="">Existing file</option>
-              {existingFiles.map((file) => <option key={file.url} value={file.url}>{file.original_name || file.name || file.url}</option>)}
-            </select>
-            <Button type="button" size="sm" variant="secondary" disabled={!selectedFileUrl} onClick={() => {
-              const selected = existingFiles.find((file) => file.url === selectedFileUrl)
-              onLinkFile(asset.id, selected)
-              setSelectedFileUrl('')
-            }}>Link</Button>
-          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -294,7 +282,7 @@ function AssetRequirementCard({ asset, existingFiles, requestUrl, onUpdateStatus
   )
 }
 
-function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, projects, contacts, meetings, documents, files, assetRequestLinks, onSaveClient, onSaveOnboarding, onSaveAssetsAccess, onUploadAssetFiles, onLinkAssetFile, onGenerateAssetRequestLink, onRevokeAssetRequestLink, onUpdateAssetRequirement, onSetPrimaryContact, onCreateContact, onCreateProject, onCreateMeeting, onGenerateDocument, saving, creatingContact, creatingProject, creatingMeeting, generatingDocument }) {
+function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, projects, contacts, meetings, documents, files, assetRequestLinks, onSaveClient, onSaveOnboarding, onSaveAssetsAccess, onUploadAssetFiles, onGenerateAssetRequestLink, onRevokeAssetRequestLink, onUpdateAssetRequirement, onSetPrimaryContact, onCreateContact, onCreateProject, onCreateMeeting, onGenerateDocument, saving, creatingContact, creatingProject, creatingMeeting, generatingDocument }) {
   const items = onboarding?.items || []
   const visibleItems = activeTab === 'overview'
     ? items
@@ -309,7 +297,7 @@ function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, proje
   const assetValidation = assetItem?.validation || {}
   const assetRequirements = assetValidation.assets || []
   const assetProgress = assetValidation.progress || { required_verified: 0, required_total: 0, percent: 0 }
-  const existingAssetFiles = Array.from(new Map([...(documents || []), ...(files || [])].filter((file) => file?.url).map((file) => [file.url, file])).values())
+
   const primaryContact = contacts.find((contact) => contact.is_primary_contact)
   const [showContactForm, setShowContactForm] = useState(!contacts.length)
   const [contactCountryCode, setContactCountryCode] = useState('+91')
@@ -455,11 +443,9 @@ function OnboardingWorkspace({ onboarding, activeTab, onTabChange, client, proje
                   <AssetRequirementCard
                     key={asset.id}
                     asset={asset}
-                    existingFiles={existingAssetFiles}
                     requestUrl={assetRequestLinks[asset.id]}
                     onUpdateStatus={onUpdateAssetRequirement}
                     onUploadFiles={onUploadAssetFiles}
-                    onLinkFile={onLinkAssetFile}
                     onGenerateLink={onGenerateAssetRequestLink}
                     onRevokeLink={onRevokeAssetRequestLink}
                     saving={saving}
@@ -771,17 +757,6 @@ export default function ClientWorkspacePage() {
         queryClient.invalidateQueries(['client-workspace', clientId])
       },
       onError: (error) => toast.error(apiErrorMessage(error, 'Failed to upload asset file')),
-    }
-  )
-
-  const assetFileLinkMutation = useMutation(
-    ({ requirementId, payload }) => clientsAPI.linkAssetRequirementFile(clientId, requirementId, payload),
-    {
-      onSuccess: () => {
-        toast.success('Existing file linked')
-        queryClient.invalidateQueries(['client-workspace', clientId])
-      },
-      onError: (error) => toast.error(apiErrorMessage(error, 'Failed to link existing file')),
     }
   )
 
@@ -1776,7 +1751,6 @@ export default function ClientWorkspacePage() {
         onSaveOnboarding={(values) => structuredOnboardingMutation.mutate(values)}
         onSaveAssetsAccess={(values) => assetsAccessMutation.mutate(values)}
         onUploadAssetFiles={(requirementId, payload) => assetFileMutation.mutate({ requirementId, payload })}
-        onLinkAssetFile={(requirementId, payload) => assetFileLinkMutation.mutate({ requirementId, payload })}
         onGenerateAssetRequestLink={(requirementId) => assetRequestLinkMutation.mutate(requirementId)}
         onRevokeAssetRequestLink={(requirementId) => assetRequestRevokeMutation.mutate(requirementId)}
         onUpdateAssetRequirement={(requirementId, payload) => assetRequirementMutation.mutate({ requirementId, payload })}
@@ -1785,7 +1759,7 @@ export default function ClientWorkspacePage() {
         onCreateProject={(values) => createProjectMutation.mutate(values)}
         onCreateMeeting={(values) => createMeetingMutation.mutate(values)}
         onGenerateDocument={() => onboardingDocumentMutation.mutate()}
-        saving={onboardingSaveMutation.isLoading || structuredOnboardingMutation.isLoading || primaryContactMutation.isLoading || assetsAccessMutation.isLoading || assetRequirementMutation.isLoading || assetFileMutation.isLoading || assetFileLinkMutation.isLoading || assetRequestLinkMutation.isLoading || assetRequestRevokeMutation.isLoading}
+        saving={onboardingSaveMutation.isLoading || structuredOnboardingMutation.isLoading || primaryContactMutation.isLoading || assetsAccessMutation.isLoading || assetRequirementMutation.isLoading || assetFileMutation.isLoading || assetRequestLinkMutation.isLoading || assetRequestRevokeMutation.isLoading}
         creatingContact={createContactMutation.isLoading}
         creatingProject={createProjectMutation.isLoading}
         creatingMeeting={createMeetingMutation.isLoading}

@@ -253,6 +253,23 @@ async def log_asset_activity(client: Client, actor: Optional[User], action: str,
         return
 
 
+async def _canonical_asset_requirement_id(client: Client, assets: Dict[str, Any], requirement_id: str) -> Optional[str]:
+    valid_ids = {item.get("id") for item in assets["requirements"]}
+    if requirement_id in valid_ids:
+        return requirement_id
+    try:
+        item = await ClientOnboardingItem.find_one({"company_id": client.company_id, "client_id": str(client.id), "key": "brand_assets"})
+    except CollectionWasNotInitialized:
+        item = None
+    stale_assets = (((getattr(item, "validation", None) or {}).get("assets")) if item else []) or []
+    stale = next((asset for asset in stale_assets if asset.get("id") == requirement_id), None)
+    stale_name = str((stale or {}).get("name") or "").strip().lower()
+    if not stale_name:
+        return None
+    matches = [asset for asset in assets["requirements"] if str(asset.get("name") or "").strip().lower() == stale_name]
+    return matches[0].get("id") if len(matches) == 1 else None
+
+
 async def ensure_asset_requirements(client: Client) -> Dict[str, Any]:
     assets = _asset_data(client)
     _save_asset_data(client, assets["requirements"], assets["submissions"])
@@ -261,6 +278,7 @@ async def ensure_asset_requirements(client: Client) -> Dict[str, Any]:
 
 async def update_asset_requirement(client: Client, requirement_id: str, patch: Dict[str, Any], actor: Optional[User] = None) -> Dict[str, Any]:
     assets = _asset_data(client)
+    requirement_id = await _canonical_asset_requirement_id(client, assets, requirement_id) or requirement_id
     now = utc_now().isoformat()
     requirement = next((item for item in assets["requirements"] if item.get("id") == requirement_id), None)
     if not requirement:
@@ -296,7 +314,10 @@ async def update_asset_requirement(client: Client, requirement_id: str, patch: D
 
 async def add_asset_submission(client: Client, payload: Dict[str, Any], actor: Optional[User] = None) -> Dict[str, Any]:
     assets = _asset_data(client)
-    requirement_ids = [rid for rid in payload.get("requirement_ids", []) if rid]
+    requirement_ids = []
+    for rid in [rid for rid in payload.get("requirement_ids", []) if rid]:
+        canonical_id = await _canonical_asset_requirement_id(client, assets, rid)
+        requirement_ids.append(canonical_id or rid)
     valid_ids = {item.get("id") for item in assets["requirements"]}
     if not requirement_ids or any(rid not in valid_ids for rid in requirement_ids):
         raise ValueError("Submission must map to one or more valid asset requirements")
@@ -362,6 +383,7 @@ async def link_existing_asset_file(client: Client, requirement_id: str, file_ref
 
 async def generate_asset_request_link(client: Client, requirement_id: str, actor: Optional[User] = None) -> Dict[str, Any]:
     assets = _asset_data(client)
+    requirement_id = await _canonical_asset_requirement_id(client, assets, requirement_id) or requirement_id
     requirement = next((item for item in assets["requirements"] if item.get("id") == requirement_id), None)
     if not requirement:
         raise ValueError("Asset requirement not found")
@@ -388,6 +410,7 @@ async def generate_asset_request_link(client: Client, requirement_id: str, actor
 
 async def revoke_asset_request_link(client: Client, requirement_id: str, actor: Optional[User] = None) -> Dict[str, Any]:
     assets = _asset_data(client)
+    requirement_id = await _canonical_asset_requirement_id(client, assets, requirement_id) or requirement_id
     requirement = next((item for item in assets["requirements"] if item.get("id") == requirement_id), None)
     if not requirement:
         raise ValueError("Asset requirement not found")
