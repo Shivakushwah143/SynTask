@@ -168,13 +168,28 @@ export const clientsAPI = {
     return response.data
   },
 
-  generateAssetRequestLink: async (clientId, requirementId) => {
-    const response = await api.post(`/clients/${clientId}/onboarding/assets/requirements/${requirementId}/request-link`)
+  generateAssetRequestLink: async (clientId, requirementId, payload = {}) => {
+    const response = await api.post(`/clients/${clientId}/onboarding/assets/requirements/${requirementId}/request-link`, payload)
     return response.data
   },
 
   revokeAssetRequestLink: async (clientId, requirementId) => {
     const response = await api.post(`/clients/${clientId}/onboarding/assets/requirements/${requirementId}/request-link/revoke`)
+    return response.data
+  },
+
+  getAssetUploadRequest: async (token) => {
+    const response = await api.get(`/clients/asset-upload/${token}`, { allowUnauthenticated: true, skipAuthRefresh: true })
+    return response.data
+  },
+
+  uploadAssetRequestFiles: async (token, payload = {}) => {
+    const files = Array.from(payload.files || [])
+    if (!files.length) throw new Error('At least one file is required')
+    const formData = new FormData()
+    if (payload.notes) formData.append('notes', payload.notes)
+    files.forEach((file) => formData.append('files', file))
+    const response = await api.post(`/clients/asset-upload/${token}`, formData, { allowUnauthenticated: true, skipAuthRefresh: true })
     return response.data
   },
 

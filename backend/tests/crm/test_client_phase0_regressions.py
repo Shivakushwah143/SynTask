@@ -531,6 +531,27 @@ async def test_onboarding_asset_request_link_is_hashed_and_revoke_is_idempotent(
 
 
 @pytest.mark.asyncio
+async def test_onboarding_asset_request_link_stores_client_note(monkeypatch):
+    client = _client(status=ClientStatus.ONBOARDING, lifecycle_metadata={})
+    actor = _user()
+
+    class NoopActivity:
+        def __init__(self, **kwargs):
+            self.metadata = kwargs.get("metadata", {})
+
+        async def insert(self):
+            return None
+
+    monkeypatch.setattr(client_onboarding, "CRMActivity", NoopActivity)
+    assets = await client_onboarding.ensure_asset_requirements(client)
+    requirement_id = assets["requirements"][0]["id"]
+    result = await client_onboarding.generate_asset_request_link(client, requirement_id, actor, "Upload latest logo files.")
+    requirement = next(item for item in result["requirements"] if item["id"] == requirement_id)
+
+    assert requirement["request_note"] == "Upload latest logo files."
+
+
+@pytest.mark.asyncio
 async def test_onboarding_asset_request_token_loads_single_asset_and_rejects_revoked(monkeypatch):
     client = _client(status=ClientStatus.ONBOARDING, lifecycle_metadata={})
     actor = _user()

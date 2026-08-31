@@ -396,7 +396,7 @@ async def link_existing_asset_file(client: Client, requirement_id: str, file_ref
     }, actor)
 
 
-async def generate_asset_request_link(client: Client, requirement_id: str, actor: Optional[User] = None) -> Dict[str, Any]:
+async def generate_asset_request_link(client: Client, requirement_id: str, actor: Optional[User] = None, request_note: Optional[str] = None) -> Dict[str, Any]:
     assets = _asset_data(client)
     requirement_id = await _canonical_asset_requirement_id(client, assets, requirement_id) or requirement_id
     requirement = next((item for item in assets["requirements"] if item.get("id") == requirement_id), None)
@@ -407,13 +407,14 @@ async def generate_asset_request_link(client: Client, requirement_id: str, actor
     requirement["request_token_hash"] = hashlib.sha256(token.encode("utf-8")).hexdigest()
     requirement["request_link_expires_at"] = (now + timedelta(days=ASSET_REQUEST_LINK_TTL_DAYS)).isoformat()
     requirement["request_link_revoked_at"] = None
+    requirement["request_note"] = str(request_note or "").strip() or requirement.get("request_note")
     requirement["requested_at"] = requirement.get("requested_at") or now.isoformat()
     requirement["status"] = "requested"
     requirement["updated_at"] = now.isoformat()
     _save_asset_data(client, assets["requirements"], assets["submissions"])
     client.updated_at = utc_now()
     await client.save()
-    await log_asset_activity(client, actor, "asset_requested", f"Asset requested: {requirement.get('name')}", {"requirement_id": requirement_id})
+    await log_asset_activity(client, actor, "asset_requested", f"Asset requested: {requirement.get('name')}", {"requirement_id": requirement_id, "note": requirement.get("request_note")})
     return {
         "token": token,
         "expires_at": requirement["request_link_expires_at"],

@@ -153,6 +153,10 @@ class ClientAssetRequirementPayload(BaseModel):
     note: Optional[str] = None
 
 
+class ClientAssetRequestLinkPayload(BaseModel):
+    request_note: Optional[str] = None
+
+
 class ClientServicePayload(BaseModel):
     name: Optional[str] = None
     service_type: Optional[str] = None
@@ -1105,12 +1109,13 @@ async def link_client_asset_requirement_file(
 async def create_client_asset_request_link(
     client_id: str,
     requirement_id: str,
+    payload: Optional[ClientAssetRequestLinkPayload] = None,
     current_user: User = Depends(get_current_company_admin_or_lead),
 ):
     """Generate or regenerate a secure upload request token for one asset requirement."""
     client = await load_client_for_user(client_id, current_user)
     try:
-        result = await generate_asset_request_link(client, requirement_id, current_user)
+        result = await generate_asset_request_link(client, requirement_id, current_user, payload.request_note if payload else None)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return {"client_id": str(client.id), "assets": result, "onboarding": await sync_client_onboarding(client, current_user)}
@@ -1144,6 +1149,7 @@ async def get_asset_upload_request(token: str):
             "id": requirement.get("id"),
             "name": requirement.get("name"),
             "description": requirement.get("description"),
+            "request_note": requirement.get("request_note"),
             "required": requirement.get("required", True),
             "status": requirement.get("status", "missing"),
         },

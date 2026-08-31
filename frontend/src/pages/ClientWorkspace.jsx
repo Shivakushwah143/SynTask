@@ -98,8 +98,7 @@ function clientFileUrl(url) {
 
 function assetRequestUploadUrl(token) {
   if (!token) return ''
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
-  return `${apiUrl.replace(/\/$/, '')}/clients/asset-upload/${token}`
+  return `${window.location.origin}/clients/asset-upload/${token}`
 }
 
 function apiErrorMessage(error, fallback) {
@@ -315,7 +314,7 @@ function AssetRequirementCard({ asset, requestUrl, onUpdateStatus, onUploadFiles
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" size="sm" variant="secondary" onClick={() => onGenerateLink(asset.id)}>Request</Button>
+          <Button type="button" size="sm" variant="secondary" onClick={() => onGenerateLink(asset)}>Request</Button>
           {requestUrl ? <Button type="button" size="sm" variant="secondary" onClick={() => navigator.clipboard?.writeText(requestUrl)}>Copy</Button> : null}
         </div>
       </div>
@@ -656,6 +655,7 @@ export default function ClientWorkspacePage() {
   const [aiQuestion, setAiQuestion] = useState('')
   const [aiAnswer, setAiAnswer] = useState(null)
   const [assetRequestLinks, setAssetRequestLinks] = useState({})
+  const [assetRequestDraft, setAssetRequestDraft] = useState(null)
 
   const workspaceQuery = useQuery(
     ['client-workspace', clientId],
@@ -811,16 +811,16 @@ export default function ClientWorkspacePage() {
   )
 
   const assetRequestLinkMutation = useMutation(
-    (requirementId) => clientsAPI.generateAssetRequestLink(clientId, requirementId),
+    ({ requirementId, requestNote }) => clientsAPI.generateAssetRequestLink(clientId, requirementId, { request_note: requestNote }),
     {
-      onSuccess: (data, requirementId) => {
+      onSuccess: (data, variables) => {
         const token = data?.assets?.token
         const uploadUrl = assetRequestUploadUrl(token)
         if (uploadUrl) {
-          setAssetRequestLinks((current) => ({ ...current, [requirementId]: uploadUrl }))
-          if (navigator.clipboard) navigator.clipboard.writeText(uploadUrl)
+          setAssetRequestLinks((current) => ({ ...current, [variables.requirementId]: uploadUrl }))
         }
-        toast.success(token ? 'Request link copied' : 'Asset requested')
+        setAssetRequestDraft((current) => current ? { ...current, url: uploadUrl, generated: true } : current)
+        toast.success(token ? 'Request link ready' : 'Asset requested')
         queryClient.invalidateQueries(['client-workspace', clientId])
       },
       onError: (error) => toast.error(apiErrorMessage(error, 'Failed to create request link')),
@@ -1885,7 +1885,13 @@ export default function ClientWorkspacePage() {
         onSaveOnboarding={(values) => structuredOnboardingMutation.mutate(values)}
         onSaveAssetsAccess={(values) => assetsAccessMutation.mutate(values)}
         onUploadAssetFiles={(requirementId, payload) => assetFileMutation.mutate({ requirementId, payload })}
-        onGenerateAssetRequestLink={(requirementId) => assetRequestLinkMutation.mutate(requirementId)}
+        onGenerateAssetRequestLink={(asset) => setAssetRequestDraft({
+          requirementId: asset.id,
+          assetName: asset.name,
+          requestNote: asset.request_note || asset.description || `Please upload ${asset.name} for onboarding. Accepted files can include images, PDFs, or documents.`,
+          url: assetRequestLinks[asset.id] || '',
+          generated: Boolean(assetRequestLinks[asset.id]),
+        })}
         onRevokeAssetRequestLink={(requirementId) => assetRequestRevokeMutation.mutate(requirementId)}
         onUpdateAssetRequirement={(requirementId, payload) => assetRequirementMutation.mutate({ requirementId, payload })}
         onSetPrimaryContact={(contactId) => primaryContactMutation.mutate(contactId)}
@@ -2668,6 +2674,62 @@ export default function ClientWorkspacePage() {
       />
 
       {tabBody}
+
+      <Modal
+        isOpen={Boolean(assetRequestDraft)}
+        onClose={() => setAssetRequestDraft(null)}
+        title={`Request ${assetRequestDraft?.assetName || 'asset'}`}
+        description="Create a secure client upload link for this one onboarding asset."
+        size="md"
+        footer={(
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setAssetRequestDraft(null)}>Cancel</Button>
+            <Button
+              type="button"
+              loading={assetRequestLinkMutation.isLoading}
+              loadingText="Creating..."
+              onClick={() => {
+                if (!assetRequestDraft?.generated) {
+                  assetRequestLinkMutation.mutate({
+                    requirementId: assetRequestDraft.requirementId,
+                    requestNote: assetRequestDraft.requestNote,
+                  })
+                  return
+                }
+                if (assetRequestDraft.url && navigator.clipboard) {
+                  navigator.clipboard.writeText(assetRequestDraft.url)
+                  toast.success('Request link copied')
+                }
+              }}
+            >
+              {assetRequestDraft?.generated ? 'Copy Link' : 'Create Link'}
+            </Button>
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-950/50 dark:text-gray-200">
+            <p className="font-semibold text-gray-900 dark:text-white">Purpose</p>
+            <p className="mt-1">Send client a private upload page for this asset. Client opens link, reads your note, chooses file, adds optional note, submits. File lands in this client onboarding asset.</p>
+          </div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+            Client-side detail
+            <textarea
+              rows={4}
+              value={assetRequestDraft?.requestNote || ''}
+              disabled={assetRequestDraft?.generated}
+              onChange={(event) => setAssetRequestDraft((current) => ({ ...current, requestNote: event.target.value }))}
+              className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+            />
+          </label>
+          {assetRequestDraft?.url ? (
+            <div className="rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300">
+              <p className="font-semibold text-gray-900 dark:text-white">Link</p>
+              <p className="mt-1 break-all">{assetRequestDraft.url}</p>
+            </div>
+          ) : null}
+        </div>
+      </Modal>
 
       <Modal
         isOpen={Boolean(transitionBlocker)}
