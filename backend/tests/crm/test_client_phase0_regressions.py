@@ -523,6 +523,7 @@ async def test_onboarding_asset_request_link_is_hashed_and_revoke_is_idempotent(
     requirement = next(item for item in generated["requirements"] if item["id"] == requirement_id)
 
     assert generated["token"]
+    assert generated["upload_url"].endswith(f"/clients/asset-upload/{generated['token']}")
     assert generated["token"] != requirement["request_token_hash"]
     assert requirement["status"] == "requested"
     revoked = await client_onboarding.revoke_asset_request_link(client, requirement_id, actor)
@@ -570,7 +571,7 @@ async def test_onboarding_asset_request_token_loads_single_asset_and_rejects_rev
     token = generated["token"]
 
     async def find_one(query):
-        assert "lifecycle_metadata.onboarding.asset_requirements.request_token_hash" in query
+        assert query["lifecycle_metadata.onboarding.asset_requirements"]["$elemMatch"]["request_token_hash"]
         return client
 
     monkeypatch.setattr(client_onboarding.Client, "find_one", find_one)

@@ -815,7 +815,7 @@ export default function ClientWorkspacePage() {
     {
       onSuccess: (data, variables) => {
         const token = data?.assets?.token
-        const uploadUrl = assetRequestUploadUrl(token)
+        const uploadUrl = data?.assets?.upload_url || assetRequestUploadUrl(token)
         if (uploadUrl) {
           setAssetRequestLinks((current) => ({ ...current, [variables.requirementId]: uploadUrl }))
         }
@@ -1889,8 +1889,8 @@ export default function ClientWorkspacePage() {
           requirementId: asset.id,
           assetName: asset.name,
           requestNote: asset.request_note || asset.description || `Please upload ${asset.name} for onboarding. Accepted files can include images, PDFs, or documents.`,
-          url: assetRequestLinks[asset.id] || '',
-          generated: Boolean(assetRequestLinks[asset.id]),
+          url: '',
+          generated: false,
         })}
         onRevokeAssetRequestLink={(requirementId) => assetRequestRevokeMutation.mutate(requirementId)}
         onUpdateAssetRequirement={(requirementId, payload) => assetRequirementMutation.mutate({ requirementId, payload })}

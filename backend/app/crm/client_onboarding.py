@@ -23,6 +23,7 @@ from app.models.project import Project
 from app.models.sales_prospect import SalesProspect
 from app.models.user import User
 from app.core.clock import utc_now
+from app.core.config import settings
 from beanie.exceptions import CollectionWasNotInitialized
 
 
@@ -414,9 +415,17 @@ async def generate_asset_request_link(client: Client, requirement_id: str, actor
     _save_asset_data(client, assets["requirements"], assets["submissions"])
     client.updated_at = utc_now()
     await client.save()
+    try:
+        await Client.get_pymongo_collection().update_one(
+            {"_id": client.id},
+            {"$set": {"lifecycle_metadata": client.lifecycle_metadata, "updated_at": client.updated_at}},
+        )
+    except CollectionWasNotInitialized:
+        pass
     await log_asset_activity(client, actor, "asset_requested", f"Asset requested: {requirement.get('name')}", {"requirement_id": requirement_id, "note": requirement.get("request_note")})
     return {
         "token": token,
+        "upload_url": f"{settings.FRONTEND_URL.rstrip('/')}/clients/asset-upload/{token}",
         "expires_at": requirement["request_link_expires_at"],
         "requirements": assets["requirements"],
         "submissions": assets["submissions"],
@@ -453,7 +462,12 @@ def _parse_asset_link_datetime(value: Any) -> Optional[datetime]:
 async def load_asset_request_by_token(token: str) -> tuple[Client, Dict[str, Any]]:
     token_hash = hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
     try:
-        client = await Client.find_one({"lifecycle_metadata.onboarding.asset_requirements.request_token_hash": token_hash, "deleted": {"$ne": True}})
+        client = await Client.find_one({
+            "lifecycle_metadata.onboarding.asset_requirements": {
+                "$elemMatch": {"request_token_hash": token_hash}
+            },
+            "deleted": {"$ne": True},
+        })
     except CollectionWasNotInitialized as exc:
         raise ValueError("Asset request link is invalid") from exc
     if not client:
