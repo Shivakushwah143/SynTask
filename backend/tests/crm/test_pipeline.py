@@ -427,6 +427,7 @@ async def test_move_lead_to_won_updates_closed_fields_and_triggers_automation(mo
         closed_by=None,
         reason_for_lost=None,
         won_amount=None,
+        transferred_at=None,
         # Agreement signed so the Agreement -> Won gate passes.
         agreement_status="signed",
         saved=False,
@@ -499,10 +500,10 @@ async def test_move_lead_to_won_updates_closed_fields_and_triggers_automation(mo
     assert lead.status == ProspectStatus.WON
     assert lead.closed_by == "user-1"
     assert lead.closed_date is not None
-    assert lead.won_status == "transferred"
-    assert lead.current_stage_status == "transferred"
-    assert lead.transferred_at is not None
-    assert lead.transferred_by == "user-1"
+    assert lead.won_status == "ready"
+    assert lead.current_stage_status == "ready"
+    # Won and Transferred are separate states — transferred_at is NOT set on Won.
+    assert lead.transferred_at is None
     assert deal.saved is True
     assert deal.stage == "won"
     assert automation_capture == {"lead_id": "lead-1", "deal_id": "deal-1"}
@@ -1087,10 +1088,10 @@ async def test_agreement_cannot_move_to_won_before_signature(monkeypatch):
     monkeypatch.setattr("app.crm.pipeline.publish_crm_timeline_event", fake_publish)
     monkeypatch.setattr("app.crm.pipeline._run_won_automation", fake_run_won_automation)
     monkeypatch.setattr("app.crm.pipeline.CRMDeal.find_one", fake_find_one)
-    with pytest.raises(HTTPException) as conversion_exc:
-        await CRMPipelineService.move_lead(user, "lead-1", "Won")
-    assert conversion_exc.value.status_code == 400
-    assert "Won lead conversion failed" in conversion_exc.value.detail
+    # Won succeeds even without a client — the conversion is a separate action.
+    result = await CRMPipelineService.move_lead(user, "lead-1", "Won")
+    assert lead.current_stage == "Won"
+    assert lead.won_status == "payment_pending"
 
 
 @pytest.mark.asyncio
@@ -1388,3 +1389,223 @@ async def test_bulk_assign_skips_leads_the_employee_cannot_write(monkeypatch):
     assert result["assigned_count"] == 0
     assert result["skipped_count"] == 1
     assert result["skipped"][0]["reason"] == "No permission to update this lead"
+
+
+# ── Regression: Won → Transfer separation and Sales Won persistence ─────────
+
+
+@pytest.mark.asyncio
+async def test_won_lead_remains_in_pipeline_after_transfer(monkeypatch):
+    """Won + Transferred leads must still appear in the pipeline load."""
+    now = datetime.utcnow()
+    lead = SimpleNamespace(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        prospect_name="Alpha Co",
+        current_stage="Won",
+        status=ProspectStatus.WON,
+        assigned_to="user-1",
+        assigned_by="user-2",
+        created_at=now - timedelta(days=14),
+        updated_at=now,
+        stage_entered_at=now - timedelta(days=2),
+        stage_last_changed_at=now - timedelta(days=2),
+        days_in_stage=2,
+        closed_date=now - timedelta(days=2),
+        closed_by="user-1",
+        reason_for_lost=None,
+        won_amount=5000,
+        agreement_status="signed",
+        won_status="transferred",
+        current_stage_status="transferred",
+        client_id="client-1",
+        project_id="project-1",
+        transferred_at=now,
+        transferred_by="user-1",
+        converted_at=now,
+        stage_status_history=[],
+        crm_company_id=None,
+        owner_name="Ada Admin",
+        first_contact_at=now - timedelta(days=10),
+        last_contacted_at=now - timedelta(days=3),
+    )
+
+    async def fake_stage_documents(current_user):
+        return [
+            SimpleNamespace(id=None, name="Won", order=6, is_default=False),
+        ]
+
+    def fake_find(query):
+        return FakeQuery([lead])
+
+    async def fake_publish(**kwargs):
+        return SimpleNamespace(event_name=kwargs["event_name"])
+
+    monkeypatch.setattr("app.crm.pipeline._load_stage_documents", fake_stage_documents)
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.find", fake_find)
+    monkeypatch.setattr(
+        "app.crm.pipeline.User.find",
+        lambda query: FakeBeanieQuery([SimpleNamespace(id="user-1", first_name="Ada", last_name="Admin")]),
+    )
+    monkeypatch.setattr(
+        "app.crm.pipeline.CRMCompany.find",
+        lambda query: FakeBeanieQuery([]),
+    )
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.ADMIN, first_name="Ada", last_name="Admin")
+    result = await CRMPipelineService.load_pipeline(user)
+
+    won_leads = result["leads_by_stage"].get("Won", [])
+    assert len(won_leads) == 1
+    assert won_leads[0]["id"] == "lead-1"
+    assert won_leads[0]["won_status"] == "transferred"
+    assert won_leads[0]["client_id"] == "client-1"
+
+
+@pytest.mark.asyncio
+async def test_won_automation_failure_does_not_block_won_transition(monkeypatch):
+    """A Won lead is valid even if client creation fails — the transfer is separate."""
+    now = datetime.utcnow()
+    lead = SimpleNamespace(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        prospect_name="Alpha Co",
+        current_stage="Agreement",
+        status=ProspectStatus.ACTIVE,
+        assigned_to="user-1",
+        assigned_by="user-2",
+        created_at=now - timedelta(days=7),
+        updated_at=now - timedelta(days=1),
+        stage_entered_at=now - timedelta(days=4),
+        stage_last_changed_at=now - timedelta(days=4),
+        days_in_stage=4,
+        closed_date=None,
+        closed_by=None,
+        reason_for_lost=None,
+        won_amount=None,
+        transferred_at=None,
+        agreement_status="signed",
+        saved=False,
+    )
+
+    async def fake_save():
+        lead.saved = True
+
+    async def fake_stage_documents(current_user):
+        return [
+            SimpleNamespace(id="stage-1", name="Agreement", order=5, is_default=False),
+            SimpleNamespace(id="stage-2", name="Won", order=6, is_default=False),
+        ]
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_insert(self):
+        return self
+
+    async def fake_publish(**kwargs):
+        return SimpleNamespace(event_name=kwargs["event_name"])
+
+    async def failing_automation(current_user, prospect, company_id):
+        raise RuntimeError("Database connection lost")
+
+    async def fake_find_one(query):
+        return None
+
+    lead.save = fake_save
+    lead.client_id = None
+    lead.project_id = None
+    lead.won_status = None
+
+    monkeypatch.setattr("app.crm.pipeline._load_stage_documents", fake_stage_documents)
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.pipeline.SalesPipelineHistory.insert", fake_insert)
+    monkeypatch.setattr("app.crm.pipeline.publish_crm_timeline_event", fake_publish)
+    monkeypatch.setattr("app.crm.pipeline._run_won_automation", failing_automation)
+    monkeypatch.setattr("app.crm.pipeline.CRMDeal.find_one", fake_find_one)
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.ADMIN, first_name="Ada", last_name="Admin")
+    result = await CRMPipelineService.move_lead(user, "lead-1", "Won", "closed successfully")
+
+    # Won succeeds even though automation threw an exception.
+    assert lead.current_stage == "Won"
+    assert lead.status == ProspectStatus.WON
+    assert lead.won_status == "payment_pending"  # conversion not done
+    assert lead.transferred_at is None  # no auto-transfer
+    assert lead.client_id is None
+    assert result["automation"]["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_won_automation_returns_no_client_sets_pending_status(monkeypatch):
+    """When automation completes but produces no client, won_status remains pending."""
+    now = datetime.utcnow()
+    lead = SimpleNamespace(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        prospect_name="Alpha Co",
+        current_stage="Agreement",
+        status=ProspectStatus.ACTIVE,
+        assigned_to="user-1",
+        assigned_by="user-2",
+        created_at=now - timedelta(days=7),
+        updated_at=now - timedelta(days=1),
+        stage_entered_at=now - timedelta(days=4),
+        stage_last_changed_at=now - timedelta(days=4),
+        days_in_stage=4,
+        closed_date=None,
+        closed_by=None,
+        reason_for_lost=None,
+        won_amount=None,
+        transferred_at=None,
+        agreement_status="signed",
+        saved=False,
+    )
+
+    async def fake_save():
+        lead.saved = True
+
+    async def fake_stage_documents(current_user):
+        return [
+            SimpleNamespace(id="stage-1", name="Agreement", order=5, is_default=False),
+            SimpleNamespace(id="stage-2", name="Won", order=6, is_default=False),
+        ]
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_insert(self):
+        return self
+
+    async def fake_publish(**kwargs):
+        return SimpleNamespace(event_name=kwargs["event_name"])
+
+    async def automation_no_client(current_user, prospect, company_id):
+        return {"status": "completed", "client_id": None, "project_id": None}
+
+    async def fake_find_one(query):
+        return None
+
+    lead.save = fake_save
+    lead.client_id = None
+    lead.project_id = None
+    lead.won_status = None
+
+    monkeypatch.setattr("app.crm.pipeline._load_stage_documents", fake_stage_documents)
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.pipeline.SalesPipelineHistory.insert", fake_insert)
+    monkeypatch.setattr("app.crm.pipeline.publish_crm_timeline_event", fake_publish)
+    monkeypatch.setattr("app.crm.pipeline._run_won_automation", automation_no_client)
+    monkeypatch.setattr("app.crm.pipeline.CRMDeal.find_one", fake_find_one)
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.ADMIN, first_name="Ada", last_name="Admin")
+    result = await CRMPipelineService.move_lead(user, "lead-1", "Won")
+
+    assert lead.current_stage == "Won"
+    assert lead.status == ProspectStatus.WON
+    assert lead.won_status == "payment_pending"  # no client = not ready
+    assert lead.transferred_at is None
+    assert result["automation"]["status"] == "completed"

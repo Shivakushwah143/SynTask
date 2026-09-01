@@ -37,8 +37,6 @@ async def crm_leads(
 ):
     skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False, "company_id": current_user.company_id}
-    # Transferred leads leave the active sales lists (they live in the Clients module).
-    query["transferred_at"] = None
     if has_follow_up:
         # Only leads with a scheduled follow-up set (next_follow_up_at present and not null).
         query["next_follow_up_at"] = {"$exists": True, "$ne": None}
