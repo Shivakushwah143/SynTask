@@ -153,9 +153,7 @@ class EmployeeProfile(Document):
             IndexModel(
                 [("company_id", ASCENDING), ("employee_number", ASCENDING)],
                 unique=True,
-                partialFilterExpression={
-                        "candidate_id": {"$type": "string"},
-                    },
+                sparse=True,
             ),
             # One profile per user per company.
             IndexModel(
