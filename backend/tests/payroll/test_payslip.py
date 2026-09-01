@@ -1021,7 +1021,7 @@ class TestPayslipFileAccess:
         admin = _make_admin()
 
         payslip = await generate_payslip("company-1", "record-1", admin)
-        response = await svc.build_payslip_file_response(payslip, download=True)
+        response = svc.build_payslip_file_response(payslip, download=True)
 
         assert response.status_code == 200
         assert response.media_type == "application/pdf"
@@ -1034,7 +1034,7 @@ class TestPayslipFileAccess:
         payslip = _seed_payslip(storage_reference="payslips/ghost.pdf")
 
         with pytest.raises(HTTPException) as exc:
-            await svc.build_payslip_file_response(payslip, download=False)
+            svc.build_payslip_file_response(payslip, download=False)
         assert exc.value.status_code == 404
 
     @pytest.mark.asyncio
@@ -1049,39 +1049,8 @@ class TestPayslipFileAccess:
         payslip = _seed_payslip(storage_reference="../../secrets/secret.pdf")
 
         with pytest.raises(HTTPException) as exc:
-            await svc.build_payslip_file_response(payslip, download=False)
+            svc.build_payslip_file_response(payslip, download=False)
         assert exc.value.status_code == 404
-
-    @pytest.mark.asyncio
-    async def test_download_cloudinary_streams_server_side(self, monkeypatch, tmp_path):
-        _install_models(monkeypatch)
-        _install_storage(monkeypatch, tmp_path)
-        payslip = _seed_payslip(
-            storage_provider="cloudinary",
-            storage_reference="syntask/payslips/private-payslip",
-            storage_url="https://res.cloudinary.com/demo/image/authenticated/v1/syntask/payslips/private-payslip.pdf",
-            storage_resource_type="image",
-            storage_delivery_type="authenticated",
-        )
-        calls = []
-
-        def fake_download_content(public_id, *, resource_type, delivery_type, storage_url=None):
-            calls.append((public_id, resource_type, delivery_type, storage_url))
-            return b"%PDF-1.4\nprivate payslip bytes"
-
-        monkeypatch.setattr(svc.CloudinaryStorage, "download_content", staticmethod(fake_download_content))
-
-        response = await svc.build_payslip_file_response(payslip, download=False)
-
-        assert response.status_code == 200
-        assert response.media_type == "application/pdf"
-        assert response.body.startswith(b"%PDF")
-        assert calls == [(
-            "syntask/payslips/private-payslip",
-            "image",
-            "authenticated",
-            "https://res.cloudinary.com/demo/image/authenticated/v1/syntask/payslips/private-payslip.pdf",
-        )]
 
 
 # =============================================================================

@@ -81,14 +81,8 @@ export const payrollAPI = {
 /** Authorized payslip file access — fetched as blobs so previews/downloads
  *  carry the auth headers and payslips are never exposed through raw URLs. */
 export const payrollFiles = {
-  preview: (payslipId) => api.get(`/payroll/payslips/${payslipId}/preview`, {
-    responseType: 'blob',
-    suppressGlobalToast: true,
-  }),
-  download: (payslipId) => api.get(`/payroll/payslips/${payslipId}/download`, {
-    responseType: 'blob',
-    suppressGlobalToast: true,
-  }),
+  preview: (payslipId) => api.get(`/payroll/payslips/${payslipId}/preview`, { responseType: 'blob' }),
+  download: (payslipId) => api.get(`/payroll/payslips/${payslipId}/download`, { responseType: 'blob' }),
 }
 
 export default payrollAPI

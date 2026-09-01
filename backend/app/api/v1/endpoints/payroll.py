@@ -282,7 +282,7 @@ async def preview_payslip(
         raise HTTPException(status_code=404, detail="Payslip not found")
     if not await has_payroll_view(current_user) and str(current_user.id) != payslip.employee_id:
         raise HTTPException(status_code=403, detail="You do not have permission to preview this payslip")
-    return await build_payslip_file_response(payslip, download=False)
+    return build_payslip_file_response(payslip, download=False)
 
 
 @router.get("/payslips/{payslip_id}/download")
@@ -297,7 +297,7 @@ async def download_payslip(
         raise HTTPException(status_code=404, detail="Payslip not found")
     if not await has_payroll_view(current_user) and str(current_user.id) != payslip.employee_id:
         raise HTTPException(status_code=403, detail="You do not have permission to download this payslip")
-    return await build_payslip_file_response(payslip, download=True)
+    return build_payslip_file_response(payslip, download=True)
 
 
 @router.post("/payslips/{payslip_id}/regenerate")

@@ -522,15 +522,6 @@ async def create_profile(company_id: str, actor: User, data: dict) -> dict:
     _apply_personal_payload(profile, data)
     await profile.insert()
 
-    # Remove candidate_id if None to keep the sparse unique index clean.
-    # MongoDB sparse indexes only exclude documents where the field is ABSENT;
-    # a field with value null IS indexed and can violate unique constraints.
-    if profile.candidate_id is None:
-        await EmployeeProfile.get_motor_collection().update_one(
-            {"_id": profile.id},
-            {"$unset": {"candidate_id": ""}},
-        )
-
     await _record_employee_event(
         company_id, "EmployeeProfileCreated", actor, profile,
         payload={"employee_id": str(profile.id), "user_id": profile.user_id, "employee_number": profile.employee_number},

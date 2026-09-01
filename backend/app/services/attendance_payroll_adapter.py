@@ -17,7 +17,6 @@ from app.core.clock import utc_now
 from app.models.attendance import (
     Attendance,
     AttendancePolicy,
-    AttendanceStatus,
     HRAttendanceStatus,
 )
 from app.models.employee_profile import EmployeeProfile
@@ -66,57 +65,13 @@ async def get_employee_period_summary(
     if profile:
         if profile.joining_date:
             employment_start = profile.joining_date.date() if isinstance(profile.joining_date, datetime) else profile.joining_date
-        if profile.exit_info and profile.exit_info.last_working_day:
-            lwd = profile.exit_info.last_working_day
-            employment_end = lwd.date() if isinstance(lwd, datetime) else lwd
+        if profile.last_working_day:
+            employment_end = profile.last_working_day.date() if isinstance(profile.last_working_day, datetime) else profile.last_working_day
 
-    # Batch-fetch all attendance records in range.
-    # Use raw Motor query to avoid Beanie/Pydantic enum validation
-    # failures when legacy data contains lowercase status values.
+    # Batch-fetch all attendance records in range
     start_str = period_start.strftime("%Y-%m-%d")
     end_str = period_end.strftime("%Y-%m-%d")
-
-    _VALID_STATUSES = {s.value for s in AttendanceStatus}
-
-    from app.core.database import get_database
-    _coll = get_database()["attendance"]
-
-    raw_docs = await _coll.find({
-        "company_id": company_id,
-        "employee_id": employee_id,
-        "date": {"$gte": start_str, "$lte": end_str},
-    }).to_list()
-
-    # Normalize any lowercase/legacy status values in-place so downstream
-    # Beanie deserialization never fails.
-    _STATUS_FIXUP = {
-        "present": "Present", "absent": "Absent", "late": "Late",
-        "working": "Working", "on break": "On Break", "offline": "Offline",
-        "checked out": "Checked Out",
-    }
-    needs_update = []
-    for doc in raw_docs:
-        raw_status = doc.get("status", "")
-        if raw_status and raw_status not in _VALID_STATUSES:
-            fixed = _STATUS_FIXUP.get(raw_status.lower())
-            if fixed:
-                doc["status"] = fixed
-                needs_update.append(doc)
-
-    # Best-effort bulk fix for any legacy rows (non-blocking on failure)
-    if needs_update:
-        try:
-            from pymongo import UpdateOne
-            bulk_ops = [
-                UpdateOne({"_id": d["_id"]}, {"$set": {"status": d["status"]}})
-                for d in needs_update
-            ]
-            await _coll.bulk_write(bulk_ops, ordered=False)
-            logger.info("Normalized %d attendance record status(es) for employee %s", len(needs_update), employee_id)
-        except Exception:
-            logger.warning("Failed to bulk-normalize attendance status values", exc_info=True)
-
-    # Re-fetch as proper Beanie objects
+    
     attendance_records = await Attendance.find({
         "company_id": company_id,
         "employee_id": employee_id,

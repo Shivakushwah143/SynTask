@@ -270,9 +270,13 @@ async def approve_payroll(
         raise HTTPException(status_code=404, detail="Payroll period not found")
     _assert_transition(period.status, PayrollPeriodStatus.APPROVED)
 
-    # Allow approval even with blocked records — blocked employees are
-    # simply excluded from payslip generation and processing continues for
-    # ready/warning records.
+    # Check no blocked records
+    blocked = await PayrollRecord.find({
+        "payroll_period_id": str(period.id),
+        "status": PayrollRecordStatus.BLOCKED.value,
+    }).count()
+    if blocked > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot approve: {blocked} employee(s) have blockers")
 
     now = utc_now()
     period.status = PayrollPeriodStatus.APPROVED

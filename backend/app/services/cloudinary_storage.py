@@ -6,7 +6,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import requests
 from fastapi import HTTPException, status
@@ -27,8 +27,7 @@ def _sign(params: dict[str, Any]) -> str:
         for key, value in sorted(params.items())
         if value is not None and value != "" and key not in {"file", "api_key", "resource_type"}
     )
-    secret = (settings.CLOUDINARY_API_SECRET or "").strip()
-    return hashlib.sha1(f"{payload}{secret}".encode("utf-8")).hexdigest()
+    return hashlib.sha1(f"{payload}{settings.CLOUDINARY_API_SECRET}".encode("utf-8")).hexdigest()
 
 
 def _resource_type(mime_type: str) -> str:
@@ -36,8 +35,7 @@ def _resource_type(mime_type: str) -> str:
 
 
 def _delivery_signature(path_to_sign: str) -> str:
-    secret = (settings.CLOUDINARY_API_SECRET or "").strip()
-    digest = hashlib.sha1(f"{path_to_sign}{secret}".encode("utf-8")).digest()
+    digest = hashlib.sha1(f"{path_to_sign}{settings.CLOUDINARY_API_SECRET}".encode("utf-8")).digest()
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")[:8]
 
 
@@ -126,8 +124,6 @@ class CloudinaryStorage:
         Used for secure preview/download of ``authenticated`` resources so
         confidential HR documents are never exposed through an unsigned URL.
         Returns ``None`` when Cloudinary is not configured.
-
-        Uses Cloudinary signed delivery URLs for authenticated/private files.
         """
         if not CloudinaryStorage.enabled() or not public_id:
             return None
@@ -136,49 +132,21 @@ class CloudinaryStorage:
                 return f"https://res.cloudinary.com/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/upload/{public_id}"
             return storage_url
 
-        delivery_path = public_id
-        if storage_url:
-            parsed = urlparse(storage_url)
-            marker = f"/{resource_type}/{delivery_type}/"
-            if marker in parsed.path:
-                delivery_path = parsed.path.split(marker, 1)[1]
+        delivery_tail = None
+        parsed = urlparse(storage_url or "")
+        marker = f"/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/{delivery_type}/"
+        if parsed.scheme and marker in parsed.path:
+            delivery_tail = parsed.path.split(marker, 1)[1].lstrip("/")
+        if not delivery_tail:
+            delivery_tail = public_id.lstrip("/")
 
-        signature = _delivery_signature(delivery_path)
-        return (
-            f"https://res.cloudinary.com/{settings.CLOUDINARY_CLOUD_NAME}/"
-            f"{resource_type}/{delivery_type}/s--{signature}--/{delivery_path}"
-        )
-
-    @staticmethod
-    def download_content(
-        public_id: str,
-        resource_type: str = "auto",
-        delivery_type: str = "authenticated",
-        storage_url: str | None = None,
-    ) -> bytes | None:
-        """Download file content from Cloudinary server-side.
-
-        Generates a signed delivery URL internally and fetches the bytes.
-        Never exposes the Cloudinary URL to clients — the raw bytes are
-        returned for direct streaming through the backend.
-        """
-        if not CloudinaryStorage.enabled() or not public_id:
-            return None
-        url = CloudinaryStorage.signed_url(
-            public_id,
-            resource_type=resource_type,
-            delivery_type=delivery_type,
-            storage_url=storage_url,
-        )
-        if not url:
-            return None
-        try:
-            resp = requests.get(url, timeout=30)
-            if resp.status_code >= 400:
-                return None
-            return resp.content
-        except requests.RequestException:
-            return None
+        if attachment and not delivery_tail.startswith("fl_attachment/"):
+            delivery_tail = f"fl_attachment/{delivery_tail}"
+        signature = _delivery_signature(delivery_tail)
+        signed_path = f"/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/{delivery_type}/s--{signature}--/{delivery_tail}"
+        if parsed.scheme:
+            return urlunparse((parsed.scheme, parsed.netloc, signed_path, "", "", ""))
+        return f"https://res.cloudinary.com{signed_path}"
 
     @staticmethod
     def delete(public_id: str, resource_type: str = "image", delivery_type: str = "upload") -> None:

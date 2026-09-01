@@ -4,7 +4,7 @@ import { AlertCircle, Banknote, Download, Eye, Loader2, Receipt, ShieldAlert, Wa
 import { payrollAPI, payrollFiles } from '../../../api/payroll'
 import { useMyPayslips, useMySalary } from '../../../hooks/useMyHr'
 import { Button, EmptyState, Modal, Skeleton } from '../../../components/ui'
-import { decodeBlobErrorMessage, downloadBlob, getDownloadFilename } from '../../../utils/download'
+import { downloadBlob, getDownloadFilename } from '../../../utils/download'
 import { formatCurrency, formatDate, formatDateTime } from './myHrUtils'
 
 const MyPayslips = () => {
@@ -26,8 +26,7 @@ const MyPayslips = () => {
       const response = await payrollFiles.preview(item.payslip_id)
       setPreviewUrl(window.URL.createObjectURL(response.data))
     } catch (err) {
-      const message = await decodeBlobErrorMessage(err, 'Unable to preview this payslip. You may not have permission.')
-      setPreviewError(message)
+      setPreviewError(err?.response?.data?.detail || 'Unable to preview this payslip. You may not have permission.')
     } finally {
       setPreviewLoading(false)
     }
@@ -42,8 +41,7 @@ const MyPayslips = () => {
       )
       downloadBlob(response.data, filename)
     } catch (err) {
-      const message = await decodeBlobErrorMessage(err, 'Payslip download could not be prepared')
-      toast.error(message)
+      toast.error(err?.response?.data?.detail || 'Payslip download could not be prepared')
     }
   }
 

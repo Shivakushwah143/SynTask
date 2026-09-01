@@ -82,13 +82,7 @@ async def calculate_employee_payroll(
     # 2. Get the Phase 5 payroll-ready salary snapshot (normalized dict/DTO).
     # Payroll NEVER reads the SalaryStructure model directly — the snapshot
     # adapter is the single integration boundary.
-    #
-    # For mid-month joiners the salary structure effective_from may fall after
-    # period_start.  Try period_start first (covers full-month employees),
-    # then fall back to period_end so a structure effective mid-period is found.
     salary_snapshot = await get_salary_snapshot_for_payroll(company_id, employee_id, period_start)
-    if not salary_snapshot:
-        salary_snapshot = await get_salary_snapshot_for_payroll(company_id, employee_id, period_end)
     if not salary_snapshot:
         blockers.append("No salary structure effective for this period")
         return {
@@ -153,48 +147,12 @@ async def calculate_employee_payroll(
         att_summary = attendance_data.get("summary", {})
     except Exception as e:
         logger.warning("Attendance summary failed for %s: %s", employee_id, e)
-        # Do NOT silently default to zero earnings with full deductions.
-        # Block the record so HR sees a clear reason and can retry after
-        # fixing the attendance/leave data issue.
-        blockers.append(
-            f"Attendance data unavailable: {str(e)} — "
-            "cannot calculate payroll without attendance summary"
-        )
-        return {
-            "status": PayrollRecordStatus.BLOCKED,
-            "blockers": blockers,
-            "warnings": warnings,
-            "employee_id": employee_id,
-            "employee_profile_id": employee_profile_id,
-            "employee_name": employee_name,
-            "employee_number": employee_number,
-            "department": department,
-            "designation": designation,
-            "salary_structure_id": salary_snapshot.get("salary_structure_id"),
-            "salary_effective_from": salary_snapshot.get("effective_from"),
-            "currency": salary_snapshot.get("currency", "INR"),
-            "configured_earnings": salary_snapshot.get("total_earnings", 0.0),
-            "configured_deductions": salary_snapshot.get("total_configured_deductions", 0.0),
-            "working_days": 0,
-            "payable_days": 0.0,
-            "earnings": [],
-            "deductions": [],
-            "gross_salary": 0.0,
-            "total_deductions": 0.0,
-            "net_salary": 0.0,
-            "attendance_snapshot": {},
-        }
+        att_summary = {}
+        warnings.append(f"Attendance data unavailable: {str(e)}")
 
     working_days = att_summary.get("working_days", 0)
     payable_days = att_summary.get("payable_days", 0.0)
-    # Proration denominator: always the full payroll period length, NOT the
-    # employee-clamped attendance window.  For a mid-month joiner (e.g. Aug 15)
-    # the attendance adapter returns calendar_days=17 (Aug 15-31).  Using that
-    # as the denominator overstates the proration factor.  The correct denominator
-    # is the full period (31 days for August) so that partial-month salary is
-    # calculated proportionally against the month, not against the employment
-    # overlap.
-    calendar_days = (period_end - period_start).days + 1
+    calendar_days = att_summary.get("calendar_days", (period_end - period_start).days + 1)
 
     # Phase 11 closure: no employment overlap with the period (or no attendance
     # summary at all) must never silently produce a full-salary record.
@@ -326,8 +284,8 @@ async def calculate_period_payroll(
                 {"joining_date": {"$lte": period_end_dt}},
             ]},
             {"$or": [
-                {"exit_info.last_working_day": None},
-                {"exit_info.last_working_day": {"$gte": period_start_dt}},
+                {"last_working_day": None},
+                {"last_working_day": {"$gte": period_start_dt}},
             ]},
         ],
     }).to_list()
