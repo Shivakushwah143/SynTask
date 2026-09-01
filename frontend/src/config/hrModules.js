@@ -128,7 +128,12 @@ export const HR_MODULES = [
       },
       {
         name: "Salary Components",
-        href: "/hr/settings/salary-components",
+        href: "/hr/payroll/salary-components",
+        icon: DollarSign,
+      },
+      {
+        name: "Salary Structures",
+        href: "/hr/payroll/salary-structures",
         icon: DollarSign,
       },
       {

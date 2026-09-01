@@ -71,11 +71,8 @@ export const SECTION_ICONS = {
   finance: DollarSign,
   insights: LineChart,
   settings: Settings,
-<<<<<<< HEAD
   me: UserRound,
-=======
   sop: BookOpenText,
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
 };
 
 // ── Section-level role gates (spec §9, mapped to the real role enum) ───────────────────────────
@@ -155,14 +152,11 @@ export const SECTIONS = [
   { key: "finance", label: "Finance", items: ["Invoices", "Transactions", "Subscriptions"] },
   { key: "insights", label: "Insights", items: ["Workspace Reports", "Sales Reports"] },
   { key: "settings", label: "Settings", items: ["System Settings", "Roles & Permissions", "Automation Rules", "Connected Accounts", "Google Workspace", "Activity Logs", "Client Settings"] },
-<<<<<<< HEAD
   // Phase 8 — My HR (Employee Self-Service): the employee's own HR workspace.
   // Visible to every authenticated company user with an Employee Profile; the
   // layout itself shows the graceful "profile not set up" state otherwise.
   { key: "me", label: "My HR", items: ["My Profile", "My Attendance", "My Leave", "My Documents", "My Payslips"], overviewHref: "/hr/me" },
-=======
   { key: "sop", label: "SOP Library", items: ["SOP Library"], overviewHref: "/sop-library", hideOverviewTab: true },
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
 ];
 
 // ── Flat navigation items (renamed per spec §4, routes corrected to App.jsx) ──────────────────
@@ -209,18 +203,11 @@ export const navigation = [
   { name: "User Accounts", href: "/users", icon: UserCog, roles: TEAM_ROLES },
   { name: "My People", href: "/my-team", icon: HeartHandshake, roles: [ROLE.LEAD] },
   // /attendance has no backend module gate — Attendance must be visible to every role.
-<<<<<<< HEAD
-  { name: "Attendance", href: "/attendance", icon: UserCheck, roles: STANDARD_ROLES },
-  { name: "Live Attendance", href: "/live-monitor", icon: MonitorCheck, roles: TEAM_ROLES },
-  { name: "Attendance Reports", href: "/attendance-reports", icon: FileBarChart2, roles: STANDARD_ROLES },
-  { name: "Attendance Corrections", href: "/attendance/corrections", icon: FileWarning, roles: TEAM_ROLES },
-  { name: "Leave Management", href: "/leaves", icon: CalendarCheck2, roles: STANDARD_ROLES },
-=======
   { name: "Attendance", href: "/attendance", icon: UserCheck, roles: STANDARD_ROLES, module: "attendance" },
   { name: "Live Attendance", href: "/live-monitor", icon: MonitorCheck, roles: TEAM_ROLES, module: "live_attendance" },
   { name: "Attendance Reports", href: "/attendance-reports", icon: FileBarChart2, roles: STANDARD_ROLES, module: "attendance_reports" },
+  { name: "Attendance Corrections", href: "/attendance/corrections", icon: FileWarning, roles: TEAM_ROLES },
   { name: "Leave Management", href: "/leaves", icon: CalendarCheck2, roles: STANDARD_ROLES, module: "leave_management" },
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
   // Backend _can_read_departments: admin, sub_admin, manager, lead, super_admin.
   { name: "Departments", href: "/departments", icon: Network, roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD] },
   { name: "Company Directory", href: "/companies", icon: Landmark, roles: [ROLE.SUPER_ADMIN] },
@@ -240,8 +227,7 @@ export const navigation = [
   { name: "Roles & Permissions", href: "/admin-permissions", icon: ShieldCheck, roles: ADMIN_ROLES },
   { name: "Automation Rules", href: "/workflows", icon: GitBranch, roles: ADMIN_ROLES, module: "automation_rules" },
   { name: "Google Workspace", href: "/google-workspace", icon: Globe, roles: STANDARD_ROLES },
-<<<<<<< HEAD
-  { name: "Activity Logs", href: "/activity", icon: AlarmClockCheck, roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD] },
+  { name: "Activity Logs", href: "/activity", icon: AlarmClockCheck, roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD], module: "activity_logs" },
 
   // Phase 8 — My HR (Employee Self-Service) sub-pages. The section link itself
   // opens /hr/me (the Overview); the SectionTabs bar renders these as tabs.
@@ -250,10 +236,7 @@ export const navigation = [
   { name: "My Leave", href: "/hr/me/leave", icon: CalendarCheck2, roles: STANDARD_ROLES },
   { name: "My Documents", href: "/hr/me/documents", icon: FileText, roles: STANDARD_ROLES },
   { name: "My Payslips", href: "/hr/me/payslips", icon: Receipt, roles: STANDARD_ROLES },
-=======
-  { name: "Activity Logs", href: "/activity", icon: AlarmClockCheck, roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD], module: "activity_logs" },
   { name: "SOP Library", href: "/sop-library", icon: BookOpenText },
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
 ];
 
 // ── CRM items (Sales + Clients). Was "CRM Tools" — split by team. ──────────────────────────────
@@ -421,11 +404,8 @@ export const SECTION_COLORS = {
   finance: "text-yellow-400",
   insights: "text-lime-400",
   settings: "text-gray-400",
-<<<<<<< HEAD
   me: "text-emerald-400",
-=======
   sop: "text-teal-400",
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
   default: "text-gray-400",
 };
 

@@ -128,15 +128,11 @@ export default function RecruitmentDashboard() {
       {/* ============================================================ */}
       {/* HERO SECTION - Gradient with Glassmorphism */}
       {/* ============================================================ */}
-<<<<<<< HEAD
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-teal-600 via-emerald-600 to-green-600 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
         
-=======
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-teal-700 via-emerald-700 to-green-700 px-4 py-3 text-white shadow-sm">
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
         <div className="relative z-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -148,7 +144,6 @@ export default function RecruitmentDashboard() {
                 <p className="truncate text-xs text-emerald-100">Monitor hiring pipeline and urgent work.</p>
               </div>
             </div>
-<<<<<<< HEAD
           </div>
         </div>
       </div>
@@ -188,20 +183,6 @@ export default function RecruitmentDashboard() {
                 </div>
               </Link>
             ))}
-=======
-            <div className="flex shrink-0 flex-wrap gap-2">
-              {quickActions.map((action) => (
-                <Link
-                  key={action.href}
-                  to={action.href}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-white/15 px-3 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/25"
-                >
-                  <action.icon className="h-4 w-4" />
-                  {action.label}
-                </Link>
-              ))}
-            </div>
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
           </div>
         </div>
       </div>

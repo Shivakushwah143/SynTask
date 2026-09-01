@@ -543,6 +543,55 @@ def serialize_structure(structure: SalaryStructure, status_label: Optional[str] 
 
 
 # =============================================================================
+# Company-wide listing (for Salary Structures management page)
+# =============================================================================
+
+
+async def list_company_salary_structures(company_id: str) -> List[Dict[str, Any]]:
+    """List all salary structures for a company, enriched with employee names.
+
+    Returns one entry per structure with employee name/number resolved via
+    a single batch query — no N+1.
+    """
+    from app.models.employee_profile import EmployeeProfile
+    from app.models.user import User
+
+    structures = await SalaryStructure.find(
+        {"company_id": company_id}
+    ).sort("-effective_from").to_list()
+
+    if not structures:
+        return []
+
+    # Batch-resolve employee names (single query, no N+1)
+    employee_user_ids = list({s.employee_id for s in structures})
+    profiles = await EmployeeProfile.find(
+        {"user_id": {"$in": employee_user_ids}, "company_id": company_id}
+    ).to_list()
+    profile_map = {str(p.user_id): p for p in profiles}
+
+    # Batch-resolve user names for full_name
+    user_ids = [p.user_id for p in profiles if p.user_id]
+    users = await User.find({"_id": {"$in": user_ids}}).to_list() if user_ids else []
+    user_map = {str(u.id): u for u in users}
+
+    items = []
+    for s in structures:
+        profile = profile_map.get(s.employee_id)
+        user = user_map.get(s.employee_id) if profile else None
+        employee_name = (user.full_name() if user and hasattr(user, 'full_name')
+                         else (f"{user.first_name} {user.last_name}".strip() if user
+                               else s.employee_id))
+        items.append({
+            **serialize_structure(s),
+            "employee_name": employee_name,
+            "employee_number": profile.employee_number if profile else None,
+        })
+
+    return items
+
+
+# =============================================================================
 # Helpers
 # =============================================================================
 

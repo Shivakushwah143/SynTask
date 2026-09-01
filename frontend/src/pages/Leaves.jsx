@@ -437,7 +437,6 @@ export default function Leaves() {
       </div>
 
       <div className={contentGridClassName}>
-<<<<<<< HEAD
         {canRequestLeave ? (
           <form onSubmit={submitLeave} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
             <div className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-3 dark:border-gray-700">
@@ -510,8 +509,7 @@ export default function Leaves() {
           </form>
         ) : null}
 
-=======
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
+
         <section className="space-y-4">
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
             <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
@@ -558,15 +556,9 @@ export default function Leaves() {
                   {STATUS_OPTIONS.map((status) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status} value={status}>{status}</option>)}
                 </select>
                 <select 
-<<<<<<< HEAD
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                  className={compactInputClassName} 
                   value={filters.leave_type_id} 
                   onChange={(event) => setFilters({ ...filters, leave_type_id: event.target.value })}
-=======
-                  className={compactInputClassName} 
-                  value={filters.leave_type} 
-                  onChange={(event) => setFilters({ ...filters, leave_type: event.target.value })}
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
                 >
                   <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All types</option>
                   {leaveTypes.map((type) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={type.id} value={type.id}>{type.name}</option>)}
@@ -934,23 +926,12 @@ function LeaveDetailPanel({ leave, detailTab, setDetailTab, currentUser, busyAct
   }
 
   return (
-<<<<<<< HEAD
-    <div className="rounded-xl border border-gray-200 bg-white p-4 transition-all hover:border-indigo-200 hover:shadow-sm dark:border-gray-700 dark:bg-gray-800/50 dark:hover:border-indigo-700">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="font-semibold text-gray-900 dark:text-white">{leaveDisplayName(leave)}</p>
-            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[leave.status] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>
-              {leave.status}
-            </span>
-=======
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
         <div className="flex items-center gap-2.5">
           <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
             <CalendarDays className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
           </div>
           <div>
             <h3 className="text-sm font-bold text-gray-900 dark:text-white">{leave.employee_name || 'Employee'}</h3>

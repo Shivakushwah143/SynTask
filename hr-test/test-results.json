@@ -1,0 +1,75 @@
+{
+  "timestamp": "2026-08-25T15:24:42.871Z",
+  "results": [
+    {
+      "area": "Login",
+      "result": "PASS",
+      "notes": "http://localhost:5173/dashboard"
+    },
+    {
+      "area": "Recruitment",
+      "result": "PASS",
+      "notes": "dash:true jobs:true cands:true offers:true interviews:true"
+    },
+    {
+      "area": "Employees",
+      "result": "PASS",
+      "notes": "list:true links:0"
+    },
+    {
+      "area": "Documents",
+      "result": "PASS",
+      "notes": "list:true types:true"
+    },
+    {
+      "area": "Leave",
+      "result": "PASS",
+      "notes": "types:true alloc:true myLeave:true"
+    },
+    {
+      "area": "Attendance",
+      "result": "PASS",
+      "notes": "main:true live:true reports:true corrections:true myAtt:true"
+    },
+    {
+      "area": "Salary",
+      "result": "PASS",
+      "notes": "components:true structures:true"
+    },
+    {
+      "area": "Payroll",
+      "result": "FAIL",
+      "notes": "periods:false"
+    },
+    {
+      "area": "My HR",
+      "result": "PARTIAL",
+      "notes": "ov:true prof:true att:true leave:false docs:true pays:true"
+    },
+    {
+      "area": "Lifecycle",
+      "result": "FAIL",
+      "notes": "No employees found for lifecycle test"
+    },
+    {
+      "area": "HR Dashboard",
+      "result": "FAIL",
+      "notes": "loaded:false metrics:false"
+    },
+    {
+      "area": "HR Reports",
+      "result": "PASS",
+      "notes": "loaded:true"
+    },
+    {
+      "area": "Regression",
+      "result": "PARTIAL",
+      "notes": "allPages:false"
+    }
+  ],
+  "summary": {
+    "passed": 8,
+    "partial": 2,
+    "failed": 3
+  }
+}

@@ -51,19 +51,13 @@ from app.recruitment.schemas import (ApplicationApplyResponse, ApplicationStatus
                                      InterviewCancelRequest,
                                      InterviewDecisionRequest, JobCreate,
                                      JobFilter, JobListResponse, JobResponse,
-<<<<<<< HEAD
-                                     JobSort, JobUpdate, JobRejectRequest,
+                                     JobSort, JobStatusUpdate, JobUpdate, JobRejectRequest,
                                      KeywordMatchResponse,
                                      MarkJoinedRequest,
                                      OfferCreate, OfferListResponse,
-                                     OfferUpdate, PublicJobListResponse,
-=======
-                                     JobSort, JobStatusUpdate, JobUpdate, KeywordMatchResponse,
-                                     OfferCreate,
                                      OfferUpdate, PublicCareerCompanyResponse,
                                      PublicTrackingProfileUpdate,
                                      PublicJobListResponse,
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
                                      PublicJobResponse, ResumePoolResponse)
 from app.recruitment.services import (ApplicationService, CareerPortalService,
                                       CandidateAssignmentService,

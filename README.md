@@ -70,6 +70,7 @@ docs/                    Testing guide and diagrams
 - Google Workspace module for Gmail, Calendar, Meet, and connection diagnostics
 - Sales CRM for categories, products, contacts, prospects, stage-specific pipeline pages, masters, and reports
 - Super-admin tenant, usage, plans, and billing management
+- **HRMS (Human Resource Management System):** Employee profiles, HR documents, leave management (configurable types + balances), attendance with policy engine + corrections, versioned salary structures, payroll processing, payslip PDF generation, employee self-service (My HR), employee lifecycle management (confirmation/promotion/transfer/resignation/exit), HR dashboard with real metrics, and HR reports with role-based access control
 
 ## User Roles
 | Role | Scope | Can Create |
@@ -84,6 +85,23 @@ Employees can be assigned as a project Leader without changing their global role
 
 ## Multi-Tenancy
 SynTask uses a single database with tenant isolation through `company_id` fields. Most tenant-owned models store `company_id`, and API queries use the authenticated user from `get_current_user()` plus dependency helpers to restrict access. Super admins can cross tenant boundaries; company users are scoped to their company.
+
+## HRMS Module
+
+The HRMS module provides end-to-end HR management integrated into SynTask:
+
+| Area | Routes |
+|---|---|
+| HR Dashboard | `/hr/dashboard` |
+| HR Reports | `/hr/reports` |
+| Employees | `/hr/employees`, `/hr/employees/:id` |
+| HR Documents | `/hr/documents` |
+| Leave Allocations | `/hr/leave-allocations` |
+| Payroll | `/hr/payroll`, `/hr/payroll/:periodId` |
+| Employee Self-Service | `/hr/me`, `/hr/me/profile`, `/hr/me/attendance`, `/hr/me/leave`, `/hr/me/documents`, `/hr/me/payslips` |
+| HR Settings | `/hr/settings/leave-types`, `/hr/settings/document-types`, `/hr/settings/attendance-policy`, `/hr/settings/holidays`, `/hr/settings/salary-components` |
+
+For detailed implementation status, see [docs/HRMS_FINAL_READINESS_REPORT.md](docs/HRMS_FINAL_READINESS_REPORT.md).
 
 ## Documentation
 - [Documentation Index](docs/DOCUMENTATION_INDEX.md)

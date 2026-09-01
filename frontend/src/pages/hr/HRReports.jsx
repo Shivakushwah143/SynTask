@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from 'react-query';
 import {
@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import { PageHeader, Badge, Skeleton, Table } from '../../components/ui';
 import { hrReportsApi, hrExportsApi } from '../../api/hrReports';
+import { departmentsAPI } from '../../api/departments';
 import { useAuthStore } from '../../store/authStore';
 import { hasCompanyAdminAccess } from '../../utils/roles';
 import { downloadBlob } from '../../utils/download';
@@ -76,6 +77,11 @@ const REPORT_CATEGORIES = [
 
 // ── Filter Panel ─────────────────────────────────────────────────────────────
 function FilterPanel({ filters, onChange, reportType }) {
+  const departmentsQuery = useQuery(['departments-list'], () => departmentsAPI.listDepartments(), {
+    staleTime: 5 * 60 * 1000,
+  })
+  const departments = Array.isArray(departmentsQuery.data) ? departmentsQuery.data : (departmentsQuery.data?.data || [])
+
   return (
     <div className="flex flex-wrap gap-3 items-end">
       {reportType !== 'joining-exit' && (
@@ -108,6 +114,9 @@ function FilterPanel({ filters, onChange, reportType }) {
           className="rounded-lg border border-surface-border bg-surface px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-900"
         >
           <option value="">All Departments</option>
+          {departments.map((dept) => (
+            <option key={dept.id || dept._id} value={dept.id || dept._id}>{dept.name}</option>
+          ))}
         </select>
       </div>
       <div>

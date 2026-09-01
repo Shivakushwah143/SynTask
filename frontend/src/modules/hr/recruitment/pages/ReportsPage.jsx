@@ -195,9 +195,7 @@ export default function ReportsPage() {
                 <RefreshCw className="h-4 w-4" />
                 Refresh
               </button>
-<<<<<<< HEAD
 
-=======
               <button 
                 onClick={() => toast.success("Export feature coming soon")}
                 className="inline-flex h-9 items-center gap-2 rounded-lg bg-white px-3 text-xs font-semibold text-rose-700 shadow-sm transition hover:bg-rose-50"
@@ -205,7 +203,6 @@ export default function ReportsPage() {
                 <Download className="h-4 w-4" />
                 Export
               </button>
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
             </div>
           </div>
         </div>

@@ -158,7 +158,6 @@ api_router.include_router(attendance_phase4.router, prefix="/attendance", tags=[
 api_router.include_router(attendance.ws_router, prefix="/attendance")
 api_router.include_router(timeline.router, prefix="/timeline", tags=["Timeline"])
 api_router.include_router(leaves.router, prefix="/leaves", tags=["Leaves"])
-<<<<<<< HEAD
 api_router.include_router(salary.router, prefix="/salary", tags=["Salary Structure"])
 api_router.include_router(payroll.router, prefix="/payroll", tags=["Payroll"])
 # Employee Self-Service (Phase 8): My HR overview aggregate. The module self
@@ -168,10 +167,7 @@ api_router.include_router(ess.router, prefix="/hr/me", tags=["Employee Self-Serv
 # Phase 10 — HR Dashboard & Reports: centralized dashboard + report endpoints
 # mounted under /hr so dashboard lives at /hr/dashboard and reports at /hr/reports/*
 api_router.include_router(hr_dashboard.router, prefix="/hr", tags=["HR Dashboard & Reports"])
-api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"])
-=======
 api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"], dependencies=[Depends(require_module("daily_updates"))])
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
 api_router.include_router(recruitment_router, prefix="/recruitment", tags=["Recruitment"], dependencies=[Depends(require_module("recruitment"))])
 api_router.include_router(careers_router, prefix="/careers", tags=["Careers"])
 api_router.include_router(public_router, prefix="/public", tags=["Public Recruitment"])

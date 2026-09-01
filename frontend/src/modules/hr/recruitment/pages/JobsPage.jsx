@@ -126,7 +126,6 @@ export default function JobsPage() {
     {
       onSuccess: (_, variables) => {
         const messages = {
-<<<<<<< HEAD
           archiveJob: "Job archived successfully!",
           publishJob: "Job published successfully!",
           pauseJob: "Job paused successfully!",
@@ -136,10 +135,6 @@ export default function JobsPage() {
           submitJobForApproval: "Job submitted for approval!",
           approveJob: "Job approved successfully!",
           rejectJob: "Job rejected and returned to draft.",
-=======
-          archiveJob: "Job archived successfully! 📦",
-          duplicateJob: "Job duplicated successfully! 📋"
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
         };
         toast.success(messages[variables.action] || "Job updated");
         setArchiveJob(null);
@@ -256,9 +251,8 @@ export default function JobsPage() {
             aria-label={`View ${job.title || "job"}`}
           >
             <Eye className="h-4 w-4" />
-<<<<<<< HEAD
             <span className="sr-only">View</span>
-          </Button>
+          </Link>
           {(status === "draft" || status === "rejected") && (
             <>
               <Button 
@@ -362,34 +356,16 @@ export default function JobsPage() {
               <span className="sr-only">Close</span>
             </Button>
           )}
-          <Button 
-            type="button" 
-            size="sm" 
-            variant="ghost" 
-=======
-          </Link>
           <Button
             type="button"
             size="sm"
             variant="ghost"
-            className="text-gray-500 transition hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400"
-            onClick={() => { setDialogJob(job); setDialogOpen(true); }}
-          >
-            <FileText className="h-4 w-4" />
-            <span className="sr-only">Edit</span>
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
             className="text-gray-500 transition hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
             onClick={() => actionMutation.mutate({ id: idOf(job), action: "duplicateJob" })}
           >
             <Copy className="h-4 w-4" />
             <span className="sr-only">Duplicate</span>
           </Button>
-<<<<<<< HEAD
           {status !== "archived" ? (
             <Button 
               type="button" 
@@ -420,23 +396,6 @@ export default function JobsPage() {
         </div>
         );
       } 
-=======
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="text-gray-500 transition hover:text-rose-600 dark:text-gray-400 dark:hover:text-rose-400"
-            disabled={actionMutation.isLoading}
-            onClick={() => setArchiveJob(job)}
-            title="Archive job"
-            aria-label={`Archive ${job.title || "job"}`}
-          >
-            <Archive className="h-4 w-4" />
-            <span className="sr-only">Archive</span>
-          </Button>
-        </div>
-      )
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
     },
   ], [actionMutation, statusMutation, updatingStatusJobId]);
 

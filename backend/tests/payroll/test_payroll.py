@@ -614,3 +614,44 @@ class TestProcessAutoGeneratesPayslips:
 
         assert result.status == PayrollPeriodStatus.PROCESSED
         gen_mock.assert_awaited_once_with("company-1", "p1", actor)
+
+
+# =============================================================================
+# Regression: invalid ObjectId handling (must return 404, not 500)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_get_payroll_period_returns_none_for_invalid_object_id():
+    """An invalid ObjectId string (e.g. 'salary-components') must return None
+    rather than raising an exception that surfaces as 500."""
+    from app.services import payroll_service as svc
+    result = await svc.get_payroll_period("company-1", "salary-components")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_payroll_period_returns_none_for_non_hex_string():
+    """Non-hex strings that are too short/long for ObjectId must return None."""
+    from app.services import payroll_service as svc
+    assert await svc.get_payroll_period("c1", "abc") is None
+    assert await svc.get_payroll_period("c1", "not-a-valid-id-at-all") is None
+    assert await svc.get_payroll_period("c1", "") is None
+
+
+@pytest.mark.asyncio
+async def test_get_record_returns_none_for_invalid_object_id():
+    """Invalid record id must return None, not raise."""
+    from app.services import payroll_service as svc
+    result = await svc.get_record("company-1", "not-valid")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_payroll_period_still_raises_on_real_db_error():
+    """Genuine infrastructure errors (e.g. connection failure) must NOT be
+    swallowed — only bson.errors.InvalidId should be caught."""
+    from app.services import payroll_service as svc
+    with patch.object(svc.PayrollPeriod, "get", AsyncMock(side_effect=RuntimeError("MongoDB unavailable"))):
+        with pytest.raises(RuntimeError, match="MongoDB unavailable"):
+            await svc.get_payroll_period("company-1", "6a523937d5677882a844234c")

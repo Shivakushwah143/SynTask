@@ -1,6 +1,12 @@
 import api from './axios'
 
 export const salaryAPI = {
+  // ── Salary Structures (company-wide list) ────────────────────────────
+  listStructures: async () => {
+    const response = await api.get('/salary/structures')
+    return response.data
+  },
+
   // ── Salary Components ──────────────────────────────────────────────────
   listComponents: async (includeInactive = false, componentType = null) => {
     const params = new URLSearchParams()

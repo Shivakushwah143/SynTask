@@ -77,7 +77,13 @@ async def create_payroll_period(
 
 
 async def get_payroll_period(company_id: str, period_id: str) -> Optional[PayrollPeriod]:
-    period = await PayrollPeriod.get(period_id)
+    try:
+        period = await PayrollPeriod.get(period_id)
+    except (ValueError, TypeError):
+        # Non-ObjectId string used as period id (e.g. "salary-components")
+        # when a route catch-all passes an unintended path segment.
+        # Beanie raises ValidationError (a ValueError subclass) for invalid ids.
+        return None
     if not period or period.company_id != company_id:
         return None
     return period
@@ -362,7 +368,11 @@ async def get_period_records(
 
 
 async def get_record(company_id: str, record_id: str) -> Optional[PayrollRecord]:
-    record = await PayrollRecord.get(record_id)
+    try:
+        record = await PayrollRecord.get(record_id)
+    except (ValueError, TypeError):
+        # Non-ObjectId string used as record id.
+        return None
     if not record or record.company_id != company_id:
         return None
     return record

@@ -30,11 +30,32 @@ from app.services.salary_structure_service import (
     get_salary_history,
     get_salary_snapshot_for_payroll,
     get_upcoming_salary,
+    list_company_salary_structures,
     resolve_salary_employee_user_id,
     serialize_structure,
 )
 
 router = APIRouter()
+
+
+# =============================================================================
+# Salary Structures — company-wide list
+# =============================================================================
+
+@router.get("/structures")
+async def list_company_salary_structures_endpoint(
+    current_user: User = Depends(require_capability("salary_management.view")),
+):
+    """List all salary structures for the company, enriched with employee names.
+
+    Returns one entry per structure with employee name/number resolved via
+    a single batch query — no N+1.
+    """
+    if not current_user.company_id:
+        return {"success": True, "data": []}
+
+    items = await list_company_salary_structures(current_user.company_id)
+    return {"success": True, "data": items}
 
 
 # =============================================================================

@@ -15,13 +15,10 @@ export const recruitmentApi = {
   archiveJob: (id) => api.post(`/recruitment/jobs/${id}/archive`),
   restoreJob: (id) => api.post(`/recruitment/jobs/${id}/restore`),
   duplicateJob: (id) => api.post(`/recruitment/jobs/${id}/duplicate`),
-<<<<<<< HEAD
   submitJobForApproval: (id) => api.post(`/recruitment/jobs/${id}/submit-for-approval`),
   approveJob: (id) => api.post(`/recruitment/jobs/${id}/approve`),
   rejectJob: (id, payload) => api.post(`/recruitment/jobs/${id}/reject`, payload),
-=======
   setJobStatus: (id, status) => api.post(`/recruitment/jobs/${id}/status`, { status }),
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
   getInbox: (params) => api.get("/recruitment/inbox", { params }),
   getInboxItem: (id) => api.get(`/recruitment/inbox/${id}`),
   importInbox: (payload) => api.post("/recruitment/inbox/import", payload),

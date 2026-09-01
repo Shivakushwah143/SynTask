@@ -35,6 +35,12 @@ vi.mock('../../api/hrDocuments', () => ({
     data.append('file', payload.file)
     return data
   },
+  normalizeDocumentTypesResponse: (data) => {
+    if (Array.isArray(data)) return data
+    if (data && Array.isArray(data.data)) return data.data
+    if (data && Array.isArray(data.items)) return data.items
+    return []
+  },
 }))
 
 vi.mock('react-hot-toast', () => ({

@@ -22,6 +22,7 @@ from app.models.payroll import (
     PayrollRecord,
     PayrollRecordStatus,
 )
+from app.models.salary import SalaryStructure, SalaryStatus
 from app.models.user import User, UserRole
 from app.services.attendance_payroll_adapter import get_employee_period_summary
 from app.services.salary_structure_service import get_salary_snapshot_for_payroll
@@ -110,6 +111,33 @@ async def calculate_employee_payroll(
         }
 
     currency = salary_snapshot.get("currency", "INR")
+
+    # Phase 11 closure: detect mid-period salary overlap.
+    # If multiple salary structures are effective during this payroll period,
+    # the calculation uses the one effective at period_start. This may silently
+    # apply the wrong salary for part of the period. We emit a WARNING so HR
+    # is aware and can split the period or schedule the salary revision between
+    # periods.
+    period_start_dt = datetime.combine(period_start, time.min)
+    period_end_dt = datetime.combine(period_end, time.max)
+    overlapping = await SalaryStructure.find({
+        "company_id": company_id,
+        "employee_id": employee_id,
+        "effective_from": {"$lte": period_end_dt},
+        "$or": [
+            {"effective_to": None},
+            {"effective_to": {"$gte": period_start_dt}},
+        ],
+    }).to_list()
+    if len(overlapping) > 1:
+        effective_ids = [str(s.id) for s in overlapping]
+        warnings.append(
+            f"Multiple salary structures overlap this payroll period "
+            f"({len(overlapping)} structures). The one effective on "
+            f"period_start ({period_start}) is used for the full month. "
+            f"Consider splitting the period or rescheduling the salary "
+            f"revision to a period boundary."
+        )
 
     # 3. Get attendance summary
     try:

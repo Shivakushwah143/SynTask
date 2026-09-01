@@ -78,6 +78,7 @@ const SalaryComponentsPage = lazy(() => import('./pages/attendance/SalaryCompone
 const PayrollPeriods = lazy(() => import('./pages/payroll/PayrollPeriods'))
 const PayrollPeriodDetail = lazy(() => import('./pages/payroll/PayrollPeriodDetail'))
 const PayrollRecordDetail = lazy(() => import('./pages/payroll/PayrollRecordDetail'))
+const SalaryStructuresPage = lazy(() => import('./pages/payroll/SalaryStructuresPage'))
 const GoogleWorkspace = lazy(() => import('./pages/GoogleWorkspace'))
 const SectionLanding = lazy(() => import('./pages/SectionLanding'))
 const SOPLibrary = lazy(() => import('./pages/SOPLibrary'))
@@ -320,22 +321,14 @@ function App() {
           <Route path="google-workspace" element={withBoundary(<GoogleWorkspace />)} />
           <Route path="content-calendar" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentCalendar />)}</ModuleGuard>} />
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
-<<<<<<< HEAD
-          <Route path="timesheet" element={withBoundary(<Timesheet />)} />          <Route path="attendance" element={withBoundary(<Attendance />)} />
-          <Route path="attendance/live" element={<Navigate to="/live-monitor" replace />} />
-          <Route path="attendance/reports" element={<Navigate to="/attendance-reports" replace />} />
-          <Route path="attendance/corrections" element={withBoundary(<CorrectionsPage />)} />
-
-          <Route path="live-monitor" element={withBoundary(<LiveMonitor />)} />
-          <Route path="attendance-reports" element={withBoundary(<AttendanceReports />)} />
-=======
           <Route path="timesheet" element={<ModuleGuard module="time_tracking">{withBoundary(<Timesheet />)}</ModuleGuard>} />
           <Route path="attendance" element={<ModuleGuard module="attendance">{withBoundary(<Attendance />)}</ModuleGuard>} />
           <Route path="attendance/live" element={<Navigate to="/live-monitor" replace />} />
           <Route path="attendance/reports" element={<Navigate to="/attendance-reports" replace />} />
+          <Route path="attendance/corrections" element={withBoundary(<CorrectionsPage />)} />
+
           <Route path="live-monitor" element={<ModuleGuard module="live_attendance">{withBoundary(<LiveMonitor />)}</ModuleGuard>} />
           <Route path="attendance-reports" element={<ModuleGuard module="attendance_reports">{withBoundary(<AttendanceReports />)}</ModuleGuard>} />
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
 
         <Route path="reports" element={withBoundary(<Reports />)} />
         <Route path="notifications" element={withBoundary(<Notifications />)} />
@@ -388,26 +381,21 @@ function App() {
             <Route path="settings/leave-types" element={withBoundary(<LeaveTypesSettingsPage />)} />
             <Route path="settings/attendance-policy" element={withBoundary(<AttendancePolicySettings />)} />
             <Route path="settings/holidays" element={withBoundary(<HolidaysPage />)} />
-            <Route path="settings/salary-components" element={withBoundary(<SalaryComponentsPage />)} />
+            <Route path="settings/salary-components" element={<Navigate to="/hr/payroll/salary-components" replace />} />
+            <Route path="settings/salary-structures" element={<Navigate to="/hr/payroll/salary-structures" replace />} />
             <Route path="leave-allocations" element={withBoundary(<LeaveAllocationsPage />)} />
             <Route path="payroll" element={withBoundary(<PayrollPeriods />)} />
+            <Route path="payroll/salary-components" element={withBoundary(<SalaryComponentsPage />)} />
+            <Route path="payroll/salary-structures" element={withBoundary(<SalaryStructuresPage />)} />
             <Route path="payroll/:periodId" element={withBoundary(<PayrollPeriodDetail />)} />
             <Route path="payroll/:periodId/records/:recordId" element={withBoundary(<PayrollRecordDetail />)} />
             <Route path="recruitment">
               <Route index element={withBoundary(<RecruitmentDashboard />)} />
               <Route path="jobs" element={withBoundary(<RecruitmentJobsPage />)} />
-<<<<<<< HEAD
-              <Route path="jobs/:jobId" element={withBoundary(<RecruitmentJobsPage />)} />
-              <Route path="inbox" element={withBoundary(<RecruitmentInboxPage />)} />
-              <Route path="candidates" element={withBoundary(<RecruitmentCandidatesPage />)} />
-=======
               <Route path="jobs/:jobId" element={withBoundary(<RecruitmentJobDetailPage />)} />
               <Route path="inbox" element={withBoundary(<RecruitmentInboxPage />)} />
               <Route path="candidates" element={withBoundary(<RecruitmentCandidatesPage />)} />
               <Route path="candidates/:candidateId" element={withBoundary(<RecruitmentCandidatesPage />)} />
-              <Route path="employees" element={withBoundary(<RecruitmentEmployeesPage />)} />
-              <Route path="employees/:employeeId" element={withBoundary(<EmployeeDetailPage />)} />
->>>>>>> 4bb92e5b42bff7ef306a1b18154f0aaf68cd992a
               <Route path="resume-pool" element={withBoundary(<RecruitmentResumePoolPage />)} />
               <Route path="interviews" element={withBoundary(<RecruitmentInterviewsPage />)} />
               <Route path="offers" element={withBoundary(<RecruitmentOffersPage />)} />
