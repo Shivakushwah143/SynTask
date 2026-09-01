@@ -325,7 +325,7 @@ function App() {
           <Route path="content-calendar" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentCalendar />)}</ModuleGuard>} />
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
           <Route path="timesheet" element={<ModuleGuard module="time_tracking">{withBoundary(<Timesheet />)}</ModuleGuard>} />
-          <Route path="attendance" element={<ModuleGuard module="attendance">{withBoundary(<Attendance />)}</ModuleGuard>} />
+          <Route path="attendance" element={withBoundary(<Attendance />)} />
           <Route path="attendance/live" element={<Navigate to="/live-monitor" replace />} />
           <Route path="attendance/reports" element={<Navigate to="/attendance-reports" replace />} />
           <Route path="attendance/corrections" element={withBoundary(<CorrectionsPage />)} />

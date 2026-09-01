@@ -348,17 +348,23 @@ def _fmt_date(value) -> str:
 
 
 async def _store_payslip_pdf(content: bytes, file_name: str) -> dict:
-    upload = UploadFile(filename=file_name, file=BytesIO(content))
+    """Store payslip PDF through the existing FileService pipeline.
+
+    When Cloudinary is configured, sensitive=True uploads as authenticated.
+    Delivery still goes only through backend-authorized preview/download
+    endpoints, so raw Cloudinary URLs are never exposed to clients.
+    """
+    upload_dir = FileService.resolve_upload_dir() / "payslips"
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", file_name).strip("-._") or "payslip.pdf"
+    upload = UploadFile(filename=safe_name, file=BytesIO(content))
     stored = await FileService.store_uploaded_file(
         upload,
-        upload_dir=FileService.resolve_upload_dir() / "payslips",
+        upload_dir=upload_dir,
         url_prefix=PAYSLIP_STORAGE_URL_PREFIX,
         scope=PAYSLIP_STORAGE_SCOPE,
         sensitive=True,
     )
-    stored["mime_type"] = "application/pdf"
-    stored["file_size"] = len(content)
-    stored["checksum"] = hashlib.sha256(content).hexdigest()
+    stored["file_size"] = stored.get("size", len(content))
     return stored
 
 
@@ -806,47 +812,103 @@ async def get_my_payslips(user: User) -> List[dict]:
 # =============================================================================
 
 
-def build_payslip_file_response(payslip: Payslip, *, download: bool = False):
-    """Secure file response (stream/redirect) — authorization happens BEFORE this.
+async def build_payslip_file_response(payslip: Payslip, *, download: bool = False):
+    """Secure payslip PDF delivery — authorization happens BEFORE this.
 
-    - Local storage: FileResponse (inline for preview, attachment for download).
-    - Cloudinary authenticated: redirect to a short-lived signed URL.
+    Follows the same pattern as the Invoice PDF endpoint: the PDF is
+    re-rendered on the fly from the stored payroll record snapshot and
+    streamed directly to the client.  Cloudinary URLs are never exposed.
+
+    Flow:
+    1. Try local disk cache (fast, no extra DB queries).
+    2. Re-render from the PayrollRecord snapshot (always works).
     """
-    from fastapi.responses import FileResponse, RedirectResponse
+    from fastapi.responses import FileResponse, StreamingResponse
 
+    def _pdf_response(pdf_bytes: bytes):
+        disposition = "attachment" if download else "inline"
+        return StreamingResponse(
+            BytesIO(pdf_bytes),
+            media_type=payslip.mime_type or "application/pdf",
+            headers={
+                "Content-Disposition": f'{disposition}; filename="{payslip.file_name or "payslip.pdf"}"',
+                "Content-Length": str(len(pdf_bytes)),
+            },
+        )
+
+    # ── Fast path: local disk cache ─────────────────────────────────────
+    if payslip.storage_provider == "local" and payslip.storage_reference:
+        from app.api.v1.endpoints.files import resolve_upload_path
+
+        try:
+            path = resolve_upload_path(FileService.resolve_upload_dir(), payslip.storage_reference)
+        except HTTPException:
+            path = None
+        if path and path.exists() and path.is_file():
+            return FileResponse(
+                path=path,
+                media_type=payslip.mime_type or "application/pdf",
+                filename=payslip.file_name,
+                content_disposition_type="attachment" if download else "inline",
+            )
+
+    # ── Cloudinary server-side retrieval ──────────────────────────────
     if payslip.storage_provider == "cloudinary" and payslip.storage_reference:
-        if CloudinaryStorage.enabled():
-            if payslip.storage_delivery_type == "authenticated":
-                url = CloudinaryStorage.signed_url(
-                    payslip.storage_reference,
-                    resource_type=payslip.storage_resource_type or "auto",
-                    attachment=download,
-                )
-                if url:
-                    return RedirectResponse(url)
-            if payslip.storage_url:
-                separator = "&" if "?" in payslip.storage_url else "?"
-                suffix = "fl_attachment" if download else None
-                return RedirectResponse(payslip.storage_url + (f"{separator}{suffix}" if suffix else ""))
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The stored payslip file is unavailable. Regenerate it or contact an administrator.")
+        # Cloudinary download API requires a concrete resource type (not "auto").
+        rt = payslip.storage_resource_type or "auto"
+        if rt == "auto":
+            rt = "raw"  # PDFs uploaded via auto-detection are stored as "raw".
+        pdf_bytes = CloudinaryStorage.download_content(
+            payslip.storage_reference,
+            resource_type=rt,
+            delivery_type=payslip.storage_delivery_type or "authenticated",
+            storage_url=payslip.storage_url,
+        )
+        if pdf_bytes and pdf_bytes.startswith(b"%PDF"):
+            return _pdf_response(pdf_bytes)
+        logger.warning(
+            "Cloudinary retrieval failed for payslip %s, falling back to re-render",
+            payslip.id,
+        )
 
-    if not payslip.storage_reference:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The stored payslip file is unavailable. Regenerate it or contact an administrator.")
-
-    from app.api.v1.endpoints.files import resolve_upload_path
-
+    record = await PayrollRecord.get(payslip.payroll_record_id)
+    if not record or record.company_id != payslip.company_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="The stored payslip file is unavailable. The payroll record is missing.",
+        )
+    period = await PayrollPeriod.get(record.payroll_period_id)
+    if not period or period.company_id != payslip.company_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="The stored payslip file is unavailable. The payroll period is missing.",
+        )
     try:
-        path = resolve_upload_path(FileService.resolve_upload_dir(), payslip.storage_reference)
-    except HTTPException as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The stored payslip file is unavailable. Regenerate it or contact an administrator.") from exc
-    if not path.exists() or not path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The stored payslip file is unavailable. Regenerate it or contact an administrator.")
-    return FileResponse(
-        path=path,
-        media_type=payslip.mime_type or "application/pdf",
-        filename=payslip.file_name,
-        content_disposition_type="attachment" if download else "inline",
-    )
+        data = await build_payslip_data(
+            payslip.company_id, record, period,
+            generated_at=payslip.generated_at,
+            version=payslip.version,
+            file_name=payslip.file_name,
+        )
+        pdf_bytes = render_payslip_pdf(data)
+    except Exception:
+        logger.exception(
+            "Payslip re-render failed | payslip_id=%s record_id=%s",
+            payslip.id,
+            payslip.payroll_record_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The payslip PDF could not be generated.",
+        ) from None
+
+    if not pdf_bytes or not pdf_bytes.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The payslip PDF could not be generated.",
+        )
+
+    return _pdf_response(pdf_bytes)
 
 
 async def serialize_payslip(payslip: Payslip, *, actor: Optional[User] = None, period: Optional[PayrollPeriod] = None) -> dict:

@@ -32,6 +32,7 @@ from app.services.payroll_service import (
     serialize_record,
 )
 from app.services.payslip_service import (
+    _require_payslip_access,
     build_payslip_file_response,
     current_payslip_for_records,
     generate_payslip,
@@ -265,8 +266,7 @@ async def get_payslip_metadata(
     payslip = await get_payslip(company_id, payslip_id)
     if not payslip:
         raise HTTPException(status_code=404, detail="Payslip not found")
-    if not await has_payroll_view(current_user) and str(current_user.id) != payslip.employee_id:
-        raise HTTPException(status_code=403, detail="You do not have permission to access this payslip")
+    await _require_payslip_access(company_id, payslip, current_user)
     return {"success": True, "data": await serialize_payslip(payslip, actor=current_user)}
 
 
@@ -280,9 +280,8 @@ async def preview_payslip(
     payslip = await get_payslip(company_id, payslip_id)
     if not payslip:
         raise HTTPException(status_code=404, detail="Payslip not found")
-    if not await has_payroll_view(current_user) and str(current_user.id) != payslip.employee_id:
-        raise HTTPException(status_code=403, detail="You do not have permission to preview this payslip")
-    return build_payslip_file_response(payslip, download=False)
+    await _require_payslip_access(company_id, payslip, current_user)
+    return await build_payslip_file_response(payslip, download=False)
 
 
 @router.get("/payslips/{payslip_id}/download")
@@ -295,9 +294,8 @@ async def download_payslip(
     payslip = await get_payslip(company_id, payslip_id)
     if not payslip:
         raise HTTPException(status_code=404, detail="Payslip not found")
-    if not await has_payroll_view(current_user) and str(current_user.id) != payslip.employee_id:
-        raise HTTPException(status_code=403, detail="You do not have permission to download this payslip")
-    return build_payslip_file_response(payslip, download=True)
+    await _require_payslip_access(company_id, payslip, current_user)
+    return await build_payslip_file_response(payslip, download=True)
 
 
 @router.post("/payslips/{payslip_id}/regenerate")

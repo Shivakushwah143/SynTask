@@ -2,7 +2,7 @@
 Application Configuration
 """
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from typing import List, Optional
 from functools import lru_cache
 
@@ -162,6 +162,16 @@ class Settings(BaseSettings):
     CLOUDINARY_API_SECRET: Optional[str] = None
     CLOUDINARY_UPLOAD_FOLDER: str = "syntask"
     STORAGE_BACKEND: str = "cloudinary"
+
+    @field_validator(
+        "CLOUDINARY_CLOUD_NAME",
+        "CLOUDINARY_API_KEY",
+        "CLOUDINARY_API_SECRET",
+        mode="after",
+    )
+    @classmethod
+    def _strip_cloudinary_whitespace(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() if isinstance(v, str) else v
     
     # Redis (for caching and Celery)
     REDIS_URL: str = Field(..., description="Redis URL for token blacklist and rate limiting.")

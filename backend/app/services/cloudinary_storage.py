@@ -2,23 +2,37 @@ from __future__ import annotations
 
 import hashlib
 import base64
+import logging
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
+import cloudinary
+import cloudinary.utils
 import requests
 from fastapi import HTTPException, status
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
 
 IMAGE_MIME_PREFIX = "image/"
 
 
 def _cloudinary_configured() -> bool:
     return bool(settings.CLOUDINARY_CLOUD_NAME and settings.CLOUDINARY_API_KEY and settings.CLOUDINARY_API_SECRET)
+
+
+# Configure the Cloudinary SDK once at import time.
+if _cloudinary_configured():
+    cloudinary.config(
+        cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+        api_key=settings.CLOUDINARY_API_KEY,
+        api_secret=settings.CLOUDINARY_API_SECRET,
+        secure=True,
+    )
 
 
 def _sign(params: dict[str, Any]) -> str:
@@ -37,6 +51,18 @@ def _resource_type(mime_type: str) -> str:
 def _delivery_signature(path_to_sign: str) -> str:
     digest = hashlib.sha1(f"{path_to_sign}{settings.CLOUDINARY_API_SECRET}".encode("utf-8")).digest()
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")[:8]
+
+
+def _ensure_cloudinary_sdk_configured() -> None:
+    """Ensure the Cloudinary SDK is configured (re-configures if credentials changed)."""
+    cfg = cloudinary.config()
+    if cfg.cloud_name != settings.CLOUDINARY_CLOUD_NAME or cfg.api_key != settings.CLOUDINARY_API_KEY:
+        cloudinary.config(
+            cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+            api_key=settings.CLOUDINARY_API_KEY,
+            api_secret=settings.CLOUDINARY_API_SECRET,
+            secure=True,
+        )
 
 
 class CloudinaryStorage:
@@ -147,6 +173,93 @@ class CloudinaryStorage:
         if parsed.scheme:
             return urlunparse((parsed.scheme, parsed.netloc, signed_path, "", "", ""))
         return f"https://res.cloudinary.com{signed_path}"
+
+    @staticmethod
+    def download_content(
+        public_id: str,
+        *,
+        resource_type: str = "image",
+        delivery_type: str = "authenticated",
+        storage_url: str | None = None,
+    ) -> bytes | None:
+        """Download raw bytes from a Cloudinary-stored file.
+
+        Uses the official Cloudinary SDK ``private_download_url()`` to generate
+        a properly signed API download URL, then fetches the content
+        server-side.  ``authenticated`` resources are never exposed through
+        unsigned URLs.
+
+        Returns ``None`` when Cloudinary is not configured, the SDK is not
+        configured, or the download fails after logging the Cloudinary error.
+        """
+        if not CloudinaryStorage.enabled() or not public_id:
+            return None
+
+        _ensure_cloudinary_sdk_configured()
+        cfg = cloudinary.config()
+        if not cfg.api_key or not cfg.api_secret:
+            logger.error(
+                "Cloudinary SDK not configured — cannot generate download URL | public_id=%s",
+                public_id,
+            )
+            return None
+
+        # Determine the file format from the public_id extension.
+        file_format = Path(public_id).suffix.lstrip(".") or "pdf"
+        # Strip the extension from public_id for the SDK call (it re-appends it).
+        id_without_ext = public_id
+        if file_format and public_id.endswith(f".{file_format}"):
+            id_without_ext = public_id[: -(len(file_format) + 1)]
+
+        try:
+            url = cloudinary.utils.private_download_url(
+                public_id=id_without_ext,
+                format=file_format,
+                resource_type=resource_type,
+                type=delivery_type,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to generate Cloudinary download URL | public_id=%s resource_type=%s",
+                public_id,
+                resource_type,
+            )
+            return None
+
+        try:
+            resp = requests.get(url, timeout=30)
+        except requests.RequestException:
+            logger.exception(
+                "HTTP request to Cloudinary failed | public_id=%s url_prefix=%s",
+                public_id,
+                url[:120],
+            )
+            return None
+
+        if resp.status_code != 200:
+            cld_error = resp.headers.get("X-Cld-Error") or ""
+            logger.error(
+                "Cloudinary download failed | status=%s public_id=%s resource_type=%s "
+                "X-Cld-Error=%s body_prefix=%s",
+                resp.status_code,
+                public_id,
+                resource_type,
+                cld_error,
+                (resp.text[:200] if resp.text else ""),
+            )
+            return None
+
+        content = resp.content
+        if not content or not content.startswith(b"%PDF"):
+            logger.error(
+                "Cloudinary returned non-PDF content | public_id=%s content_len=%d starts_with=%r",
+                public_id,
+                len(content),
+                content[:8] if content else b"",
+            )
+            return None
+
+        return content
 
     @staticmethod
     def delete(public_id: str, resource_type: str = "image", delivery_type: str = "upload") -> None:

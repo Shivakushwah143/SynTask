@@ -181,7 +181,35 @@ async def init_db():
         
         # Get database
         database = client[settings.DATABASE_NAME]
-        
+
+        # ── Pre-flight: drop stale indexes whose spec changed ────────
+        # Beanie raises IndexKeySpecsConflict when the model declares a
+        # different spec (e.g. unique added) but the database already has
+        # an index with the same auto-generated name.  Drop stale indexes
+        # so Beanie can recreate them with the correct spec.
+        try:
+            for coll_name in (
+                "employee_profiles",
+                "employeeprofiles",
+                "employeeprofile",
+            ):
+                if coll_name not in await database.list_collection_names():
+                    continue
+                coll = database[coll_name]
+                existing = await coll.index_information()
+                for idx_name, idx_info in existing.items():
+                    keys = idx_info.get("key", [])
+                    key_names = [k[0] for k in keys]
+                    if key_names == ["company_id", "candidate_id"]:
+                        logger.info(
+                            "Dropping index '%s' on %s for clean recreation.",
+                            idx_name,
+                            coll.name,
+                        )
+                        await coll.drop_index(idx_name)
+        except Exception as exc:
+            logger.warning("Stale-index cleanup skipped: %s", exc)
+
         # Initialize Beanie with document models
         await init_beanie(
             database=database,
