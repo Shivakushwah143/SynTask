@@ -59,6 +59,7 @@ export const SECTION_OVERVIEWS = {
     stats: ["Job Openings", "Candidates", "Interviews", "Offers"],
     actions: ["Create job", "Review candidates", "Schedule interviews", "Manage offers"],
   },
+  },
   finance: {
     title: "Finance Workspace",
     description: "Review invoices, transactions, subscriptions, payment records, and financial operations.",
