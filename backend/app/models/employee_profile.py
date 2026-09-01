@@ -160,10 +160,12 @@ class EmployeeProfile(Document):
                 [("company_id", ASCENDING), ("user_id", ASCENDING)],
                 unique=True,
             ),
-            # One profile per converted candidate.
+            # Candidate lookup index (non-unique: Beanie sets candidate_id=None
+            # by default which conflicts with sparse+unique on MongoDB).
+            # Uniqueness is enforced in application code.
             IndexModel(
                 [("company_id", ASCENDING), ("candidate_id", ASCENDING)],
-                unique=True,
+                unique=False,
                 sparse=True,
             ),
             # Access-pattern indexes for list filters / detail lookups.

@@ -19,7 +19,7 @@ import {
 import toast from 'react-hot-toast'
 import { payrollAPI, payrollFiles } from '../../api/payroll'
 import { Button, ConfirmDialog, EmptyState, Modal, PageHeader, Skeleton } from '../../components/ui'
-import { downloadBlob, getDownloadFilename } from '../../utils/download'
+import { decodeBlobErrorMessage, downloadBlob, getDownloadFilename } from '../../utils/download'
 
 const formatCurrency = (v) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2 }).format(v || 0)
 const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'
@@ -104,7 +104,8 @@ const PayrollRecordDetail = () => {
       const response = await payrollFiles.preview(payslip.payslip_id)
       setPreviewUrl(window.URL.createObjectURL(response.data))
     } catch (err) {
-      setPreviewError(err?.response?.data?.detail || 'Unable to preview this payslip. You may not have permission.')
+      const message = await decodeBlobErrorMessage(err, 'Unable to preview this payslip. You may not have permission.')
+      setPreviewError(message)
     } finally {
       setPreviewLoading(false)
     }
@@ -120,7 +121,8 @@ const PayrollRecordDetail = () => {
       )
       downloadBlob(response.data, filename)
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Failed to download payslip')
+      const message = await decodeBlobErrorMessage(err, 'Failed to download payslip')
+      toast.error(message)
     }
   }
 
