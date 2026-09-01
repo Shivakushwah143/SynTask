@@ -232,13 +232,14 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(screen.getByRole('tab', { name: /^WhatsApp/i }).textContent).toContain('99+')
   })
 
-  it('shows People tabs on HR recruitment pages with exactly one active tab', () => {
+  it('shows Recruitment tabs on HR recruitment pages with exactly one active tab', () => {
     renderTabs('/hr/recruitment/jobs')
 
     expect(screen.getByRole('tab', { name: /^Job Openings$/i })).toHaveAttribute('aria-selected', 'true')
     // The match-prefix on Hiring Dashboard must NOT also light up (single-active rule).
     expect(screen.getByRole('tab', { name: /^Hiring Dashboard$/i })).toHaveAttribute('aria-selected', 'false')
-    expect(screen.getByRole('tab', { name: /^Employees$/i })).toBeTruthy()
+    // Employee Profiles (renamed from HR Employees) should be in Recruitment, not People's Employees.
+    expect(screen.getByRole('tab', { name: /^Employee Profiles$/i })).toBeTruthy()
   })
 
   it('keeps the Employees tab active on a nested employee detail page', () => {

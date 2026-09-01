@@ -121,6 +121,7 @@ describe('sidebar route correctness (Phase 7, spec §11)', () => {
       '/sales/reports',
       '/super-admin/dashboard',
       '/clients/:clientId/workspace',
+      '/clients/:stageKey',
       '/projects/:projectId/board',
       '/sections/:sectionKey', // tab sub-nav landing pages (D1)
       '/sop-library',
@@ -153,16 +154,19 @@ describe('sidebar launch kit quick-reference card (Phase 8, spec §13)', () => {
   // Build the same "section → valid item names" map Sidebar.jsx renders: SECTIONS
   // items resolved by name, plus the People HR items (renamed, skipped removed).
   const navByName = new Map([...navigation, ...crmNavigation, ...metaNavigation].map((item) => [item.name, item]))
+  // Build the set of renamed HR nav item display names for recruitment section validation.
+  const hrDisplayNames = new Set(
+    HR_MODULES.flatMap((mod) =>
+      mod.navigation
+        .filter((item) => !HR_ITEM_SKIP.has(item.name))
+        .map((item) => HR_ITEM_RENAMES[item.name] || item.name)
+    ),
+  )
   const validItemsBySection = new Map(
     SECTIONS.map((section) => {
-      const names = new Set(section.items.filter((name) => navByName.has(name)))
-      if (section.key === 'people') {
-        for (const mod of HR_MODULES) {
-          for (const item of mod.navigation) {
-            if (HR_ITEM_SKIP.has(item.name)) continue
-            names.add(HR_ITEM_RENAMES[item.name] || item.name)
-          }
-        }
+      const names = new Set(section.items.filter((name) => navByName.has(name) || hrDisplayNames.has(name)))
+      if (section.key === 'recruitment') {
+        for (const name of hrDisplayNames) names.add(name)
       }
       return [section.label, names]
     }),
@@ -207,14 +211,24 @@ describe('sidebar config integrity (Phase 7)', () => {
   const itemPool = new Set([...navigation, ...crmNavigation, ...metaNavigation].map((item) => item.name))
 
   it('every SECTIONS item name resolves to a real nav item (no silent drops)', () => {
+    // Build the set of known HR display names for recruitment section items.
+    const hrNames = new Set(
+      HR_MODULES.flatMap((mod) =>
+        mod.navigation
+          .filter((item) => !HR_ITEM_SKIP.has(item.name))
+          .map((item) => HR_ITEM_RENAMES[item.name] || item.name)
+      ),
+    )
     const missing = SECTIONS.flatMap((section) =>
-      section.items.filter((name) => !itemPool.has(name)).map((name) => `${section.label} → ${name}`),
+      section.items
+        .filter((name) => !itemPool.has(name) && !hrNames.has(name))
+        .map((name) => `${section.label} → ${name}`),
     )
     expect(missing).toEqual([])
   })
 
-  it('defines exactly 13 sections with unique keys', () => {
-    expect(SECTIONS).toHaveLength(13)
+  it('defines exactly 14 sections with unique keys', () => {
+    expect(SECTIONS).toHaveLength(14)
     const keys = SECTIONS.map((section) => section.key)
     expect(new Set(keys).size).toBe(keys.length)
   })

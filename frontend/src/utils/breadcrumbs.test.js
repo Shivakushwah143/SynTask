@@ -52,11 +52,11 @@ describe('buildBreadcrumbTrail (Phase 5, spec §10.5)', () => {
     expect(buildBreadcrumbTrail('/users')).toEqual(['Home', 'People', 'User Accounts'])
   })
 
-  it('maps HR recruitment routes under People with renamed labels', () => {
-    expect(buildBreadcrumbTrail('/hr/recruitment/jobs')).toEqual(['Home', 'People', 'Recruitment', 'Job Openings'])
-    expect(buildBreadcrumbTrail('/hr/recruitment/jobs/6a85bad39652eaa89a110d2b')).toEqual(['Home', 'People', 'Recruitment', 'Job Openings', 'Job Detail'])
-    expect(buildBreadcrumbTrail('/hr/recruitment/candidates/6a85bad39652eaa89a110d2b')).toEqual(['Home', 'People', 'Recruitment', 'Candidates', 'Candidate Detail'])
-    expect(buildBreadcrumbTrail('/hr/recruitment/reports')).toEqual(['Home', 'People', 'Recruitment', 'Hiring Reports'])
+  it('maps HR recruitment routes under Recruitment with renamed labels', () => {
+    expect(buildBreadcrumbTrail('/hr/recruitment/jobs')).toEqual(['Home', 'Recruitment', 'Job Openings'])
+    expect(buildBreadcrumbTrail('/hr/recruitment/jobs/6a85bad39652eaa89a110d2b')).toEqual(['Home', 'Recruitment', 'Job Openings', 'Job Detail'])
+    expect(buildBreadcrumbTrail('/hr/recruitment/candidates/6a85bad39652eaa89a110d2b')).toEqual(['Home', 'Recruitment', 'Candidates', 'Candidate Detail'])
+    expect(buildBreadcrumbTrail('/hr/recruitment/reports')).toEqual(['Home', 'Recruitment', 'Hiring Reports'])
   })
 
   it('maps canonical HR employee/documents routes under People', () => {

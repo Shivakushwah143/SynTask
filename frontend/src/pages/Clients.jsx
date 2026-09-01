@@ -1,27 +1,18 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2, Sparkles, ShieldCheck } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { AlertTriangle, Briefcase, Plus, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2 } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { Button, CreatableSelectField, EmptyState, FormField, LoadingSpinner, Modal, PhoneInput, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal, QuickCreateProjectModal } from '../components/relatedRecords/QuickCreateModals'
 import { projectsApi } from '../api/projects'
+import { meetingsApi } from '../api/meetings'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { timeService } from '@/services/timeService'
-
-const getTotalBudget = (client) => {
-  if (!client) return 0
-  if (client.total_budget != null) return Number(client.total_budget) || 0
-  if (client.budget != null) return Number(client.budget) || 0
-  if (Array.isArray(client.projects)) {
-    return client.projects.reduce((sum, p) => sum + (Number(p.budget) || 0), 0)
-  }
-  return 0
-}
 
 // Draft persistence: keep partially-filled client form values when the modal
 // closes (cross button, Escape, backdrop, or cancel) so the user does not have
@@ -78,6 +69,25 @@ const clearClientFormDraft = () => {
   }
 }
 
+const CLIENT_PAGE_SIZE = 20
+
+const getTomorrowDateValue = () => {
+  const date = timeService.now()
+  date.setDate(date.getDate() + 1)
+  return format(date, 'yyyy-MM-dd')
+}
+
+const CLIENT_STAGE_ROUTES = {
+  new: 'new',
+  onboarding: 'onboarding',
+  active: 'active',
+  'at-risk': 'at_risk',
+  'on-hold': 'on_hold',
+  'renewal-due': 'renewal_due',
+  churned: 'churned',
+  archived: 'archived',
+}
+
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   const colors = {
     indigo: 'from-indigo-500 to-purple-500',
@@ -103,6 +113,7 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
 
 const Clients = () => {
   const { user } = useAuthStore()
+  const { stageKey } = useParams()
   const navigate = useNavigate()
   const { confirm, showUndoNotification } = useConfirmation()
   const [clients, setClients] = useState([])
@@ -153,24 +164,46 @@ const Clients = () => {
   const [documentFile, setDocumentFile] = useState(null)
   const [documentName, setDocumentName] = useState('')
   const [updatingStatusId, setUpdatingStatusId] = useState(null)
-  const [openStatusMenuId, setOpenStatusMenuId] = useState(null)
-
-  useEffect(() => {
-    const handleDocumentMouseDown = (event) => {
-      if (!event.target.closest('[data-status-menu-root]')) {
-        setOpenStatusMenuId(null)
-      }
-    }
-    document.addEventListener('mousedown', handleDocumentMouseDown)
-    return () => document.removeEventListener('mousedown', handleDocumentMouseDown)
-  }, [])
+  const [stageSelectionClient, setStageSelectionClient] = useState(null)
+  const [transitionBlocker, setTransitionBlocker] = useState(null)
+  const [pendingLifecycleRetry, setPendingLifecycleRetry] = useState(null)
+  const [lifecycleRules, setLifecycleRules] = useState({})
+  const [reasonRequest, setReasonRequest] = useState(null)
+  const [transitionReason, setTransitionReason] = useState('')
+  const [kickoffMeetingForm, setKickoffMeetingForm] = useState({
+    meeting_date: getTomorrowDateValue(),
+    meeting_time: '10:00',
+    duration: 30,
+  })
+  const [creatingKickoffMeeting, setCreatingKickoffMeeting] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [portfolioOverview, setPortfolioOverview] = useState(null)
+  const [savedViews, setSavedViews] = useState({ defaults: [], views: [] })
 
   const statusMeta = {
+    new: {
+      label: 'New',
+      chipClass: 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300',
+      optionClass: 'text-sky-700 dark:text-sky-300',
+      dotClass: 'bg-sky-500',
+    },
+    onboarding: {
+      label: 'Onboarding',
+      chipClass: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300',
+      optionClass: 'text-indigo-700 dark:text-indigo-300',
+      dotClass: 'bg-indigo-500',
+    },
     active: {
       label: 'Active',
       chipClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
       optionClass: 'text-emerald-700 dark:text-emerald-300',
       dotClass: 'bg-emerald-500',
+    },
+    at_risk: {
+      label: 'At Risk',
+      chipClass: 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300',
+      optionClass: 'text-orange-700 dark:text-orange-300',
+      dotClass: 'bg-orange-500',
     },
     on_hold: {
       label: 'On Hold',
@@ -178,11 +211,17 @@ const Clients = () => {
       optionClass: 'text-amber-700 dark:text-amber-300',
       dotClass: 'bg-amber-500',
     },
-    inactive: {
-      label: 'Inactive',
-      chipClass: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300',
-      optionClass: 'text-rose-700 dark:text-rose-300',
-      dotClass: 'bg-rose-500',
+    renewal_due: {
+      label: 'Renewal Due',
+      chipClass: 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300',
+      optionClass: 'text-violet-700 dark:text-violet-300',
+      dotClass: 'bg-violet-500',
+    },
+    churned: {
+      label: 'Churned',
+      chipClass: 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-300',
+      optionClass: 'text-slate-700 dark:text-slate-300',
+      dotClass: 'bg-slate-500',
     },
     archived: {
       label: 'Archived',
@@ -190,10 +229,21 @@ const Clients = () => {
       optionClass: 'text-gray-700 dark:text-gray-300',
       dotClass: 'bg-gray-500',
     },
+    inactive: {
+      label: 'Inactive',
+      chipClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
+      optionClass: 'text-amber-700 dark:text-amber-300',
+      dotClass: 'bg-amber-500',
+    },
   }
 
-  const statusOptions = ['active', 'on_hold', 'inactive', 'archived']
   const getStatusMeta = (status) => statusMeta[status] || statusMeta.active
+  const routeStatus = CLIENT_STAGE_ROUTES[stageKey] || ''
+  const effectiveStatusFilter = routeStatus || statusFilter
+  const pageTitle = routeStatus ? `${getStatusMeta(routeStatus).label} Clients` : 'Clients Directory'
+  const pageDescription = routeStatus
+    ? `Only ${getStatusMeta(routeStatus).label.toLowerCase()} client accounts are shown here.`
+    : 'Manage enterprise client accounts, linked projects, contract budgets & files'
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isLead = isLeadRole(user?.role)
@@ -202,8 +252,10 @@ const Clients = () => {
     try {
       setLoading(true)
       setLoadError(null)
-      const params = {}
-      if (statusFilter) params.status_filter = statusFilter
+      const params = { limit: 500 }
+      if (effectiveStatusFilter) params.status_filter = effectiveStatusFilter
+      if (searchQuery.trim()) params.search = searchQuery.trim()
+      if (columnFilters.type) params.client_type = columnFilters.type
       const data = await clientsAPI.listClients(params)
       setClients(data.clients || [])
     } catch (error) {
@@ -225,7 +277,22 @@ const Clients = () => {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter])
+  }, [columnFilters.type, effectiveStatusFilter, searchQuery])
+
+  const loadClientManagement = useCallback(async () => {
+    try {
+      const [overview, views] = await Promise.all([
+        clientsAPI.getOverviewDashboard({ limit: 8 }),
+        clientsAPI.listSavedViews(),
+      ])
+      setPortfolioOverview(overview)
+      setSavedViews(views)
+    } catch (error) {
+      console.error('Error loading client overview:', error)
+      setPortfolioOverview(null)
+      setSavedViews({ defaults: [], views: [] })
+    }
+  }, [])
 
   const loadLeads = useCallback(async () => {
     try {
@@ -233,6 +300,16 @@ const Clients = () => {
       setLeads(data.users || [])
     } catch (error) {
       console.error('Error loading leads:', error)
+    }
+  }, [])
+
+  const loadLifecycleRules = useCallback(async () => {
+    try {
+      const data = await clientsAPI.getLifecycleRules()
+      setLifecycleRules(Object.fromEntries((data.rules || []).map((rule) => [rule.status, rule])))
+    } catch (error) {
+      console.error('Error loading client lifecycle rules:', error)
+      setLifecycleRules({})
     }
   }, [])
 
@@ -252,9 +329,15 @@ const Clients = () => {
   useEffect(() => {
     if (!isAuthenticated) return
     loadClients()
+    loadClientManagement()
     loadLeads()
     loadAssignableUsers()
-  }, [isAuthenticated, loadClients, loadLeads])
+    loadLifecycleRules()
+  }, [isAuthenticated, loadClients, loadClientManagement, loadLeads, loadAssignableUsers, loadLifecycleRules])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [effectiveStatusFilter, searchQuery, columnFilters.projects, columnFilters.budget, columnFilters.start_date, columnFilters.delivery_date])
 
   const handleCreateClient = async (e) => {
     e.preventDefault()
@@ -289,10 +372,11 @@ const Clients = () => {
     }
   }
 
-  const handleUpdateClient = async (e) => {
+  const handleUpdateClient = async (e, options = {}) => {
     e.preventDefault()
     if (submitting || !editingClient) return
     if (!validateClientForm()) return
+    const shouldRetryLifecycle = options.retryLifecycle !== false
 
     try {
       setSubmitting(true)
@@ -305,12 +389,17 @@ const Clients = () => {
         formDataObj.set('client_type', formData.client_type)
       }
 
-      await clientsAPI.updateClient(editingClient.id, formDataObj)
+      const updatedClient = await clientsAPI.updateClient(editingClient.id, formDataObj)
       toast.success('Client updated successfully')
       setShowCreateModal(false)
       setEditingClient(null)
       resetForm()
       loadClients()
+      const retry = shouldRetryLifecycle ? pendingLifecycleRetry : null
+      setPendingLifecycleRetry(null)
+      if (retry?.clientId === editingClient.id && retry.newStatus) {
+        await handleStatusChange(retry.clientId, retry.newStatus, { ...(retry.client || {}), ...updatedClient }, retry.reason || '')
+      }
     } catch (error) {
       console.error('Error updating client:', error)
       toast.error('Failed to update client')
@@ -388,20 +477,94 @@ const Clients = () => {
     setShowCreateModal(true)
   }
 
-  const handleStatusChange = async (clientId, newStatus) => {
+  const handleStatusChange = async (clientId, newStatus, client = null, reason = '') => {
+    const rule = lifecycleRules[client?.status || '']
+    const destinationRequirement = rule?.destination_requirements?.[newStatus]
+    if (destinationRequirement?.required_reason && !reason) {
+      setTransitionReason('')
+      setReasonRequest({ clientId, newStatus, client })
+      return
+    }
     if (updatingStatusId) return
     try {
       setUpdatingStatusId(clientId)
-      await clientsAPI.updateClientStatus(clientId, newStatus)
-      toast.success(`Client status updated to ${newStatus}`)
-      setClients((prev) =>
-        prev.map((c) => (c.id === clientId ? { ...c, status: newStatus } : c))
-      )
+      await clientsAPI.updateClientStatus(clientId, newStatus, reason)
+      toast.success(`Client status updated to ${getStatusMeta(newStatus).label}`)
+      if (routeStatus && routeStatus !== newStatus) {
+        setClients((prev) => prev.filter((c) => c.id !== clientId))
+      } else {
+        setClients((prev) =>
+          prev.map((c) => (c.id === clientId ? { ...c, status: newStatus } : c))
+        )
+      }
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to update status')
+      const detail = error.response?.data?.detail
+      if (detail && typeof detail === 'object' && detail.code === 'CLIENT_TRANSITION_BLOCKED') {
+        if (detail.missing_fields?.some((item) => item.field === 'lifecycle_reason')) {
+          setTransitionReason('')
+          setReasonRequest({ clientId, newStatus, client })
+        } else {
+          setTransitionBlocker({ detail, client })
+        }
+      } else {
+        toast.error(typeof detail === 'string' ? detail : 'Failed to update status')
+      }
     } finally {
       setUpdatingStatusId(null)
     }
+  }
+
+  const handleCreateKickoffMeetingAndRetry = async () => {
+    const client = transitionBlocker?.client
+    const targetStatus = transitionBlocker?.detail?.target_status || 'active'
+    if (!client?.id || creatingKickoffMeeting) return
+    if (!kickoffMeetingForm.meeting_date || !kickoffMeetingForm.meeting_time) {
+      toast.error('Meeting date and time are required')
+      return
+    }
+
+    try {
+      setCreatingKickoffMeeting(true)
+      const meetingData = new FormData()
+      meetingData.append('title', `Kickoff - ${client.name || client.company_name || 'Client'}`)
+      meetingData.append('description', `Kickoff meeting for client ${client.id}`)
+      meetingData.append('meeting_date', kickoffMeetingForm.meeting_date)
+      meetingData.append('meeting_time', kickoffMeetingForm.meeting_time)
+      meetingData.append('duration', String(kickoffMeetingForm.duration || 30))
+      await meetingsApi.create(meetingData)
+      toast.success('Kickoff meeting scheduled')
+      setTransitionBlocker(null)
+      setKickoffMeetingForm({
+        meeting_date: getTomorrowDateValue(),
+        meeting_time: '10:00',
+        duration: 30,
+      })
+      loadClients()
+      await handleStatusChange(client.id, targetStatus, client)
+    } catch (error) {
+      const detail = error.response?.data?.detail
+      toast.error(typeof detail === 'string' ? detail : 'Failed to schedule kickoff meeting')
+    } finally {
+      setCreatingKickoffMeeting(false)
+    }
+  }
+
+  const openLifecycleAction = (client) => {
+    const rule = lifecycleRules[client.status || '']
+    if (!rule?.allowed_destinations?.length) return
+    if (rule.transition_type === 'sequential' && rule.allowed_destinations.length === 1) {
+      handleStatusChange(client.id, rule.allowed_destinations[0], client)
+      return
+    }
+    setStageSelectionClient(client)
+  }
+
+  const getLifecycleActionLabel = (client) => {
+    const status = client.status || 'active'
+    if (status === 'new') return 'Start Onboarding'
+    if (status === 'onboarding') return 'Activate Client'
+    if (lifecycleRules[status]?.transition_type === 'conditional') return 'Update Client Stage'
+    return lifecycleRules[status]?.action_label || 'Next Stage'
   }
 
   const handleCreateProject = async (e) => {
@@ -557,7 +720,7 @@ const Clients = () => {
     if (showCreateProjectModal) {
       loadAssignableUsers()
     }
-  }, [showCreateProjectModal])
+  }, [loadAssignableUsers, showCreateProjectModal])
 
   const handleUploadDocument = async () => {
     if (!selectedClient || !documentFile) return
@@ -600,6 +763,7 @@ const Clients = () => {
       saveClientFormDraft(formData)
     }
     setShowCreateModal(false)
+    setPendingLifecycleRetry(null)
   }
 
   const updateClientField = (field, value) => {
@@ -705,7 +869,37 @@ const Clients = () => {
     setColumnFilters((prev) => ({ ...prev, [key]: value }))
   }
 
-  const activeColumnFilterCount = Object.values(columnFilters).filter(Boolean).length + (statusFilter ? 1 : 0)
+  const activeColumnFilterCount = Object.values(columnFilters).filter(Boolean).length + (!routeStatus && statusFilter ? 1 : 0)
+  const applySavedView = (filters = {}) => {
+    if (!routeStatus) setStatusFilter(filters.status || '')
+    setColumnFilters((prev) => ({ ...prev, type: filters.client_type || '', projects: prev.projects, budget: prev.budget, start_date: '', delivery_date: '' }))
+    if (filters.mine && user?.id) setSearchQuery('')
+    if (filters.health_level || filters.attention_type || filters.renewal_window) {
+      toast.success('Saved view applied to dashboard signals')
+    }
+  }
+
+  const saveCurrentView = async () => {
+    const name = window.prompt('Saved view name')
+    if (!name) return
+    try {
+      await clientsAPI.createSavedView({ name, filters: { status: effectiveStatusFilter, client_type: columnFilters.type, search: searchQuery } })
+      toast.success('Client view saved')
+      await loadClientManagement()
+    } catch (error) {
+      toast.error('Failed to save view')
+    }
+  }
+
+  const runClientAutomation = async () => {
+    try {
+      const result = await clientsAPI.runAutomation({ limit: 50 })
+      toast.success(`${result.created_count || 0} client automation action(s) created`)
+      await loadClientManagement()
+    } catch (error) {
+      toast.error('Failed to run client automation')
+    }
+  }
 
   const clearColumnFilters = () => {
     setColumnFilters({
@@ -715,7 +909,7 @@ const Clients = () => {
       start_date: '',
       delivery_date: '',
     })
-    setStatusFilter('')
+    if (!routeStatus) setStatusFilter('')
   }
 
   const filteredClients = clients.filter(client => {
@@ -726,7 +920,7 @@ const Clients = () => {
       q(client.company_name).includes(searchQuery.toLowerCase()) ||
       q(client.contact).includes(searchQuery.toLowerCase())
 
-    const matchesStatus = !statusFilter || (client.status || 'active') === statusFilter
+    const matchesStatus = !effectiveStatusFilter || (client.status || 'active') === effectiveStatusFilter
 
     const cf = columnFilters
     const matchesType = !cf.type || (client.client_type || '') === cf.type
@@ -760,6 +954,14 @@ const Clients = () => {
       matchesProjects && matchesBudget && matchesStartDate && matchesDeliveryDate
   })
 
+  const totalPages = Math.max(1, Math.ceil(filteredClients.length / CLIENT_PAGE_SIZE))
+  const safePage = Math.min(currentPage, totalPages)
+  const paginatedClients = filteredClients.slice((safePage - 1) * CLIENT_PAGE_SIZE, safePage * CLIENT_PAGE_SIZE)
+
+  const kpis = portfolioOverview?.kpis || {}
+  const insights = portfolioOverview?.insights || {}
+  const attentionItems = portfolioOverview?.needs_attention || []
+  const dailyActions = portfolioOverview?.daily_actions || []
   const activeCount = useMemo(() => clients.filter(c => (c.status || 'active') === 'active').length, [clients])
   const totalPortfolioBudget = useMemo(() => clients.reduce((sum, c) => sum + getTotalBudget(c), 0), [clients])
   const totalProjectsCount = useMemo(() => clients.reduce((sum, c) => sum + (c.projects?.length || c.project_ids?.length || 0), 0), [clients])
@@ -784,8 +986,8 @@ const Clients = () => {
               <Briefcase className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold leading-tight text-white tracking-tight md:text-xl">Clients Directory</h1>
-              <p className="text-xs text-indigo-100">Manage enterprise client accounts, linked projects, contract budgets & files</p>
+              <h1 className="text-lg font-bold leading-tight text-white tracking-tight md:text-xl">{pageTitle}</h1>
+              <p className="text-xs text-indigo-100">{pageDescription}</p>
             </div>
           </div>
           {(isCompanyAdmin || isLead) && (
@@ -799,14 +1001,6 @@ const Clients = () => {
             </button>
           )}
         </div>
-      </div>
-
-      {/* Metrics Stats Row */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total Clients" value={clients.length} icon={Users} color="indigo" subtitle="Registered Accounts" />
-        <StatCard label="Active Accounts" value={activeCount} icon={CheckCircle2} color="emerald" subtitle="In Operations" />
-        <StatCard label="Portfolio Budget" value={`₹${totalPortfolioBudget > 0 ? totalPortfolioBudget.toLocaleString() : '0'}`} icon={DollarSign} color="amber" subtitle="Total Contract Value" />
-        <StatCard label="Linked Projects" value={totalProjectsCount} icon={FolderKanban} color="purple" subtitle="Active Deliverables" />
       </div>
 
       {/* Search & Filter Controls Surface */}
@@ -888,15 +1082,21 @@ const Clients = () => {
               <FormField label="Delivery date">
                 <input type="date" value={columnFilters.delivery_date} onChange={(e) => updateColumnFilter('delivery_date', e.target.value)} className={inputClassName} />
               </FormField>
-              <FormField label="Status">
-                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClassName}>
-                  <option value="">All statuses</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="on_hold">On Hold</option>
-                  <option value="archived">Archived</option>
-                </select>
-              </FormField>
+              {!routeStatus && (
+                <FormField label="Status">
+                  <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClassName}>
+                    <option value="">All statuses</option>
+                    <option value="new">New</option>
+                    <option value="onboarding">Onboarding</option>
+                    <option value="active">Active</option>
+                    <option value="at_risk">At Risk</option>
+                    <option value="on_hold">On Hold</option>
+                    <option value="renewal_due">Renewal Due</option>
+                    <option value="churned">Churned</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </FormField>
+              )}
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -923,6 +1123,25 @@ const Clients = () => {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Metrics Stats Row */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Total Clients" value={clients.length} icon={Users} color="indigo" subtitle="Registered Accounts" />
+        <StatCard label="Active Accounts" value={activeCount} icon={CheckCircle2} color="emerald" subtitle="In Operations" />
+        <StatCard label="Portfolio Budget" value={`₹${totalPortfolioBudget > 0 ? totalPortfolioBudget.toLocaleString() : '0'}`} icon={DollarSign} color="amber" subtitle="Total Contract Value" />
+        <StatCard label="Linked Projects" value={totalProjectsCount} icon={FolderKanban} color="purple" subtitle="Active Deliverables" />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+        <StatCard label="Tenant Clients" value={kpis.total_clients ?? clients.length} icon={Users} color="indigo" subtitle="Server KPI" />
+        <StatCard label="Active" value={kpis.active_clients ?? 0} icon={CheckCircle2} color="emerald" subtitle="Operational" />
+        <StatCard label="At Risk" value={kpis.at_risk ?? 0} icon={AlertTriangle} color="rose" subtitle="Lifecycle" />
+        <StatCard label="Renewal Due" value={kpis.renewal_due ?? 0} icon={Calendar} color="purple" subtitle="Commercial" />
+        <StatCard label="Outstanding" value={`₹${Number(kpis.outstanding_revenue || 0).toLocaleString()}`} icon={DollarSign} color="amber" subtitle="Invoices" />
+        <StatCard label="MRR" value={`₹${Number(kpis.mrr || 0).toLocaleString()}`} icon={DollarSign} color="emerald" subtitle="Recurring" />
+        <StatCard label="Active Projects" value={kpis.active_projects ?? 0} icon={FolderKanban} color="purple" subtitle="Delivery" />
+        <StatCard label="Health" value={kpis.overall_health ?? 100} icon={CheckCircle2} color="indigo" subtitle="Average" />
       </div>
 
       {/* Clients Table / Cards Container */}
@@ -973,22 +1192,28 @@ const Clients = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {filteredClients.map((client) => (
-                  <tr
+                {paginatedClients.map((client) => {
+                  const lifecycleRule = lifecycleRules[client.status || 'active']
+                  const displayName = client.company_name?.trim() || client.name || 'Client'
+                  return (
+                    <tr
                     key={client.id}
                     className="group cursor-pointer transition hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20"
-                    onClick={() => handleViewClient(client)}
+                    onClick={() => openClientWorkspace(client.id)}
                   >
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-3">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-xs font-bold text-white shadow-sm">
-                          {client.name?.[0]?.toUpperCase() || 'C'}
+                          {displayName[0]?.toUpperCase() || 'C'}
                         </div>
                         <div>
-                          <div className="text-xs font-bold text-gray-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400 transition">{client.name}</div>
-                          {client.company_name && (
-                            <div className="text-[11px] text-gray-500 dark:text-gray-400">{client.company_name}</div>
-                          )}
+                          <div className="text-xs font-bold text-gray-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400 transition">{displayName}</div>
+                          {client.status === 'onboarding' && client.onboarding ? (
+                            <div className="mt-1 max-w-[190px] text-[11px] text-indigo-600 dark:text-indigo-300">
+                              <span className="font-semibold">{client.onboarding.progress_percent || 0}% ready</span>
+                              {client.onboarding.next_action ? ` · ${client.onboarding.next_action}` : ''}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </td>
@@ -1020,61 +1245,27 @@ const Clients = () => {
                       {getDeliveryDateText(client)}
                     </td>
                     <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
-                      {(isCompanyAdmin || isLead) ? (
-                        <div className="relative inline-block" data-status-menu-root>
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusMeta(client.status || 'active').chipClass}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${getStatusMeta(client.status || 'active').dotClass}`}></span>
+                        {getStatusMeta(client.status || 'active').label}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {(isCompanyAdmin || isLead) && lifecycleRule?.allowed_destinations?.length ? (
                           <button
                             type="button"
                             disabled={updatingStatusId === client.id}
                             onClick={(e) => {
                               e.stopPropagation()
-                              setOpenStatusMenuId((current) => (current === client.id ? null : client.id))
+                              openLifecycleAction(client)
                             }}
-                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-60 ${getStatusMeta(client.status || 'active').chipClass}`}
-                            aria-haspopup="menu"
-                            aria-expanded={openStatusMenuId === client.id}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-orange-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm ring-1 ring-orange-300/50 transition hover:bg-orange-600 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-orange-300 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            <span className={`h-1.5 w-1.5 rounded-full ${getStatusMeta(client.status || 'active').dotClass}`}></span>
-                            <span>{getStatusMeta(client.status || 'active').label}</span>
-                            <span className="text-[10px]">v</span>
+                            <span aria-hidden="true" className="text-sm leading-none">→</span>
+                            <span>{getLifecycleActionLabel(client)}</span>
                           </button>
-
-                          {openStatusMenuId === client.id ? (
-                            <div className="absolute right-0 z-20 mt-1 w-32 rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
-                              {statusOptions.map((status) => {
-                                const meta = getStatusMeta(status)
-                                const selected = (client.status || 'active') === status
-                                return (
-                                  <button
-                                    key={status}
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      setOpenStatusMenuId(null)
-                                      if (!selected) {
-                                        handleStatusChange(client.id, status)
-                                      }
-                                    }}
-                                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-semibold transition ${meta.optionClass} ${selected ? 'bg-indigo-50 dark:bg-indigo-950/40' : 'hover:bg-gray-50 dark:hover:bg-gray-800/80'}`}
-                                    role="menuitem"
-                                  >
-                                    <span className={`h-1.5 w-1.5 rounded-full ${meta.dotClass}`}></span>
-                                    <span>{meta.label}</span>
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <span
-                          className={`text-xs px-2.5 py-1 rounded-full font-semibold ${getStatusMeta(client.status || 'active').chipClass}`}
-                        >
-                          {getStatusMeta(client.status || 'active').label}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                        ) : null}
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -1085,28 +1276,6 @@ const Clients = () => {
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openClientWorkspace(client.id)
-                          }}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-indigo-600 dark:hover:bg-gray-800 dark:hover:text-indigo-400 transition"
-                          title="Open Workspace"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </button>
-                        {(isCompanyAdmin || isLead) && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleEditClient(client)
-                            }}
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-indigo-600 dark:hover:bg-gray-800 dark:hover:text-indigo-400 transition"
-                            title="Edit Client"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                        )}
                         {isCompanyAdmin && (
                           <button
                             onClick={(e) => {
@@ -1121,13 +1290,283 @@ const Clients = () => {
                         )}
                       </div>
                     </td>
-                  </tr>
-                ))}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
+          <div className="flex flex-col gap-2 border-t border-gray-200/80 px-4 py-3 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Showing {(safePage - 1) * CLIENT_PAGE_SIZE + 1}-{Math.min(safePage * CLIENT_PAGE_SIZE, filteredClients.length)} of {filteredClients.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={safePage <= 1}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                Previous
+              </button>
+              <span className="font-semibold text-gray-700 dark:text-gray-200">Page {safePage} of {totalPages}</span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={safePage >= totalPages}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       )}
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Needs Attention</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Source-linked risks from client health, finance, delivery, approvals, and renewal.</p>
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant="secondary" onClick={saveCurrentView}>Save View</Button>
+              {(isCompanyAdmin || isLead) && <Button type="button" size="sm" onClick={runClientAutomation}>Run Automation</Button>}
+            </div>
+          </div>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {attentionItems.length ? attentionItems.map((item) => (
+              <button key={`${item.client?.id}-${item.type}-${item.message}`} type="button" onClick={() => navigate(item.url || `/clients/${item.client?.id}/workspace`)} className="rounded-lg border border-gray-200 p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 dark:border-gray-800 dark:hover:bg-gray-800">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{item.client?.name || 'Client'} - {item.message}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.type?.replace(/_/g, ' ')} | severity {item.severity}</p>
+              </button>
+            )) : <p className="rounded-lg border border-dashed border-gray-200 p-4 text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">No current client attention items.</p>}
+          </div>
+        </section>
+        <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">Your Client Actions Today</h2>
+          <div className="mt-3 space-y-2">
+            {dailyActions.length ? dailyActions.map((action) => (
+              <button key={`${action.client?.id}-${action.action}`} type="button" onClick={() => navigate(action.url || `/clients/${action.client?.id}/workspace`)} className="block w-full rounded-lg border border-gray-200 p-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{action.client?.name} - {action.action}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{action.priority || 'medium'} | due {action.due_date ? timeService.formatDateOnly(action.due_date) : 'soon'}</p>
+              </button>
+            )) : <p className="text-sm text-gray-500 dark:text-gray-400">No open client actions.</p>}
+          </div>
+        </section>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">Saved Views</h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {[...(savedViews.defaults || []), ...(savedViews.views || [])].map((view) => (
+              <button key={`${view.id || 'default'}-${view.name}`} type="button" onClick={() => applySavedView(view.filters)} className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-indigo-300 hover:text-indigo-700 dark:border-gray-800 dark:text-gray-300">
+                {view.name}
+              </button>
+            ))}
+          </div>
+        </section>
+        <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">Client Insights</h2>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="New" value={insights.new_clients ?? 0} icon={Plus} color="indigo" subtitle="Client stage" />
+            <StatCard label="Churned" value={insights.churned ?? 0} icon={X} color="rose" subtitle={`${insights.churn_rate ?? 0}% churn rate`} />
+            <StatCard label="Risk/Critical" value={insights.at_risk_or_critical ?? 0} icon={AlertTriangle} color="amber" subtitle="Health" />
+            <StatCard label="Delayed Work" value={insights.delayed_delivery ?? 0} icon={Clock} color="purple" subtitle="Tasks/deliverables" />
+          </div>
+        </section>
+      </div>
+
+      <Modal
+        isOpen={Boolean(stageSelectionClient)}
+        onClose={() => setStageSelectionClient(null)}
+        title="Update Client Stage"
+        description={stageSelectionClient ? `Choose the next business state for ${stageSelectionClient.name}.` : ''}
+        size="md"
+      >
+        <div className="space-y-2">
+          {(lifecycleRules[stageSelectionClient?.status || '']?.allowed_destinations || []).map((stage) => {
+            const meta = getStatusMeta(stage)
+            return (
+              <button
+                key={stage}
+                type="button"
+                onClick={() => {
+                  const client = stageSelectionClient
+                  setStageSelectionClient(null)
+                  handleStatusChange(client.id, stage, client)
+                }}
+                className="flex w-full items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm font-semibold transition hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+              >
+                <span className={`h-2 w-2 rounded-full ${meta.dotClass}`}></span>
+                <span>{meta.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(transitionBlocker)}
+        onClose={() => setTransitionBlocker(null)}
+        title="Cannot Update Client Stage"
+        description="Complete the missing information, then retry the stage movement."
+        size="md"
+        footer={(
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setTransitionBlocker(null)}>
+              Cancel
+            </Button>
+            {(transitionBlocker?.detail?.missing_fields || []).some((item) => item.field !== 'kickoff_meeting') ? (
+              <Button
+                type="button"
+                onClick={() => {
+                  const client = transitionBlocker?.client
+                  const targetStatus = transitionBlocker?.detail?.target_status
+                  setTransitionBlocker(null)
+                  if (client) {
+                    setPendingLifecycleRetry({
+                      clientId: client.id,
+                      newStatus: targetStatus,
+                      client,
+                    })
+                    handleEditClient(client)
+                  }
+                }}
+              >
+                Update Details and Retry
+              </Button>
+            ) : null}
+            {transitionBlocker?.detail?.missing_fields?.some((item) => item.field === 'kickoff_meeting') ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  const client = transitionBlocker?.client
+                  const item = transitionBlocker?.detail?.missing_fields?.find((field) => field.field === 'kickoff_meeting')
+                  setTransitionBlocker(null)
+                  if (client?.id) navigate(`/clients/${client.id}/workspace?tab=onboarding&onboardingTab=${item?.tab || 'kickoff'}`)
+                }}
+              >
+                Open Workspace
+              </Button>
+            ) : null}
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                {transitionBlocker?.detail?.message || 'This client cannot move stages yet.'}
+              </p>
+              <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-amber-700 dark:text-amber-300">
+                {(transitionBlocker?.detail?.missing_fields || []).map((item) => (
+                  <li key={item.field}>{item.label || String(item.field).replace(/_/g, ' ')}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
+            Client stays in current stage until backend lifecycle validation accepts the transition.
+          </p>
+          {transitionBlocker?.detail?.missing_fields?.some((item) => item.field === 'kickoff_meeting') ? (
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+                  <Calendar className="h-4 w-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Schedule kickoff meeting</h4>
+                  <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                    Create the required kickoff meeting here, then activation will retry automatically.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_0.8fr_0.7fr]">
+                <FormField label="Date" required>
+                  <input
+                    type="date"
+                    value={kickoffMeetingForm.meeting_date}
+                    onChange={(event) => setKickoffMeetingForm((current) => ({ ...current, meeting_date: event.target.value }))}
+                    className={inputClassName}
+                  />
+                </FormField>
+                <FormField label="Time" required>
+                  <input
+                    type="time"
+                    value={kickoffMeetingForm.meeting_time}
+                    onChange={(event) => setKickoffMeetingForm((current) => ({ ...current, meeting_time: event.target.value }))}
+                    className={inputClassName}
+                  />
+                </FormField>
+                <FormField label="Minutes" required>
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={kickoffMeetingForm.duration}
+                    onChange={(event) => setKickoffMeetingForm((current) => ({ ...current, duration: event.target.value }))}
+                    className={inputClassName}
+                  />
+                </FormField>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <Button
+                  type="button"
+                  onClick={handleCreateKickoffMeetingAndRetry}
+                  disabled={creatingKickoffMeeting}
+                >
+                  {creatingKickoffMeeting ? 'Scheduling...' : 'Schedule and Activate'}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(reasonRequest)}
+        onClose={() => setReasonRequest(null)}
+        title="Update Client Stage"
+        description={reasonRequest?.newStatus ? `Why is this client moving to ${getStatusMeta(reasonRequest.newStatus).label}?` : ''}
+        size="md"
+        footer={(
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setReasonRequest(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!transitionReason.trim() || updatingStatusId === reasonRequest?.clientId}
+              onClick={async () => {
+                const request = reasonRequest
+                setReasonRequest(null)
+                await handleStatusChange(request.clientId, request.newStatus, request.client, transitionReason)
+              }}
+            >
+              Update Stage
+            </Button>
+          </div>
+        )}
+      >
+        <div className="space-y-2">
+          <label htmlFor="client-lifecycle-reason" className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+            Reason
+          </label>
+          <textarea
+            id="client-lifecycle-reason"
+            value={transitionReason}
+            onChange={(event) => setTransitionReason(event.target.value)}
+            rows={4}
+            placeholder="Record the business reason for this stage change"
+            className={`${inputClassName} min-h-24 resize-y`}
+          />
+        </div>
+      </Modal>
 
       {/* Create/Edit Modal */}
       {showCreateModal && (
@@ -1137,6 +1576,7 @@ const Clients = () => {
           title={editingClient ? 'Edit client' : 'Create client'}
           description={clientFormStep === 1 ? 'Step 1 of 2: identify the client and how to contact them.' : 'Step 2 of 2: add ownership, billing, address, and handoff details.'}
           size="lg"
+          closeOnBackdrop={false}
           bodyClassName="bg-gray-50/60 dark:bg-gray-950/30"
           footer={(
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1170,9 +1610,22 @@ const Clients = () => {
                     Next
                   </Button>
                 ) : (
-                  <Button type="submit" form="client-create-form" loading={submitting} loadingText="Saving">
-                    {editingClient ? 'Update client' : 'Create client'}
-                  </Button>
+                  <>
+                    {editingClient ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        loading={submitting}
+                        loadingText="Saving"
+                        onClick={(event) => handleUpdateClient(event, { retryLifecycle: false })}
+                      >
+                        Save Details
+                      </Button>
+                    ) : null}
+                    <Button type="submit" form="client-create-form" loading={submitting} loadingText="Saving">
+                      {editingClient ? 'Update client' : 'Create client'}
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -1553,9 +2006,8 @@ const Clients = () => {
                     <div className="flex items-center gap-2">
                       <h2 className="text-2xl font-bold tracking-tight text-white">{selectedClient.name}</h2>
                       <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider ${selectedClient.status === 'active' ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30' :
-                        selectedClient.status === 'on_hold' ? 'bg-amber-500/20 text-amber-200 border border-amber-400/30' :
-                          selectedClient.status === 'archived' ? 'bg-rose-500/20 text-rose-200 border border-rose-400/30' :
-                            'bg-white/20 text-gray-200 border border-white/30'
+                        selectedClient.status === 'archived' ? 'bg-rose-500/20 text-rose-200 border border-rose-400/30' :
+                          'bg-white/20 text-gray-200 border border-white/30'
                         }`}>
                         {selectedClient.status || 'Active'}
                       </span>

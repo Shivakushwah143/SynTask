@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef } from 'react'
 import { X } from 'lucide-react'
 
-export function Modal({ isOpen, onClose, title, children, size = 'md', description, footer, bodyClassName = '', zIndexClass = 'z-50' }) {
+export function Modal({ isOpen, onClose, title, children, size = 'md', description, footer, bodyClassName = '', zIndexClass = 'z-50', closeOnBackdrop = true }) {
   const sizes = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl', full: 'max-w-6xl' }
   const modalRef = useRef(null)
   const previouslyFocusedRef = useRef(null)
@@ -62,10 +62,10 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', descripti
       aria-modal="true"
       aria-labelledby={titleId}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onCloseRef.current?.()
+        if (closeOnBackdrop && e.target === e.currentTarget) onCloseRef.current?.()
       }}
     >
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-md" onClick={() => onCloseRef.current?.()} aria-hidden="true" />
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md" onClick={() => closeOnBackdrop && onCloseRef.current?.()} aria-hidden="true" />
       <div ref={modalRef} className={`relative flex max-h-[calc(100dvh-1.5rem)] min-w-0 w-full flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-2xl transition-all dark:border-gray-800 dark:bg-gray-900 sm:max-h-[90vh] ${sizes[size]}`}>
         <div className="flex min-w-0 items-start justify-between gap-3 border-b border-gray-100 bg-gradient-to-r from-indigo-50/70 via-white to-white px-5 py-5 dark:border-gray-800 dark:from-indigo-950/30 dark:via-gray-900 dark:to-gray-900 sm:px-6">
           <div className="min-w-0">

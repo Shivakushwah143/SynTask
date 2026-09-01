@@ -51,6 +51,7 @@ const Tickets = lazy(() => import('./pages/Tickets'))
 const Chat = lazy(() => import('./pages/Chat'))
 const Clients = lazy(() => import('./pages/Clients'))
 const ClientWorkspacePage = lazy(() => import('./pages/ClientWorkspace'))
+const PublicAssetUpload = lazy(() => import('./pages/PublicAssetUpload'))
 const Invoices = lazy(() => import('./pages/Invoices'))
 // MSA hidden by request. Keep implementation available for later restore.
 // const MSA = lazy(() => import('./pages/MSA'))
@@ -294,6 +295,7 @@ function App() {
         <Route path="/careers/track" element={withBoundary(<CareerTrackingPage />)} />
         <Route path="/public/offers/:token" element={withBoundary(<CandidateOfferPage />)} />
         <Route path="/public/crm-documents/:token" element={withBoundary(<PublicCrmDocument />)} />
+        <Route path="/clients/asset-upload/:token" element={withBoundary(<PublicAssetUpload />)} />
 
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route path="dashboard" element={<DashboardRoute />} />
@@ -303,6 +305,7 @@ function App() {
           <Route path="tickets" element={withBoundary(<Tickets />)} />
           <Route path="chat" element={withBoundary(<Chat />)} />
           <Route path="clients" element={<ModuleGuard module="clients">{withBoundary(<Clients />)}</ModuleGuard>} />
+          <Route path="clients/:stageKey" element={<ModuleGuard module="clients">{withBoundary(<Clients />)}</ModuleGuard>} />
           <Route path="clients/:clientId/workspace" element={<ModuleGuard module="clients">{withBoundary(<ClientWorkspacePage />)}</ModuleGuard>} />
           <Route path="invoices" element={<ModuleGuard module="invoices">{withBoundary(<Invoices />)}</ModuleGuard>} />
           {/* MSA hidden by request. Keep route commented for later restore.

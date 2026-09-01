@@ -21,6 +21,7 @@ import { HR_MODULES } from "../../config/hrModules";
 
 const SECTION_LANDING_RE = /^\/sections\/([^/]+)/;
 const SCROLL_STEP_PX = 240;
+const TAB_EXCLUDED_PATHS = new Set(["/hr/recruitment/interview-screen"]);
 
 // Sections whose Overview tab points at a dedicated dashboard page (e.g. the Sales
 // workspace Overview) instead of the generic /sections/:key landing. Sections with
@@ -73,6 +74,8 @@ const isExactNavMatch = (item, location) => {
 // (chat, meetings, auth, ...). Section landing pages resolve via their URL param.
 // `itemName` is the resolved active item so the tab bar can highlight exactly one tab.
 const resolveSectionContext = (location) => {
+  if (TAB_EXCLUDED_PATHS.has(location.pathname)) return null;
+
   const landing = location.pathname.match(SECTION_LANDING_RE);
   if (landing) return { sectionKey: landing[1], isLanding: true };
 
@@ -87,11 +90,12 @@ const resolveSectionContext = (location) => {
     return { sectionKey: ctx.sectionKey, isLanding: isLegacyLanding, itemName: ctx.itemName };
   }
 
-  // HR screens belong to the People section (Employees, Documents, Recruitment,
-  // Document Types). Exact matches win over prefix matches so nested routes keep
-  // their parent tab (e.g. /hr/employees/:id stays on the Employees tab) without
-  // lighting up a module landing tab. The /hr landing page and the interview
-  // screen deliberately show no tab bar.
+  // HR screens: determine section based on module key.
+  // Recruitment module items → "recruitment" section.
+  // All other HR items (employees, documents, payroll, settings, etc.) → "people" section.
+  // Exact matches win over prefix matches so nested routes keep their parent tab
+  // (e.g. /hr/employees/:id stays on the Employees tab). The /hr landing page and
+  // the interview screen deliberately show no tab bar.
   const hrItems = HR_MODULES.flatMap((mod) =>
     mod.navigation
       .filter((item) => !HR_ITEM_SKIP.has(item.name))
@@ -99,6 +103,7 @@ const resolveSectionContext = (location) => {
         name: HR_ITEM_RENAMES[item.name] || item.name,
         href: item.href,
         match: item.href === mod.basePath ? mod.basePath : undefined,
+        moduleKey: mod.key,
       })),
   );
   const hrPath = (item) => (item.href || "").split("?")[0];
@@ -106,9 +111,16 @@ const resolveSectionContext = (location) => {
     return null;
   }
   const hrExact = hrItems.find((item) => isExactNavMatch(item, location));
-  if (hrExact) return { sectionKey: "people", isLanding: false, itemName: hrExact.name };
+  if (hrExact) {
+    const sectionKey = hrExact.moduleKey === "recruitment" ? "recruitment" : "people";
+    return { sectionKey, isLanding: false, itemName: hrExact.name };
+  }
+  // Prefix match for nested routes (e.g. /hr/employees/:id → Employees tab).
   const hrPrefix = hrItems.find((item) => location.pathname.startsWith(`${hrPath(item)}/`));
-  if (hrPrefix) return { sectionKey: "people", isLanding: false, itemName: hrPrefix.name };
+  if (hrPrefix) {
+    const sectionKey = hrPrefix.moduleKey === "recruitment" ? "recruitment" : "people";
+    return { sectionKey, isLanding: false, itemName: hrPrefix.name };
+  }
 
   return null;
 };

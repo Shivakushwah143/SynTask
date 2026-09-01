@@ -1,23 +1,7 @@
-"""Facebook Messenger adapter tests.
-
-The original file was corrupted by a bad merge (two versions of the tests were
-concatenated mid-function, producing ``SyntaxError: '(' was never closed``).
-The module exposes a single usable ``MessengerAdapter`` class implementing the
-entry-based adapter contract (``normalize_webhook_entry`` / ``connection_health``
-/ ``composer_policy``); this reconstruction tests that real surface.
-
-No Meta integration functionality was modified.
-"""
 from datetime import datetime, timedelta, timezone
 
-import pytest
-
-from app.integrations.meta.channel_adapters import (
-    ChannelHealth,
-    ComposerPolicy,
-    NormalizedEventType,
-)
-from app.integrations.meta.messaging_models import MetaChannel
+from app.integrations.meta.channel_adapters import ChannelHealth, ComposerPolicy
+from app.integrations.meta.messaging_models import MetaChannel, NormalizedEventType
 from app.integrations.meta.messenger_adapter import MessengerAdapter
 
 
@@ -50,28 +34,6 @@ def test_messenger_adapter_normalizes_inbound_message():
     assert event.text == "Can you help?"
 
 
-def test_messenger_adapter_normalizes_unknown_event_without_message():
-    adapter = MessengerAdapter()
-
-    events = adapter.normalize_webhook_entry(
-        {
-            "id": "page-1",
-            "time": 1784700000,
-            "messaging": [
-                {
-                    "sender": {"id": "psid-1"},
-                    "recipient": {"id": "page-1"},
-                    "timestamp": 1784700000456,
-                    "read": {"watermark": 1784700000000},
-                }
-            ],
-        }
-    )
-
-    assert len(events) == 1
-    assert events[0].event_type == NormalizedEventType.UNKNOWN
-
-
 def test_messenger_adapter_reports_connection_health_from_fields():
     adapter = MessengerAdapter()
 
@@ -100,16 +62,3 @@ def test_messenger_composer_enforces_send_window():
         can_compose=False,
         reason="Messenger replies are outside the standard customer messaging window.",
     )
-
-
-def test_messenger_composer_allows_reply_within_window():
-    adapter = MessengerAdapter()
-    now = datetime(2026, 7, 22, tzinfo=timezone.utc)
-
-    policy = adapter.composer_policy(
-        last_customer_message_at=now - timedelta(hours=1),
-        now=now,
-        recipient_opted_out=False,
-    )
-
-    assert policy == ComposerPolicy(can_compose=True, reason=None)

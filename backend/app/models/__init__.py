@@ -30,6 +30,9 @@ from app.models.changelog import ChangeLog
 from app.models.chat import Conversation, ChatMessage, MessageType
 from app.models.page import Page, PageStatus
 from app.models.client import Client, ClientStatus
+from app.models.client_service import ClientService, ClientServiceStatus
+from app.models.client_deliverable import ClientApprovalStatus, ClientDeliverable, ClientDeliverableStatus
+from app.models.client_onboarding import ClientOnboarding, ClientOnboardingItem, ClientOnboardingItemStatus, ClientOnboardingStatus
 from app.models.department import Department, DepartmentType
 from app.models.capability import RoleCapability
 from app.models.ownership_transfer import OwnershipTransfer
@@ -133,7 +136,7 @@ __all__ = [
     # Page models
     "Page", "PageStatus",
     # Client models
-    "Client", "ClientStatus",
+    "Client", "ClientStatus", "ClientService", "ClientServiceStatus", "ClientDeliverable", "ClientDeliverableStatus", "ClientApprovalStatus", "ClientOnboarding", "ClientOnboardingItem", "ClientOnboardingItemStatus", "ClientOnboardingStatus",
     # Department models
     "Department", "DepartmentType", "RoleCapability", "OwnershipTransfer",
     # AI models
