@@ -161,7 +161,7 @@ export const SECTIONS = [
   { key: "inbox", label: "Inbox", items: ["WhatsApp", "Instagram", "Messenger", "Meta Messages", "Notifications", "Activity Feed", "AI Replies", "Approval Queue"] },
   { key: "ai", label: "AI Workspace", items: ["AI Assistant", "AI Content Assistant"] },
   { key: "people", label: "People", items: ["User Accounts", "Employees", "My People", "Attendance", "Live Attendance", "Attendance Reports", "Leave Management", "Departments", "Company Directory"] },
-  { key: "recruitment", label: "Recruitment", items: ["Hiring Dashboard", "Job Openings", "Applications", "Candidates", "Employee Profiles", "Talent Pool", "Interviews", "Offers", "Hiring Reports", "Settings"], overviewHref: "/hr/recruitment", hideOverviewTab: true },
+  { key: "recruitment", label: "Recruitment", items: ["Hiring Dashboard", "Job Openings", "Applications", "Candidates", "Employees", "Talent Pool", "Interviews", "Offers", "Hiring Reports"], overviewHref: "/hr/recruitment", hideOverviewTab: true },
   { key: "finance", label: "Finance", items: ["Invoices", "Transactions", "Subscriptions"] },
   { key: "insights", label: "Insights", items: ["Workspace Reports", "Sales Reports"] },
   { key: "settings", label: "Settings", items: ["System Settings", "Roles & Permissions", "Automation Rules", "Connected Accounts", "Google Workspace", "Activity Logs", "Client Settings"] },
