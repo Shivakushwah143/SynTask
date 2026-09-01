@@ -1154,7 +1154,7 @@ async def test_won_deal_conversion_reuses_existing_client_and_links_project(monk
         return client
 
     async def project_find_one(query):
-        return project if query.get("lead_id") == str(lead.id) else None
+        return project if {"lead_id": str(lead.id)} in query.get("$or", []) else None
 
     async def activity_find_one(_query):
         return None
@@ -1193,6 +1193,9 @@ async def test_won_deal_conversion_reuses_existing_client_and_links_project(monk
     assert result["client"] is client
     assert result["project"] is project
     assert client.status == ClientStatus.NEW
+    assert lead.client_id == str(client.id)
+    assert lead.project_id == str(project.id)
+    assert lead.converted_at is not None
     assert client.project_ids == [str(project.id)]
     assert project.client_id == str(client.id)
     assert project.lead_id == str(lead.id)
@@ -1200,6 +1203,74 @@ async def test_won_deal_conversion_reuses_existing_client_and_links_project(monk
     assert client.client_type == ClientType.ONE_TIME
     assert client.budget == lead.won_amount
     assert saved["project"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_won_deal_conversion_reuses_project_with_generated_onboarding_id(monkeypatch):
+    lead = _lead(
+        id="6a9662b1a664e2d6e2b8454a",
+        client_id=None,
+        project_id=None,
+    )
+    client = _client(id="0000000000000000000000c2", project_ids=[], status=ClientStatus.NEW)
+    project = _project(
+        id="0000000000000000000000b2",
+        project_id="ONB-6A9662B1",
+        key="CUS-454A",
+        lead_id=None,
+        client_id=None,
+    )
+    inserted_projects = []
+
+    async def no_account_managers(_company_id):
+        return []
+
+    async def client_find_one(_query):
+        return client
+
+    async def project_find_one(query):
+        assert query["company_id"] == lead.company_id
+        assert {"project_id": "ONB-6A9662B1"} in query["$or"]
+        return project
+
+    async def project_insert(self):
+        inserted_projects.append(self)
+        return None
+
+    async def activity_find_one(_query):
+        return SimpleNamespace(id="activity-1")
+
+    async def meeting_find_one(_query):
+        return _meeting()
+
+    async def noop_publish(**_kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.deal_automation._eligible_account_manager_ids", no_account_managers)
+    async def resolve_lead_company(_lead, _actor_id=None):
+        return ClientCompanyResolution(
+            SimpleNamespace(id="0000000000000000000000aa", company_id=lead.company_id, name="Acme Inc"),
+            "resolved",
+            "test",
+        )
+
+    monkeypatch.setattr("app.crm.deal_automation.ensure_crm_company_for_won_lead", resolve_lead_company)
+    monkeypatch.setattr("app.crm.deal_automation.Client.find_one", client_find_one)
+    monkeypatch.setattr("app.crm.deal_automation.Project.find_one", project_find_one)
+    monkeypatch.setattr("app.crm.deal_automation.Project.insert", project_insert)
+    monkeypatch.setattr("app.crm.deal_automation.CRMActivity.find_one", activity_find_one)
+    monkeypatch.setattr("app.crm.deal_automation.Meeting.find_one", meeting_find_one)
+    monkeypatch.setattr("app.crm.deal_automation.publish_crm_timeline_event", noop_publish)
+
+    result = await handle_won_deal_automation(_user(company_id=lead.company_id), lead, deal=None)
+
+    assert result["project"] is project
+    assert inserted_projects == []
+    assert project.lead_id == str(lead.id)
+    assert project.client_id == str(client.id)
+    assert lead.client_id == str(client.id)
+    assert lead.project_id == str(project.id)
+    assert client.status == ClientStatus.NEW
 
 
 @pytest.mark.parametrize(

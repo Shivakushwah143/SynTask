@@ -1226,6 +1226,10 @@ class LeadEngine:
             prospect.client_id = automation_result["client_id"]
             if automation_result.get("project_id"):
                 prospect.project_id = automation_result["project_id"]
+        if should_convert_to_client and getattr(prospect, "client_id", None):
+            prospect.won_status = "transferred"
+            prospect.transferred_at = getattr(prospect, "transferred_at", None) or now
+            prospect.transferred_by = str(getattr(current_user, "id", ""))
 
         from app.crm.pipeline import STAGE_STATUS_DOMAIN_FIELD, apply_stage_status_change, stage_status_key
 

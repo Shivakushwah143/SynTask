@@ -1277,6 +1277,9 @@ class CRMPipelineService:
                 prospect.client_id = automation_result["client_id"]
             if automation_result.get("project_id"):
                 prospect.project_id = automation_result["project_id"]
+            prospect.won_status = "transferred"
+            prospect.transferred_at = now
+            prospect.transferred_by = str(getattr(current_user, "id", ""))
         elif normalized_stage == "lost":
             lost_result = await handle_lost_workflow(current_user, prospect, reason)
             prospect = lost_result["lead"]

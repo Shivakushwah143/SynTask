@@ -349,11 +349,18 @@ async def _resolve_owner(current_user: User, lead: SalesProspect) -> Optional[st
 async def _resolve_project(current_user: User, lead: SalesProspect, client: Client, deal: Optional[CRMDeal]) -> Project:
     template = _template_for_lead(lead)
     owner_id = await _resolve_owner(current_user, lead)
+    base_name = template["name"]
+    project_key = f"{base_name[:3].upper()}-{str(lead.id)[-4:].upper()}"
+    generated_project_id = f"ONB-{str(lead.id)[:8].upper()}"
     existing = await Project.find_one(
         {
             "company_id": str(lead.company_id),
             "deleted": {"$ne": True},
-            "lead_id": str(lead.id),
+            "$or": [
+                {"lead_id": str(lead.id)},
+                {"project_id": generated_project_id},
+                {"key": project_key},
+            ],
         }
     )
     if existing:
@@ -377,14 +384,12 @@ async def _resolve_project(current_user: User, lead: SalesProspect, client: Clie
         return existing
 
     now = utc_now()
-    base_name = template["name"]
     project_name = f"{client.name} - {base_name}"
-    project_key = f"{base_name[:3].upper()}-{str(lead.id)[-4:].upper()}"
 
     project = Project(
         name=project_name,
         key=project_key,
-        project_id=f"ONB-{str(lead.id)[:8].upper()}",
+        project_id=generated_project_id,
         description=f"Onboarding project generated from won deal for {client.name}.",
         company_id=str(lead.company_id),
         type=ProjectType.OPERATIONS,
@@ -526,6 +531,27 @@ async def handle_won_deal_automation(current_user: User, lead: SalesProspect, de
         client.updated_at = now
         await client.save()
     project = await _resolve_project(current_user, lead, client, deal)
+    lead_changed = False
+    if getattr(lead, "client_id", None) != str(client.id):
+        lead.client_id = str(client.id)
+        lead_changed = True
+    if getattr(lead, "project_id", None) != str(project.id):
+        lead.project_id = str(project.id)
+        lead_changed = True
+    if not getattr(lead, "converted_at", None):
+        lead.converted_at = now
+        lead_changed = True
+    if lead_changed:
+        lead.updated_at = now
+        await lead.save()
+    if str(project.id) not in [str(item) for item in (client.project_ids or [])]:
+        client.project_ids = list(client.project_ids or []) + [str(project.id)]
+        client.updated_at = now
+        await client.save()
+    if project.client_id != str(client.id):
+        project.client_id = str(client.id)
+        project.updated_at = now
+        await project.save()
     service = await ensure_sales_handoff_service(client, current_user)
     if service and str(project.id) not in (service.linked_project_ids or []):
         service.linked_project_ids = list(service.linked_project_ids or []) + [str(project.id)]
@@ -563,14 +589,6 @@ async def handle_won_deal_automation(current_user: User, lead: SalesProspect, de
     _step("client_lookup", "completed", client_id=str(client.id))
     if account_manager:
         _step("account_manager_assignment", "completed", user_id=str(account_manager.id))
-    if str(project.id) not in [str(item) for item in (client.project_ids or [])]:
-        client.project_ids = list(client.project_ids or []) + [str(project.id)]
-        client.updated_at = now
-        await client.save()
-    if project.client_id != str(client.id):
-        project.client_id = str(client.id)
-        project.updated_at = now
-        await project.save()
     _step("client_link", "completed", project_id=str(project.id), client_id=str(client.id))
     structure = _template_for_lead(lead)
     project = await _resolve_project(current_user, lead, client, deal)

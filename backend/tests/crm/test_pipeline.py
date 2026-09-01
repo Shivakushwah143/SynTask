@@ -499,6 +499,10 @@ async def test_move_lead_to_won_updates_closed_fields_and_triggers_automation(mo
     assert lead.status == ProspectStatus.WON
     assert lead.closed_by == "user-1"
     assert lead.closed_date is not None
+    assert lead.won_status == "transferred"
+    assert lead.current_stage_status == "transferred"
+    assert lead.transferred_at is not None
+    assert lead.transferred_by == "user-1"
     assert deal.saved is True
     assert deal.stage == "won"
     assert automation_capture == {"lead_id": "lead-1", "deal_id": "deal-1"}
