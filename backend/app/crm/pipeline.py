@@ -1264,26 +1264,21 @@ class CRMPipelineService:
             prospect.reason_for_lost = None
             prospect.won_amount = await _resolve_won_amount(company_id, prospect)
             prospect.converted_at = getattr(prospect, "converted_at", None) or now
-            # Try to run the won-deal automation (client/project creation) but
-            # never block the Won transition if it fails — a Won lead is valid
-            # even without a client. The separate Transfer action completes the
-            # handoff.
-            try:
-                automation_result = await _run_won_automation(current_user, prospect, company_id)
-            except Exception as exc:
-                logger.warning("Won automation failed for lead %s: %s", prospect.id, exc)
-                automation_result = {"status": "failed", "error": str(exc)}
-            if automation_result.get("status") != "failed" and automation_result.get("client_id"):
+            automation_result = await _run_won_automation(current_user, prospect, company_id)
+            if automation_result.get("status") == "failed" or not automation_result.get("client_id"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Won lead conversion failed: {automation_result.get('error') or 'client was not created'}",
+                )
+            if automation_result.get("client_id"):
                 prospect.client_id = automation_result["client_id"]
                 if automation_result.get("project_id"):
                     prospect.project_id = automation_result["project_id"]
-                prospect.won_status = "ready"
+                prospect.won_status = "transferred"
+                prospect.transferred_at = getattr(prospect, "transferred_at", None) or now
+                prospect.transferred_by = str(getattr(current_user, "id", ""))
             else:
-                # Conversion not yet complete — the UI can show Retry Transfer.
                 prospect.won_status = "payment_pending"
-            # Won and Transferred are separate states — do NOT auto-set
-            # transferred_at here. The Transfer action is what marks the lead
-            # as transferred.
         elif normalized_stage == "lost":
             lost_result = await handle_lost_workflow(current_user, prospect, reason)
             prospect = lost_result["lead"]

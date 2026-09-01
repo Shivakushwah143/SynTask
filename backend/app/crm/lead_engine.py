@@ -1215,22 +1215,22 @@ class LeadEngine:
                 prospect.won_status = "payment_pending"
         if should_convert_to_client and existing_client and existing_client_company_id == current_company_id:
             prospect.client_id = str(existing_client.id)
-            prospect.won_status = "ready"
         if should_convert_to_client and (not existing_client or existing_client_company_id != current_company_id):
             from app.crm.pipeline import _run_won_automation
 
-            try:
-                automation_result = await _run_won_automation(current_user, prospect, str(getattr(prospect, "company_id", "") or ""))
-            except Exception as exc:
-                logger.warning("Won automation failed for lead %s: %s", prospect.id, exc)
-                automation_result = {"status": "failed", "error": str(exc)}
-            if automation_result.get("status") != "failed" and automation_result.get("client_id"):
-                prospect.client_id = automation_result["client_id"]
-                if automation_result.get("project_id"):
-                    prospect.project_id = automation_result["project_id"]
-                prospect.won_status = "ready"
-        # Won and Transferred are separate states — do NOT auto-set
-        # transferred_at here. The Transfer action marks the lead as transferred.
+            automation_result = await _run_won_automation(current_user, prospect, str(getattr(prospect, "company_id", "") or ""))
+            if automation_result.get("status") == "failed" or not automation_result.get("client_id"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Won lead conversion failed: {automation_result.get('error') or 'client was not created'}",
+                )
+            prospect.client_id = automation_result["client_id"]
+            if automation_result.get("project_id"):
+                prospect.project_id = automation_result["project_id"]
+        if should_convert_to_client and getattr(prospect, "client_id", None):
+            prospect.won_status = "transferred"
+            prospect.transferred_at = getattr(prospect, "transferred_at", None) or now
+            prospect.transferred_by = str(getattr(current_user, "id", ""))
 
         from app.crm.pipeline import STAGE_STATUS_DOMAIN_FIELD, apply_stage_status_change, stage_status_key
 
