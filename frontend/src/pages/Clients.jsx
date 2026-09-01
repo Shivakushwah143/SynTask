@@ -240,6 +240,7 @@ const Clients = () => {
   const getStatusMeta = (status) => statusMeta[status] || statusMeta.active
   const routeStatus = CLIENT_STAGE_ROUTES[stageKey] || ''
   const effectiveStatusFilter = routeStatus || statusFilter
+  const showOverviewSections = !routeStatus
   const pageTitle = routeStatus ? `${getStatusMeta(routeStatus).label} Clients` : 'Clients Directory'
   const pageDescription = routeStatus
     ? `Only ${getStatusMeta(routeStatus).label.toLowerCase()} client accounts are shown here.`
@@ -965,6 +966,12 @@ const Clients = () => {
   const activeCount = useMemo(() => clients.filter(c => (c.status || 'active') === 'active').length, [clients])
   const totalPortfolioBudget = useMemo(() => clients.reduce((sum, c) => sum + getTotalBudget(c), 0), [clients])
   const totalProjectsCount = useMemo(() => clients.reduce((sum, c) => sum + (c.projects?.length || c.project_ids?.length || 0), 0), [clients])
+  const lifecycleStageCards = useMemo(() => Object.entries(CLIENT_STAGE_ROUTES).map(([pathKey, status]) => ({
+    pathKey,
+    status,
+    count: clients.filter((client) => (client.status || 'active') === status).length,
+    ...getStatusMeta(status),
+  })), [clients])
 
   if (loading) {
     return (
@@ -1003,7 +1010,61 @@ const Clients = () => {
         </div>
       </div>
 
-      {/* Search & Filter Controls Surface */}
+      {showOverviewSections ? (
+        <section className="rounded-lg border border-gray-200/80 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white">Client Stages</h2>
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+              {clients.length} total
+            </span>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+            {lifecycleStageCards.map((stage) => (
+              <button
+                key={stage.status}
+                type="button"
+                onClick={() => navigate(`/clients/${stage.pathKey}`)}
+                className={`min-h-24 rounded-lg border border-current/20 p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500/30 ${stage.chipClass}`}
+                aria-label={`${stage.label} clients: ${stage.count}`}
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase">{stage.label}</span>
+                  <span className={`h-2.5 w-2.5 rounded-full ${stage.dotClass}`} aria-hidden="true"></span>
+                </span>
+                <span className="mt-3 block text-2xl font-black leading-none tabular-nums">{stage.count}</span>
+                <span className="mt-1 block text-[11px] font-semibold opacity-80">Clients</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+   
+
+        <>
+      {/* Metrics Stats Row */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Total Clients" value={clients.length} icon={Users} color="indigo" subtitle="Registered Accounts" />
+        <StatCard label="Active Accounts" value={activeCount} icon={CheckCircle2} color="emerald" subtitle="In Operations" />
+        <StatCard label="Portfolio Budget" value={`₹${totalPortfolioBudget > 0 ? totalPortfolioBudget.toLocaleString() : '0'}`} icon={DollarSign} color="amber" subtitle="Total Contract Value" />
+        <StatCard label="Linked Projects" value={totalProjectsCount} icon={FolderKanban} color="purple" subtitle="Active Deliverables" />
+      </div>
+      {showOverviewSections ? (
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+        <StatCard label="Tenant Clients" value={kpis.total_clients ?? clients.length} icon={Users} color="indigo" subtitle="Server KPI" />
+        <StatCard label="Active" value={kpis.active_clients ?? 0} icon={CheckCircle2} color="emerald" subtitle="Operational" />
+        <StatCard label="At Risk" value={kpis.at_risk ?? 0} icon={AlertTriangle} color="rose" subtitle="Lifecycle" />
+        <StatCard label="Renewal Due" value={kpis.renewal_due ?? 0} icon={Calendar} color="purple" subtitle="Commercial" />
+        <StatCard label="Outstanding" value={`₹${Number(kpis.outstanding_revenue || 0).toLocaleString()}`} icon={DollarSign} color="amber" subtitle="Invoices" />
+        <StatCard label="MRR" value={`₹${Number(kpis.mrr || 0).toLocaleString()}`} icon={DollarSign} color="emerald" subtitle="Recurring" />
+        <StatCard label="Active Projects" value={kpis.active_projects ?? 0} icon={FolderKanban} color="purple" subtitle="Delivery" />
+        <StatCard label="Health" value={kpis.overall_health ?? 100} icon={CheckCircle2} color="indigo" subtitle="Average" />
+      </div>
+      ) : null}
+      </>
+
+   {/* Search & Filter Controls Surface */}
       <div className="rounded-2xl border border-gray-200/80 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative flex-1">
@@ -1124,26 +1185,6 @@ const Clients = () => {
           </div>
         )}
       </div>
-
-      {/* Metrics Stats Row */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total Clients" value={clients.length} icon={Users} color="indigo" subtitle="Registered Accounts" />
-        <StatCard label="Active Accounts" value={activeCount} icon={CheckCircle2} color="emerald" subtitle="In Operations" />
-        <StatCard label="Portfolio Budget" value={`₹${totalPortfolioBudget > 0 ? totalPortfolioBudget.toLocaleString() : '0'}`} icon={DollarSign} color="amber" subtitle="Total Contract Value" />
-        <StatCard label="Linked Projects" value={totalProjectsCount} icon={FolderKanban} color="purple" subtitle="Active Deliverables" />
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-        <StatCard label="Tenant Clients" value={kpis.total_clients ?? clients.length} icon={Users} color="indigo" subtitle="Server KPI" />
-        <StatCard label="Active" value={kpis.active_clients ?? 0} icon={CheckCircle2} color="emerald" subtitle="Operational" />
-        <StatCard label="At Risk" value={kpis.at_risk ?? 0} icon={AlertTriangle} color="rose" subtitle="Lifecycle" />
-        <StatCard label="Renewal Due" value={kpis.renewal_due ?? 0} icon={Calendar} color="purple" subtitle="Commercial" />
-        <StatCard label="Outstanding" value={`₹${Number(kpis.outstanding_revenue || 0).toLocaleString()}`} icon={DollarSign} color="amber" subtitle="Invoices" />
-        <StatCard label="MRR" value={`₹${Number(kpis.mrr || 0).toLocaleString()}`} icon={DollarSign} color="emerald" subtitle="Recurring" />
-        <StatCard label="Active Projects" value={kpis.active_projects ?? 0} icon={FolderKanban} color="purple" subtitle="Delivery" />
-        <StatCard label="Health" value={kpis.overall_health ?? 100} icon={CheckCircle2} color="indigo" subtitle="Average" />
-      </div>
-
       {/* Clients Table / Cards Container */}
 
       {/* Clients Table */}
@@ -1323,6 +1364,8 @@ const Clients = () => {
         </div>
       )}
 
+      {showOverviewSections ? (
+        <>
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1378,6 +1421,8 @@ const Clients = () => {
           </div>
         </section>
       </div>
+        </>
+      ) : null}
 
       <Modal
         isOpen={Boolean(stageSelectionClient)}
