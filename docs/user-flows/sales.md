@@ -135,13 +135,33 @@ flowchart TD
   - Cache freshness: the pipeline board query uses a 30s `staleTime` (was 5 minutes) and is invalidated on lead-workspace saves, so an edit made on the detail page shows on the board without manual re-navigation.
   - CSV/Excel import: the `budget`, `timeline`, `decision_maker`, `industry`, `requirement`, `location`, `pain_points`, and deal-size columns (`won amount` / `deal value` / `value` / `amount` → `won_amount`) map onto the real lead fields (`LeadEngine.normalize_import_row` + the import constructor) instead of being dumped into `custom_fields` — imported budgets and deal values now appear in the Value column and satisfy the Qualify → Discovery gate like any manually entered value.
 
-## Won → Clients Inline Completion
-- How the user reaches it: attempting to transfer a Won lead without all handoff records opens the required-details popup with a "Create Client" one-click action (plus the Account Manager selector) instead of only a warning list.
-- What they can do: complete the handoff inline — `create_client` re-runs the idempotent won-deal automation (existing Client/Project refs are reused, never duplicated), then the transfer is re-attempted automatically; the popup closes only when every rule passes. Non-manager transfers still require `won_status = Ready`.
-- Automatic handoff: when a lead enters Won, the backend creates or reuses the tenant-scoped Client through the won-deal automation. Newly created Clients start in the Client lifecycle `new` stage, then progress through the backend-approved `New -> Onboarding -> Active` rules.
-- Compatibility path: if an older sales form or bulk edit marks a lead with `status=won` or `current_stage=won` through the sales prospect update API instead of the pipeline stage API, the backend still moves the lead into Won and runs the same Client conversion. Missing or stale lead `client_id` references are repaired, generated Projects are linked to the actual lead id, and if Client creation fails the Won update fails with a conversion error instead of silently leaving the lead without a Client.
-- Backend APIs called: `PATCH /api/v1/crm/pipeline/{lead_id}/conversion` (action `create_client`), `POST /api/v1/crm/pipeline/{lead_id}/transfer`.
-- Related modules updated: Pipeline, Clients, Projects, Invoices, Lead Workspace.
+## Won → Clients: Two-Step Conversion
+
+**Won** and **Transferred** are separate states. Moving a lead to Won marks the sales deal as closed; the Client transfer is a subsequent action.
+
+### Won stage (sales closed)
+- How the user reaches it: the pipeline stage move (Agreement → Won), the lead-detail "Move to Won" button, or `PUT /api/v1/sales/prospects` with `status=won`.
+- What the backend does: sets `current_stage=Won`, `status=won`, `closed_date`, `won_amount`, `converted_at`, and runs the won-deal automation (Client + Project creation). If automation succeeds and produces a Client, `client_id` and `project_id` are stored on the lead and `won_status` becomes `ready`. If automation fails or produces no Client, `won_status` stays `payment_pending` — the Won transition never fails due to a client-creation error.
+- **Won leads remain visible in Sales → Won at all times**, even after transfer. The Won stage shows the transfer state via badges: `Transfer Pending`, `Transfer Failed`, or `Transferred`.
+
+### Transfer to Clients (handoff)
+- How the user reaches it: the **Transfer to Client** action on a Won lead, or the `POST /api/v1/crm/pipeline/{lead_id}/transfer` endpoint.
+- What they can do: complete the Client handoff as a separate idempotent action. The Transfer endpoint validates tenant/company ownership, checks that the lead is Won, creates or reuses the Client through `_resolve_client`, and sets `won_status=transferred`, `transferred_at`, and `transferred_by` on the lead.
+- Automatic handoff: if a Won lead already has a `client_id`, the transfer endpoint reuses it. If the Client exists via `source_lead_id` or company-name match, the relationship is repaired without creating a duplicate.
+- Retry Transfer: when `won_status=payment_pending` or `client_id` is null, the UI shows **Retry Transfer** which re-runs the canonical `LeadConversionService.transfer_to_clients` action.
+- **The lead remains in Sales → Won after transfer** — it is never removed, archived, or hidden. The Won record legitimately exists in two perspectives: Sales → Won (historical/conversion record) and Clients (active post-sales relationship).
+
+### Compatibility path
+- If an older sales form or bulk edit marks a lead with `status=won` or `current_stage=won` through the sales prospect update API, the backend still moves the lead into Won and runs the same Client automation. The transfer is not automatic — the user completes it separately.
+- Missing or stale lead `client_id` references are repaired by the conversion service; generated Projects are linked to the actual lead id; pre-existing onboarding Projects with the generated `ONB-{lead-prefix}` id are reused instead of duplicated.
+
+### Backend APIs called
+- `PATCH /api/v1/crm/pipeline/{lead_id}/stage` (move to Won)
+- `PATCH /api/v1/crm/pipeline/{lead_id}/conversion` (action `create_client`, `won_status`, `transfer_to_clients`)
+- `POST /api/v1/crm/pipeline/{lead_id}/transfer` (mark transferred)
+
+### Related modules updated
+Pipeline, Clients, Projects, Invoices, Lead Workspace.
 
 ## Pipeline load resilience (dirty legacy data)
 - How it affects the user: previously one legacy lead with an invalid `email` value (e.g. `vghygcvghgv`) made the whole pipeline board return 500, because the model validated `email` as `EmailStr` at read time.

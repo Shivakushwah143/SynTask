@@ -812,8 +812,10 @@ async def test_update_lead_status_won_runs_client_conversion(monkeypatch):
     assert lead.current_stage == "Won"
     assert lead.client_id == "client-1"
     assert lead.project_id == "project-1"
-    assert lead.won_status == "payment_pending"
-    assert lead.current_stage_status == "payment_pending"
+    assert lead.won_status == "ready"
+    assert lead.current_stage_status == "ready"
+    # Won and Transferred are separate states — transferred_at is NOT set on Won.
+    assert lead.transferred_at is None
     assert lead.saved is True
 
 
@@ -866,7 +868,9 @@ async def test_update_lead_status_won_reruns_conversion_for_stale_client_id(monk
     assert lead.current_stage == "Won"
     assert lead.client_id == "client-2"
     assert lead.project_id == "project-2"
-    assert lead.current_stage_status == "payment_pending"
+    assert lead.current_stage_status == "ready"
+    # Won and Transferred are separate states — transferred_at is NOT set on Won.
+    assert lead.transferred_at is None
     assert lead.saved is True
 
 
