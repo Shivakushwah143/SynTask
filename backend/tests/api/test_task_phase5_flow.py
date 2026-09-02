@@ -355,6 +355,9 @@ async def test_task_update_persists_changes(monkeypatch):
     monkeypatch.setattr(tasks_api, "cache_delete_pattern", _noop_async)
     monkeypatch.setattr(tasks_api, "User", SimpleNamespace(get=_fake_user_get))
     monkeypatch.setattr(tasks_api, "create_timeline_event", _noop_async)
+    async def _fake_ltp(*a, **kw): return None
+    monkeypatch.setattr(tasks_api, "load_task_project", _fake_ltp)
+    monkeypatch.setattr(tasks_api, "has_project_permission", lambda *a, **kw: True)
 
     current_user = FakeUser(role="admin")
 
@@ -379,6 +382,8 @@ async def test_task_update_persists_changes(monkeypatch):
         target_quantity=None,
         target_unit=None,
         completed_quantity=None,
+        reviewer_id=None,
+        review_required=None,
         current_user=current_user,
     )
 
@@ -426,16 +431,20 @@ async def test_task_status_transition_updates_state(monkeypatch):
         t.saved = True
         return t
     monkeypatch.setattr(tasks_api, "transition_task", fake_transition_task)
-    monkeypatch.setattr(tasks_api, "load_task_project", lambda *a, **kw: None)
+    async def _fake_load_task_project(*a, **kw): return None
+    monkeypatch.setattr(tasks_api, "load_task_project", _fake_load_task_project)
     monkeypatch.setattr(tasks_api, "has_project_permission", lambda *a, **kw: True)
     import app.services.task_workflow as _wf_ts
     monkeypatch.setattr(_wf_ts, "transition_task", fake_transition_task)
     monkeypatch.setattr("app.services.task_health_service.sync_task_health", fake_sync_task_health)
+    async def _fake_serialize(task, user, **kw):
+        return {"id": str(task.id), "title": task.title, "status": task.status.value if hasattr(task.status, "value") else str(task.status)}
+    monkeypatch.setattr(tasks_api, "serialize_task_response", _fake_serialize)
 
     current_user = FakeUser(role="admin")
     result = await tasks_api.update_task_status(task_id="task-2", new_status="completed", current_user=current_user)
 
-    assert result["status"] == "completed"
+    assert result["task"]["status"] == "completed"
     assert FakeTask.records["task-2"].status == TaskStatus.COMPLETED
     assert FakeTask.records["task-2"].completed_at is not None
 
@@ -655,7 +664,8 @@ async def test_task_lifecycle_end_to_end(monkeypatch):
     monkeypatch.setattr(task_health_service, "User", SimpleNamespace(get=_fake_user_get))
     monkeypatch.setattr(tasks_api, "User", SimpleNamespace(get=_fake_user_get))
     # Phase 2: mock load_task_project and has_project_permission for workflow checks
-    monkeypatch.setattr(tasks_api, "load_task_project", lambda *a, **kw: None)
+    async def _fake_load_tp2(*a, **kw): return None
+    monkeypatch.setattr(tasks_api, "load_task_project", _fake_load_tp2)
     monkeypatch.setattr(tasks_api, "has_project_permission", lambda *a, **kw: True)
 
 
@@ -682,6 +692,8 @@ async def test_task_lifecycle_end_to_end(monkeypatch):
         target_quantity=None,
         target_unit=None,
         completed_quantity=None,
+        reviewer_id=None,
+        review_required=None,
         current_user=current_user,
     )
 

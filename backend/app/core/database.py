@@ -28,6 +28,7 @@ from app.models.notification import Notification
 from app.models.project import Project, Epic, Sprint, ProjectTypeConfiguration
 from app.models.scheduled_job import ScheduledJob, ScheduledJobOccurrence
 from app.models.work_request import WorkRequest
+from app.models.project_template import ProjectTemplate, TemplateTask, TemplateTaskChecklistItem
 from app.models.time_tracking import ActiveTimeSession, TimeLog, TimeTrackingSummary
 from app.models.workflow import Workflow, WorkflowStatus, WorkflowTransition
 from app.models.automation import AutomationRule, AutomationExecution
@@ -263,6 +264,9 @@ async def init_db():
                 CreativeSuggestion,
                 CreativeReviewHistory,
                 ReviewPolicy,
+                ProjectTemplate,
+                TemplateTask,
+                TemplateTaskChecklistItem,
                 Invoice,
                 MSA,
                 Meeting,
