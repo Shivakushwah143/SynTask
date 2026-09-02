@@ -225,6 +225,7 @@ class Settings(BaseSettings):
     AI_MAX_TOKENS: int = 500
     AI_TEMPERATURE: float = 0.2
     AI_MODEL_GROQ: str = "llama-3.1-70b-versatile"
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
     AI_MODEL_OPENAI: str = "gpt-4o-mini"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     OPENAI_EMBEDDING_DIMENSIONS: int = 1536
@@ -282,6 +283,16 @@ class Settings(BaseSettings):
     AGENT_DEFAULT_RUN_TIMEOUT_SECONDS: int = 30
     AGENT_DEFAULT_MAX_TOKENS_PER_RUN: int = 4000
     AGENT_DEFAULT_MAX_COST_PER_RUN: float = 1.0
+
+    # HR Agent
+    HR_AGENT_ENABLED: bool = False
+    HR_AGENT_MAX_STEPS: int = 15
+    HR_AGENT_MODEL: str = ""  # falls back to AI_MODEL_GROQ when empty
+
+    # Executive Operations Agent
+    EXECUTIVE_AGENT_ENABLED: bool = False
+    EXECUTIVE_AGENT_MAX_STEPS: int = 20
+    EXECUTIVE_AGENT_MODEL: str = ""  # falls back to AI_MODEL_GROQ when empty
 
     # Super Admin
     SUPER_ADMIN_EMAIL: str = Field(..., description="Super admin bootstrap email address.")

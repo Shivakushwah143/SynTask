@@ -93,4 +93,38 @@ export const aiAPI = {
     const response = await api.delete('/ai-assistant/memory')
     return response.data
   },
+
+  // HR Agent
+  hrChat: async (payload = {}) => {
+    const response = await api.post('/hr-agent/chat', {
+      message: payload.message,
+      conversation_id: payload.conversation_id || undefined,
+      session_id: payload.session_id || undefined,
+      selected_record_type: payload.selected_record_type || undefined,
+      selected_record_id: payload.selected_record_id || undefined,
+    })
+    return response.data
+  },
+
+  hrQuickActions: async () => {
+    const response = await api.get('/hr-agent/quick-actions')
+    return response.data
+  },
+
+  // Executive Operations Agent
+  executiveChat: async (payload = {}) => {
+    const response = await api.post('/executive-agent/chat', {
+      message: payload.message,
+      conversation_id: payload.conversation_id || undefined,
+      session_id: payload.session_id || undefined,
+      selected_record_type: payload.selected_record_type || undefined,
+      selected_record_id: payload.selected_record_id || undefined,
+    })
+    return response.data
+  },
+
+  executiveQuickActions: async () => {
+    const response = await api.get('/executive-agent/quick-actions')
+    return response.data
+  },
 }

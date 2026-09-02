@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import httpx
 
-from app.ai.provider import AIProvider, AIProviderResult
+from app.ai.provider import AIProvider, AIProviderResult, ToolCall
 from app.ai.providers.context_envelope import provider_context_message
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class GroqProvider(AIProvider):
@@ -36,6 +39,62 @@ class GroqProvider(AIProvider):
         if response_format:
             payload["response_format"] = response_format
 
+        data = await self._post(payload)
+        return self._parse_result(data, payload["model"])
+
+    async def generate_with_tools(
+        self,
+        prompt: str,
+        context: dict[str, Any],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any] | None = None,
+    ) -> AIProviderResult:
+        """Generate a response with tool/function calling support.
+
+        ``tools`` must be a list of OpenAI-compatible tool definitions, e.g.::
+
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search_employees",
+                        "description": "Search employees",
+                        "parameters": { ... }
+                    }
+                }
+            ]
+        """
+        if not settings.GROQ_API_KEY:
+            raise RuntimeError("GROQ_API_KEY is not configured")
+
+        opts = options or {}
+        messages = list(opts.get("messages") or [])
+        if not messages:
+            system_prompt = opts.get("system_prompt", "")
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            ctx_msg = provider_context_message(context)
+            if ctx_msg:
+                messages.append({"role": "system", "content": ctx_msg})
+            messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": opts.get("model") or settings.HR_AGENT_MODEL or settings.AI_MODEL_GROQ,
+            "temperature": opts.get("temperature", 0.1),
+            "max_tokens": opts.get("max_tokens", 4096),
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": opts.get("tool_choice", "auto"),
+        }
+
+        data = await self._post(payload)
+        return self._parse_result(data, payload["model"])
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    async def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         timeout = httpx.Timeout(settings.AI_TIMEOUT)
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
@@ -47,17 +106,38 @@ class GroqProvider(AIProvider):
                 content=json.dumps(payload),
             )
             response.raise_for_status()
-            data = response.json()
+            return response.json()
 
+    @staticmethod
+    def _parse_result(data: dict[str, Any], default_model: str) -> AIProviderResult:
         choice = (data.get("choices") or [{}])[0]
         message = choice.get("message") or {}
         usage = data.get("usage") or {}
 
+        # Parse tool calls from the message
+        tool_calls: list[ToolCall] = []
+        for raw_tc in message.get("tool_calls") or []:
+            func = raw_tc.get("function") or {}
+            raw_args = func.get("arguments") or "{}"
+            try:
+                args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+            except (json.JSONDecodeError, TypeError):
+                args = {"_raw": raw_args}
+            tool_calls.append(
+                ToolCall(
+                    id=raw_tc.get("id") or "",
+                    name=func.get("name") or "",
+                    arguments=args,
+                )
+            )
+
         return AIProviderResult(
             content=message.get("content") or "",
-            model=data.get("model") or payload["model"],
+            model=data.get("model") or default_model,
             prompt_tokens=usage.get("prompt_tokens"),
             completion_tokens=usage.get("completion_tokens"),
             total_tokens=usage.get("total_tokens"),
             raw_response=data,
+            tool_calls=tool_calls,
+            finish_reason=choice.get("finish_reason"),
         )

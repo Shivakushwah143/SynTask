@@ -1,7 +1,7 @@
 # SynTask Documentation Index
 
 Status: living documentation
-Last reviewed: 2026-07-16
+Last reviewed: 2026-09-02 (Executive Operations Agent added)
 
 This is the canonical entry point. **Observed** means supported by repository evidence. **Verified** means exercised in a named environment. **Target** is intended design and is not proof of deployment.
 

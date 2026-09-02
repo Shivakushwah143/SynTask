@@ -3,16 +3,58 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.agents.capability_packs import GENERAL_ASSISTANT_CAPABILITY, RoleCapabilityPack
+from app.agents.capability_packs import GENERAL_ASSISTANT_CAPABILITY, HR_AGENT_ID, EXECUTIVE_AGENT_ID, RoleCapabilityPack
 from app.agents.email_draft import EMAIL_DRAFT_AGENT_ID, EMAIL_DRAFT_AGENT_VERSION
 from app.agents.project_agent import PROJECT_AGENT_ID, PROJECT_AGENT_VERSION, ProjectAgentOperation
 from app.agents.task_performance import TASK_PERFORMANCE_AGENT_ID, TASK_PERFORMANCE_AGENT_VERSION
 
 
+HR_AGENT_VERSION = "v1"
+EXECUTIVE_AGENT_VERSION = "v1"
+
 ACTION_TERMS = ("create", "update", "assign", "delete", "move", "change", "send", "schedule", "approve")
 EMAIL_TERMS = ("email", "mail", "draft", "reply", "subject", "recipient")
 PERFORMANCE_TERMS = ("performance", "metrics", "overdue", "workload", "capacity", "completion", "eod", "trend")
 PROJECT_TERMS = ("project", "task", "blocker", "risk", "dependency", "deadline", "scope", "milestone", "breakdown")
+HR_TERMS = (
+    "employee", "attendance", "leave", "hr document", "onboarding", "probation",
+    "candidate", "recruitment", "job opening", "resume", "interview", "offer",
+    "hiring", "payroll", "payslip", "salary", "absent", "hr attention",
+    "who is", "tell me about", "what about", "which leave", "which interview",
+    "hiring pipeline", "employee status",
+    "how many days", "present", "application", "hiring",
+)
+
+# Executive-level terms that should be routed to the Executive Agent.
+# Covers natural executive language: broad company questions, cross-domain
+# investigation, person-specific task/work questions, and status queries.
+EXECUTIVE_TERMS = (
+    # Daily brief / company overview
+    "what needs my attention", "attention today", "company health",
+    "company doing", "what should i know", "what should i focus",
+    "focus on this week", "what happened today", "what needs attention",
+    # Executive identity
+    "executive",
+    # Client / project risk
+    "client risk", "client at risk", "why is client",
+    "project risk", "project delayed", "why is project",
+    "why are we late", "late on",
+    # Sales
+    "sales performing", "sales status", "how is sales",
+    "how many leads", "conversion",
+    # Finance
+    "overdue invoice", "finance status", "receivable",
+    "collecting our money", "on time",
+    # Workload / team
+    "team workload", "highest workload", "overloaded",
+    "team needs", "who is overloaded",
+    # Meetings
+    "meeting summary", "meeting follow",
+    # Natural task/work questions (routed to Executive for cross-domain view)
+    "what did", "what work", "pending for", "still pending",
+    # Activity / status checks
+    "what did", "what happened today",
+)
 
 
 @dataclass(frozen=True)
@@ -54,6 +96,35 @@ class DeterministicAgentRouter:
     def route(self, *, message: str, workspace: dict[str, Any], capability_pack: RoleCapabilityPack) -> AgentRoute:
         text = str(message or "").lower()
         action_intent = any(term in text for term in ACTION_TERMS)
+
+        # Executive Agent routing — check first for executive-level queries
+        if self._matches(text, EXECUTIVE_TERMS):
+            return self._agent_or_clarify(
+                capability_pack=capability_pack,
+                agent_id=EXECUTIVE_AGENT_ID,
+                agent_version=EXECUTIVE_AGENT_VERSION,
+                intent="executive_operations",
+                routing_reason="executive_terms",
+                confidence=0.92,
+                sections=["identity_context", "permission_context", "workspace_context", "working_memory", "request_context"],
+                action_intent=action_intent,
+                approval_required=action_intent,
+            )
+
+        # HR Agent routing — check before email/project so HR queries are handled first
+        if self._matches(text, HR_TERMS):
+            return self._agent_or_clarify(
+                capability_pack=capability_pack,
+                agent_id=HR_AGENT_ID,
+                agent_version=HR_AGENT_VERSION,
+                intent="hr_operations",
+                routing_reason="hr_terms",
+                confidence=0.88,
+                sections=["identity_context", "permission_context", "workspace_context", "working_memory", "request_context"],
+                action_intent=action_intent,
+                approval_required=action_intent,
+            )
+
         if self._matches(text, EMAIL_TERMS):
             return self._agent_or_clarify(
                 capability_pack=capability_pack,

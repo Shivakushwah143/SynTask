@@ -17,6 +17,8 @@ from app.api.v1.endpoints import (
 )
 from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import ai_assistant
+from app.api.v1.endpoints import hr_agent
+from app.api.v1.endpoints import executive_agent
 from app.api.v1.endpoints import rag
 from app.api.v1.endpoints import agents
 from app.api.v1.endpoints import creative
@@ -178,6 +180,8 @@ api_router.include_router(ai.router, prefix="/ai", tags=["AI"], dependencies=[De
 api_router.include_router(ai_assistant.router, prefix="/ai-assistant", tags=["Unified AI Assistant"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 api_router.include_router(agents.router, prefix="/agents", tags=["Agent Platform"], dependencies=[Depends(require_module("ai_agents"))])
+api_router.include_router(hr_agent.router, prefix="/hr-agent", tags=["HR Operations Agent"], dependencies=[Depends(require_module("ai_agents"))])
+api_router.include_router(executive_agent.router, prefix="/executive-agent", tags=["Executive Operations Agent"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(creative.router, prefix="/creative", tags=["Creative Director"])
 # Global search must work for every authenticated user, not just users with the
 # task module enabled. The endpoint itself scopes results to the user's company,
