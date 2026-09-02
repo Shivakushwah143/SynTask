@@ -41,10 +41,14 @@ import { excludeCurrentUser } from '../utils/userFilters'
 
 const STATUS_COLORS = {
   todo: '#7C6FE0',
+  assigned: '#6366F1',
   in_progress: '#FF8A4C',
   in_review: '#F59E0B',
+  revision_required: '#EF4444',
+  approved: '#10B981',
   completed: '#2FB47C',
   done: '#2FB47C',
+  cancelled: '#9CA3AF',
 }
 
 const TASK_PRIORITY_STYLES = {

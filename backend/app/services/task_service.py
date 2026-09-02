@@ -36,8 +36,9 @@ class TaskService:
     async def update_status(task: Task, new_status: TaskStatus, user_id: Optional[str] = None, current_user: Optional[User] = None) -> Task:
         if not current_user:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current user is required for task workflow transitions")
-        from app.services.task_workflow import transition_task
-        return await transition_task(task=task, actor=current_user, action="status_update", target_status=new_status.value)
+        from app.services.task_workflow import action_for_status_transition, transition_task
+        action = action_for_status_transition(task.status, new_status)
+        return await transition_task(task=task, actor=current_user, action=action, target_status=new_status.value)
 
     @staticmethod
     async def update_execution(task: Task, payload: dict[str, Any]) -> Task:

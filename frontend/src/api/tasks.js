@@ -177,4 +177,92 @@ export const tasksAPI = {
     const response = await api.get('/tasks/production/dashboard')
     return response.data
   },
+
+  // ── Phase 2: Semantic Workflow Actions ────────────────────────────────────
+
+  startTask: async (taskId) => {
+    const response = await api.post(`/tasks/${taskId}/start`)
+    return response.data
+  },
+
+  submitForReview: async (taskId, reviewerId = null) => {
+    const formData = toFormData({ reviewer_id: reviewerId })
+    const response = await api.post(`/tasks/${taskId}/submit-review`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  requestRevision: async (taskId, reason) => {
+    const formData = toFormData({ reason })
+    const response = await api.post(`/tasks/${taskId}/request-revision`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  approveTask: async (taskId, comment = '') => {
+    const formData = toFormData({ comment })
+    const response = await api.post(`/tasks/${taskId}/approve`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  completeTask: async (taskId) => {
+    const response = await api.post(`/tasks/${taskId}/complete`)
+    return response.data
+  },
+
+  reopenTask: async (taskId, reason = '') => {
+    const formData = toFormData({ reason })
+    const response = await api.post(`/tasks/${taskId}/reopen`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  cancelTask: async (taskId) => {
+    const response = await api.post(`/tasks/${taskId}/cancel`)
+    return response.data
+  },
+
+  // Checklist operations
+  addChecklistItem: async (taskId, text, required = false) => {
+    const formData = toFormData({ text, required })
+    const response = await api.post(`/tasks/${taskId}/checklist`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  updateChecklistItem: async (taskId, itemId, { completed, text } = {}) => {
+    const payload = {}
+    if (completed !== undefined) payload.completed = completed
+    if (text !== undefined) payload.text = text
+    const formData = toFormData(payload)
+    const response = await api.patch(`/tasks/${taskId}/checklist/${itemId}`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  deleteChecklistItem: async (taskId, itemId) => {
+    const response = await api.delete(`/tasks/${taskId}/checklist/${itemId}`)
+    return response.data
+  },
+
+  // Dependency operations
+  addDependency: async (taskId, dependencyId) => {
+    const formData = toFormData({ dependency_id: dependencyId })
+    const response = await api.post(`/tasks/${taskId}/dependencies`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  removeDependency: async (taskId, dependencyId) => {
+    const response = await api.delete(`/tasks/${taskId}/dependencies/${dependencyId}`)
+    return response.data
+  },
 }

@@ -63,6 +63,27 @@ class FakeTask:
         self.resolved_by = data.get("resolved_by")
         self.created_at = data.get("created_at", datetime(2026, 7, 10, 9, 0, 0))
         self.updated_at = data.get("updated_at", self.created_at)
+        # Phase 2: Workflow fields
+        self.reviewer_id = data.get("reviewer_id")
+        self.review_required = data.get("review_required")
+        self.review_round = data.get("review_round", 0)
+        self.submitted_for_review_at = data.get("submitted_for_review_at")
+        self.submitted_for_review_by = data.get("submitted_for_review_by")
+        self.revision_requested_at = data.get("revision_requested_at")
+        self.revision_requested_by = data.get("revision_requested_by")
+        self.latest_revision_reason = data.get("latest_revision_reason")
+        self.approved_at = data.get("approved_at")
+        self.approved_by = data.get("approved_by")
+        self.completed_by = data.get("completed_by")
+        self.status_changed_at = data.get("status_changed_at")
+        self.assigned_at = data.get("assigned_at")
+        self.source_type = data.get("source_type")
+        self.task_type = data.get("task_type", SimpleNamespace(value="standard"))
+        self.measurement_type = data.get("measurement_type")
+        self.custom_measurement_label = data.get("custom_measurement_label")
+        self.target_quantity = data.get("target_quantity")
+        self.target_unit = data.get("target_unit")
+        self.completed_quantity = data.get("completed_quantity", 0)
 
     async def insert(self):
         FakeTask.inserted = self
@@ -211,6 +232,7 @@ class FakeUser:
         self.last_name = user_id
         self.reports_to = reports_to
         self.ancestors = ancestors or []
+        self.department_id = "dept-1"
 
     def full_name(self):
         return f"User {self.id}"
@@ -256,6 +278,19 @@ async def test_task_create_persists_changes(monkeypatch):
     monkeypatch.setattr(tasks_api, "cache_delete_pattern", _noop_async)
     monkeypatch.setattr(tasks_api, "User", SimpleNamespace(get=_fake_user_get))
     monkeypatch.setattr(tasks_api, "create_timeline_event", _noop_async)
+    monkeypatch.setattr(tasks_api, "_assert_task_view", _noop_async)
+    monkeypatch.setattr(tasks_api, "_assert_task_manage", _noop_async)
+    # Phase 2: task_service.create_task_core does local imports from tasks.py
+    monkeypatch.setattr(tasks_api, "_resolve_department", _noop_async)
+    monkeypatch.setattr(tasks_api, "_assert_can_assign_task", _noop_async)
+    monkeypatch.setattr(tasks_api, "_can_access_project_for_task", lambda *a, **kw: True)
+    monkeypatch.setattr(tasks_api, "_send_task_side_effects", _noop_async)
+    # Patch Task and Project in the task_service module for local imports
+    import app.services.task_service as _ts
+    monkeypatch.setattr(_ts, "Task", FakeTask)
+    import app.models.task as _mt
+    monkeypatch.setattr(_mt, "Task", FakeTask)
+    monkeypatch.setattr(_ts, "Project", SimpleNamespace(find_one=lambda *a, **kw: None))
 
     current_user = FakeUser(user_id="creator-1", role="admin")
     background_tasks = DummyBackgroundTasks()
@@ -275,6 +310,13 @@ async def test_task_create_persists_changes(monkeypatch):
         department_id=None,
         story_points=None,
         estimated_hours=None,
+        task_type="standard",
+        measurement_type=None,
+        custom_measurement_label=None,
+        target_quantity=None,
+        target_unit=None,
+        reviewer_id=None,
+        review_required=None,
         current_user=current_user,
     )
 
@@ -331,6 +373,12 @@ async def test_task_update_persists_changes(monkeypatch):
         start_date=None,
         story_points="5",
         estimated_hours="8",
+        task_type=None,
+        measurement_type=None,
+        custom_measurement_label=None,
+        target_quantity=None,
+        target_unit=None,
+        completed_quantity=None,
         current_user=current_user,
     )
 
@@ -360,11 +408,28 @@ async def test_task_status_transition_updates_state(monkeypatch):
 
     monkeypatch.setattr(tasks_api, "Task", FakeTask)
     monkeypatch.setattr(tasks_api, "sync_task_health", fake_sync_task_health)
+    monkeypatch.setattr(tasks_api, "_assert_task_view", _noop_async)
     monkeypatch.setattr(tasks_api, "check_company_access", lambda *args, **kwargs: None)
     monkeypatch.setattr(tasks_api, "publish_event", _noop_async)
     monkeypatch.setattr(tasks_api, "build_domain_event", lambda **kwargs: kwargs)
     monkeypatch.setattr(tasks_api, "create_timeline_event", _noop_async)
-    monkeypatch.setattr("app.services.task_service.trigger_automation", _noop_async)
+    # Phase 2: mock workflow service for transition_task
+    async def fake_transition_task(**kwargs):
+        t = kwargs["task"]
+        target = kwargs.get("target_status")
+        if target:
+            from app.models.task import TaskStatus as TS
+            t.status = TS(target) if isinstance(target, str) else target
+            if t.status == TaskStatus.COMPLETED:
+                t.completed_at = datetime(2026, 7, 15, 12, 0, 0)
+        t.updated_at = datetime(2026, 7, 15, 12, 0, 0)
+        t.saved = True
+        return t
+    monkeypatch.setattr(tasks_api, "transition_task", fake_transition_task)
+    monkeypatch.setattr(tasks_api, "load_task_project", lambda *a, **kw: None)
+    monkeypatch.setattr(tasks_api, "has_project_permission", lambda *a, **kw: True)
+    import app.services.task_workflow as _wf_ts
+    monkeypatch.setattr(_wf_ts, "transition_task", fake_transition_task)
     monkeypatch.setattr("app.services.task_health_service.sync_task_health", fake_sync_task_health)
 
     current_user = FakeUser(role="admin")
@@ -574,6 +639,8 @@ async def test_task_lifecycle_end_to_end(monkeypatch):
     monkeypatch.setattr(tasks_api, "check_company_access", lambda *args, **kwargs: None)
     monkeypatch.setattr(tasks_api, "assert_task_view_access", _noop_async)
     monkeypatch.setattr(tasks_api, "assert_task_manage_access", _noop_async)
+    monkeypatch.setattr(tasks_api, "_assert_task_view", _noop_async)
+    monkeypatch.setattr(tasks_api, "_assert_task_manage", _noop_async)
     monkeypatch.setattr(tasks_api, "publish_event", _noop_async)
     monkeypatch.setattr(tasks_api, "build_domain_event", lambda **kwargs: kwargs)
     async def fake_sync_task_health(task, now=None):
@@ -587,6 +654,10 @@ async def test_task_lifecycle_end_to_end(monkeypatch):
     monkeypatch.setattr(tasks_api, "sync_task_health", fake_sync_task_health)
     monkeypatch.setattr(task_health_service, "User", SimpleNamespace(get=_fake_user_get))
     monkeypatch.setattr(tasks_api, "User", SimpleNamespace(get=_fake_user_get))
+    # Phase 2: mock load_task_project and has_project_permission for workflow checks
+    monkeypatch.setattr(tasks_api, "load_task_project", lambda *a, **kw: None)
+    monkeypatch.setattr(tasks_api, "has_project_permission", lambda *a, **kw: True)
+
 
     current_user = FakeUser(user_id="manager-1", role="manager")
     employee = FakeUser(user_id="employee-1", role="employee")
@@ -605,6 +676,12 @@ async def test_task_lifecycle_end_to_end(monkeypatch):
         start_date=None,
         story_points="3",
         estimated_hours="6",
+        task_type=None,
+        measurement_type=None,
+        custom_measurement_label=None,
+        target_quantity=None,
+        target_unit=None,
+        completed_quantity=None,
         current_user=current_user,
     )
 

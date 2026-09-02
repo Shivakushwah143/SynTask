@@ -2,8 +2,11 @@ import { normalizeRole } from '../utils/roles'
 
 export const DEFAULT_STATUSES = [
   { id: 'todo', label: 'To Do' },
+  { id: 'assigned', label: 'Assigned' },
   { id: 'in_progress', label: 'In Progress' },
-  { id: 'in_review', label: 'In Review' },
+  { id: 'in_review', label: 'Review' },
+  { id: 'revision_required', label: 'Revision' },
+  { id: 'approved', label: 'Approved' },
   { id: 'completed', label: 'Completed' },
 ]
 

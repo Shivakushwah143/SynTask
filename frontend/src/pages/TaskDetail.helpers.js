@@ -57,6 +57,12 @@ export const TASK_STATUS_TONES = {
     selectClass: 'border-gray-300 bg-gray-50 text-gray-800',
     dotClass: 'bg-gray-500',
   },
+  assigned: {
+    label: 'Assigned',
+    chipClass: 'border-indigo-200 bg-indigo-100 text-indigo-800',
+    selectClass: 'border-indigo-300 bg-indigo-50 text-indigo-800',
+    dotClass: 'bg-indigo-600',
+  },
   in_progress: {
     label: 'In Progress',
     chipClass: 'border-blue-200 bg-blue-100 text-blue-800',
@@ -68,6 +74,18 @@ export const TASK_STATUS_TONES = {
     chipClass: 'border-yellow-200 bg-yellow-100 text-yellow-800',
     selectClass: 'border-yellow-300 bg-yellow-50 text-yellow-800',
     dotClass: 'bg-yellow-500',
+  },
+  revision_required: {
+    label: 'Revision Required',
+    chipClass: 'border-red-200 bg-red-100 text-red-800',
+    selectClass: 'border-red-300 bg-red-50 text-red-800',
+    dotClass: 'bg-red-500',
+  },
+  approved: {
+    label: 'Approved',
+    chipClass: 'border-emerald-200 bg-emerald-100 text-emerald-800',
+    selectClass: 'border-emerald-300 bg-emerald-50 text-emerald-800',
+    dotClass: 'bg-emerald-600',
   },
   completed: {
     label: 'Completed',

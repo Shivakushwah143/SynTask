@@ -45,6 +45,18 @@ ACTION_TO_STATUS = {
 }
 
 
+STATUS_TO_ACTION = {
+    TaskStatus.TODO: "assign",
+    TaskStatus.ASSIGNED: "assign",
+    TaskStatus.IN_PROGRESS: "start_work",
+    TaskStatus.IN_REVIEW: "submit_review",
+    TaskStatus.REVISION_REQUIRED: "request_revision",
+    TaskStatus.APPROVED: "approve",
+    TaskStatus.COMPLETED: "complete",
+    TaskStatus.CANCELLED: "cancel",
+}
+
+
 TIMELINE_BY_ACTION = {
     "assign": (TimelineEventType.TASK_ASSIGNED, "Task Assigned"),
     "start_work": (TimelineEventType.TASK_STARTED, "Task Started"),
@@ -66,6 +78,14 @@ def normalize_status(value: Any) -> TaskStatus:
         return TaskStatus(str(status_value(value)).lower())
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid task status") from exc
+
+
+def action_for_status_transition(current: Any, target: Any) -> str:
+    current_status = normalize_status(current)
+    target_status = normalize_status(target)
+    if current_status == TaskStatus.COMPLETED and target_status == TaskStatus.ASSIGNED:
+        return "reopen"
+    return STATUS_TO_ACTION.get(target_status, "status_update")
 
 
 def effective_review_required(task: Task, project: Optional[Project] = None) -> bool:

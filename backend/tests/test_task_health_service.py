@@ -58,8 +58,20 @@ class FakeTask:
             match = True
             for key, expected in query.items():
                 actual = getattr(task, key, None)
-                if isinstance(expected, dict) and "$ne" in expected:
-                    if actual == expected["$ne"]:
+                if isinstance(expected, dict):
+                    if "$ne" in expected:
+                        if actual == expected["$ne"]:
+                            match = False
+                            break
+                    elif "$nin" in expected:
+                        if actual in expected["$nin"]:
+                            match = False
+                            break
+                    elif "$in" in expected:
+                        if actual not in expected["$in"]:
+                            match = False
+                            break
+                    elif actual != expected:
                         match = False
                         break
                 elif actual != expected:
@@ -70,7 +82,6 @@ class FakeTask:
         class _Query:
             async def to_list(self_inner):
                 return list(items)
-
         return _Query()
 
 
