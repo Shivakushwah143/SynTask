@@ -17,8 +17,12 @@ export const tasksAPI = {
     if (filters.status) params.append('status_filter', filters.status)
     if (filters.priority) params.append('priority', filters.priority)
     if (filters.assigned_to) params.append('assigned_to', filters.assigned_to)
+    if (filters.reviewer_id) params.append('reviewer_id', filters.reviewer_id)
     if (filters.created_by) params.append('created_by', filters.created_by)
     if (filters.department_id) params.append('department_id', filters.department_id)
+    if (filters.review_required !== undefined) params.append('review_required', filters.review_required)
+    if (filters.blocked !== undefined) params.append('blocked', filters.blocked)
+    if (filters.awaiting_review !== undefined) params.append('awaiting_review', filters.awaiting_review)
     if (filters.skip) params.append('skip', filters.skip)
     if (filters.limit) params.append('limit', filters.limit)
 
@@ -178,7 +182,7 @@ export const tasksAPI = {
     return response.data
   },
 
-  // ── Phase 2: Semantic Workflow Actions ────────────────────────────────────
+  // Phase 2: semantic workflow actions
 
   startTask: async (taskId) => {
     const response = await api.post(`/tasks/${taskId}/start`)

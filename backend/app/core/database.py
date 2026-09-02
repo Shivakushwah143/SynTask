@@ -26,6 +26,8 @@ from app.models.task import Task, TaskComment, TaskExtensionRequest
 from app.models.ticket import Ticket, TicketComment
 from app.models.notification import Notification
 from app.models.project import Project, Epic, Sprint, ProjectTypeConfiguration
+from app.models.scheduled_job import ScheduledJob, ScheduledJobOccurrence
+from app.models.work_request import WorkRequest
 from app.models.time_tracking import TimeLog, TimeTrackingSummary
 from app.models.workflow import Workflow, WorkflowStatus, WorkflowTransition
 from app.models.automation import AutomationRule, AutomationExecution
@@ -90,7 +92,6 @@ from app.models.attendance import (
 from app.models.timeline import TimelineEvent
 from app.models.leave import LeaveRequest
 from app.models.eod import EODReport
-from app.models.scheduled_job import ScheduledJob
 from app.models.capability import seed_default_capabilities
 from app.integrations.meta.models import (
     MetaIntegrationSettings,
@@ -208,6 +209,9 @@ async def init_db():
                 Notification,
                 Project,
                 ProjectTypeConfiguration,
+                ScheduledJob,
+                ScheduledJobOccurrence,
+                WorkRequest,
                 Epic,
                 Sprint,
                 TimeLog,
@@ -292,6 +296,8 @@ async def init_db():
                 LeaveRequest,
                 EODReport,
                 ScheduledJob,
+                ScheduledJobOccurrence,
+                WorkRequest,
                 MetaIntegrationSettings,
                 MetaWebhookEvent,
                 MetaSyncRun,

@@ -1823,3 +1823,45 @@ No automated index audit exists yet. Phase 6 should review compound indexes for 
 - `active`
 - `created_by`
 - timestamps
+
+# Task Workflow Phase 2
+
+`tasks` remains tenant-scoped by `company_id`. Phase 2 adds the strict execution/review lifecycle statuses `todo`, `assigned`, `in_progress`, `in_review`, `revision_required`, `approved`, `completed`, and `cancelled`.
+
+Task workflow fields:
+
+- `assigned_at`: timestamp set when an assignee is assigned.
+- `review_required`: nullable boolean; missing legacy values resolve from source/project context.
+- `reviewer_id`: same-tenant reviewer user id.
+- `review_round`: count of review submissions.
+- `submitted_for_review_at`, `submitted_for_review_by`
+- `revision_requested_at`, `revision_requested_by`, `latest_revision_reason`
+- `approved_at`, `approved_by`
+- `completed_by`
+- `status_changed_at`
+
+Checklist entries are stored in `tasks.checklist` as objects with `id`, `text`, `completed`, `required`, `created_at`, `completed_at`, and `completed_by`. Dependencies remain stored as task-id strings in `tasks.dependencies`; write paths reject self-dependencies, cross-tenant dependencies, and dependency cycles.
+
+Additional task indexes support review queues and status filtering:
+
+- `reviewer_id`
+- compound `company_id`, `reviewer_id`, `status`
+
+# Work Requests and Recurring Scheduled Work Phase 4
+
+`work_requests` is tenant-scoped by `company_id`. Each record has a logical `request_id`, `type`, `title`, `description`, `status`, `priority`, requester/reviewer/resolver user ids, optional project/task/client context, reason/change metadata, timestamps for review/decision/conversion/cancel, and converted Task/Project references.
+
+Work Request statuses are `submitted`, `under_review`, `approved`, `rejected`, `converted`, and `cancelled`. Request types are `new_work`, `change_request`, `approval_request`, `deadline_extension`, `resource_request`, `blocker`, `leave_availability`, `client_request`, and `other`.
+
+Work Request indexes:
+
+- unique `request_id`
+- compound `company_id`, `status`, `updated_at`
+- compound `company_id`, `requested_by`
+- compound `company_id`, `assigned_reviewer_id`, `status`
+- compound `company_id`, `project_id`, `status`
+- text index on title and description
+
+`scheduled_jobs` now supports `schedule_type` values `one_time` and `recurring`, `enabled`, `recurrence`, `timezone`, `next_run_at`, `last_run_at`, and `occurrence_count`. Existing status, payload, retry, result, creator, and tenant fields remain.
+
+`scheduled_job_occurrences` stores execution history per scheduled run. Each occurrence is scoped by `company_id` and has `scheduled_job_id`, unique `occurrence_id`, `scheduled_at`, status, result type/id, error, retry count, started/completed timestamps, and created/updated timestamps. A unique compound index on `scheduled_job_id` and `scheduled_at` prevents duplicate occurrence rows for the same scheduled run.

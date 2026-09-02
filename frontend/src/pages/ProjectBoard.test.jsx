@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { getProjectRoleAssignmentIds, getProjectRoleNames, getTaskAssigneeUsers, normalizeBoardPayload, normalizeEstimatedHours } from './ProjectBoard.helpers'
 
+const phase2Columns = ['todo', 'assigned', 'in_progress', 'in_review', 'revision_required', 'approved', 'completed']
+
 describe('ProjectBoard task form helpers', () => {
   it('accepts positive task estimates above and below 24 hours', () => {
     expect(normalizeEstimatedHours('0.25')).toBe('0.25')
@@ -48,7 +50,7 @@ describe('ProjectBoard normalizeBoardPayload', () => {
       },
     })
 
-    expect(normalized.board_columns.map((column) => column.id)).toEqual(['todo', 'in_progress', 'in_review', 'completed'])
+    expect(normalized.board_columns.map((column) => column.id)).toEqual(phase2Columns)
     expect(normalized.tasks_by_status.todo).toHaveLength(1)
   })
 
@@ -65,8 +67,8 @@ describe('ProjectBoard normalizeBoardPayload', () => {
     })
 
     const ids = normalized.board_columns.map((column) => column.id)
-    expect(ids).toEqual(['todo', 'in_progress', 'in_review', 'completed', 'blocked'])
-    expect(normalized.board_columns[4].label).toBe('Blocked')
+    expect(ids).toEqual([...phase2Columns, 'blocked'])
+    expect(normalized.board_columns[7].label).toBe('Blocked')
     expect(normalized.tasks_by_status.blocked).toHaveLength(1)
   })
 
@@ -80,7 +82,7 @@ describe('ProjectBoard normalizeBoardPayload', () => {
       },
     })
 
-    expect(normalized.board_columns.map((column) => column.id)).toEqual(['todo', 'in_progress', 'in_review', 'completed'])
+    expect(normalized.board_columns.map((column) => column.id)).toEqual(phase2Columns)
     expect(normalized.tasks_by_status.in_progress).toHaveLength(1)
   })
 
@@ -95,7 +97,7 @@ describe('ProjectBoard normalizeBoardPayload', () => {
       },
     })
 
-    expect(normalized.board_columns.map((column) => column.id)).toEqual(['todo', 'in_progress', 'in_review', 'completed'])
+    expect(normalized.board_columns.map((column) => column.id)).toEqual(phase2Columns)
   })
 })
 

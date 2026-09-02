@@ -185,7 +185,8 @@ export const navigation = [
   { name: "Projects", href: "/projects", icon: FolderKanban, roles: STANDARD_ROLES, module: "projects" },
   { name: "Tasks", href: "/tasks", icon: CheckSquare, roles: STANDARD_ROLES, module: "tasks" },
   // /tickets is auto-granted to Manager/Lead/Employee in backend require_module → all roles.
-  { name: "Requests", href: "/tickets", icon: ClipboardList, roles: STANDARD_ROLES, module: "tickets" },
+  { name: "Requests", href: "/work-requests", icon: ClipboardList, roles: STANDARD_ROLES, module: "tasks" },
+  { name: "Support Tickets", href: "/tickets", icon: ClipboardList, roles: STANDARD_ROLES, module: "tickets" },
   // /scheduled-jobs has no backend module gate; team roles only.
   { name: "Scheduled Work", href: "/scheduled-jobs", icon: CalendarClock, roles: TEAM_ROLES, module: "scheduled_work" },
   { name: "Time Tracking", href: "/timesheet", icon: TimerReset, roles: STANDARD_ROLES, module: "time_tracking" },

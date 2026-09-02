@@ -185,7 +185,7 @@ Personal memory is tenant/user-owned through `UserMemory`. Saved preferences are
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/changelog/tasks/{task_id}/changelog` | `get_task_changelog` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/changelog/tasks/{task_id}/changelog` | `get_task_changelog` | Requires authenticated task view access, not company membership alone; hidden task history is not returned across project, assignment, hierarchy, or tenant boundaries. |
 
 ### Chat
 
@@ -365,12 +365,30 @@ Client lifecycle statuses accepted by create/update/list responses are `new`, `o
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/scheduled-jobs/` | `list_scheduled_jobs` | Company-scoped list with status/search pagination. Admin, Sub Admin, Manager, Lead, and Super Admin can view jobs; jobs expose payload summaries and creator names. |
-| POST | `/api/v1/scheduled-jobs/` | `create_scheduled_job` | Schedules `CREATE_PROJECT` or `CREATE_TASK`. Project scheduling is limited to Admin, Sub Admin, Manager, and Super Admin; task scheduling also allows Sub Admin, Manager, Lead, and project-scoped Leads for their own project. `run_at` must be a future datetime and is stored as UTC. |
-| PATCH | `/api/v1/scheduled-jobs/{job_id}` | `update_scheduled_job` | Edits `run_at` for pending jobs only; same-tenant access required and past datetimes are rejected. |
+| GET | `/api/v1/scheduled-jobs/` | `list_scheduled_jobs` | Company-scoped list with status/search/schedule_type/enabled pagination. Admin, Sub Admin, Manager, Lead, and Super Admin can view jobs; jobs expose schedule type, enabled state, recurrence, timezone, next/last run, occurrence count, payload summaries, and creator names. |
+| POST | `/api/v1/scheduled-jobs/` | `create_scheduled_job` | Schedules `CREATE_PROJECT` or `CREATE_TASK` as `one_time` or `recurring`. Project scheduling is limited to Admin, Sub Admin, Manager, and Super Admin; task scheduling also allows Sub Admin, Manager, Lead, and project-scoped Leads for their own project. `run_at` must be a future datetime and is stored as UTC. Recurring jobs require a recurrence object and timezone. |
+| PATCH | `/api/v1/scheduled-jobs/{job_id}` | `update_scheduled_job` | Edits future pending jobs. One-time jobs can update `run_at`; recurring jobs can update payload, notes, recurrence, timezone, and future `run_at` while preserving occurrence history. Past datetimes are rejected. |
 | POST | `/api/v1/scheduled-jobs/{job_id}/cancel` | `cancel_scheduled_job` | Cancels pending or failed jobs and notifies the creator. |
 | POST | `/api/v1/scheduled-jobs/{job_id}/retry` | `retry_failed_job` | Moves failed or cancelled jobs back to pending and clears the stored error/retry count. |
+| GET | `/api/v1/scheduled-jobs/{job_id}/occurrences` | `list_scheduled_job_occurrences` | Returns same-tenant execution history for a scheduled job. Each occurrence has scheduled time, status, result reference, error, and timestamps. |
+| POST | `/api/v1/scheduled-jobs/{job_id}/pause` | `pause_scheduled_job` | Disables a recurring pending/failed job without deleting schedule or occurrence history. |
+| POST | `/api/v1/scheduled-jobs/{job_id}/resume` | `resume_scheduled_job` | Enables a recurring job and advances missed `run_at` values to the next future occurrence; no catch-up tasks are created for paused time. |
 | DELETE | `/api/v1/scheduled-jobs/{job_id}` | `delete_scheduled_job` | Deletes completed, failed, or cancelled jobs only. |
+
+### Work Requests
+
+Work Request endpoints require the Tasks module gate and same-company access. They coordinate operational work requests and approvals without replacing Support Tickets.
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/work-requests/` | `list_work_requests` | Company-scoped list with status, type, project, client, requester, priority, search, `mine`, and `needs_my_review` filters. |
+| POST | `/api/v1/work-requests/` | `create_work_request` | Creates a request for new work, change, approval, deadline extension, resource, blocker, leave/availability, client request, or other. Context fields are validated against same-tenant project/task/client records. |
+| GET | `/api/v1/work-requests/{request_id}` | `get_work_request` | Loads by logical request id or Mongo `_id`, then applies request visibility rules. |
+| POST | `/api/v1/work-requests/{request_id}/start-review` | `start_review` | Reviewer/manager action that moves `submitted` to `under_review`. |
+| POST | `/api/v1/work-requests/{request_id}/approve` | `approve_work_request` | Reviewer/manager action that approves with optional reason/result metadata. |
+| POST | `/api/v1/work-requests/{request_id}/reject` | `reject_work_request` | Reviewer/manager action that rejects with required reason. |
+| POST | `/api/v1/work-requests/{request_id}/cancel` | `cancel_work_request` | Requester or authorized reviewer/manager action for open requests. |
+| POST | `/api/v1/work-requests/{request_id}/convert` | `convert_work_request` | Converts an approved or under-review request into a Task or Project, preserves source linkage, and makes repeated conversion return the existing converted record. |
 
 ### Projects
 
@@ -580,14 +598,28 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/tasks/` | `list_tasks` | Company-scoped. Admin/Super Admin and Manager list company tasks; Employee list includes tasks assigned to them or created by them, so employee project leads keep visibility of tasks they assign to others. Pending scheduled `CREATE_TASK` jobs are returned as `scheduled` placeholders only to the scheduling creator, with `is_scheduled_placeholder=true`, `scheduled_job_id`, and UTC `scheduled_run_at`; they are not visible to assignees or other tenant users before publish. Response includes `assigned_to_name` for assigned task display. |
-| POST | `/api/v1/tasks/` | `create_task` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/tasks/{task_id}` | `get_task` | Uses router/endpoint dependencies where configured. |
-| PUT | `/api/v1/tasks/{task_id}` | `update_task` | Admin/Super Admin manage company tasks; Manager detail edits/assignment are limited to matching `department_id`; Employees cannot edit details through this endpoint. |
+| GET | `/api/v1/tasks/` | `list_tasks` | Company-scoped. Admin/Super Admin and Manager list company tasks; Employee list includes tasks assigned to them or created by them, so employee project leads keep visibility of tasks they assign to others. Supports `status_filter`, `priority`, `assigned_to`, `reviewer_id`, `review_required`, `blocked`, `awaiting_review`, `created_by`, `project_id`, `department_id`, `skip`, and `limit`. Pending scheduled `CREATE_TASK` jobs are returned as `scheduled` placeholders only to the scheduling creator, with `is_scheduled_placeholder=true`, `scheduled_job_id`, and UTC `scheduled_run_at`; they are not visible to assignees or other tenant users before publish. Response includes review metadata, `allowed_actions`, `is_blocked`, and `blocking_dependencies`. |
+| POST | `/api/v1/tasks/` | `create_task` | Creates an unassigned task as `todo` or an assigned task as `assigned`. Accepts optional `review_required` and `reviewer_id`; project tasks default to review-required except `source_type=sales_follow_up`, which remains non-review for CRM compatibility. Assignee and reviewer must be active same-company users authorized by role/project rules. |
+| GET | `/api/v1/tasks/{task_id}` | `get_task` | Returns a task after task view authorization with normalized checklist, dependencies, review metadata, allowed workflow actions, and blocking dependency details. |
+| PUT | `/api/v1/tasks/{task_id}` | `update_task` | Admin/Super Admin manage company tasks; Manager detail edits/assignment are limited to matching `department_id`; project-scoped Leads can manage assigned project tasks. Employees cannot edit details through this endpoint. Reassignment changes `todo` tasks to `assigned`; started tasks cannot be unassigned. Optional `review_required` and `reviewer_id` use the same validation as creation. |
 | POST | `/api/v1/tasks/{task_id}/attachments` | `add_task_attachment` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/tasks/{task_id}/comments` | `get_task_comments` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/tasks/{task_id}/comments` | `add_task_comment` | Uses router/endpoint dependencies where configured. |
-| PATCH | `/api/v1/tasks/{task_id}/status` | `update_task_status` | Uses router/endpoint dependencies where configured. |
+| PATCH | `/api/v1/tasks/{task_id}/status` | `update_task_status` | Legacy status endpoint. Maps requested statuses to semantic workflow actions and enforces the same transition rules as action routes. Valid statuses are `todo`, `assigned`, `in_progress`, `in_review`, `revision_required`, `approved`, `completed`, and `cancelled`. |
+| POST | `/api/v1/tasks/{task_id}/start` | `start_task` | Assignee or task manager moves `assigned`/legacy assigned `todo`/`revision_required` work to `in_progress` when dependencies are complete. |
+| POST | `/api/v1/tasks/{task_id}/submit-review` | `submit_task_for_review` | Assignee or manager submits `in_progress` work to `in_review`; review-required tasks need a reviewer and all required checklist items complete. |
+| POST | `/api/v1/tasks/{task_id}/request-revision` | `request_task_revision` | Reviewer or task manager moves `in_review`/`approved` work to `revision_required`; `reason` is required. |
+| POST | `/api/v1/tasks/{task_id}/approve` | `approve_task` | Reviewer, who cannot be the assignee, approves `in_review` work. |
+| POST | `/api/v1/tasks/{task_id}/complete` | `complete_task` | Task manager completes approved review-required work; assignee can complete non-review work from `in_progress`. |
+| POST | `/api/v1/tasks/{task_id}/reopen` | `reopen_task` | Task manager reopens `completed` work to `assigned`. |
+| POST | `/api/v1/tasks/{task_id}/cancel` | `cancel_task` | Task manager cancels non-cancelled work; cancelled tasks are terminal. |
+| GET | `/api/v1/tasks/{task_id}/execution` | `get_task_execution` | Returns task execution metadata, normalized checklist, dependencies, time logs, workload, and blocker state. |
+| PATCH | `/api/v1/tasks/{task_id}/execution` | `update_task_execution` | Updates progress, expected completion time, checklist, dependencies, and time logs after task view authorization. |
+| POST | `/api/v1/tasks/{task_id}/checklist` | `add_task_checklist_item` | Task manager adds a checklist item. |
+| PATCH | `/api/v1/tasks/{task_id}/checklist/{item_id}` | `update_task_checklist_item` | Viewer/assignee can mark completion; task manager is required to edit text or required flag. |
+| DELETE | `/api/v1/tasks/{task_id}/checklist/{item_id}` | `delete_task_checklist_item` | Task manager deletes a checklist item. |
+| POST | `/api/v1/tasks/{task_id}/dependencies` | `add_task_dependency` | Task manager adds a same-tenant, same-project dependency; self-dependency and cycles are rejected. |
+| DELETE | `/api/v1/tasks/{task_id}/dependencies/{dependency_id}` | `delete_task_dependency` | Task manager removes a dependency. |
 | GET | `/api/v1/tasks/{task_id}/subtasks` | `get_task_subtasks` | Uses router/endpoint dependencies where configured. |
 
 ### Tickets
