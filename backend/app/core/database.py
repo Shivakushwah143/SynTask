@@ -394,6 +394,9 @@ async def init_db():
         )
 
         await seed_default_capabilities()
+        from app.agents.registry import register_builtin_agent_definitions
+
+        await register_builtin_agent_definitions()
         
         logger.info("Beanie ODM initialized successfully")
         

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import random
 from typing import Any
 
 import httpx
@@ -9,6 +11,7 @@ import httpx
 from app.ai.provider import AIProvider, AIProviderResult, ToolCall
 from app.ai.providers.context_envelope import provider_context_message
 from app.core.config import settings
+from app.core.json_safe import to_json_safe
 
 logger = logging.getLogger(__name__)
 
@@ -94,19 +97,57 @@ class GroqProvider(AIProvider):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    _MAX_RETRIES = 3
+    _BASE_DELAY = 2.0  # seconds
+
     async def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         timeout = httpx.Timeout(settings.AI_TIMEOUT)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                self.base_url,
-                headers={
-                    "Authorization": f"Bearer {settings.GROQ_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                content=json.dumps(payload),
+        last_exc: Exception | None = None
+
+        for attempt in range(self._MAX_RETRIES):
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    self.base_url,
+                    headers={
+                        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    content=json.dumps(to_json_safe(payload)),
+                )
+
+                if response.status_code == 429:
+                    retry_after = response.headers.get("Retry-After")
+                    if retry_after and retry_after.isdigit():
+                        delay = min(float(retry_after), 30)
+                    else:
+                        delay = min(
+                            self._BASE_DELAY * (2 ** attempt)
+                            + random.uniform(0, 1),
+                            30,
+                        )
+                    logger.warning(
+                        "Groq rate-limited (429) on attempt %d/%d — retrying in %.1fs",
+                        attempt + 1,
+                        self._MAX_RETRIES,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+                response.raise_for_status()
+                return response.json()
+
+            # Only store the exception if we didn't get a 429 (we already logged it)
+            last_exc = httpx.HTTPStatusError(
+                f"HTTP {response.status_code}",
+                request=response.request,
+                response=response,
             )
-            response.raise_for_status()
-            return response.json()
+
+        # All retries exhausted
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("Groq API request failed after retries")
 
     @staticmethod
     def _parse_result(data: dict[str, Any], default_model: str) -> AIProviderResult:

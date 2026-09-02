@@ -8,6 +8,7 @@ from beanie.odm.operators.find.comparison import In
 from beanie.odm.operators.find.logical import Or
 
 from app.ai.memory import AIMemoryService
+from app.core.json_safe import to_json_safe
 from app.models.company import Company
 from app.models.department import Department
 from app.models.project import Project, ProjectStatus
@@ -1025,7 +1026,7 @@ class ContextBuilder:
             limit=limit,
         )
 
-        return {
+        return to_json_safe({
             "company": {
                 "id": company_id,
                 "name": company.name if company else None,
@@ -1070,5 +1071,5 @@ class ContextBuilder:
                 "status": getattr(company, "status", None),
                 "industry": getattr(company, "industry", None),
             },
-        }
+        })
 

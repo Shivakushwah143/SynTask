@@ -57,6 +57,7 @@ class AgentDefinition(Document):
     prompt_id: str
     prompt_version: str
     provider_policy_id: str
+    provider_policy: dict[str, Any] = Field(default_factory=dict)
     memory_policy: dict[str, Any] = Field(default_factory=dict)
     personalization_policy: dict[str, Any] = Field(default_factory=dict)
     approval_policy: dict[str, Any] = Field(default_factory=dict)

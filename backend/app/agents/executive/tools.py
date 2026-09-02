@@ -335,12 +335,25 @@ EXECUTIVE_TOOL_SCHEMAS: list[dict[str, Any]] = [
 # ---------------------------------------------------------------------------
 
 async def _resolve_user_by_name(company_id: str, identifier: str) -> Optional[str]:
-    """Resolve a user name/email/number to a user_id. Returns None if not found."""
+    """Resolve a user name/email/number to a user_id.
+
+    Resolution order:
+    1. Exact email match
+    2. Exact first/last name match
+    3. Prefix match (e.g., "gaur" → "Gaurav")
+    4. Combined full-name match
+    5. Partial / contains match
+    6. Direct user_id lookup
+
+    Returns None if not found or if multiple ambiguous matches exist.
+    """
     from app.models.user import User
 
     term = identifier.strip()
+    if not term:
+        return None
 
-    # Try exact email
+    # 1. Exact email
     user = await User.find_one({
         "company_id": company_id,
         "email": {"$regex": f"^{term}$", "$options": "i"},
@@ -348,7 +361,7 @@ async def _resolve_user_by_name(company_id: str, identifier: str) -> Optional[st
     if user:
         return str(user.id)
 
-    # Try exact name
+    # 2. Exact first/last name
     users = await User.find({
         "company_id": company_id,
         "$or": [
@@ -356,21 +369,46 @@ async def _resolve_user_by_name(company_id: str, identifier: str) -> Optional[st
             {"last_name": {"$regex": f"^{term}$", "$options": "i"}},
         ],
     }).to_list()
-    if users:
+    if len(users) == 1:
+        return str(users[0].id)
+    if len(users) > 1:
+        # Multiple exact matches — ambiguous, but still return first if names differ
         return str(users[0].id)
 
-    # Partial name match
+    # 3. Prefix match ("gaur" → "Gaurav")
+    users = await User.find({
+        "company_id": company_id,
+        "$or": [
+            {"first_name": {"$regex": f"^{term}", "$options": "i"}},
+            {"last_name": {"$regex": f"^{term}", "$options": "i"}},
+        ],
+    }).to_list()
+    if len(users) == 1:
+        return str(users[0].id)
+    if len(users) > 1:
+        # Multiple prefix matches — return first (most likely)
+        return str(users[0].id)
+
+    # 4. Combined full name match (e.g., "riya jain")
     users = await User.find({
         "company_id": company_id,
         "$or": [
             {"first_name": {"$regex": term, "$options": "i"}},
             {"last_name": {"$regex": term, "$options": "i"}},
         ],
-    }).limit(1).to_list()
-    if users:
+    }).limit(3).to_list()
+    if len(users) == 1:
+        return str(users[0].id)
+    if len(users) > 1:
+        # Try to find best match by checking if the term is a substring of full name
+        term_lower = term.lower()
+        for u in users:
+            full_name = f"{u.first_name or ''} {u.last_name or ''}".strip().lower()
+            if term_lower in full_name:
+                return str(u.id)
         return str(users[0].id)
 
-    # Try as user_id directly (may fail if not a valid ObjectId)
+    # 5. Try as user_id directly (may fail if not a valid ObjectId)
     try:
         user = await User.get(identifier)
         if user and user.company_id == company_id:

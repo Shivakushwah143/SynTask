@@ -51,7 +51,9 @@ export const aiAPI = {
   },
 
   chat: async (payload = {}) => {
-    if (unifiedAssistantEnabled()) {
+    const useUnified = unifiedAssistantEnabled()
+    console.log('[AIChat] VITE_UNIFIED_AI_ASSISTANT_ENABLED =', import.meta.env.VITE_UNIFIED_AI_ASSISTANT_ENABLED, '→ useUnified =', useUnified, '→ endpoint:', useUnified ? '/ai-assistant/chat' : '/ai/chat')
+    if (useUnified) {
       const response = await api.post('/ai-assistant/chat', buildUnifiedAssistantPayload(payload))
       return normalizeUnifiedAssistantResponse(response.data)
     }

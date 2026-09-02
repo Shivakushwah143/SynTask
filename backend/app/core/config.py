@@ -271,8 +271,8 @@ class Settings(BaseSettings):
     RAG_CSV_MAX_ROWS: int = 10000
 
     # Shared Agent Platform foundation
-    AGENT_PLATFORM_ENABLED: bool = False
-    PROJECT_AGENT_ENABLED: bool = False
+    AGENT_PLATFORM_ENABLED: bool = True
+    PROJECT_AGENT_ENABLED: bool = True
     EMAIL_DRAFT_AGENT_ENABLED: bool = False
     TASK_PERFORMANCE_AGENT_ENABLED: bool = False
     AGENT_RUN_RETENTION_DAYS: int = 90
@@ -285,12 +285,12 @@ class Settings(BaseSettings):
     AGENT_DEFAULT_MAX_COST_PER_RUN: float = 1.0
 
     # HR Agent
-    HR_AGENT_ENABLED: bool = False
+    HR_AGENT_ENABLED: bool = True
     HR_AGENT_MAX_STEPS: int = 15
     HR_AGENT_MODEL: str = ""  # falls back to AI_MODEL_GROQ when empty
 
     # Executive Operations Agent
-    EXECUTIVE_AGENT_ENABLED: bool = False
+    EXECUTIVE_AGENT_ENABLED: bool = True
     EXECUTIVE_AGENT_MAX_STEPS: int = 20
     EXECUTIVE_AGENT_MODEL: str = ""  # falls back to AI_MODEL_GROQ when empty
 

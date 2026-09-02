@@ -10,7 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.orchestrator import AgentOrchestrator
-from app.agents.capability_packs import role_capability_pack
+from app.agents.capability_packs import EXECUTIVE_AGENT_ID, HR_AGENT_ID, role_capability_pack
+from app.agents.executive.service import ExecutiveAgentService
+from app.agents.hr.service import HRAgentService
 from app.agents.routing import DeterministicAgentRouter
 from app.agents.schemas import AgentRunCreateRequest
 from app.api.dependencies import get_current_user, get_project_by_id
@@ -27,6 +29,8 @@ router = APIRouter()
 orchestrator = AgentOrchestrator()
 working_memory_service = WorkingMemoryService()
 agent_router = DeterministicAgentRouter()
+executive_agent_service = ExecutiveAgentService()
+hr_agent_service = HRAgentService()
 
 
 class UnifiedWorkspaceContext(BaseModel):
@@ -109,7 +113,7 @@ PROHIBITED_MEMORY_TERMS = (
 
 
 def _require_unified_ai_enabled() -> None:
-    if not settings.AGENT_PLATFORM_ENABLED or not settings.PROJECT_AGENT_ENABLED:
+    if not settings.AGENT_PLATFORM_ENABLED:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Unified AI workspace is disabled")
 
 
@@ -151,7 +155,18 @@ async def unified_assistant_chat(payload: UnifiedAssistantChatRequest, current_u
         current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
         modules=list(getattr(current_user, "modules", []) or []),
     )
-    route = agent_router.route(message=payload.message, workspace=workspace, capability_pack=capability_pack)
+    # Build conversation history for LLM intent context
+    conversation_history = []
+    for msg in (conversation.messages or [])[-8:]:
+        if hasattr(msg, "role") and hasattr(msg, "content"):
+            conversation_history.append({"role": msg.role, "content": msg.content})
+    # Use hybrid routing: deterministic first, then LLM intent interpreter for ambiguous queries
+    route = await agent_router.route_with_llm_intent(
+        message=payload.message,
+        workspace=workspace,
+        capability_pack=capability_pack,
+        conversation_history=conversation_history,
+    )
     memory_state = await _personal_memory_state(current_user=current_user)
     merged_preferences = {
         **{item["preference_key"]: item["content"] for item in memory_state["memories"] if item.get("preference_key")},
@@ -179,6 +194,49 @@ async def unified_assistant_chat(payload: UnifiedAssistantChatRequest, current_u
             },
         },
     )
+    if route.agent_id in {EXECUTIVE_AGENT_ID, HR_AGENT_ID}:
+        definition = await orchestrator.registry.get_definition(
+            agent_id=agent_payload.agent_id,
+            version=agent_payload.agent_version,
+        )
+        orchestrator._authorize_definition(current_user=current_user, definition=definition, payload=agent_payload)
+        entity_context = {
+            "workspace": workspace,
+            "routing": route.model_context(),
+        }
+        service = executive_agent_service if route.agent_id == EXECUTIVE_AGENT_ID else hr_agent_service
+        specialized = await service.chat(
+            current_user=current_user,
+            message=payload.message,
+            conversation_id=conversation.conversation_id,
+            session_id=session.session_id,
+            entity_context=entity_context,
+            conversation_history=conversation_history,
+        )
+        answer_text = specialized.get("answer") or ""
+        return UnifiedAssistantChatResponse(
+            conversation_id=conversation.conversation_id,
+            session_id=session.session_id,
+            message_id=message.id,
+            run_id=None,
+            state="COMPLETED" if specialized.get("success") else "FAILED",
+            agent={"agent_id": route.agent_id, "version": route.agent_version, "routing_reason": route.routing_reason},
+            answer={
+                "summary": answer_text,
+                "sections": [],
+                "facts": [],
+                "missing_data": [],
+                "warnings": [specialized["error_detail"]] if specialized.get("error_detail") else [],
+                "confidence": route.confidence,
+            },
+            citations=[],
+            proposed_actions=[],
+            memory={"saved": False, "candidate_ids": []},
+            usage={
+                **(specialized.get("usage") or {}),
+                "tool_calls_summary": specialized.get("tool_calls_summary") or [],
+            },
+        )
     run = await orchestrator.create_run(current_user=current_user, payload=agent_payload)
     result = run.sanitized_result or {}
     answer = {
@@ -195,7 +253,7 @@ async def unified_assistant_chat(payload: UnifiedAssistantChatRequest, current_u
         message_id=message.id,
         run_id=run.run_id,
         state=run.state,
-        agent={"agent_id": run.agent_id, "version": run.agent_version, "routing_reason": route.reason},
+        agent={"agent_id": run.agent_id, "version": run.agent_version, "routing_reason": route.routing_reason},
         answer=answer,
         citations=result.get("citations") or result.get("evidence") or [],
         proposed_actions=result.get("proposed_actions") or [],

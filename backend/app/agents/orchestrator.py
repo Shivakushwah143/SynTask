@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
 from app.agents.email_draft import EMAIL_DRAFT_OUTPUT_SCHEMA_VERSION, EmailDraftAgentOutput, detect_sensitive_terms
+from app.core.json_safe import to_json_safe
 from app.agents.project_agent import PROJECT_AGENT_OUTPUT_SCHEMA_VERSION, ProjectAgentOutput
 from app.agents.task_performance import TASK_PERFORMANCE_OUTPUT_SCHEMA_VERSION, TaskPerformanceAgentOutput
 from app.agents.budget import AgentBudgetController, BudgetExceeded
@@ -130,7 +131,7 @@ class AgentOrchestrator:
                 await run.save()
                 return self._response(run)
             await self._advance(run, AgentRunState.PROCESSING, actor_id=str(current_user.id), reason="provider")
-            model_context = sanitize_for_model_context(package).model_dump(mode="json")
+            model_context = to_json_safe(sanitize_for_model_context(package).model_dump(mode="json"))
             if payload.input_payload.get("personal_context"):
                 model_context = build_personal_model_context(
                     base_context=model_context,
@@ -542,9 +543,9 @@ class AgentOrchestrator:
             context_package_id=run.context_package_id,
             provider=run.provider,
             model=run.model,
-            sanitized_result=run.sanitized_result,
+            sanitized_result=to_json_safe(run.sanitized_result),
             proposed_action_ids=run.proposed_action_ids,
-            token_usage=run.token_usage,
+            token_usage=to_json_safe(run.token_usage),
             estimated_cost=run.estimated_cost,
             error_category=run.error_category,
         )
