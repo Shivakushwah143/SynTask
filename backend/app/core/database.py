@@ -28,7 +28,7 @@ from app.models.notification import Notification
 from app.models.project import Project, Epic, Sprint, ProjectTypeConfiguration
 from app.models.scheduled_job import ScheduledJob, ScheduledJobOccurrence
 from app.models.work_request import WorkRequest
-from app.models.time_tracking import TimeLog, TimeTrackingSummary
+from app.models.time_tracking import ActiveTimeSession, TimeLog, TimeTrackingSummary
 from app.models.workflow import Workflow, WorkflowStatus, WorkflowTransition
 from app.models.automation import AutomationRule, AutomationExecution
 from app.models.webhook import Webhook, WebhookDelivery
@@ -215,6 +215,7 @@ async def init_db():
                 Epic,
                 Sprint,
                 TimeLog,
+                ActiveTimeSession,
                 TimeTrackingSummary,
                 Workflow,
                 WorkflowStatus,

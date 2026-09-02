@@ -397,6 +397,10 @@ Work Request endpoints require the Tasks module gate and same-company access. Th
 | GET | `/api/v1/projects/` | `list_projects` | Company-scoped. Admin/Super Admin and Manager list company projects; Employee list includes projects where they are the project leader, project member, or have assigned tasks. Pending scheduled `CREATE_PROJECT` jobs are also returned as `scheduled` placeholders only to the scheduling creator, with `is_scheduled_placeholder=true`, `scheduled_job_id`, and `scheduled_run_at`; they are not visible to other tenant users before publish. |
 | POST | `/api/v1/projects/` | `create_project` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/projects/for-task-creation` | `get_projects_for_task_creation` | Returns non-archived projects where the authenticated user has `create_task`. Employees assigned as that project's `lead_id` are treated as project-scoped Lead only for that project. |
+| GET | `/api/v1/projects/{project_id}/completion-readiness` | `get_completion_readiness` | Returns server-derived readiness, blocking reasons, required/completed task counts, incomplete tasks, pending review tasks, dependency blockers, active timers, and open blocker Work Requests. |
+| POST | `/api/v1/projects/{project_id}/complete` | `complete_project` | Completes only when centralized readiness passes; records `completed_at` and `completed_by`. Direct status updates use the same readiness gate. |
+| POST | `/api/v1/projects/{project_id}/archive` | `archive_completed_project` | Archives reporting projects without deleting tasks, files, time logs, requests, scheduled work, or history. |
+| POST | `/api/v1/projects/{project_id}/reopen` | `reopen_project` | Reopens a completed project to review and requires a reason plus manage permission. |
 | DELETE | `/api/v1/projects/{project_id}` | `delete_project` | Deletes the project and cascade-deletes all of its tasks and dependent records (task comments, watchers, time logs, epics, sprints, pages, notifications, scheduled jobs that would recreate it, etc.) in a transaction when supported, falling back to an ordered idempotent cascade. Accepts the logical `project_id` or Mongo `_id`. Requires an org management role (Super Admin/Admin/Sub Admin/Manager) with `manage_project`; 404 when the project does not exist in the caller's organization, 403 without permission. Tasks no longer block deletion. |
 | GET | `/api/v1/projects/{project_id}` | `get_project` | Loads the real project by logical ID or MongoDB ID, enforces project-scoped access, and returns `effective_project_role` plus permission flags. |
 | PUT | `/api/v1/projects/{project_id}` | `update_project` | Uses router/endpoint dependencies where configured. |
@@ -640,11 +644,18 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| POST | `/api/v1/time-tracking/tasks/{task_id}/log-time` | `log_time` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/time-tracking/tasks/{task_id}/time-logs` | `get_task_time_logs` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/time-tracking/tasks/{task_id}/time-summary` | `get_task_time_summary` | Uses router/endpoint dependencies where configured. |
-| DELETE | `/api/v1/time-tracking/time-logs/{log_id}` | `delete_time_log` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/time-tracking/users/{user_id}/time-logs` | `get_user_time_logs` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/time-tracking/active` | `get_active_timer` | Returns the authenticated user's backend-authoritative active timer, if any, with server time and elapsed seconds. |
+| POST | `/api/v1/time-tracking/start` | `start_time_tracking` | Starts one active timer for an assigned actionable task. Assigned tasks move to `in_progress` through Phase 2 workflow. Existing active timer returns 409. |
+| POST | `/api/v1/time-tracking/pause` | `pause_time_tracking` | Pauses the active timer and stores elapsed time in `accumulated_seconds`; no TimeLog is created. |
+| POST | `/api/v1/time-tracking/resume` | `resume_time_tracking` | Resumes the same paused session without creating a new session. |
+| POST | `/api/v1/time-tracking/stop` | `stop_time_tracking` | Finalizes the active timer into a canonical `TimeLog` with `source=timer`, then removes the active session. |
+| POST | `/api/v1/time-tracking/manual` | `create_manual_entry` | Creates a canonical `TimeLog` with `source=manual`; validates duration, task/project/company scope, and maximum per-entry duration. |
+| GET | `/api/v1/time-tracking/reports/summary` | `get_time_report` | Server-side company-scoped aggregation by employee, task, project, client, and source. Employees see their own logs; management roles can filter. |
+| POST | `/api/v1/time-tracking/tasks/{task_id}/log-time` | `log_time` | Backward-compatible manual time entry route; now routes through the same validation/source logic as `/manual`. |
+| GET | `/api/v1/time-tracking/tasks/{task_id}/time-logs` | `get_task_time_logs` | Same-tenant task time logs, excluding voided logs. |
+| GET | `/api/v1/time-tracking/tasks/{task_id}/time-summary` | `get_task_time_summary` | Task estimated/actual/tracked time summary. |
+| DELETE | `/api/v1/time-tracking/time-logs/{log_id}` | `delete_time_log` | Voids a finalized TimeLog and updates summaries instead of hard-deleting the record. |
+| GET | `/api/v1/time-tracking/users/{user_id}/time-logs` | `get_user_time_logs` | User logs by date range; employees can view self, admin roles can view scoped users. |
 
 ### Timesheet
 

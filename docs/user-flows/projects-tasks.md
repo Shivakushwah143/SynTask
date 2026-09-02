@@ -77,3 +77,11 @@ Work Requests live at `/work-requests` in the Work route group. Users can submit
 Scheduled Work still lives at `/scheduled-jobs`. Users with existing scheduled-work permissions can create one-time jobs or recurring jobs. Recurring jobs store recurrence settings, timezone, next run, last run, enabled state, and occurrence history. Pause disables future runs without deleting the rule; resume advances missed schedules to the next future run without catch-up creation.
 
 Tenant and access rule: Work Requests and Scheduled Work are company-scoped by `company_id`. Project, task, client, reviewer, assignee, and converted records must all resolve inside the same company before write actions proceed. Negative tests should verify cross-company context ids, cross-company reviewers, and cross-company request/detail lookups are denied.
+
+# Phase 5 Time Tracking and Project Control
+
+Time Tracking supports one backend-authoritative active timer per employee. The page loads the current timer from `/api/v1/time-tracking/active`, so refresh does not lose running or paused state. Start validates task access, assignment, blockers, and project lifecycle; assigned tasks move to `in_progress` through Phase 2 workflow before timer creation. Pause stores elapsed time in the active session, resume continues the same session, and stop creates the finalized `TimeLog` with `source=timer`.
+
+Manual time entry remains available and creates `source=manual` TimeLogs. Manual entries require positive duration, reject excessive duration, and validate task/project/company scope. Deleting a time log now voids it for audit instead of hard-removing history.
+
+Project pages can request completion readiness from `/api/v1/projects/{project_id}/completion-readiness`. A project is not ready while required tasks are incomplete, review/revision/approved-not-completed tasks remain, dependency blockers exist, blocker Work Requests are open, active project timers exist, or the project lifecycle is not eligible. Direct status completion and semantic completion both use this backend readiness gate. Archiving is allowed only after the project reaches reporting and preserves historical tasks, time, requests, scheduled work, and activity.

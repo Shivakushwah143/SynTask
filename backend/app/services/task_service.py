@@ -7,7 +7,7 @@ from fastapi import HTTPException, status
 from app.core.clock import parse_to_utc, utc_now
 from app.models.user import User
 
-from app.models.project import Project
+from app.models.project import Project, ProjectStatus
 from app.models.task import Task, TaskStatus
 from app.services.automation_service import trigger_automation
 from app.services.task_workflow import creation_status, effective_review_required, validate_reviewer, normalize_checklist
@@ -215,6 +215,11 @@ class TaskService:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Access denied to this project"
+                )
+            if getattr(project.status, "value", project.status) in {ProjectStatus.ARCHIVED.value, ProjectStatus.CANCELLED.value, ProjectStatus.COMPLETED.value}:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Project does not allow new tasks",
                 )
             if not await _can_access_project_for_task(current_user, project):
                 raise HTTPException(

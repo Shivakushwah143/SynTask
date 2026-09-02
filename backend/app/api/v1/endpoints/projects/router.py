@@ -8,6 +8,7 @@ from . import (
     project_summary,
     project_types,
     project_create,
+    project_control,
     project_delete,
     project_detail,
     project_files,
@@ -23,6 +24,7 @@ router.include_router(project_create.router)
 router.include_router(project_list.router)
 router.include_router(project_types.router)
 router.include_router(project_detail.router)
+router.include_router(project_control.router)
 router.include_router(project_update.router)
 router.include_router(project_delete.router)
 router.include_router(project_task_creation.router)

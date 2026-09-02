@@ -282,6 +282,12 @@ async def transition_task(
     await assert_actor_for_action(action, actor, task, project)
     if target in {TaskStatus.IN_PROGRESS, TaskStatus.IN_REVIEW, TaskStatus.COMPLETED}:
         await assert_not_blocked(task)
+    if target == TaskStatus.COMPLETED:
+        from app.models.time_tracking import ActiveTimeSession
+
+        active_session = await ActiveTimeSession.find_one({"company_id": task.company_id, "task_id": str(task.id)})
+        if active_session:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Stop the active timer before completing this task.")
     if action == "submit_review":
         if incomplete_required_checklist(task):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Complete all required checklist items before submitting for review.")

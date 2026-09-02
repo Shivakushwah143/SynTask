@@ -89,6 +89,7 @@ class Task(Document):
     approved_by: Optional[str] = None
     completed_by: Optional[str] = None
     status_changed_at: Optional[datetime] = None
+    required_for_project_completion: bool = True
 
     # Production / Quantitative Tracking
     task_type: TaskType = TaskType.STANDARD

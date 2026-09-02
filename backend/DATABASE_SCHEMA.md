@@ -1865,3 +1865,20 @@ Work Request indexes:
 `scheduled_jobs` now supports `schedule_type` values `one_time` and `recurring`, `enabled`, `recurrence`, `timezone`, `next_run_at`, `last_run_at`, and `occurrence_count`. Existing status, payload, retry, result, creator, and tenant fields remain.
 
 `scheduled_job_occurrences` stores execution history per scheduled run. Each occurrence is scoped by `company_id` and has `scheduled_job_id`, unique `occurrence_id`, `scheduled_at`, status, result type/id, error, retry count, started/completed timestamps, and created/updated timestamps. A unique compound index on `scheduled_job_id` and `scheduled_at` prevents duplicate occurrence rows for the same scheduled run.
+
+# Time Tracking and Project Control Phase 5
+
+`active_time_sessions` stores backend-authoritative live timers. Each user can have one active session per company through a unique compound `company_id`, `user_id` index. Fields include `task_id`, optional `project_id` and `client_id`, `started_at`, `last_resumed_at`, `paused_at`, `accumulated_seconds`, `status` (`running` or `paused`), and timestamps.
+
+`time_logs` remains the source of truth for finalized recorded time. Phase 5 adds `source` (`timer`, `manual`, `system`), optional `project_id` and `client_id`, creator/updater audit fields, and void metadata (`voided`, `voided_at`, `voided_by`, `void_reason`) so corrections do not silently erase history.
+
+Additional time indexes:
+
+- compound `company_id`, `user_id`, `date`
+- compound `company_id`, `project_id`, `date`
+- compound `company_id`, `task_id`, `date`
+- `project_id`, `client_id`, and `source`
+
+`tasks.required_for_project_completion` defaults to true. Optional compatibility work can set it false so it does not block project completion readiness.
+
+`projects` stores completion metadata: `completed_at`, `completed_by`, `client_delivery_completed`, `client_delivery_completed_at`, and `client_delivery_completed_by`.

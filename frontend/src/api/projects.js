@@ -45,6 +45,20 @@ export const projectsApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
+
+  getCompletionReadiness: (id) => api.get(`/projects/${id}/completion-readiness`),
+
+  completeProject: (id) => api.post(`/projects/${id}/complete`),
+
+  archiveProject: (id) => api.post(`/projects/${id}/archive`),
+
+  reopenProject: (id, reason) => {
+    const formData = new FormData()
+    formData.append('reason', reason)
+    return api.post(`/projects/${id}/reopen`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
   
   deleteProject: (id) => {
     return api.delete(`/projects/${id}`)

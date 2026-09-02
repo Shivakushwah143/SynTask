@@ -118,3 +118,5 @@ The Projects module uses logical `Project.project_id` for user-visible identity 
 Phase 2 adds strict Task execution/review workflow with reviewer assignment, checklist gates, dependency blockers, semantic action endpoints, changelog/timeline audit, and updated task board statuses. See `PHASE2_TASK_EXECUTION_REPORT.md`.
 
 Phase 4 adds Work Requests plus recurring Scheduled Work. Work Requests coordinate operational approvals and conversion into Tasks/Projects without replacing Support Tickets. Scheduled Work supports one-time and recurring jobs, occurrence history, and pause/resume controls. See `PHASE4_REQUESTS_SCHEDULED_WORK_REPORT.md` and `docs/architecture/decisions/2026-09-02-work-phase4-requests-recurring-work.md`.
+
+Phase 5 adds backend-authoritative active timers, timer/manual TimeLog sources, server-side time reporting, and project completion readiness gates before completion/archive. See `PHASE5_TIME_PROJECT_CONTROL_REPORT.md` and `docs/architecture/decisions/2026-09-02-work-phase5-time-project-control.md`.

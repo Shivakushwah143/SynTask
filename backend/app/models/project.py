@@ -74,6 +74,11 @@ class Project(Document):
     start_date: Optional[datetime] = None
     delivery_date: Optional[datetime] = None  # Delivery/deadline date
     end_date: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    completed_by: Optional[str] = None
+    client_delivery_completed: bool = False
+    client_delivery_completed_at: Optional[datetime] = None
+    client_delivery_completed_by: Optional[str] = None
     
     # Metadata
     avatar: Optional[str] = None

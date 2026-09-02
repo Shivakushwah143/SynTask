@@ -58,9 +58,14 @@ async def advance_project(
         )
 
     if next_status == ProjectStatus.COMPLETED:
+        from app.services.project_completion_service import assert_ready_for_completion
+
+        await assert_ready_for_completion(project, current_user)
         project.completed_at = utc_now()
+        project.completed_by = str(current_user.id)
     elif next_status != ProjectStatus.COMPLETED:
         project.completed_at = None
+        project.completed_by = None
 
     project.status = next_status
     project.updated_at = utc_now()
