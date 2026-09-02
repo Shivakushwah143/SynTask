@@ -18,8 +18,11 @@ class TaskPriority(str, Enum):
 
 class TaskStatus(str, Enum):
     TODO = "todo"
+    ASSIGNED = "assigned"
     IN_PROGRESS = "in_progress"
     IN_REVIEW = "in_review"
+    REVISION_REQUIRED = "revision_required"
+    APPROVED = "approved"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
@@ -66,6 +69,7 @@ class Task(Document):
     created_by: str  # User ID
     assigned_to: Optional[str] = None  # User ID
     assigned_by: Optional[str] = None  # User ID
+    assigned_at: Optional[datetime] = None
     department_id: Optional[str] = None  # Department document ID
     department: Optional[str] = None  # Legacy department name fallback
     
@@ -73,6 +77,18 @@ class Task(Document):
     status: TaskStatus = TaskStatus.TODO
     priority: TaskPriority = TaskPriority.MEDIUM
     progress_percentage: float = 0.0
+    review_required: Optional[bool] = None
+    reviewer_id: Optional[str] = None
+    review_round: int = 0
+    submitted_for_review_at: Optional[datetime] = None
+    submitted_for_review_by: Optional[str] = None
+    revision_requested_at: Optional[datetime] = None
+    revision_requested_by: Optional[str] = None
+    latest_revision_reason: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    approved_by: Optional[str] = None
+    completed_by: Optional[str] = None
+    status_changed_at: Optional[datetime] = None
 
     # Production / Quantitative Tracking
     task_type: TaskType = TaskType.STANDARD
@@ -152,6 +168,7 @@ class Task(Document):
             "company_id",
             "created_by",
             "assigned_to",
+            "reviewer_id",
             "status",
             "health_status",
             "priority",
@@ -164,6 +181,7 @@ class Task(Document):
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("health_status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("reviewer_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("project_object_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("due_date", ASCENDING)]),

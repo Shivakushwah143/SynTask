@@ -45,6 +45,14 @@ from app.services.project_permissions import (
     load_project_for_permission,
     load_task_project,
 )
+from app.services.task_workflow import (
+    allowed_actions,
+    blocking_dependencies,
+    effective_review_required,
+    normalize_checklist,
+    transition_task,
+    validate_dependency,
+)
 
 router = APIRouter()
 
@@ -484,9 +492,13 @@ async def list_tasks(
     status_filter: Optional[str] = None,
     priority: Optional[str] = None,
     assigned_to: Optional[str] = None,
+    reviewer_id: Optional[str] = None,
     created_by: Optional[str] = None,
     project_id: Optional[str] = None,
     department_id: Optional[str] = None,
+    review_required: Optional[bool] = None,
+    blocked: Optional[bool] = None,
+    awaiting_review: Optional[bool] = None,
     pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user)
 ):
@@ -507,6 +519,12 @@ async def list_tasks(
             query["assigned_to"] = assigned_to
     if created_by:
         query["created_by"] = created_by
+    if reviewer_id:
+        query["reviewer_id"] = reviewer_id
+    if review_required is not None:
+        query["review_required"] = review_required
+    if awaiting_review:
+        query["status"] = TaskStatus.IN_REVIEW
     if project_id:
         # Filter by project_id - only return tasks that have this specific project_id
         # Simple equality check - MongoDB will only match documents where project_id equals this value
@@ -522,6 +540,13 @@ async def list_tasks(
     tasks = await Task.find(query).skip(skip).limit(limit).sort("-created_at").to_list()
     for task in tasks:
         await sync_task_health(task)
+    if blocked is not None:
+        filtered = []
+        for task in tasks:
+            is_blocked = bool(await blocking_dependencies(task))
+            if is_blocked == blocked:
+                filtered.append(task)
+        tasks = filtered
     total = await Task.find(query).count()
     scheduled_task_placeholders = []
     if current_user.company_id and (not status_filter or status_filter == "scheduled") and not created_by:
@@ -557,6 +582,9 @@ async def list_tasks(
                 "priority": enum_or_string_value(task.priority),
                 "assigned_to": task.assigned_to,
                 "assigned_to_name": assignee_names.get(str(task.assigned_to or "")),
+                "reviewer_id": getattr(task, "reviewer_id", None),
+                "review_required": effective_review_required(task),
+                "review_round": getattr(task, "review_round", 0),
                 "created_by": task.created_by,
                 "project_id": str(task.project_id) if task.project_id else None,
                 "department_id": getattr(task, "department_id", None),
@@ -568,6 +596,7 @@ async def list_tasks(
                 "estimated_hours": getattr(task, "estimated_hours", None),
                 "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
                 "source_type": getattr(task, "source_type", None),
+                "is_blocked": bool(await blocking_dependencies(task)),
                 "tags": task.tags,
                 "created_at": task.created_at,
                 "is_scheduled_placeholder": False,
@@ -601,6 +630,8 @@ async def create_task(
     custom_measurement_label: Optional[str] = Form(None),
     target_quantity: Optional[int] = Form(None),
     target_unit: Optional[str] = Form(None),
+    reviewer_id: Optional[str] = Form(None),
+    review_required: Optional[bool] = Form(None),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -636,6 +667,8 @@ async def create_task(
         custom_measurement_label=custom_measurement_label,
         target_quantity=target_quantity,
         target_unit=target_unit,
+        reviewer_id=reviewer_id,
+        review_required=review_required,
         current_user=current_user,
         background_tasks=background_tasks
     )

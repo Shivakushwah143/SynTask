@@ -753,3 +753,10 @@ Role conventions:
 - `SUB_ADMIN` is treated as a company admin for module and department capability checks: it can access company-scoped recruitment job dashboards and other admin module endpoints without an HR department assignment, it sees the full company leave list/dashboard/calendar like `ADMIN` (all company leaves except its own, including forwarded leaves); approve/reject is limited to leaves assigned to it via `pending_with_user_ids` (manager leaves and forwarded employee leaves); and it is eligible as a leave forward target.
 - Leave forward targets are `ADMIN` and `SUB_ADMIN` users in the same company only.
 - `SUPER_ADMIN` keeps audit-only leave access; it never weakens tenant/company isolation.
+# Project Foundation Phase 1
+
+Project APIs now treat `Project.client_id` as the canonical Client -> Project link and `Project.lead_id` as the Project Owner. New projects require an owner; non-internal projects require a same-company client. Project priority is business priority (`low`, `medium`, `high`, `critical`) and is separate from derived `deadline_urgency`.
+
+`GET /api/v1/projects/` and `GET /api/v1/projects/{project_id}` include `client`, `owner`, `priority`, `deadline_urgency`, `project_health`, `progress_percentage`, `completed_task_count`, and overdue/open task counts. `PUT /api/v1/projects/{project_id}` updates project details but status changes continue to be validated by the lifecycle workflow.
+
+Company-scoped project types are available through `GET /api/v1/projects/types` and can be created with `POST /api/v1/projects/types`.

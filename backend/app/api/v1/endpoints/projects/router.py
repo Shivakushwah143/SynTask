@@ -6,6 +6,7 @@ from . import (
     pages,
     project_board_view,
     project_summary,
+    project_types,
     project_create,
     project_delete,
     project_detail,
@@ -20,6 +21,7 @@ from . import (
 router = APIRouter()
 router.include_router(project_create.router)
 router.include_router(project_list.router)
+router.include_router(project_types.router)
 router.include_router(project_detail.router)
 router.include_router(project_update.router)
 router.include_router(project_delete.router)

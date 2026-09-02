@@ -1810,3 +1810,16 @@ Indexes are listed under each model above. Most tenant-owned collections include
 
 ## Missing Indexes and Technical Debt
 No automated index audit exists yet. Phase 6 should review compound indexes for common dashboard, board, ticket, sales report, and time tracking queries.
+# Project Foundation Phase 1
+
+`projects` keeps logical `project_id` as the user-visible identifier and MongoDB `_id` as the internal identifier. Phase 1 adds `priority` with allowed values `low`, `medium`, `high`, and `critical`; missing legacy values are treated as `medium`. `client_id` is the canonical client relationship, while `clients.project_ids` remains a compatibility reference maintained during create/update/delete.
+
+`project_type_configurations` stores company-scoped project type options:
+
+- `company_id`
+- `value`
+- `label`
+- `is_default`
+- `active`
+- `created_by`
+- timestamps

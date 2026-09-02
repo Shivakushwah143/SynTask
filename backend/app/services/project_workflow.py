@@ -10,16 +10,21 @@ from app.models.user import User
 from app.core.clock import utc_now
 
 PROJECT_ALLOWED_TRANSITIONS: Dict[ProjectStatus, set[ProjectStatus]] = {
-    ProjectStatus.CREATED: {ProjectStatus.KICKOFF, ProjectStatus.ON_HOLD},
-    ProjectStatus.KICKOFF: {ProjectStatus.EXECUTION, ProjectStatus.ON_HOLD},
-    ProjectStatus.EXECUTION: {ProjectStatus.REVIEW, ProjectStatus.ON_HOLD},
-    ProjectStatus.REVIEW: {ProjectStatus.COMPLETED, ProjectStatus.ON_HOLD},
+    ProjectStatus.CREATED: {ProjectStatus.KICKOFF, ProjectStatus.ON_HOLD, ProjectStatus.CANCELLED},
+    ProjectStatus.KICKOFF: {ProjectStatus.EXECUTION, ProjectStatus.ON_HOLD, ProjectStatus.CANCELLED},
+    ProjectStatus.EXECUTION: {ProjectStatus.REVIEW, ProjectStatus.ON_HOLD, ProjectStatus.CANCELLED},
+    ProjectStatus.REVIEW: {ProjectStatus.COMPLETED, ProjectStatus.ON_HOLD, ProjectStatus.CANCELLED},
     ProjectStatus.COMPLETED: {ProjectStatus.REPORTING},
     ProjectStatus.REPORTING: {ProjectStatus.ARCHIVED},
     ProjectStatus.ARCHIVED: set(),
+    ProjectStatus.CANCELLED: set(),
     ProjectStatus.ON_HOLD: {ProjectStatus.CREATED, ProjectStatus.KICKOFF, ProjectStatus.EXECUTION, ProjectStatus.REVIEW},
-    ProjectStatus.ACTIVE: {ProjectStatus.CREATED, ProjectStatus.KICKOFF, ProjectStatus.EXECUTION, ProjectStatus.REVIEW, ProjectStatus.ON_HOLD},
+    ProjectStatus.ACTIVE: {ProjectStatus.CREATED, ProjectStatus.KICKOFF, ProjectStatus.EXECUTION, ProjectStatus.REVIEW, ProjectStatus.ON_HOLD, ProjectStatus.CANCELLED},
 }
+
+
+PROJECT_TERMINAL_STATUSES = {ProjectStatus.COMPLETED, ProjectStatus.ARCHIVED, ProjectStatus.CANCELLED}
+PROJECT_ACTIVE_EXECUTION_STATUSES = {ProjectStatus.ACTIVE, ProjectStatus.KICKOFF, ProjectStatus.EXECUTION, ProjectStatus.REVIEW}
 
 
 def _normalize_status(value: Optional[str]) -> ProjectStatus:

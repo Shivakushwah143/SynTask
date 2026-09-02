@@ -109,3 +109,6 @@ SynTask uses a single database with tenant isolation through `company_id` fields
 Proprietary. Copyright SynTask / Alphanexis Tech LLC.
 
 Documentation is maintained as part of feature delivery. Repository-wide Codex instructions are in [AGENTS.md](AGENTS.md); every implementation change must review its PRD, user-flow, architecture, testing, deployment, and README impact.
+# Work Module Foundation
+
+The Projects module uses logical `Project.project_id` for user-visible identity and MongoDB `_id` internally. Phase 1 adds backend-owned Project Owner (`lead_id`), client linkage (`client_id`), business priority, company-persistent project types, derived project health, deadline urgency, and progress. See `PHASE1_WORK_FOUNDATION_REPORT.md` for verification details and `docs/architecture/decisions/2026-09-02-work-phase1-project-foundation.md` for the architecture decision.

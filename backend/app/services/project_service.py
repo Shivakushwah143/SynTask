@@ -6,7 +6,7 @@ from bson import ObjectId
 from fastapi import HTTPException, status as http_status
 
 from app.models.notification import Notification, NotificationType
-from app.models.project import Project, ProjectStatus
+from app.models.project import Project, ProjectPriority, ProjectStatus, ProjectTypeConfiguration
 from app.models.task import Task
 from app.models.user import Employee, User, UserRole, UserStatus
 from app.core.clock import utc_now
@@ -122,10 +122,71 @@ class ProjectService:
     async def _validate_project_lead(lead_id: str, company_id: str) -> User:
         lead = await User.get(lead_id)
         if not lead or lead.company_id != company_id:
-            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid lead")
-        if lead.role not in [UserRole.MANAGER, UserRole.EMPLOYEE]:
-            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Project lead must be a Manager or Employee")
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid project owner")
+        if lead.role not in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD]:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Project owner must be an Admin, Manager, or Lead")
         return lead
+
+    @staticmethod
+    def _validate_priority(value: Optional[str]) -> ProjectPriority:
+        try:
+            return ProjectPriority((value or ProjectPriority.MEDIUM.value).lower())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid priority. Must be one of: {[item.value for item in ProjectPriority]}",
+            ) from exc
+
+    @staticmethod
+    def _is_internal_project_type(value: Optional[str]) -> bool:
+        return (value or "").strip().lower().replace(" ", "_") == "internal"
+
+    @staticmethod
+    async def ensure_project_type(company_id: str, value: str, current_user: User) -> str:
+        normalized = (value or "software").strip().lower().replace(" ", "_")
+        if not normalized:
+            normalized = "software"
+        existing = await ProjectTypeConfiguration.find_one(
+            ProjectTypeConfiguration.company_id == company_id,
+            ProjectTypeConfiguration.value == normalized,
+        )
+        if not existing:
+            label = normalized.replace("_", " ").title()
+            await ProjectTypeConfiguration(
+                company_id=company_id,
+                value=normalized,
+                label=label,
+                created_by=str(current_user.id),
+            ).insert()
+        return normalized
+
+    @staticmethod
+    async def sync_client_project_link(project: Project, new_client_id: Optional[str], company_id: str) -> None:
+        from app.models.client import Client
+
+        old_client_id = getattr(project, "client_id", None)
+        project_refs = {str(project.id)}
+        if getattr(project, "project_id", None):
+            project_refs.add(str(project.project_id))
+
+        if old_client_id and old_client_id != new_client_id:
+            old_client = await Client.get(old_client_id)
+            if old_client and str(old_client.company_id) == str(company_id):
+                old_client.project_ids = [item for item in (old_client.project_ids or []) if str(item) not in project_refs]
+                old_client.updated_at = utc_now()
+                await old_client.save()
+
+        client = None
+        if new_client_id:
+            client = await Client.get(new_client_id)
+            if not client or str(client.company_id) != str(company_id):
+                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid client")
+            ids = [str(item) for item in (client.project_ids or [])]
+            if str(project.id) not in ids:
+                client.project_ids = ids + [str(project.id)]
+                client.updated_at = utc_now()
+                await client.save()
+        project.client_id = new_client_id
 
     @staticmethod
     async def _validate_assignee(user_id: str, company_id: str) -> User:
@@ -163,6 +224,9 @@ class ProjectService:
         lead_id: Optional[str] = None,
         assigned_to: Optional[str] = None,
         assigned_user_ids: Optional[list[str]] = None,
+        client_id: Optional[str] = None,
+        type: Optional[str] = None,
+        priority: Optional[str] = None,
         start_date: Optional[str] = None,
         delivery_date: Optional[str] = None,
     ) -> Project:
@@ -190,6 +254,17 @@ class ProjectService:
                     reason="lead_id change",
                 )
             project.lead_id = lead_id
+
+        if type is not None:
+            project.type = await ProjectService.ensure_project_type(current_user.company_id, type, current_user)
+
+        if priority is not None:
+            project.priority = ProjectService._validate_priority(priority)
+
+        if client_id is not None:
+            if client_id == "" and not ProjectService._is_internal_project_type(project.type):
+                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Client is required for client-facing projects")
+            await ProjectService.sync_client_project_link(project, client_id or None, current_user.company_id)
 
         if assigned_to is not None:
             old_assigned_to = project.assigned_to
@@ -601,6 +676,7 @@ class ProjectService:
         assigned_user_ids: Optional[str] = None,
         start_date: Optional[str] = None,
         delivery_date: Optional[str] = None,
+        priority: Optional[str] = None,
         project_id: str,
         current_user: User
     ) -> dict:
@@ -654,15 +730,12 @@ class ProjectService:
             )
         
         final_project_id = project_id
-        project_type = normalize_project_type(type)
+        project_type = await ProjectService.ensure_project_type(current_user.company_id, normalize_project_type(type), current_user)
+        project_priority = ProjectService._validate_priority(priority)
         
-        if lead_id:
-            lead = await User.get(lead_id)
-            if not lead or lead.company_id != current_user.company_id:
-                raise HTTPException(
-                    status_code=http_status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid lead"
-                )
+        if not lead_id:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Project owner is required")
+        await ProjectService._validate_project_lead(lead_id, current_user.company_id)
 
         client = None
         if client_id:
@@ -672,6 +745,8 @@ class ProjectService:
                     status_code=http_status.HTTP_400_BAD_REQUEST,
                     detail="Invalid client"
                 )
+        elif not ProjectService._is_internal_project_type(project_type):
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Client is required for client-facing projects")
         
         requested_assignees = []
         for raw in [assigned_to, assigned_user_ids]:
@@ -715,6 +790,7 @@ class ProjectService:
             "company_id": current_user.company_id,
             "client_id": client_id,
             "type": project_type,
+            "priority": project_priority,
             "lead_id": lead_id,
             "assigned_to": primary_assigned_to,
             "assigned_user_ids": assigned_ids,
@@ -751,12 +827,8 @@ class ProjectService:
         project.project_id = final_project_id
         await project.save()
 
-        if client:
-            client_project_ids = [str(item) for item in (client.project_ids or [])]
-            if str(project.id) not in client_project_ids:
-                client.project_ids = client_project_ids + [str(project.id)]
-            client.updated_at = utc_now()
-            await client.save()
+        await ProjectService.sync_client_project_link(project, client_id, current_user.company_id)
+        await project.save()
         
         # Send notification to assigned user
         for assigned_user in assigned_users:

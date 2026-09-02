@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.project import Project
 from app.models.task import Task, TaskStatus
 from app.services.automation_service import trigger_automation
+from app.services.task_workflow import creation_status, effective_review_required, validate_reviewer, normalize_checklist
 
 
 class TaskService:
@@ -32,31 +33,11 @@ class TaskService:
         return project.project_id or str(project.id), str(project.id)
 
     @staticmethod
-    async def update_status(task: Task, new_status: TaskStatus, user_id: Optional[str] = None) -> Task:
-        old_status = task.status.value if hasattr(task.status, "value") else str(task.status)
-        task.status = new_status
-        status_value = new_status.value if hasattr(new_status, "value") else str(new_status)
-        if status_value.lower() in {"completed", "complete", "done"}:
-            task.completed_at = utc_now()
-        else:
-            task.completed_at = None
-        task.updated_at = utc_now()
-        await task.save()
-        from app.services.task_health_service import sync_task_health
-        await sync_task_health(task)
-
-        if old_status != status_value:
-            asyncio.create_task(
-                trigger_automation(
-                    trigger_type="status_changed",
-                    entity_type="task",
-                    entity_id=str(task.id),
-                    company_id=task.company_id,
-                    changed_fields={"status": {"from": old_status, "to": status_value}},
-                    user_id=user_id,
-                )
-            )
-        return task
+    async def update_status(task: Task, new_status: TaskStatus, user_id: Optional[str] = None, current_user: Optional[User] = None) -> Task:
+        if not current_user:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current user is required for task workflow transitions")
+        from app.services.task_workflow import transition_task
+        return await transition_task(task=task, actor=current_user, action="status_update", target_status=new_status.value)
 
     @staticmethod
     async def update_execution(task: Task, payload: dict[str, Any]) -> Task:
@@ -71,7 +52,7 @@ class TaskService:
             checklist = payload["checklist"]
             if not isinstance(checklist, list):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Checklist must be a list")
-            task.checklist = checklist
+            task.checklist = normalize_checklist(checklist)
         if "dependencies" in payload and payload["dependencies"] is not None:
             dependencies = payload["dependencies"]
             if not isinstance(dependencies, list):
@@ -141,6 +122,8 @@ class TaskService:
         related_entity_stage: Optional[str] = None,
         related_entity_url: Optional[str] = None,
         current_user: User,
+        reviewer_id: Optional[str] = None,
+        review_required: Optional[bool] = None,
         background_tasks = None
     ) -> dict:
         from fastapi import HTTPException, status
@@ -278,6 +261,21 @@ class TaskService:
             if not is_self_assigned_sales_followup:
                 await _assert_can_assign_task(current_user, assignee, project)
 
+        reviewer = None
+        if reviewer_id:
+            reviewer = await validate_reviewer(
+                Task(
+                    title=title,
+                    company_id=current_user.company_id,
+                    created_by=str(current_user.id),
+                    assigned_to=assigned_to,
+                    reviewer_id=reviewer_id,
+                    review_required=True if review_required is None else review_required,
+                ),
+                reviewer_id,
+                project,
+            )
+
         if epic_id:
             from app.models.project import Epic
             epic = await Epic.get(epic_id)
@@ -323,9 +321,13 @@ class TaskService:
             created_by=str(current_user.id),
             assigned_to=assigned_to,
             assigned_by=str(current_user.id) if assignee else None,
+            assigned_at=utc_now() if assignee else None,
             department_id=department_id if department_doc else None,
             department=department_doc.name if department_doc else None,
             priority=task_priority,
+            status=creation_status(assigned_to),
+            review_required=(False if source_type in {"sales_follow_up"} else (review_required if review_required is not None else bool(project))),
+            reviewer_id=str(reviewer.id) if reviewer else None,
             due_date=parsed_due_date,
             tags=parsed_tags,
             parent_task_id=parent_task_id,
@@ -376,6 +378,9 @@ class TaskService:
             "status": task.status.value,
             "priority": task.priority.value,
             "assigned_to": task.assigned_to,
+            "reviewer_id": task.reviewer_id,
+            "review_required": effective_review_required(task, project),
+            "review_round": task.review_round,
             "created_by": task.created_by,
             "project_id": str(task.project_id) if task.project_id else None,
             "department_id": task.department_id,

@@ -25,7 +25,7 @@ from app.models.feature_flag import FeatureFlag
 from app.models.task import Task, TaskComment, TaskExtensionRequest
 from app.models.ticket import Ticket, TicketComment
 from app.models.notification import Notification
-from app.models.project import Project, Epic, Sprint
+from app.models.project import Project, Epic, Sprint, ProjectTypeConfiguration
 from app.models.time_tracking import TimeLog, TimeTrackingSummary
 from app.models.workflow import Workflow, WorkflowStatus, WorkflowTransition
 from app.models.automation import AutomationRule, AutomationExecution
@@ -207,6 +207,7 @@ async def init_db():
                 TicketComment,
                 Notification,
                 Project,
+                ProjectTypeConfiguration,
                 Epic,
                 Sprint,
                 TimeLog,

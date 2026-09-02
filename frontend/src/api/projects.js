@@ -5,6 +5,18 @@ export const projectsApi = {
   getProjects: (params = {}) => {
     return api.get('/projects/', { params })
   },
+
+  getProjectTypes: () => {
+    return api.get('/projects/types')
+  },
+
+  createProjectType: (label) => {
+    const formData = new FormData()
+    formData.append('label', label)
+    return api.post('/projects/types', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
   
   getProject: (id, params = {}) => {
     return api.get(`/projects/${id}`, { params })

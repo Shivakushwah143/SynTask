@@ -6,6 +6,8 @@ from app.api.deps import Pagination50, PaginationParams
 from app.api.v1.endpoints.tasks import build_employee_project_visibility_query
 from app.api.v1.endpoints.tasks import serialize_utc_datetime
 from app.core.clock import utc_now
+from app.models.client import Client
+from app.services.project_health_service import calculate_project_health, project_task_identity_filter, serialize_project_health
 
 router = APIRouter()
 
@@ -29,13 +31,16 @@ def serialize_scheduled_project_placeholder(job: ScheduledJob) -> dict:
         "start_date": payload.get("start_date"),
         "delivery_date": payload.get("delivery_date"),
         "days_until_delivery": None,
-        "priority": "scheduled",
+        "priority": payload.get("priority") or "medium",
+        "deadline_urgency": "scheduled",
+        "project_health": {"level": "healthy", "reasons": [], "overdue_task_count": 0, "total_open_tasks": 0, "completion_percentage": 0, "days_until_deadline": None, "last_activity_at": None},
+        "progress_percentage": 0,
         "task_count": 0,
         "completed_task_count": 0,
         "created_at": serialize_utc_datetime(job.created_at),
         "is_scheduled_placeholder": True,
         "scheduled_job_id": str(job.id),
-        "scheduled_run_at": serialize_utc_datetime(job.run_at),
+        "scheduled_run_at": job.run_at,
         "scheduled_status": job.status.value if hasattr(job.status, "value") else job.status,
         "created_by": job.created_by,
     }
@@ -116,13 +121,9 @@ async def list_projects(
         # Use user-provided project_id for querying tasks, fallback to MongoDB _id for backward compatibility
         project_id_for_query = project.project_id if project.project_id else str(project.id)
         # Query tasks by both user-provided project_id and MongoDB _id (for backward compatibility)
-        task_count = await Task.find({
-            "$or": [
-                {"project_id": project_id_for_query},
-                {"project_id": str(project.id)}  # Also check MongoDB _id for old tasks
-            ],
-            "company_id": project.company_id
-        }).count()
+        project_tasks = await Task.find(project_task_identity_filter(project)).to_list()
+        task_count = len(project_tasks)
+        health = calculate_project_health(project, project_tasks)
         
         assigned_ids = project_assignee_ids(project)
         assigned_users = []
@@ -130,21 +131,25 @@ async def list_projects(
             assigned_user = await User.get(user_id)
             if assigned_user:
                 assigned_users.append({"id": str(assigned_user.id), "name": assigned_user.full_name(), "role": assigned_user.role.value})
+        owner = await User.get(project.lead_id) if getattr(project, "lead_id", None) and ObjectId.is_valid(str(project.lead_id)) else None
+        client = await Client.get(project.client_id) if getattr(project, "client_id", None) and ObjectId.is_valid(str(project.client_id)) else None
         
         # Calculate days until delivery
         days_until_delivery = None
-        priority = "normal"
+        deadline_urgency = "none"
         if project.delivery_date:
             delta = project.delivery_date - utc_now()
             days_until_delivery = delta.days
             if days_until_delivery < 0:
-                priority = "overdue"
+                deadline_urgency = "overdue"
             elif days_until_delivery <= 2:
-                priority = "urgent"
+                deadline_urgency = "urgent"
             elif days_until_delivery <= 7:
-                priority = "high"
+                deadline_urgency = "soon"
             elif days_until_delivery <= 14:
-                priority = "medium"
+                deadline_urgency = "upcoming"
+            else:
+                deadline_urgency = "normal"
         
         projects_with_stats.append({
             "id": str(project.id),
@@ -155,7 +160,10 @@ async def list_projects(
             "type": enum_or_string_value(project.type, ProjectType.SOFTWARE.value),
             "status": enum_or_string_value(project.status),
             "client_id": project.client_id,
+            "client": {"id": str(client.id), "name": client.name} if client and str(client.company_id) == str(project.company_id) else None,
             "lead_id": project.lead_id,
+            "owner": {"id": str(owner.id), "name": owner.full_name(), "role": owner.role.value} if owner else None,
+            "owner_name": owner.full_name() if owner else "Owner not assigned",
             "assigned_to": project.assigned_to,
             "assigned_user_ids": getattr(project, "assigned_user_ids", []) or ([project.assigned_to] if project.assigned_to else []),
             "assigned_users": assigned_users,
@@ -163,17 +171,23 @@ async def list_projects(
             "start_date": project.start_date,
             "delivery_date": project.delivery_date,
             "days_until_delivery": days_until_delivery,
-            "priority": priority,
+            "priority": enum_or_string_value(getattr(project, "priority", None), "medium"),
+            "deadline_urgency": deadline_urgency,
+            "project_health": serialize_project_health(health),
+            "health": health.level,
+            "progress_percentage": health.completion_percentage,
+            "completed_task_count": health.completed_task_count,
+            "overdue_task_count": health.overdue_task_count,
             "task_count": task_count,
             "created_at": project.created_at,
         })
     
     # Sort by delivery date (nearest deadline first, then by priority)
     projects_with_stats.sort(key=lambda x: (
-        x["priority"] == "overdue" and 0 or
-        x["priority"] == "urgent" and 1 or
-        x["priority"] == "high" and 2 or
-        x["priority"] == "medium" and 3 or 4,
+        x["deadline_urgency"] == "overdue" and 0 or
+        x["deadline_urgency"] == "urgent" and 1 or
+        x["deadline_urgency"] == "soon" and 2 or
+        x["deadline_urgency"] == "upcoming" and 3 or 4,
         x["delivery_date"] if x["delivery_date"] else datetime.max
     ))
 

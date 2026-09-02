@@ -607,3 +607,10 @@ Success metrics: weekly active tenant workflows completed, AI output accepted/re
 10. Microsoft delegated scopes for MVP and whether tenant admin consent is required by customer segment.
 11. Employee correction/dispute SLA and reviewer ownership.
 12. Notification quiet-hours defaults and escalation intervals.
+# Work Module Phase 1 Project Foundation
+
+Implemented behavior: Project foundation data is backend-owned. Client-facing projects require a same-company client, internal projects may omit a client, and every new operational project requires a Project Owner using the existing `lead_id` field. Project priority is business priority (`low`, `medium`, `high`, `critical`) and deadline urgency is reported separately. Project health is derived as `healthy`, `needs_attention`, or `at_risk` from deadline, task overdue, completion, and activity signals.
+
+Access rules: Admin, Sub Admin, and Manager roles can manage company projects; Project Owners can view and manage assigned project execution according to existing project permissions; project members can view only permitted projects; users from another company cannot access projects by Mongo `_id`, logical `project_id`, client link, or query/filter manipulation.
+
+Acceptance criteria: creation rejects missing owner, invalid owner, cross-company client, invalid priority, and invalid date ranges; client-facing creation rejects missing client; internal creation without client succeeds; illegal lifecycle transitions return 400; `cancelled` is terminal; client workspace project visibility derives from `Project.client_id`; project list and workspace display owner, client, status, priority, health, progress, and deadline urgency.

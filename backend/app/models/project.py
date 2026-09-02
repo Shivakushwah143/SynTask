@@ -27,6 +27,14 @@ class ProjectStatus(str, Enum):
     REPORTING = "reporting"
     ARCHIVED = "archived"
     ON_HOLD = "on_hold"
+    CANCELLED = "cancelled"
+
+
+class ProjectPriority(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
 
 
 class Project(Document):
@@ -45,6 +53,7 @@ class Project(Document):
     # Project Details
     type: str = ProjectType.SOFTWARE.value
     status: ProjectStatus = ProjectStatus.ACTIVE
+    priority: ProjectPriority = ProjectPriority.MEDIUM
     lead_id: Optional[str] = None  # Project lead/manager
     
     # Assignment
@@ -93,6 +102,7 @@ class Project(Document):
             "key",
             "project_id",  # Index for user-defined project_id
             "status",
+            "priority",
             "lead_id",
             "created_by",
             "assigned_to",
@@ -109,9 +119,31 @@ class Project(Document):
             IndexModel([("company_id", ASCENDING), ("delivery_date", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("priority", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("team_member_ids", ASCENDING)]),
             IndexModel([("name", TEXT), ("description", TEXT)]),
+        ]
+
+
+class ProjectTypeConfiguration(Document):
+    """Company-scoped project type option. Project.type remains the project source value."""
+    company_id: Indexed(str)
+    value: Indexed(str)
+    label: str
+    is_default: bool = False
+    active: bool = True
+    created_by: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "project_type_configurations"
+        indexes = [
+            "company_id",
+            "value",
+            IndexModel([("company_id", ASCENDING), ("value", ASCENDING)], unique=True),
+            IndexModel([("company_id", ASCENDING), ("active", ASCENDING), ("label", ASCENDING)]),
         ]
 
 

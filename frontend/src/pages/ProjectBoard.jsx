@@ -126,7 +126,7 @@ export default function ProjectBoard() {
   const [activeTaskId, setActiveTaskId] = useState(null)
 
   const [showEditModal, setShowEditModal] = useState(false)
-  const [editFormData, setEditFormData] = useState({ name: '', description: '', lead_id: '', start_date: '', delivery_date: '', status: 'active' })
+  const [editFormData, setEditFormData] = useState({ name: '', description: '', lead_id: '', type: 'software', priority: 'medium', start_date: '', delivery_date: '', status: 'active' })
   const [editFormErrors, setEditFormErrors] = useState({})
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -142,6 +142,8 @@ export default function ProjectBoard() {
       name: projectRecord.name || '',
       description: projectRecord.description || '',
       lead_id: projectRecord.lead_id || '',
+      type: projectRecord.type || 'software',
+      priority: projectRecord.priority || 'medium',
       start_date: projectRecord.start_date ? projectRecord.start_date.substring(0, 16) : '',
       delivery_date: projectRecord.delivery_date ? projectRecord.delivery_date.substring(0, 16) : '',
       status: projectRecord.status || 'active',
@@ -490,7 +492,7 @@ export default function ProjectBoard() {
   const currentTasks = Object.values(filteredBoard).flat()
   const allProjectTasks = Object.values(boardData?.tasks_by_status || {}).flat()
   const completedTasks = allProjectTasks.filter((task) => ['completed', 'done'].includes((task.status || '').toLowerCase())).length
-  const completionPercentage = allProjectTasks.length ? Math.round((completedTasks / allProjectTasks.length) * 100) : 0
+  const fallbackCompletionPercentage = allProjectTasks.length ? Math.round((completedTasks / allProjectTasks.length) * 100) : 0
   const overdueTasks = allProjectTasks.filter((task) => {
     if (!task.due_date) return false
     try {
@@ -526,6 +528,10 @@ export default function ProjectBoard() {
   const activeProject = projectInfo?.name || boardData?.project?.name || 'Project'
   const projectDescription = projectRecord.description || 'No project description available.'
   const projectStatus = projectRecord.status || 'active'
+  const projectHealth = projectRecord.project_health || {}
+  const completionPercentage = typeof projectRecord.progress_percentage === 'number'
+    ? Math.round(projectRecord.progress_percentage)
+    : Math.round(projectHealth.completion_percentage ?? fallbackCompletionPercentage)
   const formatProjectDate = (value) => {
     if (!value) return 'Not set'
     try {
@@ -703,7 +709,7 @@ export default function ProjectBoard() {
           <aside className="border-t border-primary-200/60 bg-white/40 p-5 dark:border-[#5a4635] dark:bg-black/25 xl:border-l xl:border-t-0">
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-text-primary dark:text-text-primary">Project signals</h3>
-              <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">Manager, leader, delivery, and build context.</p>
+              <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">Ownership, lifecycle, delivery, and build context.</p>
             </div>
             <div className="grid gap-3 text-sm text-text-secondary dark:text-text-secondary">
               <ProjectOverviewLine
@@ -717,7 +723,7 @@ export default function ProjectBoard() {
                 ) : null}
               />
               <ProjectOverviewLine
-                label="Leader"
+                label="Project Owner"
                 value={leaderValue}
                 action={canAssignProject ? (
                   <Button variant="secondary" size="sm" onClick={openAssignProjectModal}>
@@ -728,6 +734,12 @@ export default function ProjectBoard() {
               />
               <ProjectOverviewLine label="Start" value={formatProjectDate(projectRecord.start_date)} />
               <ProjectOverviewLine label="Delivery" value={formatProjectDate(projectRecord.delivery_date)} />
+              <ProjectOverviewLine label="Client" value={projectRecord.client?.name || 'No client'} />
+              <ProjectOverviewLine label="Type" value={(projectRecord.type || 'software').replace(/_/g, ' ')} />
+              <ProjectOverviewLine label="Priority" value={projectRecord.priority || 'medium'} />
+              <ProjectOverviewLine label="Health" value={(projectHealth.level || projectRecord.health || 'healthy').replace(/_/g, ' ')} />
+              <ProjectOverviewLine label="Open tasks" value={projectHealth.total_open_tasks ?? allProjectTasks.length} />
+              <ProjectOverviewLine label="Overdue" value={projectHealth.overdue_task_count ?? overdueTasks} />
               <ProjectOverviewLine label="Assets" value={`${projectFiles.length} files / ${pages.length} pages`} />
               <ProjectOverviewLine label="Build" value={`${components.length} components / ${versions.length} versions`} />
             </div>
@@ -786,7 +798,7 @@ export default function ProjectBoard() {
               onClick={() => setActiveTab(tab)}
               className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${activeTab === tab ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'}`}
             >
-              {tab === 'summary' ? 'Summary' : tab === 'board' ? 'Board' : 'Files & Pages'}
+              {tab === 'summary' ? 'Overview' : tab === 'board' ? 'Tasks' : 'Files'}
             </button>
           ))}
         </nav>
@@ -898,7 +910,7 @@ export default function ProjectBoard() {
         )
       )}
 
-      <Modal isOpen={showAssignModal} onClose={() => setShowAssignModal(false)} title="Assign project lead">
+      <Modal isOpen={showAssignModal} onClose={() => setShowAssignModal(false)} title="Assign project owner">
         <form onSubmit={handleAssignProject} className="space-y-4">
           <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Project</p>
@@ -1160,14 +1172,14 @@ export default function ProjectBoard() {
                 <option value="execution">Execution</option>
                 <option value="review">Review</option>
                 <option value="active">Active</option>
-                <option value="in_progress">In progress</option>
                 <option value="on_hold">On hold</option>
                 <option value="completed">Completed</option>
                 <option value="reporting">Reporting</option>
                 <option value="archived">Archived</option>
+                <option value="cancelled">Cancelled</option>
               </select>
             </FormField>
-            <FormField label="Project lead">
+            <FormField label="Project Owner">
               <select
                 className={inputClassName}
                 value={editFormData.lead_id}
@@ -1175,6 +1187,17 @@ export default function ProjectBoard() {
               >
                 <option value="">Unassigned</option>
                 {projectAssigneeOptions.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name} ({item.role})</option>)}
+              </select>
+            </FormField>
+            <FormField label="Type">
+              <input className={inputClassName} value={editFormData.type} onChange={(event) => setEditFormData((state) => ({ ...state, type: event.target.value }))} />
+            </FormField>
+            <FormField label="Priority">
+              <select className={inputClassName} value={editFormData.priority} onChange={(event) => setEditFormData((state) => ({ ...state, priority: event.target.value }))}>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
               </select>
             </FormField>
             <FormField label="Start date">

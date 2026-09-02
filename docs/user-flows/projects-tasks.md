@@ -51,3 +51,10 @@ flowchart TD
 - Timeline events created: time logs may be surfaced as activity events if the backend emits them.
 - Notifications sent: none explicitly in the frontend.
 - Related modules updated: Task Detail, Reports.
+# Phase 1 Project Foundation
+
+Project creation now requires name, client for client-facing work, project type, description, Project Owner, start date, delivery date, and business priority. Internal projects can be created without a client by selecting the internal project type.
+
+Project list cards separate business priority from deadline urgency and show derived health/progress. Project workspace tabs map to Overview, Tasks, and Files while preserving the existing board, task creation, files/pages, components, versions, and AI briefing behaviors.
+
+Negative access flow: a user outside the project/company must not see or manage the project through list filters, detail URLs, client workspace routes, or task/project identifiers.
