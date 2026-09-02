@@ -314,6 +314,8 @@ export const SECTIONS = [
       "Scheduled Work",
       "Time Tracking",
       "Daily Updates",
+      "Work Reports",
+      "Project Templates",
     ],
   },
 
@@ -481,6 +483,20 @@ export const navigation = [
     icon: ClipboardList,
     roles: STANDARD_ROLES,
     module: "tasks",
+  },
+  {
+    name: "Work Reports",
+    href: "/work/reports",
+    icon: FileBarChart2,
+    roles: STANDARD_ROLES,
+    module: "projects",
+  },
+  {
+    name: "Project Templates",
+    href: "/project-templates",
+    icon: ClipboardCheck,
+    roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD],
+    module: "projects",
   },
   {
     name: "Support Tickets",

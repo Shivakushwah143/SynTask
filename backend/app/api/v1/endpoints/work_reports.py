@@ -5,19 +5,22 @@ All reports enforce company scope and permission rules server-side.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from app.api.dependencies import get_current_user
-from app.core.clock import utc_now
+from app.core.clock import ClockService, utc_now
 from app.models.project import Project, ProjectStatus
 from app.models.task import Task, TaskStatus
 from app.models.user import User, UserRole
 from app.services.project_health_service import ProjectHealthService
+from app.services.project_permissions import ProjectPermission, has_project_permission
+from app.services.task_health_service import assert_task_view_access, calculate_task_health
+from app.services.task_workflow import blocking_dependencies
 from app.services.work_metrics_service import aggregate_time_by_project
 
-router = APIRouter(prefix="/reports", tags=["Work Reports"])
+router = APIRouter(tags=["Work Reports"])
 
 
 async def _get_visible_user_ids(user: User) -> Optional[List[str]]:
@@ -38,6 +41,53 @@ async def _get_visible_user_ids(user: User) -> Optional[List[str]]:
 
     # Employee sees only self
     return [str(user.id)]
+
+
+def _assert_visible_user(user: User, requested_id: Optional[str], visible_ids: Optional[List[str]]) -> None:
+    if requested_id and visible_ids is not None and str(requested_id) not in visible_ids:
+        raise HTTPException(status_code=403, detail="You do not have access to this employee report")
+
+
+def _date_bounds(start_date: Optional[str], end_date: Optional[str], user: User) -> tuple[Optional[datetime], Optional[datetime]]:
+    if not start_date and not end_date:
+        return None, None
+    start = start_date or end_date
+    end = end_date or start_date
+    try:
+        start_value = datetime.fromisoformat(start.replace("Z", "+00:00")).date()
+        end_value = datetime.fromisoformat(end.replace("Z", "+00:00")).date()
+        start_at, end_at = ClockService.local_day_bounds_utc(start_value, end_value, getattr(user, "timezone", None))
+        return start_at, end_at
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid report date range") from exc
+
+
+async def _project_visible(project: Project, user: User, visible_ids: Optional[List[str]]) -> bool:
+    if str(project.company_id) != str(user.company_id):
+        return False
+    if visible_ids is None:
+        return True
+    if user.role not in {UserRole.MANAGER, UserRole.LEAD} and has_project_permission(user, project, ProjectPermission.VIEW_PROJECT):
+        return True
+    project_members = {str(getattr(project, field, "")) for field in ("lead_id", "assigned_to", "created_by") if getattr(project, field, None)}
+    project_members.update(str(value) for value in (getattr(project, "assigned_user_ids", None) or []))
+    if project_members.intersection(visible_ids):
+        return True
+    tasks = await Task.find({
+        "company_id": user.company_id,
+        "$or": [
+            {"project_id": str(project.project_id or project.id)},
+            {"project_id": str(project.id)},
+            {"project_object_id": str(project.id)},
+        ],
+    }).to_list()
+    for task in tasks:
+        try:
+            await assert_task_view_access(user, task)
+            return True
+        except HTTPException:
+            continue
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -69,15 +119,22 @@ async def project_report(
     if project_type:
         query["type"] = project_type
 
-    total = await Project.find(query).count()
-    skip = (page - 1) * page_size
-    projects = await Project.find(query).sort("created_at", -1).skip(skip).limit(page_size).to_list()
+    visible_ids = await _get_visible_user_ids(current_user)
+    _assert_visible_user(current_user, owner, visible_ids)
+    projects = await Project.find(query).to_list()
+    start_at, end_at = _date_bounds(start_date, end_date, current_user)
 
     results = []
     for project in projects:
+        if not await _project_visible(project, current_user, visible_ids):
+            continue
+        if start_at and project.delivery_date and project.delivery_date < start_at:
+            continue
+        if end_at and project.start_date and project.start_date > end_at:
+            continue
         # Health
         health_data = await ProjectHealthService.calculate_project_health(project)
-        project_health = health_data.get("health", "healthy") if health_data else "healthy"
+        project_health = health_data.get("level", health_data.get("health", "healthy")) if health_data else "healthy"
         if health and project_health != health:
             continue
 
@@ -117,6 +174,10 @@ async def project_report(
             "tracked_time_hours": time_data["total_hours"],
         })
 
+    total = len(results)
+    skip = (page - 1) * page_size
+    results = results[skip:skip + page_size]
+
     return {
         "total": total,
         "page": page,
@@ -136,6 +197,7 @@ async def task_report(
     reviewer: Optional[str] = None,
     status_filter: Optional[str] = None,
     priority: Optional[str] = None,
+    health: Optional[str] = None,
     overdue_only: bool = False,
     blocked_only: bool = False,
     project_id: Optional[str] = None,
@@ -150,6 +212,8 @@ async def task_report(
     visible_ids = await _get_visible_user_ids(current_user)
     query: Dict[str, Any] = {"company_id": current_user.company_id}
 
+    _assert_visible_user(current_user, assignee, visible_ids)
+    _assert_visible_user(current_user, reviewer, visible_ids)
     if assignee:
         query["assigned_to"] = assignee
     elif visible_ids is not None:
@@ -161,17 +225,42 @@ async def task_report(
         query["status"] = status_filter
     if priority:
         query["priority"] = priority
+    tasks = [task for task in await Task.find(query).to_list() if str(task.company_id) == str(current_user.company_id)]
+    start_at, end_at = _date_bounds(start_date, end_date, current_user)
+    project = None
+    client_project_ids = None
     if project_id:
-        query["project_id"] = project_id
-
+        project = await Project.find_one({"company_id": current_user.company_id, "$or": [{"project_id": project_id}, {"_id": project_id}]})
+        if not project or not await _project_visible(project, current_user, visible_ids):
+            raise HTTPException(status_code=404, detail="Project not found")
+    elif client_id:
+        client_projects = await Project.find({"company_id": current_user.company_id, "client_id": client_id}).to_list()
+        visible_client_projects = [item for item in client_projects if await _project_visible(item, current_user, visible_ids)]
+        client_project_ids = {str(value) for item in visible_client_projects for value in (item.id, item.project_id) if value}
     now = utc_now()
-    if overdue_only:
-        query["status"] = {"$nin": [TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value]}
-        query["due_date"] = {"$lt": now}
-
-    total = await Task.find(query).count()
+    filtered_tasks = []
+    for task in tasks:
+        if project_id and str(task.project_id or "") not in {str(project.project_id or ""), str(project.id)}:
+            continue
+        if client_id:
+            if client_project_ids is None or str(task.project_id or "") not in client_project_ids:
+                continue
+        if start_at and (not task.due_date or task.due_date < start_at):
+            continue
+        if end_at and (not task.due_date or task.due_date > end_at):
+            continue
+        if overdue_only and not (task.due_date and task.due_date < now and task.status not in (TaskStatus.COMPLETED, TaskStatus.CANCELLED)):
+            continue
+        task_health = calculate_task_health(task, now)
+        if health and getattr(task_health, "value", task_health) != health:
+            continue
+        if blocked_only and not await blocking_dependencies(task):
+            continue
+        filtered_tasks.append(task)
+    filtered_tasks.sort(key=lambda item: item.due_date or datetime.max)
+    total = len(filtered_tasks)
     skip = (page - 1) * page_size
-    tasks = await Task.find(query).sort("due_date", 1).skip(skip).limit(page_size).to_list()
+    tasks = filtered_tasks[skip:skip + page_size]
 
     results = []
     for task in tasks:
@@ -216,10 +305,13 @@ async def employee_report(
     task_query: Dict[str, Any] = {"company_id": current_user.company_id}
     if visible_ids is not None:
         task_query["assigned_to"] = {"$in": visible_ids}
+    _assert_visible_user(current_user, employee_id, visible_ids)
     if employee_id:
         task_query["assigned_to"] = employee_id
 
     tasks = await Task.find(task_query).to_list()
+    start_at, end_at = _date_bounds(start_date, end_date, current_user)
+    tasks = [task for task in tasks if (not start_at or (task.due_date and task.due_date >= start_at)) and (not end_at or (task.due_date and task.due_date <= end_at))]
 
     # Group by assignee
     by_user: Dict[str, List[Task]] = {}
@@ -274,6 +366,7 @@ async def client_report(
     if client_id:
         query["_id"] = client_id
 
+    visible_ids = await _get_visible_user_ids(current_user)
     clients = await Client.find(query).to_list()
     results = []
 
@@ -282,6 +375,9 @@ async def client_report(
         projects = await Project.find(
             {"company_id": current_user.company_id, "client_id": client_id_str}
         ).to_list()
+        projects = [project for project in projects if await _project_visible(project, current_user, visible_ids)]
+        if client_id and not projects and visible_ids is not None:
+            raise HTTPException(status_code=404, detail="Client not found")
 
         active = 0
         completed = 0
@@ -357,13 +453,28 @@ async def time_report(
     from app.services.time_reporting_service import TimeReportingService
 
     visible_ids = await _get_visible_user_ids(current_user)
-    report_user_id = employee_id or (visible_ids[0] if visible_ids and len(visible_ids) == 1 else None)
+    _assert_visible_user(current_user, employee_id, visible_ids)
+    if project_id:
+        project = await Project.find_one({"company_id": current_user.company_id, "$or": [{"project_id": project_id}, {"_id": project_id}]})
+        if not project or not await _project_visible(project, current_user, visible_ids):
+            raise HTTPException(status_code=404, detail="Project not found")
+    if task_id:
+        task = await Task.get(task_id)
+        if not task or str(task.company_id) != str(current_user.company_id):
+            raise HTTPException(status_code=404, detail="Task not found")
+        try:
+            await assert_task_view_access(current_user, task)
+        except HTTPException as exc:
+            raise HTTPException(status_code=404, detail="Task not found") from exc
 
-    result = await TimeReportingService.generate_employee_time_report(
-        company_id=current_user.company_id,
-        user_id=report_user_id or str(current_user.id),
+    result = await TimeReportingService.summarize_time(
+        actor=current_user,
         start_date=start_date,
         end_date=end_date,
+        employee_id=employee_id,
+        project_id=project_id,
+        task_id=task_id,
+        client_id=client_id,
     )
 
     return result

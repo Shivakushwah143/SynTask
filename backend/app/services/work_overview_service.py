@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from app.core.clock import utc_now
 from app.models.project import Project, ProjectStatus
@@ -41,19 +42,26 @@ def classify_workload_pressure(overdue: int, due_today: int, active: int) -> str
 
 # ── Date Classification Helpers ─────────────────────────────────────────────
 
-def _today_range(now: Optional[datetime] = None) -> tuple[datetime, datetime]:
-    """Return (start_of_today, start_of_tomorrow) in naive UTC."""
+def _today_range(now: Optional[datetime] = None, timezone_name: Optional[str] = None) -> tuple[datetime, datetime]:
+    """Return local business-day bounds represented as naive UTC instants."""
     now = now or utc_now()
+    if timezone_name:
+        utc_aware = now.replace(tzinfo=ZoneInfo("UTC")) if now.tzinfo is None else now
+        local_now = utc_aware.astimezone(ZoneInfo(timezone_name))
+        local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return (
+            local_start.astimezone(ZoneInfo("UTC")).replace(tzinfo=None),
+            (local_start + timedelta(days=1)).astimezone(ZoneInfo("UTC")).replace(tzinfo=None),
+        )
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    tomorrow_start = today_start + timedelta(days=1)
-    return today_start, tomorrow_start
+    return today_start, today_start + timedelta(days=1)
 
 
-def _next_7_days_end(now: Optional[datetime] = None) -> datetime:
+def _next_7_days_end(now: Optional[datetime] = None, timezone_name: Optional[str] = None) -> datetime:
     """Return start of day +7 from now."""
     now = now or utc_now()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    return today_start + timedelta(days=8)
+    _, tomorrow = _today_range(now, timezone_name)
+    return tomorrow + timedelta(days=7)
 
 
 def _is_overdue(task: Task, now: Optional[datetime] = None) -> bool:
@@ -62,18 +70,18 @@ def _is_overdue(task: Task, now: Optional[datetime] = None) -> bool:
     return bool(task.due_date and status not in {TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value} and task.due_date < now)
 
 
-def _is_due_today(task: Task, now: Optional[datetime] = None) -> bool:
+def _is_due_today(task: Task, now: Optional[datetime] = None, timezone_name: Optional[str] = None) -> bool:
     now = now or utc_now()
-    today_start, tomorrow_start = _today_range(now)
+    today_start, tomorrow_start = _today_range(now, timezone_name)
     status = task.status.value if hasattr(task.status, "value") else str(task.status)
     return bool(task.due_date and status not in {TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value}
                 and today_start <= task.due_date < tomorrow_start)
 
 
-def _is_upcoming(task: Task, now: Optional[datetime] = None) -> bool:
+def _is_upcoming(task: Task, now: Optional[datetime] = None, timezone_name: Optional[str] = None) -> bool:
     now = now or utc_now()
-    _, tomorrow_start = _today_range(now)
-    end = _next_7_days_end(now)
+    _, tomorrow_start = _today_range(now, timezone_name)
+    end = _next_7_days_end(now, timezone_name)
     status = task.status.value if hasattr(task.status, "value") else str(task.status)
     return bool(task.due_date and status not in {TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value}
                 and tomorrow_start <= task.due_date <= end)
@@ -170,6 +178,22 @@ async def _resolve_blockers(tasks: List[Task]) -> Dict[str, List[Dict[str, Any]]
     return result
 
 
+async def shared_work_metrics(tasks: List[Task], now: Optional[datetime] = None, timezone_name: Optional[str] = None) -> Dict[str, Any]:
+    """Authoritative task metrics shared by Work Overview and dashboards."""
+    now = now or utc_now()
+    blockers = await _resolve_blockers(tasks)
+    statuses = {str(getattr(task.status, "value", task.status)) for task in tasks}
+    return {
+        "active": sum(1 for task in tasks if str(getattr(task.status, "value", task.status)) not in {TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value}),
+        "overdue": sum(1 for task in tasks if _is_overdue(task, now)),
+        "blocked": sum(1 for task in tasks if blockers.get(str(task.id))),
+        "awaiting_review": sum(1 for task in tasks if str(getattr(task.status, "value", task.status)) == TaskStatus.IN_REVIEW.value),
+        "due_today": sum(1 for task in tasks if _is_due_today(task, now, timezone_name)),
+        "blocker_map": blockers,
+        "statuses": statuses,
+    }
+
+
 # ── Next Action Engine ──────────────────────────────────────────────────────
 
 # Eligible statuses for employee execution
@@ -206,7 +230,7 @@ _STATUS_URGENCY = {
 }
 
 
-def _compute_task_urgency(task: Task, now: Optional[datetime] = None) -> tuple:
+def _compute_task_urgency(task: Task, now: Optional[datetime] = None, timezone_name: Optional[str] = None) -> tuple:
     """
     Compute a deterministic urgency tuple for sorting.
     Lower tuple = higher urgency = should be Next Action.
@@ -219,7 +243,7 @@ def _compute_task_urgency(task: Task, now: Optional[datetime] = None) -> tuple:
     priority_val = task.priority.value if hasattr(task.priority, "value") else str(task.priority)
 
     overdue = _is_overdue(task, now)
-    due_today = _is_due_today(task, now)
+    due_today = _is_due_today(task, now, timezone_name)
     critical = _is_critical(task)
     high = _is_high_priority(task)
     is_revision = status_val == TaskStatus.REVISION_REQUIRED.value
@@ -270,13 +294,13 @@ def _next_action_label(task: Task) -> tuple[str, str]:
     return "open_task", "Open Task"
 
 
-def _next_action_reason(task: Task, now: Optional[datetime] = None) -> str:
+def _next_action_reason(task: Task, now: Optional[datetime] = None, timezone_name: Optional[str] = None) -> str:
     now = now or utc_now()
     status = task.status.value if hasattr(task.status, "value") else str(task.status)
     if _is_overdue(task, now) and task.due_date:
         days = (now - task.due_date).days
         return f"Overdue by {days} {'day' if days == 1 else 'days'}"
-    if _is_due_today(task, now):
+    if _is_due_today(task, now, timezone_name):
         return "Due today"
     if _is_critical(task):
         return "Critical priority"
@@ -291,7 +315,7 @@ def _next_action_reason(task: Task, now: Optional[datetime] = None) -> str:
     return "Actionable work"
 
 
-def _compute_next_action(tasks: List[Task], blocker_map: Optional[Dict[str, List[Dict[str, Any]]]] = None, now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
+def _compute_next_action(tasks: List[Task], blocker_map: Optional[Dict[str, List[Dict[str, Any]]]] = None, now: Optional[datetime] = None, timezone_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Deterministic next action engine.
 
@@ -325,10 +349,10 @@ def _compute_next_action(tasks: List[Task], blocker_map: Optional[Dict[str, List
     if not executable:
         return None
 
-    executable.sort(key=lambda t: _compute_task_urgency(t, now))
+    executable.sort(key=lambda t: _compute_task_urgency(t, now, timezone_name))
     best = executable[0]
     action, action_label = _next_action_label(best)
-    reason = _next_action_reason(best, now)
+    reason = _next_action_reason(best, now, timezone_name)
 
     return {
         "task_id": str(best.id),
@@ -357,7 +381,7 @@ _ATTENTION_ORDER = [
 ]
 
 
-def _classify_dominant(task: Task, now: Optional[datetime] = None) -> str:
+def _classify_dominant(task: Task, now: Optional[datetime] = None, timezone_name: Optional[str] = None) -> str:
     """Assign a single dominant classification to a task."""
     now = now or utc_now()
     status = task.status.value if hasattr(task.status, "value") else str(task.status)
@@ -368,11 +392,11 @@ def _classify_dominant(task: Task, now: Optional[datetime] = None) -> str:
         return "overdue"
     if _is_critical(task):
         return "critical"
-    if _is_due_today(task, now):
+    if _is_due_today(task, now, timezone_name):
         return "due_today"
     if status == TaskStatus.IN_PROGRESS.value:
         return "in_progress"
-    if _is_upcoming(task, now):
+    if _is_upcoming(task, now, timezone_name):
         return "upcoming"
     return "other"
 
@@ -389,6 +413,7 @@ async def build_employee_work_overview(current_user: User, now: Optional[datetim
     now = now or utc_now()
     company_id = current_user.company_id
     user_id = str(current_user.id)
+    timezone_name = getattr(current_user, "timezone", None)
 
     # Fetch all tasks assigned to this user
     tasks = await _fetch_user_tasks(company_id, [user_id])
@@ -407,26 +432,27 @@ async def build_employee_work_overview(current_user: User, now: Optional[datetim
         await sync_task_health(task, now)
 
     # Compute blockers for all user tasks
-    blocker_map = await _resolve_blockers(tasks)
+    shared_metrics = await shared_work_metrics(tasks, now, timezone_name)
+    blocker_map = shared_metrics["blocker_map"]
 
     # Compute summary counts (overlapping dimensions for cards)
-    overdue = sum(1 for t in tasks if _is_overdue(t, now))
+    overdue = shared_metrics["overdue"]
     critical = sum(1 for t in tasks if _is_critical(t))
-    due_today = sum(1 for t in tasks if _is_due_today(t, now))
+    due_today = shared_metrics["due_today"]
     in_progress = sum(1 for t in tasks if (t.status.value if hasattr(t.status, "value") else str(t.status)) == TaskStatus.IN_PROGRESS.value)
     revision_required = sum(1 for t in tasks if (t.status.value if hasattr(t.status, "value") else str(t.status)) == TaskStatus.REVISION_REQUIRED.value)
     waiting_for_review = sum(1 for t in tasks if (t.status.value if hasattr(t.status, "value") else str(t.status)) == TaskStatus.IN_REVIEW.value)
-    blocked = sum(1 for t in tasks if blocker_map.get(str(t.id)))
-    upcoming = sum(1 for t in tasks if _is_upcoming(t, now))
+    blocked = shared_metrics["blocked"]
+    upcoming = sum(1 for t in tasks if _is_upcoming(t, now, timezone_name))
 
     # Dominant classification for attention lists (deduped)
     dominant_buckets: Dict[str, List[Task]] = defaultdict(list)
     for task in tasks:
-        classification = _classify_dominant(task, now)
+        classification = _classify_dominant(task, now, timezone_name)
         dominant_buckets[classification].append(task)
 
     # Next Action
-    next_action = _compute_next_action(tasks, blocker_map, now)
+    next_action = _compute_next_action(tasks, blocker_map, now, timezone_name)
 
     # Build categorized lists (limited to 10 each)
     needs_attention = []
@@ -494,6 +520,7 @@ async def build_manager_work_overview(current_user: User, now: Optional[datetime
     now = now or utc_now()
     company_id = current_user.company_id
     role = current_user.role
+    timezone_name = getattr(current_user, "timezone", None)
 
     # Determine visible user IDs (manager + subordinates)
     if role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
@@ -521,15 +548,16 @@ async def build_manager_work_overview(current_user: User, now: Optional[datetime
         await sync_task_health(task, now)
 
     # Compute blockers for all team tasks
-    blocker_map = await _resolve_blockers(team_tasks)
+    shared_metrics = await shared_work_metrics(team_tasks, now, timezone_name)
+    blocker_map = shared_metrics["blocker_map"]
 
     # ── Team Summary Counts ──
-    active = sum(1 for t in team_tasks if (t.status.value if hasattr(t.status, "value") else str(t.status)) not in {TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value})
-    overdue = sum(1 for t in team_tasks if _is_overdue(t, now))
+    active = shared_metrics["active"]
+    overdue = shared_metrics["overdue"]
     critical = sum(1 for t in team_tasks if _is_critical(t))
-    due_today = sum(1 for t in team_tasks if _is_due_today(t, now))
-    blocked_count = sum(1 for t in team_tasks if blocker_map.get(str(t.id)))
-    awaiting_review = sum(1 for t in team_tasks if (t.status.value if hasattr(t.status, "value") else str(t.status)) == TaskStatus.IN_REVIEW.value)
+    due_today = sum(1 for t in team_tasks if _is_due_today(t, now, timezone_name))
+    blocked_count = shared_metrics["blocked"]
+    awaiting_review = shared_metrics["awaiting_review"]
     revision_required = sum(1 for t in team_tasks if (t.status.value if hasattr(t.status, "value") else str(t.status)) == TaskStatus.REVISION_REQUIRED.value)
 
     # ── My Review Queue (tasks where current user is reviewer) ──
@@ -551,7 +579,7 @@ async def build_manager_work_overview(current_user: User, now: Optional[datetime
         active_count = sum(1 for t in user_tasks if (t.status.value if hasattr(t.status, "value") else str(t.status)) not in {TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value})
         in_prog = sum(1 for t in user_tasks if (t.status.value if hasattr(t.status, "value") else str(t.status)) == TaskStatus.IN_PROGRESS.value)
         user_overdue = sum(1 for t in user_tasks if _is_overdue(t, now))
-        user_due_today = sum(1 for t in user_tasks if _is_due_today(t, now))
+        user_due_today = sum(1 for t in user_tasks if _is_due_today(t, now, timezone_name))
         user_blocked = sum(1 for t in user_tasks if blocker_map.get(str(t.id)))
         user_waiting_review = sum(1 for t in user_tasks if (t.status.value if hasattr(t.status, "value") else str(t.status)) == TaskStatus.IN_REVIEW.value)
         user_revision = sum(1 for t in user_tasks if (t.status.value if hasattr(t.status, "value") else str(t.status)) == TaskStatus.REVISION_REQUIRED.value)

@@ -10,7 +10,7 @@ from app.api.dependencies import get_current_user
 from app.models.user import User
 from app.services import project_template_service
 
-router = APIRouter(prefix="/project-templates", tags=["Project Templates"])
+router = APIRouter(tags=["Project Templates"])
 
 
 @router.get("/")

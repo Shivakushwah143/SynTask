@@ -41,11 +41,9 @@ const INBOX_COUNT_KEYS = {
 };
 
 // Items kept in the shared navigation config (sidebar favorites, section landing cards)
-// but intentionally hidden from this in-page tab bar. User request: Import Leads stays
-// in the sidebar, it is only removed from the Sales section tabs. The legacy Sales
-// routes (Leads / All Leads / Pipeline) stay inside the section so their URLs resolve
-// to the Sales section, while the visible tabs remain exactly the guided journey.
-const TAB_HIDDEN_ITEM_NAMES = new Set(["Import Leads", "Leads", "All Leads", "Pipeline"]);
+// but intentionally hidden from this in-page tab bar. Work Overview is the canonical
+// landing route, so the legacy navigation item remains sidebar-only.
+const TAB_HIDDEN_ITEM_NAMES = new Set(["Overview", "Import Leads", "Leads", "All Leads", "Pipeline"]);
 
 // Legacy Sales routes resolved to one of the hidden items above (e.g. the full board
 // at /crm/pipeline or the browsing page at /crm/leads/all). No journey stage tab
