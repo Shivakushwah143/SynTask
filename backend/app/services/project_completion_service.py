@@ -44,7 +44,7 @@ async def completion_readiness(project: Project, actor: User) -> dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     tasks = await Task.find(project_task_query(project)).to_list()
-    required_tasks = [task for task in tasks if getattr(task, "required_for_project_completion", True)]
+    required_tasks = [task for task in tasks if getattr(task, "required_for_project_completion", True) is not False]
     incomplete = []
     pending_review = []
     blockers = []
@@ -52,7 +52,7 @@ async def completion_readiness(project: Project, actor: User) -> dict[str, Any]:
         task_status = normalize_status(task.status)
         if task_status in {TaskStatus.IN_REVIEW, TaskStatus.REVISION_REQUIRED, TaskStatus.APPROVED}:
             pending_review.append(task)
-        if task_status not in {TaskStatus.COMPLETED, TaskStatus.CANCELLED}:
+        if task_status != TaskStatus.COMPLETED:
             incomplete.append(task)
         deps = await blocking_dependencies(task)
         if deps:

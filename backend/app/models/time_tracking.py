@@ -18,6 +18,7 @@ class TimeLogSource(str, Enum):
 class ActiveTimeSessionStatus(str, Enum):
     RUNNING = "running"
     PAUSED = "paused"
+    STOPPING = "stopping"
 
 
 class TimeLog(Document):

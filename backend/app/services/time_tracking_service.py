@@ -4,6 +4,8 @@ from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import HTTPException, status
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from app.core.clock import parse_to_utc, utc_now
 from app.models.project import Project, ProjectStatus
@@ -90,11 +92,10 @@ async def start_timer(task_id: str, actor: User) -> ActiveTimeSession:
     await assert_not_blocked(task)
 
     existing = await ActiveTimeSession.find_one({"company_id": actor.company_id, "user_id": str(actor.id)})
+    if existing and existing.status != ActiveTimeSessionStatus.STOPPING and str(existing.task_id) == str(task.id):
+        return existing
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Stop or pause your current timer before starting another task.")
-
-    if normalize_status(task.status) == TaskStatus.ASSIGNED:
-        await transition_task(task=task, actor=actor, action="start_work", project=project)
 
     now = utc_now()
     session = ActiveTimeSession(
@@ -107,7 +108,20 @@ async def start_timer(task_id: str, actor: User) -> ActiveTimeSession:
         last_resumed_at=now,
         status=ActiveTimeSessionStatus.RUNNING,
     )
-    await session.insert()
+    try:
+        await session.insert()
+    except DuplicateKeyError:
+        existing = await ActiveTimeSession.find_one({"company_id": actor.company_id, "user_id": str(actor.id)})
+        if existing and existing.status != ActiveTimeSessionStatus.STOPPING and str(existing.task_id) == str(task.id):
+            return existing
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Stop or pause your current timer before starting another task.")
+
+    if normalize_status(task.status) == TaskStatus.ASSIGNED:
+        try:
+            await transition_task(task=task, actor=actor, action="start_work")
+        except Exception:
+            await session.delete()
+            raise
     return session
 
 
@@ -146,7 +160,16 @@ async def resume_timer(actor: User) -> ActiveTimeSession:
 
 
 async def stop_timer(actor: User, description: Optional[str] = None) -> TimeLog:
-    session = await active_timer(actor)
+    now = utc_now()
+    session = await ActiveTimeSession.find_one(
+        {
+            "company_id": actor.company_id,
+            "user_id": str(actor.id),
+            "status": {"$in": [ActiveTimeSessionStatus.RUNNING.value, ActiveTimeSessionStatus.PAUSED.value]},
+        }
+    ).find_one_and_update(
+        {"$set": {"status": "stopping", "updated_at": now}}
+    )
     if not session:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active timer found.")
     seconds = elapsed_seconds(session)
@@ -154,7 +177,6 @@ async def stop_timer(actor: User, description: Optional[str] = None) -> TimeLog:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Timer duration must be positive.")
 
     hours = round(seconds / 3600.0, 4)
-    now = utc_now()
     time_log = TimeLog(
         task_id=session.task_id,
         company_id=session.company_id,

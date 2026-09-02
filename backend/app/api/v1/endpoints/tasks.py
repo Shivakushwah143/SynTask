@@ -1465,7 +1465,8 @@ async def update_task(
             task.assigned_to = None
             task.assigned_by = None
             task.assigned_at = None
-            task.status = TaskStatus.TODO
+            if enum_or_string_value(task.status) == TaskStatus.ASSIGNED.value:
+                await transition_task(task=task, actor=current_user, action="assign", target_status=TaskStatus.TODO.value)
         else:
             # Validate assigned user exists and is in same company
             assigned_user = await User.get(assigned_to)
@@ -1484,8 +1485,8 @@ async def update_task(
             task.assigned_to = assigned_to
             task.assigned_by = str(current_user.id)
             task.assigned_at = utc_now()
-            if enum_or_string_value(task.status) == TaskStatus.TODO.value:
-                task.status = TaskStatus.ASSIGNED
+            if assigned_to != previous_assigned_to and enum_or_string_value(task.status) == TaskStatus.TODO.value:
+                await transition_task(task=task, actor=current_user, action="assign", target_status=TaskStatus.ASSIGNED.value)
     if review_required is not None:
         if getattr(task, "source_type", None) == "sales_follow_up" and review_required:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sales follow-up tasks do not require review")
