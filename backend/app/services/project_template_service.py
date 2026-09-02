@@ -9,12 +9,13 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 from fastapi import HTTPException, status as http_status
 
 from app.core.clock import utc_now
 from app.models.project import Project, ProjectPriority, ProjectStatus
 from app.models.project_template import ProjectTemplate, TemplateTask, TemplateTaskPriority
-from app.models.task import Task, TaskStatus
+from app.models.task import Task
 from app.models.user import User, UserRole
 
 logger = logging.getLogger(__name__)
@@ -283,98 +284,148 @@ async def generate_project_from_template(
             detail="Invalid start date format.",
         )
 
-    # Create the project via existing service
-    result = await ProjectService.create_project_core(
-        name=name,
-        key=key,
-        description=template.description,
-        type=template.project_type or "software",
-        client_id=client_id,
-        lead_id=lead_id,
-        start_date=start_date,
-        delivery_date=delivery_date,
-        priority=priority or template.default_priority,
-        project_id=project_id,
-        current_user=current_user,
-    )
+    existing_project = await Project.find_one({"company_id": company_id, "project_id": project_id})
+    if existing_project:
+        existing_tasks = await Task.find({"company_id": company_id, "project_id": project_id}).to_list()
+        existing_by_ref = {
+            str(task.related_entity_id).split(":", 1)[-1]: task
+            for task in existing_tasks
+            if getattr(task, "source_type", None) == "project_template"
+            and str(getattr(task, "related_entity_type", "")) == str(template.id)
+        }
+        if len(existing_by_ref) == len(template_tasks):
+            return {
+                "project_id": project_id,
+                "template_id": str(template.id),
+                "template_name": template.name,
+                "template_version": template.version,
+                "tasks_created": len(existing_by_ref),
+                "tasks": [{"ref_id": tt.ref_id, "task_id": str(existing_by_ref[tt.ref_id].id), "title": tt.title} for tt in template_tasks],
+                "message": f"Project '{name}' was already generated from template '{template.name}'.",
+            }
+    else:
+        try:
+            result = await ProjectService.create_project_core(
+                name=name,
+                key=key,
+                description=template.description,
+                type=template.project_type or "software",
+                client_id=client_id,
+                lead_id=lead_id,
+                start_date=start_date,
+                delivery_date=delivery_date,
+                priority=priority or template.default_priority,
+                project_id=project_id,
+                current_user=current_user,
+            )
+            existing_project = await Project.get(result.get("id"))
+        except DuplicateKeyError:
+            existing_project = await Project.find_one({"company_id": company_id, "project_id": project_id})
+            if not existing_project:
+                raise
 
-    created_project_id = result.get("project_id") or result.get("id")
+    created_project_id = project_id
 
     # Create tasks from template
     created_tasks: List[Dict[str, Any]] = []
     ref_to_task_id: Dict[str, str] = {}
 
-    for tt in template_tasks:
-        task_start = start_dt + timedelta(days=tt.relative_start_day)
-        task_due = start_dt + timedelta(days=tt.relative_due_day)
+    from app.services.task_service import TaskService
+
+    pending_tasks = list(template_tasks)
+    while pending_tasks:
+        ready = [tt for tt in pending_tasks if all(dep in ref_to_task_id for dep in tt.depends_on_refs)]
+        if not ready:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Template dependencies contain a cycle")
+        for tt in ready:
+            existing_task = await Task.find_one({
+            "company_id": company_id,
+            "project_id": created_project_id,
+            "source_type": "project_template",
+            "related_entity_type": str(template.id),
+            "related_entity_id": f"{template.id}:{tt.ref_id}",
+        })
+            if existing_task:
+                ref_to_task_id[tt.ref_id] = str(existing_task.id)
+                created_tasks.append({"ref_id": tt.ref_id, "task_id": str(existing_task.id), "title": tt.title})
+                continue
+            task_start = start_dt + timedelta(days=tt.relative_start_day)
+            task_due = start_dt + timedelta(days=tt.relative_due_day)
 
         # Resolve assignee
-        assignee_id = None
-        if tt.assignee_placeholder and assignee_map:
-            assignee_id = assignee_map.get(tt.assignee_placeholder)
+            assignee_id = None
+            if tt.assignee_placeholder and assignee_map:
+                assignee_id = assignee_map.get(tt.assignee_placeholder)
 
         # Resolve reviewer
-        reviewer_id = None
-        if tt.reviewer_placeholder and reviewer_map:
-            reviewer_id = reviewer_map.get(tt.reviewer_placeholder)
+            reviewer_id = None
+            if tt.reviewer_placeholder and reviewer_map:
+                reviewer_id = reviewer_map.get(tt.reviewer_placeholder)
 
         # Resolve dependencies (ref_ids -> actual task IDs)
-        dependencies = []
-        for dep_ref in tt.depends_on_refs:
-            if dep_ref in ref_to_task_id:
-                dependencies.append({
-                    "task_id": ref_to_task_id[dep_ref],
-                    "type": "blocks",
-                })
+            dependencies = [ref_to_task_id[dep_ref] for dep_ref in tt.depends_on_refs]
 
         # Normalize checklist
-        checklist = []
-        for idx, item in enumerate(tt.checklist or []):
-            if isinstance(item, str):
-                checklist.append({
-                    "id": str(uuid.uuid4()),
-                    "text": item,
-                    "completed": False,
-                    "required": False,
-                    "order": idx,
-                })
-            elif isinstance(item, dict):
-                checklist.append({
-                    "id": item.get("id", str(uuid.uuid4())),
-                    "text": item.get("text", item.get("title", "")),
-                    "completed": False,
-                    "required": item.get("required", False),
-                    "order": idx,
-                })
+            checklist = []
+            for idx, item in enumerate(tt.checklist or []):
+                if isinstance(item, str):
+                    checklist.append({
+                        "id": str(uuid.uuid4()),
+                        "text": item,
+                        "completed": False,
+                        "required": False,
+                        "order": idx,
+                    })
+                elif isinstance(item, dict):
+                    checklist.append({
+                        "id": item.get("id", str(uuid.uuid4())),
+                        "text": item.get("text", item.get("title", "")),
+                        "completed": False,
+                        "required": item.get("required", False),
+                        "order": idx,
+                    })
 
-        task = Task(
-            title=tt.title,
-            description=tt.description,
-            company_id=company_id,
-            project_id=created_project_id,
-            status=TaskStatus.ASSIGNED if assignee_id else TaskStatus.TODO,
-            priority=tt.priority.value,
-            assigned_to=assignee_id,
-            reviewer_id=reviewer_id,
-            review_required=tt.review_required,
-            due_date=task_due,
-            start_date=task_start,
-            dependencies=dependencies,
-            checklist=checklist,
-            tags=tt.tags,
-            required_for_project_completion=tt.required_for_project_completion,
-            created_by=str(current_user.id),
-        )
-        if assignee_id:
-            task.assigned_at = utc_now()
-        await task.insert()
-
-        ref_to_task_id[tt.ref_id] = str(task.id)
-        created_tasks.append({
-            "ref_id": tt.ref_id,
-            "task_id": str(task.id),
-            "title": tt.title,
-        })
+            try:
+                result = await TaskService.create_task_core(
+                    title=tt.title,
+                    description=tt.description,
+                    assigned_to=assignee_id,
+                    priority=tt.priority.value,
+                    start_date=task_start.isoformat(),
+                    due_date=task_due.isoformat(),
+                    tags=",".join(tt.tags),
+                    project_id=created_project_id,
+                    estimated_hours=tt.estimated_hours,
+                    reviewer_id=reviewer_id,
+                    review_required=tt.review_required,
+                    checklist=checklist,
+                    dependencies=dependencies,
+                    required_for_project_completion=tt.required_for_project_completion,
+                    source_type="project_template",
+                    related_entity_type=str(template.id),
+                    related_entity_id=f"{template.id}:{tt.ref_id}",
+                    current_user=current_user,
+                    background_tasks=None,
+                )
+            except DuplicateKeyError:
+                existing_task = await Task.find_one({
+                    "company_id": company_id,
+                    "project_id": created_project_id,
+                    "source_type": "project_template",
+                    "related_entity_type": str(template.id),
+                    "related_entity_id": f"{template.id}:{tt.ref_id}",
+                })
+                if not existing_task:
+                    raise
+                result = {"id": str(existing_task.id)}
+            task_id = str(result.get("task_id") or result.get("id"))
+            ref_to_task_id[tt.ref_id] = task_id
+            created_tasks.append({
+                "ref_id": tt.ref_id,
+                "task_id": task_id,
+                "title": tt.title,
+            })
+        pending_tasks = [tt for tt in pending_tasks if tt not in ready]
 
     return {
         "project_id": created_project_id,

@@ -58,6 +58,9 @@ class WorkRequest(Document):
     decision_reason: Optional[str] = None
     converted_task_id: Optional[str] = None
     converted_project_id: Optional[str] = None
+    conversion_in_progress: bool = False
+    conversion_started_at: Optional[datetime] = None
+    deadline_extension_in_progress: bool = False
     cancelled_at: Optional[datetime] = None
     cancelled_by: Optional[str] = None
 

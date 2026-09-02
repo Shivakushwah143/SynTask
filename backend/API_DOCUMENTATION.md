@@ -435,10 +435,10 @@ Work Request endpoints require the Tasks module gate and same-company access. Th
 | POST | `/api/v1/work-requests/` | `create_work_request` | Creates a request for new work, change, approval, deadline extension, resource, blocker, leave/availability, client request, or other. Context fields are validated against same-tenant project/task/client records. |
 | GET | `/api/v1/work-requests/{request_id}` | `get_work_request` | Loads by logical request id or Mongo `_id`, then applies request visibility rules. |
 | POST | `/api/v1/work-requests/{request_id}/start-review` | `start_review` | Reviewer/manager action that moves `submitted` to `under_review`. |
-| POST | `/api/v1/work-requests/{request_id}/approve` | `approve_work_request` | Reviewer/manager action that approves with optional reason/result metadata. |
+| POST | `/api/v1/work-requests/{request_id}/approve` | `approve_work_request` | Reviewer/manager action that approves with optional reason/result metadata. Deadline-extension approval invokes the existing Task Extension workflow exactly once; rejection leaves the task deadline unchanged. |
 | POST | `/api/v1/work-requests/{request_id}/reject` | `reject_work_request` | Reviewer/manager action that rejects with required reason. |
 | POST | `/api/v1/work-requests/{request_id}/cancel` | `cancel_work_request` | Requester or authorized reviewer/manager action for open requests. |
-| POST | `/api/v1/work-requests/{request_id}/convert` | `convert_work_request` | Converts an approved or under-review request into a Task or Project, preserves source linkage, and makes repeated conversion return the existing converted record. |
+| POST | `/api/v1/work-requests/{request_id}/convert` | `convert_work_request` | Converts an approved or under-review request into a Task or Project through an atomic conversion claim, preserves source linkage, and makes repeated/concurrent conversion return or link the existing converted record. |
 
 ### Projects
 

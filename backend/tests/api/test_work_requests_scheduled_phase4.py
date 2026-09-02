@@ -94,6 +94,11 @@ def test_weekly_recurrence_calculates_selected_weekday():
     assert SchedulingService.next_occurrence(job, after=job.run_at) == datetime(2026, 9, 14, 10, 0, 0)
 
 
+def test_every_two_weeks_preserves_fourteen_day_cadence():
+    job = _job(datetime(2026, 9, 7, 10, 0, 0), {"frequency": "weekly", "interval": 2, "weekdays": [0]})
+    assert SchedulingService.next_occurrence(job, after=job.run_at) == datetime(2026, 9, 21, 10, 0, 0)
+
+
 def test_monthly_recurrence_clamps_31st_to_last_valid_day():
     job = _job(datetime(2026, 1, 31, 10, 0, 0), {"frequency": "monthly", "month_day": 31})
     assert SchedulingService.next_occurrence(job, after=job.run_at) == datetime(2026, 2, 28, 10, 0, 0)

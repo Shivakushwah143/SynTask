@@ -198,6 +198,17 @@ class Task(Document):
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("parent_task_id", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("related_entity_type", ASCENDING), ("related_entity_id", ASCENDING)]),
+            IndexModel(
+                [
+                    ("company_id", ASCENDING),
+                    ("source_type", ASCENDING),
+                    ("related_entity_type", ASCENDING),
+                    ("related_entity_id", ASCENDING),
+                ],
+                unique=True,
+                sparse=True,
+                name="tasks_template_and_schedule_source_marker",
+            ),
             IndexModel([("title", TEXT), ("description", TEXT)]),
         ]
 

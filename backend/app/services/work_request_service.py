@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import uuid4
+from bson import ObjectId
+from pymongo import ReturnDocument
 from typing import Any, Optional
 
 from fastapi import HTTPException, status
@@ -13,6 +16,7 @@ from app.models.task import Task
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.models.user import User, UserRole, UserStatus
 from app.models.work_request import WorkRequest, WorkRequestStatus, WorkRequestType
+from app.models.task import TaskExtensionRequest
 from app.services.project_permissions import ProjectPermission, has_project_permission, load_project_for_permission
 from app.services.project_service import ProjectService
 from app.services.task_health_service import assert_task_view_access
@@ -36,9 +40,96 @@ def _same_company(actor: User, company_id: str) -> bool:
 
 
 async def _next_request_id(company_id: str) -> str:
-    prefix = f"REQ-{utc_now().year}-"
-    count = await WorkRequest.find({"company_id": company_id, "request_id": {"$regex": f"^{prefix}"}}).count()
-    return f"{prefix}{count + 1:06d}"
+    return f"REQ-{utc_now().year}-{uuid4().hex[:12].upper()}"
+
+
+async def _apply_deadline_extension(request: WorkRequest, reviewer: User, comment: Optional[str]) -> None:
+    if request.action_result.get("task_extension_request_id"):
+        return
+    task = await Task.get(request.task_id)
+    if not task or str(task.company_id) != str(request.company_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    requested_due_date = request.requested_changes.get("requested_due_date")
+    try:
+        requested_due_date = datetime.fromisoformat(str(requested_due_date).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid requested_due_date") from exc
+    extension = TaskExtensionRequest(
+        task_id=str(task.id),
+        company_id=task.company_id,
+        employee_id=str(request.requested_by),
+        current_due_date=task.due_date or utc_now(),
+        requested_due_date=requested_due_date,
+        reason=request.reason or request.description,
+    )
+    await extension.insert()
+    from app.services.task_health_service import review_extension_request
+
+    await review_extension_request(extension, reviewer, True, comment)
+    request.action_result = {
+        **dict(request.action_result or {}),
+        "task_extension_request_id": str(extension.id),
+        "task_id": str(task.id),
+        "requested_due_date": requested_due_date.isoformat(),
+    }
+    request.deadline_extension_in_progress = False
+
+
+async def _claim_deadline_extension(request: WorkRequest) -> bool:
+    try:
+        claimed = await WorkRequest.get_pymongo_collection().find_one_and_update(
+            {
+                "_id": ObjectId(str(request.id)),
+                "status": WorkRequestStatus.UNDER_REVIEW.value,
+                "type": WorkRequestType.DEADLINE_EXTENSION.value,
+                "deadline_extension_in_progress": {"$ne": True},
+            },
+            {"$set": {"deadline_extension_in_progress": True}},
+            return_document=ReturnDocument.AFTER,
+        )
+    except Exception:
+        # Unit/legacy objects without Mongo identifiers use the same workflow
+        # path; production documents always have ObjectId-backed atomic claims.
+        if not ObjectId.is_valid(str(request.id)):
+            return True
+        raise
+    if claimed:
+        return True
+    latest = await WorkRequest.get(request.id)
+    if latest and latest.action_result.get("task_extension_request_id"):
+        request.status = latest.status
+        request.action_result = latest.action_result
+        return False
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Deadline extension approval is already in progress")
+
+
+async def _claim_conversion(request: WorkRequest) -> None:
+    request_oid = ObjectId(str(request.id))
+    claimed = await WorkRequest.get_pymongo_collection().find_one_and_update(
+        {
+            "_id": request_oid,
+            "status": WorkRequestStatus.APPROVED.value,
+            "conversion_in_progress": {"$ne": True},
+            "converted_task_id": None,
+            "converted_project_id": None,
+        },
+        {"$set": {"conversion_in_progress": True, "conversion_started_at": utc_now()}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not claimed:
+        latest = await WorkRequest.get(request.id)
+        if latest and (latest.converted_task_id or latest.converted_project_id):
+            request.converted_task_id = latest.converted_task_id
+            request.converted_project_id = latest.converted_project_id
+            return
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Request conversion is already in progress")
+
+
+async def _release_conversion(request: WorkRequest) -> None:
+    await WorkRequest.get_pymongo_collection().update_one(
+        {"_id": ObjectId(str(request.id)), "conversion_in_progress": True},
+        {"$set": {"conversion_in_progress": False}, "$unset": {"conversion_started_at": ""}},
+    )
 
 
 async def _admin_fallback(company_id: str) -> Optional[str]:
@@ -223,10 +314,14 @@ class WorkRequestService:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Request must be under review before approval")
             if not await can_review_request(actor, request):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to approve this request")
+            if request.type == WorkRequestType.DEADLINE_EXTENSION and not await _claim_deadline_extension(request):
+                return request
             request.status = WorkRequestStatus.APPROVED
             request.decided_at = now
             request.decided_by = str(actor.id)
             request.decision_reason = reason
+            if request.type == WorkRequestType.DEADLINE_EXTENSION:
+                await _apply_deadline_extension(request, actor, reason)
         elif action == "reject":
             if old_status != WorkRequestStatus.UNDER_REVIEW:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Request must be under review before rejection")
@@ -263,27 +358,35 @@ class WorkRequestService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only approved requests can be converted")
         if not await can_review_request(actor, request):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to convert this request")
-        result = await TaskService.create_task_core(
-            title=payload.get("title") or request.title,
-            description=payload.get("description") or request.description,
-            assigned_to=payload.get("assigned_to"),
-            priority=payload.get("priority") or request.priority,
-            due_date=payload.get("due_date"),
-            project_id=payload.get("project_id") or request.project_id,
-            department_id=payload.get("department_id"),
-            reviewer_id=payload.get("reviewer_id"),
-            review_required=payload.get("review_required"),
-            source_type="work_request",
-            related_entity_type="work_request",
-            related_entity_id=request.request_id,
-            current_user=actor,
-            background_tasks=None,
-        )
-        request.converted_task_id = str(result.get("task_id") or result.get("id"))
-        request.status = WorkRequestStatus.CONVERTED
-        request.action_result = {"converted_to": "task", "task_id": request.converted_task_id}
-        request.updated_at = utc_now()
-        await request.save()
+        await _claim_conversion(request)
+        if request.converted_task_id:
+            return {"status": "already_converted", "task_id": request.converted_task_id}
+        try:
+            result = await TaskService.create_task_core(
+                title=payload.get("title") or request.title,
+                description=payload.get("description") or request.description,
+                assigned_to=payload.get("assigned_to"),
+                priority=payload.get("priority") or request.priority,
+                due_date=payload.get("due_date"),
+                project_id=payload.get("project_id") or request.project_id,
+                department_id=payload.get("department_id"),
+                reviewer_id=payload.get("reviewer_id"),
+                review_required=payload.get("review_required"),
+                source_type="work_request",
+                related_entity_type="work_request",
+                related_entity_id=request.request_id,
+                current_user=actor,
+                background_tasks=None,
+            )
+            request.converted_task_id = str(result.get("task_id") or result.get("id"))
+            request.status = WorkRequestStatus.CONVERTED
+            request.action_result = {"converted_to": "task", "task_id": request.converted_task_id}
+            request.conversion_in_progress = False
+            request.updated_at = utc_now()
+            await request.save()
+        except Exception:
+            await _release_conversion(request)
+            raise
         await record_request_event(request, actor, "converted_to_task", WorkRequestStatus.APPROVED.value, WorkRequestStatus.CONVERTED.value)
         await notify_request_user(request.requested_by, request, "Work request converted", request.title)
         return {"status": "converted", "task": result, "task_id": request.converted_task_id}
@@ -296,12 +399,20 @@ class WorkRequestService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only approved requests can be converted")
         if not await can_review_request(actor, request):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to convert this request")
-        result = await ProjectService.create_project_core(current_user=actor, **payload)
-        request.converted_project_id = str(result.get("project_id") or result.get("id"))
-        request.status = WorkRequestStatus.CONVERTED
-        request.action_result = {"converted_to": "project", "project_id": request.converted_project_id}
-        request.updated_at = utc_now()
-        await request.save()
+        await _claim_conversion(request)
+        if request.converted_project_id:
+            return {"status": "already_converted", "project_id": request.converted_project_id}
+        try:
+            result = await ProjectService.create_project_core(current_user=actor, **payload)
+            request.converted_project_id = str(result.get("project_id") or result.get("id"))
+            request.status = WorkRequestStatus.CONVERTED
+            request.action_result = {"converted_to": "project", "project_id": request.converted_project_id}
+            request.conversion_in_progress = False
+            request.updated_at = utc_now()
+            await request.save()
+        except Exception:
+            await _release_conversion(request)
+            raise
         await record_request_event(request, actor, "converted_to_project", WorkRequestStatus.APPROVED.value, WorkRequestStatus.CONVERTED.value)
         await notify_request_user(request.requested_by, request, "Work request converted", request.title)
         return {"status": "converted", "project": result, "project_id": request.converted_project_id}

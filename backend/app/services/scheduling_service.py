@@ -7,10 +7,12 @@ from calendar import monthrange
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Optional, Dict, Any
+from pymongo.errors import DuplicateKeyError
 
 from app.models.scheduled_job import ScheduledJob, ScheduledJobActionType, ScheduledJobOccurrence, ScheduledJobOccurrenceStatus, ScheduledJobScheduleType, ScheduledJobStatus
 from app.models.user import User, UserStatus
 from app.models.notification import Notification, NotificationType
+from app.models.task import Task
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.services.timeline_service import create_timeline_event
 from app.services.project_service import ProjectService
@@ -108,8 +110,14 @@ class SchedulingService:
                     raise ValueError(f"Creator user with id {job.created_by} not found")
 
                 occurrence = await SchedulingService._lock_occurrence(job)
+                if occurrence is None:
+                    job.status = ScheduledJobStatus.PENDING
+                    await job.save()
+                    continue
                 result = None
-                if job.action_type == ScheduledJobActionType.CREATE_PROJECT:
+                if occurrence.status == ScheduledJobOccurrenceStatus.COMPLETED:
+                    result = {occurrence.result_type or "id": occurrence.result_id}
+                elif job.action_type == ScheduledJobActionType.CREATE_PROJECT:
                     result = await ProjectService.create_project_core(
                         name=job.payload.get("name"),
                         key=job.payload.get("key"),
@@ -129,7 +137,8 @@ class SchedulingService:
                 else:
                     raise ValueError(f"Unsupported action type: {job.action_type}")
 
-                await SchedulingService._complete_occurrence(occurrence, job, result)
+                if occurrence.status != ScheduledJobOccurrenceStatus.COMPLETED:
+                    await SchedulingService._complete_occurrence(occurrence, job, result)
                 if job.schedule_type == ScheduledJobScheduleType.RECURRING:
                     next_run_at = SchedulingService.next_occurrence(job, after=job.run_at)
                     if not next_run_at:
@@ -249,6 +258,25 @@ class SchedulingService:
         only happen for FAILED jobs, which never reach the success path — a
         follow-up task is created exactly once.
         """
+        occurrence_marker = (
+            f"{job.id}:{parse_to_utc(job.run_at).isoformat()}"
+            if job.schedule_type == ScheduledJobScheduleType.RECURRING
+            else None
+        )
+        if occurrence_marker:
+            existing = await Task.find_one({
+                "company_id": job.company_id,
+                "source_type": job.payload.get("source_type") or "scheduled_work",
+                "related_entity_id": occurrence_marker,
+            })
+            if existing:
+                return {
+                    "id": str(existing.id),
+                    "task_id": str(existing.id),
+                    "title": existing.title,
+                    "status": getattr(existing.status, "value", existing.status),
+                }
+
         assignee_id = job.payload.get("assigned_to")
         if assignee_id:
             assignee = await User.get(assignee_id)
@@ -277,7 +305,11 @@ class SchedulingService:
             review_required=job.payload.get("review_required"),
             source_type=job.payload.get("source_type") or ("scheduled_work" if job.schedule_type == ScheduledJobScheduleType.RECURRING else None),
             related_entity_type=job.payload.get("related_entity_type"),
-            related_entity_id=job.payload.get("related_entity_id") or (str(job.id) if job.schedule_type == ScheduledJobScheduleType.RECURRING else None),
+            related_entity_id=job.payload.get("related_entity_id") or (
+                f"{job.id}:{parse_to_utc(job.run_at).isoformat()}"
+                if job.schedule_type == ScheduledJobScheduleType.RECURRING
+                else None
+            ),
             related_entity_stage=job.payload.get("related_entity_stage"),
             related_entity_url=job.payload.get("related_entity_url"),
             current_user=creator,
@@ -329,13 +361,16 @@ class SchedulingService:
             candidate = local + timedelta(days=interval)
         elif frequency == "weekly":
             weekdays = sorted(int(day) for day in recurrence.get("weekdays") or [local.weekday()])
-            candidate = None
-            for offset in range(1, 8 * interval + 1):
-                probe = local + timedelta(days=offset)
-                if probe.weekday() in weekdays:
-                    candidate = probe
-                    break
-            candidate = candidate or (local + timedelta(days=7 * interval))
+            if interval == 1:
+                candidate = None
+                for offset in range(1, 8):
+                    probe = local + timedelta(days=offset)
+                    if probe.weekday() in weekdays:
+                        candidate = probe
+                        break
+            else:
+                next_cycle = local - timedelta(days=local.weekday()) + timedelta(weeks=interval)
+                candidate = next_cycle + timedelta(days=weekdays[0])
         elif frequency == "monthly":
             day = int(recurrence.get("month_day") or local.day)
             month = local.month - 1 + interval
@@ -356,12 +391,17 @@ class SchedulingService:
         return result
 
     @staticmethod
-    async def _lock_occurrence(job: ScheduledJob) -> ScheduledJobOccurrence:
+    async def _lock_occurrence(job: ScheduledJob) -> Optional[ScheduledJobOccurrence]:
         occurrence_id = f"{job.id}:{parse_to_utc(job.run_at).isoformat()}"
         existing = await ScheduledJobOccurrence.find_one({"occurrence_id": occurrence_id})
-        if existing and existing.status == ScheduledJobOccurrenceStatus.COMPLETED:
-            raise ValueError("Scheduled occurrence already completed")
+        if existing and existing.status in {ScheduledJobOccurrenceStatus.COMPLETED, ScheduledJobOccurrenceStatus.RUNNING}:
+            return existing if existing.status == ScheduledJobOccurrenceStatus.COMPLETED else None
         if existing:
+            existing.status = ScheduledJobOccurrenceStatus.RUNNING
+            existing.retry_count = int(existing.retry_count or 0) + 1
+            existing.error = None
+            existing.started_at = utc_now()
+            await existing.save()
             return existing
         occurrence = ScheduledJobOccurrence(
             scheduled_job_id=str(job.id),
@@ -369,7 +409,13 @@ class SchedulingService:
             occurrence_id=occurrence_id,
             scheduled_at=parse_to_utc(job.run_at),
         )
-        await occurrence.insert()
+        try:
+            await occurrence.insert()
+        except DuplicateKeyError:
+            existing = await ScheduledJobOccurrence.find_one({"occurrence_id": occurrence_id})
+            if existing and existing.status == ScheduledJobOccurrenceStatus.COMPLETED:
+                return existing
+            return None
         return occurrence
 
     @staticmethod

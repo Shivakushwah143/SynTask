@@ -103,6 +103,7 @@ class TaskService:
         description: Optional[str] = None,
         assigned_to: Optional[str] = None,
         priority: str = "medium",
+        start_date: Optional[str] = None,
         due_date: Optional[str] = None,
         tags: Optional[str] = None,
         parent_task_id: Optional[str] = None,
@@ -125,6 +126,9 @@ class TaskService:
         current_user: User,
         reviewer_id: Optional[str] = None,
         review_required: Optional[bool] = None,
+        checklist: Optional[list[dict[str, Any]]] = None,
+        dependencies: Optional[list[str]] = None,
+        required_for_project_completion: bool = True,
         background_tasks = None
     ) -> dict:
         from fastapi import HTTPException, status
@@ -163,6 +167,16 @@ class TaskService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid due date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)"
                 )
+
+            parsed_start_date = None
+            if start_date:
+                try:
+                    parsed_start_date = parse_to_utc(start_date)
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid start date format. Use ISO format",
+                    ) from exc
 
         parsed_tags = []
         if tags:
@@ -335,6 +349,7 @@ class TaskService:
             review_required=(False if source_type in {"sales_follow_up"} else (review_required if review_required is not None else bool(project))),
             reviewer_id=str(reviewer.id) if reviewer else None,
             due_date=parsed_due_date,
+            start_date=parsed_start_date,
             tags=parsed_tags,
             parent_task_id=parent_task_id,
             project_id=project_id,
@@ -352,6 +367,9 @@ class TaskService:
             related_entity_id=related_entity_id,
             related_entity_stage=related_entity_stage,
             related_entity_url=related_entity_url,
+            checklist=checklist or [],
+            dependencies=[str(item) for item in (dependencies or [])],
+            required_for_project_completion=required_for_project_completion,
         )
 
         await task.insert()
