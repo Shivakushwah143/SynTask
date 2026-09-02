@@ -6,6 +6,7 @@ from typing import Optional
 
 from app.crm.models import SalesProspect
 from app.models.client import Client
+from app.core.clock import utc_now
 from app.models.crm_company import CRMCompany
 from app.models.sales_contact import SalesContact
 
@@ -51,6 +52,73 @@ async def resolve_crm_company_for_lead(lead: SalesProspect) -> ClientCompanyReso
     return ClientCompanyResolution(None, "unresolved", "no_strong_lead_company_match")
 
 
+async def ensure_crm_company_for_won_lead(lead: SalesProspect, actor_id: str | None = None) -> ClientCompanyResolution:
+    resolution = await resolve_crm_company_for_lead(lead)
+    if resolution.crm_company:
+        canonical_id = str(resolution.crm_company.id)
+        if getattr(lead, "crm_company_id", None) != canonical_id:
+            lead.crm_company_id = canonical_id
+            lead.updated_at = utc_now()
+            await lead.save()
+        return ClientCompanyResolution(resolution.crm_company, "resolved", resolution.reason)
+    if resolution.status == "ambiguous":
+        return resolution
+
+    tenant_id = str(getattr(lead, "company_id", "") or "")
+    company_name = str(getattr(lead, "company_name", "") or "").strip()
+    if not tenant_id or not company_name:
+        return resolution
+
+    company = CRMCompany(
+        name=company_name,
+        company_id=tenant_id,
+        email=getattr(lead, "email", None),
+        phone=getattr(lead, "phone", None),
+        industry=getattr(lead, "industry", None),
+        notes=getattr(lead, "remark", None),
+        created_by=actor_id,
+        updated_by=actor_id,
+    )
+    try:
+        await company.insert()
+    except Exception:
+        matches = await CRMCompany.find(
+            {"company_id": tenant_id, "deleted": False, "name": _exact_regex(company_name)}
+        ).to_list()
+        if len(matches) == 1:
+            company = matches[0]
+        else:
+            return ClientCompanyResolution(None, "ambiguous" if len(matches) > 1 else "unresolved", "lead.company_create_race_unresolved")
+
+    lead.crm_company_id = str(company.id)
+    lead.updated_at = utc_now()
+    await lead.save()
+    return ClientCompanyResolution(company, "resolved", "lead.company_created")
+
+
+async def persist_resolved_crm_company_for_client(client: Client, resolution: ClientCompanyResolution) -> bool:
+    if not resolution.crm_company:
+        return False
+    canonical_id = str(resolution.crm_company.id)
+    changed = False
+    if getattr(client, "crm_company_id", None) != canonical_id:
+        client.crm_company_id = canonical_id
+        client.updated_at = utc_now()
+        changed = True
+
+    source_lead_id = str(getattr(client, "source_lead_id", "") or "").strip()
+    if source_lead_id:
+        lead = await SalesProspect.get(source_lead_id)
+        if lead and not getattr(lead, "deleted", False) and lead.company_id == client.company_id and getattr(lead, "crm_company_id", None) != canonical_id:
+            lead.crm_company_id = canonical_id
+            lead.updated_at = utc_now()
+            await lead.save()
+
+    if changed:
+        await client.save()
+    return changed
+
+
 async def resolve_crm_company_for_client(client: Client) -> ClientCompanyResolution:
     tenant_id = str(getattr(client, "company_id", "") or "")
     crm_company_id = str(getattr(client, "crm_company_id", "") or "").strip()
@@ -63,8 +131,8 @@ async def resolve_crm_company_for_client(client: Client) -> ClientCompanyResolut
     source_lead_id = str(getattr(client, "source_lead_id", "") or "").strip()
     if source_lead_id:
         lead = await SalesProspect.get(source_lead_id)
-        if lead and not lead.deleted and lead.company_id == tenant_id:
-            return await resolve_crm_company_for_lead(lead)
+        if lead and not getattr(lead, "deleted", False) and lead.company_id == tenant_id:
+            return await ensure_crm_company_for_won_lead(lead)
 
     linked_leads = await SalesProspect.find(
         {"company_id": tenant_id, "deleted": False, "client_id": str(client.id)}
@@ -81,6 +149,12 @@ async def resolve_crm_company_for_client(client: Client) -> ClientCompanyResolut
             return ClientCompanyResolution(company, "resolved", "linked_lead.crm_company_id")
     if len(linked_company_ids) > 1:
         return ClientCompanyResolution(None, "ambiguous", "linked_leads_multiple_crm_companies")
+    if len(linked_leads) == 1:
+        linked_resolution = await ensure_crm_company_for_won_lead(linked_leads[0])
+        if linked_resolution.crm_company:
+            return linked_resolution
+        if linked_resolution.status == "ambiguous":
+            return linked_resolution
 
     account_name = str(getattr(client, "company_name", None) or getattr(client, "name", "") or "").strip()
     if account_name:
@@ -117,6 +191,7 @@ async def load_contacts_for_client(client: Client) -> list[SalesContact]:
     resolution = await resolve_crm_company_for_client(client)
     if not resolution.crm_company:
         return []
+    await persist_resolved_crm_company_for_client(client, resolution)
     return await SalesContact.find(
         {
             "company_id": client.company_id,

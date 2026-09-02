@@ -42,6 +42,10 @@ from app.models.changelog import ChangeLog
 from app.models.chat import Conversation, ChatMessage
 from app.models.page import Page
 from app.models.client import Client
+from app.models.client_saved_view import ClientSavedView
+from app.models.client_service import ClientService
+from app.models.client_deliverable import ClientDeliverable
+from app.models.client_onboarding import ClientOnboarding, ClientOnboardingItem
 from app.models.department import Department
 from app.models.capability import RoleCapability
 from app.models.ownership_transfer import OwnershipTransfer
@@ -134,6 +138,58 @@ client: AsyncIOMotorClient = None
 MONGODB_TIMEOUT_MS = 5000
 
 
+async def _migrate_employee_profile_candidate_index(database) -> None:
+    """
+    Migrate historical EmployeeProfile candidate indexes to the current
+    canonical unique partial-index definition before Beanie initializes models.
+    """
+    collection = database["employee_profiles"]
+    index_name = "company_id_1_candidate_id_1"
+    expected_keys = [("company_id", 1), ("candidate_id", 1)]
+    expected_partial_filter = {"candidate_id": {"$type": "string"}}
+
+    indexes = await collection.index_information()
+    existing = indexes.get(index_name)
+
+    if not existing:
+        logger.info(
+            "EmployeeProfile candidate index does not exist; "
+            "Beanie will create the canonical index."
+        )
+        return
+
+    current_keys = list(existing.get("key", []))
+    is_correct = (
+        current_keys == expected_keys
+        and existing.get("unique") is True
+        and existing.get("partialFilterExpression") == expected_partial_filter
+        and existing.get("sparse") is not True
+    )
+
+    if is_correct:
+        logger.info("EmployeeProfile candidate index is already canonical.")
+        return
+
+    if current_keys != expected_keys:
+        logger.warning(
+            "Index %s exists with unexpected keys %s; leaving it untouched.",
+            index_name,
+            current_keys,
+        )
+        return
+
+    logger.warning(
+        "Dropping legacy EmployeeProfile candidate index %s. Existing definition: %s",
+        index_name,
+        existing,
+    )
+    await collection.drop_index(index_name)
+    logger.info(
+        "Legacy EmployeeProfile candidate index removed. "
+        "Beanie will recreate the canonical index."
+    )
+
+
 async def init_db():
     """Initialize database connection and Beanie ODM"""
     global client
@@ -170,6 +226,8 @@ async def init_db():
         
         # Get database
         database = client[settings.DATABASE_NAME]
+
+        await _migrate_employee_profile_candidate_index(database)
         
         # Initialize Beanie with document models
         await init_beanie(
@@ -235,6 +293,11 @@ async def init_db():
                 ChatMessage,
                 Page,
                 Client,
+                ClientSavedView,
+                ClientService,
+                ClientDeliverable,
+                ClientOnboarding,
+                ClientOnboardingItem,
                 Department,
                 RoleCapability,
                 OwnershipTransfer,

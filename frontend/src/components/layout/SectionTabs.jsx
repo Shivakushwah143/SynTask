@@ -21,6 +21,7 @@ import { HR_MODULES } from "../../config/hrModules";
 
 const SECTION_LANDING_RE = /^\/sections\/([^/]+)/;
 const SCROLL_STEP_PX = 240;
+const TAB_EXCLUDED_PATHS = new Set(["/hr/recruitment/interview-screen"]);
 
 // Sections whose Overview tab points at a dedicated dashboard page (e.g. the Sales
 // workspace Overview) instead of the generic /sections/:key landing. Sections with
@@ -47,7 +48,7 @@ const INBOX_COUNT_KEYS = {
 // in the sidebar, it is only removed from the Sales section tabs. The legacy Sales
 // routes (Leads / All Leads / Pipeline) stay inside the section so their URLs resolve
 // to the Sales section, while the visible tabs remain exactly the guided journey.
-const TAB_HIDDEN_ITEM_NAMES = new Set(["Import Leads", "Leads", "All Leads", "Pipeline", "All Clients", "Companies", "Contacts", "Client Calendar", "Client Insights"]);
+const TAB_HIDDEN_ITEM_NAMES = new Set(["Import Leads", "Leads", "All Leads", "Pipeline"]);
 
 // Legacy Sales routes resolved to one of the hidden items above (e.g. the full board
 // at /crm/pipeline or the browsing page at /crm/leads/all). No journey stage tab
@@ -73,6 +74,8 @@ const isExactNavMatch = (item, location) => {
 // (chat, meetings, auth, ...). Section landing pages resolve via their URL param.
 // `itemName` is the resolved active item so the tab bar can highlight exactly one tab.
 const resolveSectionContext = (location) => {
+  if (TAB_EXCLUDED_PATHS.has(location.pathname)) return null;
+
   const landing = location.pathname.match(SECTION_LANDING_RE);
   if (landing) return { sectionKey: landing[1], isLanding: true };
 

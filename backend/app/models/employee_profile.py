@@ -162,10 +162,12 @@ class EmployeeProfile(Document):
             ),
             # One profile per converted candidate.
             IndexModel(
-                [("company_id", ASCENDING), ("candidate_id", ASCENDING)],
-                unique=True,
-                sparse=True,
-            ),
+    [("company_id", ASCENDING), ("candidate_id", ASCENDING)],
+    unique=True,
+    partialFilterExpression={
+        "candidate_id": {"$type": "string"},
+    },
+),
             # Access-pattern indexes for list filters / detail lookups.
             IndexModel([("company_id", ASCENDING), ("employment_status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("department_id", ASCENDING)]),

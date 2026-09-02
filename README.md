@@ -65,7 +65,7 @@ docs/                    Testing guide and diagrams
 - Scheduled Work with one-time scheduled jobs plus recurring task-generation rules backed by occurrence history and pause/resume controls
 - Project Kanban boards and project files/pages
 - Ticketing system with assignments, comments, priorities, escalation fields, and reporting
-- Client CRM with documents and project links
+- Client CRM with profile, CRM contacts, services, deliverables, client approval, communication, meetings, files/documents, activity, finance, renewal/churn, health, next action, escalation, overview insights, saved views, automation, AI client intelligence, and project links
 - Invoicing, ledger, MSA generation/signing, and payment tracking
 - Chat conversations and group chat
 - Meetings and calendar endpoints
