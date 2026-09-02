@@ -23,10 +23,7 @@ const SECTION_LANDING_RE = /^\/sections\/([^/]+)/;
 const SCROLL_STEP_PX = 240;
 const TAB_EXCLUDED_PATHS = new Set(["/hr/recruitment/interview-screen"]);
 
-// Sections whose Overview tab points at a dedicated dashboard page (e.g. the Sales
-// workspace Overview) instead of the generic /sections/:key landing. Sections with
-// `hideOverviewTab` (Home, Clients) are excluded: their dedicated page IS the
-// overview, so no Overview tab is rendered and their page is not a tab-bar landing.
+// Sections whose dedicated dashboard page should resolve to the section context.
 const SECTION_OVERVIEW_HREFS = [
   ...SECTIONS.filter((section) => section.overviewHref && !section.hideOverviewTab).map((section) => ({
     href: section.overviewHref,
@@ -44,11 +41,9 @@ const INBOX_COUNT_KEYS = {
 };
 
 // Items kept in the shared navigation config (sidebar favorites, section landing cards)
-// but intentionally hidden from this in-page tab bar. User request: Import Leads stays
-// in the sidebar, it is only removed from the Sales section tabs. The legacy Sales
-// routes (Leads / All Leads / Pipeline) stay inside the section so their URLs resolve
-// to the Sales section, while the visible tabs remain exactly the guided journey.
-const TAB_HIDDEN_ITEM_NAMES = new Set(["Import Leads", "Leads", "All Leads", "Pipeline"]);
+// but intentionally hidden from this in-page tab bar. Work Overview is the canonical
+// landing route, so the legacy navigation item remains sidebar-only.
+const TAB_HIDDEN_ITEM_NAMES = new Set(["Overview", "Import Leads", "Leads", "All Leads", "Pipeline"]);
 
 // Legacy Sales routes resolved to one of the hidden items above (e.g. the full board
 // at /crm/pipeline or the browsing page at /crm/leads/all). No journey stage tab
@@ -145,12 +140,7 @@ function SectionTabsInner({ location, context }) {
         return countKey ? { ...item, unreadCount: inboxCounts[countKey] || 0 } : item;
       });
     }
-    // Sections with a dedicated default page (hideOverviewTab: Home, Clients) skip the
-    // redundant Overview tab — the page itself is the overview.
-    const overviewTab = section.hideOverviewTab
-      ? []
-      : [{ name: "Overview", href: section.overviewHref || `/sections/${section.key}`, icon: null, overview: true }];
-    return [...overviewTab, ...list];
+    return list;
   }, [items, section, inboxCounts]);
 
   useEffect(() => {
@@ -176,11 +166,9 @@ function SectionTabsInner({ location, context }) {
   // D5: hide the bar for sections with a single tab (or an unknown section key).
   if (!section || items.length < 2) return null;
 
-  // Active tab: the Overview pseudo-tab on landing pages, otherwise the exact item the
-  // context resolver chose (detail pages keep their parent tab). The per-tab scan is only
-  // a safety net when no resolved item name is available.
+  // The context resolver chooses the exact item (detail pages keep their parent tab).
+  // The per-tab scan is only a safety net when no resolved item name is available.
   const isTabActive = (tab) => {
-    if (tab.overview) return context.isLanding;
     if (context.itemName) return tab.name === context.itemName;
     return isNavItemActive(tab, location);
   };

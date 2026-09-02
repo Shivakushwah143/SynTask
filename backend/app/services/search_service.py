@@ -38,6 +38,7 @@ from app.models.msa import MSA
 from app.models.notification import Notification
 from app.models.page import Page
 from app.models.project import Epic, Project, Sprint
+from app.models.work_request import WorkRequest
 from app.models.sales_contact import SalesContact
 from app.models.sales_prospect import SalesProspect
 from app.models.scheduled_job import ScheduledJob
@@ -196,6 +197,15 @@ SEARCHABLE_ENTITIES: List[SearchableEntity] = [
         subtitle=lambda item: f"{item.ticket_number} · {getattr(item, 'status', '')}",
         parent=lambda item: "Work → Requests",
         module_required="tickets",
+    ),
+    SearchableEntity(
+        key="work_request", label="Work Request", module="Work", module_key="work", icon="ticket",
+        model=WorkRequest, search_fields=["title", "description", "request_type", "reason"],
+        title_fields=["title"],
+        href=lambda item: "/work-requests",
+        subtitle=lambda item: f"{getattr(item, 'request_type', '')} · {getattr(item, 'status', '')}",
+        parent=lambda item: "Work → Requests",
+        module_required="tasks",
     ),
     SearchableEntity(
         key="scheduled_job", label="Scheduled Work", module="Work", module_key="work", icon="calendar",

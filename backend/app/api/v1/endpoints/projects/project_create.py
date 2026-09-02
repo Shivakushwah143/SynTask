@@ -20,6 +20,7 @@ async def create_project(
     assigned_user_ids: Optional[str] = Form(None),
     start_date: Optional[str] = Form(None),
     delivery_date: Optional[str] = Form(None),
+    priority: Optional[str] = Form("medium"),
     project_id: str = Form(...),  # MANDATORY - User-provided unique project ID
     current_user: User = Depends(get_current_user),
 ):
@@ -36,6 +37,7 @@ async def create_project(
         assigned_user_ids=assigned_user_ids,
         start_date=start_date,
         delivery_date=delivery_date,
+        priority=priority,
         project_id=project_id,
         current_user=current_user
     )

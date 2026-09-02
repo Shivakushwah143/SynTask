@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 
 from .shared import *
+from app.models.client import Client
+from app.services.project_health_service import calculate_project_health, project_task_identity_filter, serialize_project_health
 
 router = APIRouter()
 
@@ -35,6 +37,11 @@ async def get_project(
     if current_user.role == UserRole.EMPLOYEE and not has_project_permission(current_user, project, ProjectPermission.MANAGE_TASK):
         task_query["assigned_to"] = str(current_user.id)
     all_tasks = await Task.find(task_query).to_list()
+    health = calculate_project_health(project, all_tasks)
+    owner = None
+    if getattr(project, "lead_id", None) and ObjectId.is_valid(str(project.lead_id)):
+        owner = await User.get(project.lead_id)
+    client = await Client.get(project.client_id) if getattr(project, "client_id", None) else None
     
     task_count = len(all_tasks)
     
@@ -114,8 +121,12 @@ async def get_project(
         "description": project.description,
         "type": enum_or_string_value(project.type, ProjectType.SOFTWARE.value),
         "status": enum_or_string_value(project.status),
+        "priority": enum_or_string_value(getattr(project, "priority", None), "medium"),
         "client_id": project.client_id,
+        "client": {"id": str(client.id), "name": client.name} if client and str(client.company_id) == str(project.company_id) else None,
         "lead_id": project.lead_id,
+        "owner": {"id": str(owner.id), "name": owner.full_name(), "role": owner.role.value} if owner else None,
+        "owner_name": owner.full_name() if owner else "Owner not assigned",
         "assigned_to": project.assigned_to,
         "assigned_user_ids": getattr(project, "assigned_user_ids", []) or ([project.assigned_to] if project.assigned_to else []),
         "assignment_history": getattr(project, "assignment_history", []) or [],
@@ -135,6 +146,13 @@ async def get_project(
             "in_review_count": tasks_by_status["in_review"],
             "completion_percentage": round((tasks_by_status["completed"] / task_count * 100) if task_count > 0 else 0, 1),
         },
+        "project_health": serialize_project_health(health),
+        "health": health.level,
+        "progress_percentage": health.completion_percentage,
+        "completed_task_count": health.completed_task_count,
+        "open_task_count": health.total_open_tasks,
+        "overdue_task_count": health.overdue_task_count,
+        "deadline_urgency": health.deadline_urgency,
         "assigned_tasks_by_user": list(assigned_tasks_by_user.values()),
         "created_at": project.created_at,
         "updated_at": project.updated_at,

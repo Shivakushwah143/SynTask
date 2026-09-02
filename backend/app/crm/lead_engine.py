@@ -1194,6 +1194,11 @@ class LeadEngine:
         requested_stage = _normalize_text(payload.get("current_stage") or "").lower().replace(" ", "_")
         requested_status = _normalize_text(payload.get("status") or "").lower().replace(" ", "_")
         should_convert_to_client = requested_stage in {"won", "closed_won"} or requested_status in {"won", "closed_won"}
+        # Preserve both sides of the merge:
+        # 1. Current behavior: moving a lead to Won must run the Won automation
+        #    when no usable client exists and fail loudly if conversion fails.
+        # 2. Incoming behavior: reuse a valid same-company client, repair stale or
+        #    cross-company client references, and record successful transfer metadata.
         existing_client_id = getattr(prospect, "client_id", None)
         existing_client = None
         if should_convert_to_client and existing_client_id:
@@ -1201,36 +1206,59 @@ class LeadEngine:
                 existing_client = await Client.get(existing_client_id)
             except Exception:
                 existing_client = None
-        existing_client_company_id = str(getattr(existing_client, "company_id", "") or "") if existing_client else None
+
+        existing_client_company_id = (
+            str(getattr(existing_client, "company_id", "") or "")
+            if existing_client
+            else None
+        )
         current_company_id = str(getattr(prospect, "company_id", "") or "")
+
         if should_convert_to_client:
             prospect.current_stage = "Won"
             prospect.status = ProspectStatus.WON
             prospect.closed_date = now
             prospect.closed_by = str(getattr(current_user, "id", ""))
             prospect.reason_for_lost = None
-            prospect.won_amount = float(getattr(prospect, "won_amount", None) or getattr(prospect, "budget", None) or 0)
+            prospect.won_amount = float(
+                getattr(prospect, "won_amount", None)
+                or getattr(prospect, "budget", None)
+                or 0
+            )
+            prospect.won_status = getattr(prospect, "won_status", None) or "payment_pending"
             prospect.converted_at = getattr(prospect, "converted_at", None) or now
-            if not getattr(prospect, "won_status", None):
-                prospect.won_status = "payment_pending"
-        if should_convert_to_client and existing_client and existing_client_company_id == current_company_id:
-            prospect.client_id = str(existing_client.id)
-        if should_convert_to_client and (not existing_client or existing_client_company_id != current_company_id):
-            from app.crm.pipeline import _run_won_automation
 
-            automation_result = await _run_won_automation(current_user, prospect, str(getattr(prospect, "company_id", "") or ""))
-            if automation_result.get("status") == "failed" or not automation_result.get("client_id"):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Won lead conversion failed: {automation_result.get('error') or 'client was not created'}",
+            # Keep an existing client only when it really exists and belongs to
+            # the same company as the lead. Otherwise recreate/repair conversion.
+            if existing_client and existing_client_company_id == current_company_id:
+                prospect.client_id = str(existing_client.id)
+            else:
+                from app.crm.pipeline import _run_won_automation
+
+                automation_result = await _run_won_automation(
+                    current_user,
+                    prospect,
+                    current_company_id,
                 )
-            prospect.client_id = automation_result["client_id"]
-            if automation_result.get("project_id"):
-                prospect.project_id = automation_result["project_id"]
-        if should_convert_to_client and getattr(prospect, "client_id", None):
-            prospect.won_status = "transferred"
-            prospect.transferred_at = getattr(prospect, "transferred_at", None) or now
-            prospect.transferred_by = str(getattr(current_user, "id", ""))
+                if automation_result.get("status") == "failed" or not automation_result.get("client_id"):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=(
+                            "Won lead conversion failed: "
+                            f"{automation_result.get('error') or 'client was not created'}"
+                        ),
+                    )
+
+                prospect.client_id = automation_result["client_id"]
+                if automation_result.get("project_id"):
+                    prospect.project_id = automation_result["project_id"]
+
+            # Incoming feature: once a valid client is linked, record that the
+            # Won lead was successfully transferred without deleting the lead.
+            if getattr(prospect, "client_id", None):
+                prospect.won_status = "transferred"
+                prospect.transferred_at = getattr(prospect, "transferred_at", None) or now
+                prospect.transferred_by = str(getattr(current_user, "id", ""))
 
         from app.crm.pipeline import STAGE_STATUS_DOMAIN_FIELD, apply_stage_status_change, stage_status_key
 

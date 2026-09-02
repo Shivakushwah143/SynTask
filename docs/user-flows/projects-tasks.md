@@ -16,7 +16,7 @@ flowchart TD
 ## Tasks List
 - How the user reaches it: main navigation `/tasks` (list or kanban toggle).
 - What they can do: browse tasks, search, filter by status/priority/assignee/department/due date, create tasks (now or scheduled), edit, and delete.
-- Stage overview: the page shows a "Tasks by Stage" card that breaks down the current result set by workflow stage (Scheduled, To Do, In Progress, Review, Completed) with per-stage counts, share-of-total percentages, and progress bars. Clicking a stage applies that status filter to the list (clicking again clears it). The breakdown excludes Sales follow-up items, matching the Task Overview graph.
+- Stage overview: the page shows a "Tasks by Stage" card that breaks down the current result set by workflow stage (Scheduled, To Do, Assigned, In Progress, Review, Revision Required, Approved, Completed, Cancelled) with per-stage counts, share-of-total percentages, and progress bars. Clicking a stage applies that status filter to the list (clicking again clears it). The breakdown excludes Sales follow-up items, matching the Task Overview graph.
 - Follow-up behavior: Sales follow-up items (source_type `sales_follow_up`), including scheduled follow-up placeholders, are excluded from the Tasks page because they are not standalone tasks; they surface in the Calendar and CRM follow-up views instead.
 
 ## Projects List and Board
@@ -34,7 +34,9 @@ flowchart TD
 
 ## Task Detail
 - How the user reaches it: from project board, task list, or direct task route.
-- What they can do: edit the task, comment, attach files, assign watchers, log time.
+- What they can do: edit the task, comment, attach files, assign watchers, log time, manage checklist items, add dependencies, and move the task through allowed workflow actions.
+- Phase 2 workflow: tasks use strict statuses `todo`, `assigned`, `in_progress`, `in_review`, `revision_required`, `approved`, `completed`, and `cancelled`. Assigned tasks start as `assigned`; unassigned tasks start as `todo`. Review-required project tasks must move `assigned -> in_progress -> in_review -> approved -> completed`; revision loops use `revision_required -> in_progress`. Non-review tasks can complete from `in_progress`. `completed` can reopen to `assigned`; `cancelled` is terminal.
+- Review and blocker rules: submitting a review-required task requires a reviewer and all required checklist items complete. Starting, submitting, or completing a task is blocked while any dependency task in the same tenant remains incomplete. Sales follow-up tasks keep `review_required=false`.
 - What happens after every action:
   - Mutation updates task state and refetches the detail.
   - Comments/attachments/time logs refresh their corresponding sections.
@@ -42,6 +44,7 @@ flowchart TD
 - Timeline events created: task activity should be captured in the activity/timeline systems where wired.
 - Notifications sent: watchers/assignees may receive existing task notifications where configured.
 - Related modules updated: Timesheet, Time Tracking, CRM Activities if task is linked.
+- Tenant and access rule: every task workflow, checklist, dependency, and changelog request verifies `company_id` and then applies task view/manage rules. Reviewers must be active same-company users authorized as Admin/Sub Admin/Manager/Lead/Super Admin or through project task-management permission. Negative tests cover cross-company dependency rejection and task visibility boundaries.
 
 ## Time Tracking / Timesheet
 - How the user reaches it: task pages or main navigation.
@@ -51,3 +54,34 @@ flowchart TD
 - Timeline events created: time logs may be surfaced as activity events if the backend emits them.
 - Notifications sent: none explicitly in the frontend.
 - Related modules updated: Task Detail, Reports.
+# Phase 1 Project Foundation
+
+Project creation now requires name, client for client-facing work, project type, description, Project Owner, start date, delivery date, and business priority. Internal projects can be created without a client by selecting the internal project type.
+
+Project list cards separate business priority from deadline urgency and show derived health/progress. Project workspace tabs map to Overview, Tasks, and Files while preserving the existing board, task creation, files/pages, components, versions, and AI briefing behaviors.
+
+Negative access flow: a user outside the project/company must not see or manage the project through list filters, detail URLs, client workspace routes, or task/project identifiers.
+
+# Phase 2 Task Execution, Review, and Approval
+
+Task workflow authority lives in `backend/app/services/task_workflow.py`. Legacy status updates still call `/api/v1/tasks/{task_id}/status`, but the service maps them to semantic actions before applying the same transition rules as the explicit action endpoints.
+
+Checklist items are normalized objects with `id`, `text`, `completed`, `required`, `created_at`, `completed_at`, and `completed_by`. Assignees may complete checklist items they can view; checklist text/required edits and deletion require task manage access.
+
+Dependencies are stored as same-tenant task ids. A task cannot depend on itself, cannot depend across tenant boundaries, and cannot create a circular dependency chain.
+
+# Phase 4 Work Requests and Scheduled Work
+
+Work Requests live at `/work-requests` in the Work route group. Users can submit operational requests for new work, changes, approvals, deadline extensions, resource needs, blockers, leave/availability, client requests, and other work coordination. Reviewers can start review, approve, reject with reason, cancel open requests, and convert approved or under-review requests into Tasks or Projects. Deadline-extension approval uses the Task Extension workflow exactly once; concurrent conversion attempts use an atomic guard and share one target entity.
+
+Scheduled Work still lives at `/scheduled-jobs`. Users with existing scheduled-work permissions can create one-time jobs or recurring jobs. Recurring jobs store recurrence settings, timezone, next run, last run, enabled state, and occurrence history. Daily, weekly, monthly, and custom intervals preserve local wall-clock time; multi-week schedules advance by whole week intervals. Pause disables future runs without deleting the rule; resume advances missed schedules to the next future run without catch-up creation, and retries reuse the task already linked to the same occurrence.
+
+Tenant and access rule: Work Requests and Scheduled Work are company-scoped by `company_id`. Project, task, client, reviewer, assignee, and converted records must all resolve inside the same company before write actions proceed. Negative tests should verify cross-company context ids, cross-company reviewers, and cross-company request/detail lookups are denied.
+
+# Phase 5 Time Tracking and Project Control
+
+Time Tracking supports one backend-authoritative active timer per employee. The page loads the current timer from `/api/v1/time-tracking/active`, so refresh does not lose running or paused state. Start validates task access, assignment, blockers, and project lifecycle; assigned tasks move to `in_progress` through Phase 2 workflow before timer creation. Pause stores elapsed time in the active session, resume continues the same session, and stop creates the finalized `TimeLog` with `source=timer`.
+
+Manual time entry remains available and creates `source=manual` TimeLogs. Manual entries require positive duration, reject excessive duration, and validate task/project/company scope. Deleting a time log now voids it for audit instead of hard-removing history.
+
+Project pages can request completion readiness from `/api/v1/projects/{project_id}/completion-readiness`. A project is not ready while required tasks are incomplete, review/revision/approved-not-completed tasks remain, dependency blockers exist, blocker Work Requests are open, active project timers exist, or the project lifecycle is not eligible. Direct status completion and semantic completion both use this backend readiness gate. Archiving is allowed only after the project reaches reporting and preserves historical tasks, time, requests, scheduled work, and activity.

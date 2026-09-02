@@ -85,6 +85,7 @@ from app.api.deps import Pagination50, PaginationParams
 from app.core.clock import utc_now
 from app.services.file_service import FileService
 from app.services.cloudinary_storage import CloudinaryStorage
+from app.services.project_service import ProjectService
 
 router = APIRouter()
 
@@ -229,6 +230,15 @@ PROJECT_UPLOAD_DIR = BACKEND_DIR / settings.UPLOAD_DIR / "projects"
 PROJECT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
+async def _client_projects(client: Client) -> list[Project]:
+    canonical = await Project.find({"company_id": client.company_id, "client_id": str(client.id)}).to_list()
+    by_id = {str(project.id): project for project in canonical}
+    legacy_ids = [pid for pid in (client.project_ids or []) if ObjectId.is_valid(str(pid))]
+    if legacy_ids:
+        legacy = await Project.find({"_id": {"$in": [ObjectId(pid) for pid in legacy_ids]}, "company_id": client.company_id}).to_list()
+        for project in legacy:
+            by_id.setdefault(str(project.id), project)
+    return list(by_id.values())
 @router.get("/overview/dashboard")
 async def get_client_overview_dashboard(
     limit: int = Query(10, ge=1, le=50),
@@ -575,17 +585,16 @@ async def list_clients(
         source_lead = await _load_client_source_lead(client)
         commercial = _client_commercial_fields(client, source_lead)
         projects = []
-        if client.project_ids:
-            project_objects = await Project.find({"_id": {"$in": [ObjectId(pid) for pid in client.project_ids]}}).to_list()
-            for project in project_objects:
-                projects.append({
-                    "id": str(project.id),
-                    "name": project.name,
-                    "key": project.key,
-                    "budget": client.projects_budget.get(str(project.id), 0),
-                    "start_date": client.projects_start_date.get(str(project.id)),
-                    "delivery_date": client.projects_delivery_date.get(str(project.id)),
-                })
+        project_objects = await _client_projects(client)
+        for project in project_objects:
+            projects.append({
+                "id": str(project.id),
+                "name": project.name,
+                "key": project.key,
+                "budget": client.projects_budget.get(str(project.id), 0),
+                "start_date": client.projects_start_date.get(str(project.id)),
+                "delivery_date": client.projects_delivery_date.get(str(project.id)),
+            })
         
         client_list.append({
             "id": str(client.id),
@@ -601,7 +610,7 @@ async def list_clients(
             "sales_owner_id": client.sales_owner_id,
             "project_ids": client.project_ids,
             "projects": projects,
-            "total_projects": len(client.project_ids),
+            "total_projects": len(projects),
             "total_budget": sum(client.projects_budget.values()),
             "documents_count": len(client.documents),
             **commercial,
@@ -638,19 +647,18 @@ async def get_client(
     
     # Fetch project details
     projects = []
-    if client.project_ids:
-        project_objects = await Project.find({"_id": {"$in": [ObjectId(pid) for pid in client.project_ids]}}).to_list()
-        for project in project_objects:
-            projects.append({
-                "id": str(project.id),
-                "name": project.name,
-                "key": project.key,
-                "description": project.description,
-                "status": project.status.value,
-                "budget": client.projects_budget.get(str(project.id), 0),
-                "start_date": client.projects_start_date.get(str(project.id)),
-                "delivery_date": client.projects_delivery_date.get(str(project.id)),
-            })
+    project_objects = await _client_projects(client)
+    for project in project_objects:
+        projects.append({
+            "id": str(project.id),
+            "name": project.name,
+            "key": project.key,
+            "description": project.description,
+            "status": project.status.value if hasattr(project.status, "value") else str(project.status),
+            "budget": client.projects_budget.get(str(project.id), 0),
+            "start_date": client.projects_start_date.get(str(project.id)),
+            "delivery_date": client.projects_delivery_date.get(str(project.id)),
+        })
     
     # Format assigned user
     assigned_user_name = None
@@ -1908,10 +1916,8 @@ async def add_project_to_client(
     
     check_company_access(current_user, client.company_id)
     
-    # Validate project
-    try:
-        project = await Project.get(project_id)
-    except:
+    project = await Project.get(project_id) if ObjectId.is_valid(project_id) else None
+    if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found"
@@ -1920,9 +1926,9 @@ async def add_project_to_client(
     check_company_access(current_user, project.company_id)
     
     # Add project if not already added
-    if project_id not in client.project_ids:
-        client.project_ids.append(project_id)
-    project.client_id = str(client.id)
+    if str(project.id) not in client.project_ids:
+        client.project_ids.append(str(project.id))
+    await ProjectService.sync_client_project_link(project, str(client.id), client.company_id)
     
     # Update project-specific data
     if budget is not None:
@@ -1972,8 +1978,7 @@ async def remove_project_from_client(
     check_company_access(current_user, client.company_id)
     
     # Remove project
-    if project_id in client.project_ids:
-        client.project_ids.remove(project_id)
+    client.project_ids = [item for item in (client.project_ids or []) if str(item) != str(project_id)]
     
     # Remove project-specific data
     if project_id in client.projects_budget:

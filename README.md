@@ -60,7 +60,9 @@ docs/                    Testing guide and diagrams
 ```
 
 ## Key Features
-- Task management with comments, attachments, statuses, subtasks, watchers, versions, components, workflows, automation, backlog, epics, and sprints
+- Task management with comments, attachments, strict execution/review statuses, checklist and dependency blockers, subtasks, watchers, versions, components, workflows, automation, backlog, epics, and sprints
+- Work Requests for operational requests, approvals, blockers, resource needs, client requests, and conversion into Tasks or Projects without replacing Support Tickets
+- Scheduled Work with one-time scheduled jobs plus recurring task-generation rules backed by occurrence history and pause/resume controls
 - Project Kanban boards and project files/pages
 - Ticketing system with assignments, comments, priorities, escalation fields, and reporting
 - Client CRM with profile, CRM contacts, services, deliverables, client approval, communication, meetings, files/documents, activity, finance, renewal/churn, health, next action, escalation, overview insights, saved views, automation, AI client intelligence, and project links
@@ -109,3 +111,12 @@ SynTask uses a single database with tenant isolation through `company_id` fields
 Proprietary. Copyright SynTask / Alphanexis Tech LLC.
 
 Documentation is maintained as part of feature delivery. Repository-wide Codex instructions are in [AGENTS.md](AGENTS.md); every implementation change must review its PRD, user-flow, architecture, testing, deployment, and README impact.
+# Work Module Foundation
+
+The Projects module uses logical `Project.project_id` for user-visible identity and MongoDB `_id` internally. Phase 1 adds backend-owned Project Owner (`lead_id`), client linkage (`client_id`), business priority, company-persistent project types, derived project health, deadline urgency, and progress. See `PHASE1_WORK_FOUNDATION_REPORT.md` for verification details and `docs/architecture/decisions/2026-09-02-work-phase1-project-foundation.md` for the architecture decision.
+
+Phase 2 adds strict Task execution/review workflow with reviewer assignment, checklist gates, dependency blockers, semantic action endpoints, changelog/timeline audit, and updated task board statuses. See `PHASE2_TASK_EXECUTION_REPORT.md`.
+
+Phase 4 adds Work Requests plus recurring Scheduled Work. Work Requests coordinate operational approvals and conversion into Tasks/Projects without replacing Support Tickets. Scheduled Work supports one-time and recurring jobs, occurrence history, and pause/resume controls. See `PHASE4_REQUESTS_SCHEDULED_WORK_REPORT.md` and `docs/architecture/decisions/2026-09-02-work-phase4-requests-recurring-work.md`.
+
+Phase 5 adds backend-authoritative active timers, timer/manual TimeLog sources, server-side time reporting, and project completion readiness gates before completion/archive. See `PHASE5_TIME_PROJECT_CONTROL_REPORT.md` and `docs/architecture/decisions/2026-09-02-work-phase5-time-project-control.md`.

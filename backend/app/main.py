@@ -4,7 +4,7 @@ Main Application Entry Point
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 import logging
 import time
 from datetime import datetime
@@ -178,6 +178,18 @@ if hasattr(settings, 'ALLOWED_ORIGINS') and settings.ALLOWED_ORIGINS:
     for origin in settings.ALLOWED_ORIGINS:
         if origin not in cors_origins:
             cors_origins.append(origin)
+# Keep local development origins available even when ALLOWED_ORIGINS is
+# supplied by an environment variable that replaces the settings default.
+for origin in (
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://synzent.ai",
+    "https://www.synzent.ai",
+):
+    if origin not in cors_origins:
+        cors_origins.append(origin)
 
 app.add_middleware(
     CORSMiddleware,
@@ -232,14 +244,33 @@ async def add_process_time_header(request: Request, call_next):
 
 @app.middleware("http")
 async def require_database_ready(request: Request, call_next):
+    if request.method == "OPTIONS":
+        origin = request.headers.get("origin")
+        if origin in cors_origins and request.url.path.startswith("/api/v1"):
+            return Response(
+                status_code=200,
+                headers={
+                    "Access-Control-Allow-Origin": origin,
+                    "Access-Control-Allow-Credentials": "true",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-Requested-With",
+                    "Access-Control-Max-Age": "600",
+                },
+            )
+        return await call_next(request)
     if request.url.path.startswith("/api/v1") and not getattr(request.app.state, "db_ready", False):
-        return JSONResponse(
+        response = JSONResponse(
             status_code=503,
             content={
                 "success": False,
                 "message": "Database unavailable. Check MongoDB connection and restart the backend.",
             },
         )
+        origin = request.headers.get("origin")
+        if origin in cors_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
     return await call_next(request)
 
 # Exception handlers

@@ -13,7 +13,7 @@ from app.api.v1.endpoints import (
     activity, auth_2fa, projects, time_tracking, workflows, automation, backlog, webhooks,
     issue_types, components, versions, watchers, issue_links, changelog, tickets, chat, subscriptions, clients, invoices, msa, ledger, meetings, calendar, timesheet,
     sales, search, departments, attendance, notification_emails, timeline, leaves, eod, admin_permissions, time,
-    employees, hr_documents
+    employees, hr_documents, work_overview, work_requests, project_templates, work_reports
 )
 from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import ai_assistant
@@ -114,6 +114,10 @@ api_router.include_router(
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(notification_emails.router, prefix="/notifications", tags=["Notification Email"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+api_router.include_router(work_overview.router, prefix="/work", tags=["Work Overview"])
+api_router.include_router(work_requests.router, prefix="/work-requests", tags=["Work Requests"], dependencies=[Depends(require_module("tasks"))])
+api_router.include_router(project_templates.router, prefix="/project-templates", tags=["Project Templates"], dependencies=[Depends(require_module("projects"))])
+api_router.include_router(work_reports.router, prefix="/reports", tags=["Work Reports"], dependencies=[Depends(require_module("projects"))])
 api_router.include_router(files.router, prefix="/files", tags=["Files"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(activity.router, prefix="/activity", tags=["Activity"])

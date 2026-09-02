@@ -5,6 +5,18 @@ export const projectsApi = {
   getProjects: (params = {}) => {
     return api.get('/projects/', { params })
   },
+
+  getProjectTypes: () => {
+    return api.get('/projects/types')
+  },
+
+  createProjectType: (label) => {
+    const formData = new FormData()
+    formData.append('label', label)
+    return api.post('/projects/types', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
   
   getProject: (id, params = {}) => {
     return api.get(`/projects/${id}`, { params })
@@ -30,6 +42,20 @@ export const projectsApi = {
       }
     })
     return api.put(`/projects/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+
+  getCompletionReadiness: (id) => api.get(`/projects/${id}/completion-readiness`),
+
+  completeProject: (id) => api.post(`/projects/${id}/complete`),
+
+  archiveProject: (id) => api.post(`/projects/${id}/archive`),
+
+  reopenProject: (id, reason) => {
+    const formData = new FormData()
+    formData.append('reason', reason)
+    return api.post(`/projects/${id}/reopen`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },

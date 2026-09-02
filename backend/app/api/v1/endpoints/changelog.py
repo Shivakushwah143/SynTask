@@ -7,8 +7,9 @@ from typing import Optional
 from app.models.changelog import ChangeLog
 from app.models.task import Task
 from app.models.user import User
-from app.api.dependencies import get_current_user, check_company_access
+from app.api.dependencies import get_current_user
 from app.api.deps import Pagination50, PaginationParams
+from app.services.task_health_service import assert_task_view_access
 
 router = APIRouter()
 
@@ -29,7 +30,7 @@ async def get_task_changelog(
             detail="Task not found"
         )
     
-    check_company_access(current_user, task.company_id)
+    await assert_task_view_access(current_user, task)
     
     changelogs = await ChangeLog.find(
         ChangeLog.task_id == task_id

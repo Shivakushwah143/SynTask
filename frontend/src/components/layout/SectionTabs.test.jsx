@@ -93,10 +93,10 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(screen.getByRole('tab', { name: /^Meta Messages$/i })).toBeTruthy()
   })
 
-  it('renders a leading Overview tab (active) on a section landing page', () => {
+  it('renders the Work tabs without the legacy Overview tab', () => {
     renderTabs('/sections/work')
 
-    expect(screen.getByRole('tab', { name: /^Overview$/i })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('tab', { name: /^Overview$/i })).toBeNull()
     expect(screen.getByRole('tab', { name: /^Projects$/i })).toBeTruthy()
     expect(screen.getByRole('tab', { name: /^Tasks$/i })).toBeTruthy()
   })
@@ -116,7 +116,7 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(screen.getByRole('tab', { name: /^All Clients$/i })).toBeTruthy()
   })
 
-  it('links Home straight to the dashboard and hides its Overview tab; Sales keeps Overview', () => {
+  it('links Home straight to the dashboard and keeps dedicated overview routes', () => {
     const home = SECTIONS.find((section) => section.key === 'home')
     const clients = SECTIONS.find((section) => section.key === 'clients')
     const sales = SECTIONS.find((section) => section.key === 'sales')
@@ -125,14 +125,14 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(home.hideOverviewTab).toBe(true)
     expect(clients.overviewHref).toBe('/clients')
     expect(clients.hideOverviewTab).toBe(true)
-    // Sales keeps its Overview tab (dedicated dashboard, but no hide flag).
     expect(sales.overviewHref).toBe('/sales-overview')
     expect(sales.hideOverviewTab).toBeUndefined()
   })
 
-  it('points the Sales Overview tab at the dedicated sales overview dashboard', () => {
+  it('does not render the legacy Overview tab on the dedicated Sales dashboard', () => {
     renderTabs('/sales-overview')
-    expect(screen.getByRole('tab', { name: /^Overview$/i }).getAttribute('href')).toBe('/sales-overview')
+    expect(screen.queryByRole('tab', { name: /^Overview$/i })).toBeNull()
+    expect(screen.getByRole('tab', { name: /^Acquire$/i })).toBeTruthy()
   })
 
   it('keeps the parent tab active on a detail page (prefix match)', () => {
@@ -140,11 +140,11 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(screen.getByRole('tab', { name: /^Projects$/i })).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('shows exactly the Sales journey tabs (Overview first) on legacy Sales routes', () => {
+  it('shows exactly the Sales journey tabs on legacy Sales routes', () => {
     renderTabs('/crm/leads/all')
 
-    // Legacy routes resolve to the Sales section; no stage tab applies, so Overview is active.
-    expect(screen.getByRole('tab', { name: /^Overview$/i })).toHaveAttribute('aria-selected', 'true')
+    // Legacy routes resolve to the Sales section; no stage tab applies.
+    expect(screen.queryByRole('tab', { name: /^Overview$/i })).toBeNull()
     expect(screen.getByRole('tab', { name: /^Acquire$/i })).toBeTruthy()
     expect(screen.getByRole('tab', { name: /^Qualify$/i })).toBeTruthy()
     expect(screen.getByRole('tab', { name: /^Discovery$/i })).toBeTruthy()
@@ -152,9 +152,8 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(screen.getByRole('tab', { name: /^Negotiation$/i })).toBeTruthy()
     expect(screen.getByRole('tab', { name: /^Agreement$/i })).toBeTruthy()
     expect(screen.getByRole('tab', { name: /^Won$/i })).toBeTruthy()
-    // The tab order is Overview first, journey stages next (exact order).
+    // The tab order contains only the journey stages (exact order).
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent.trim())).toEqual([
-      'Overview',
       'Acquire',
       'Qualify',
       'Discovery',
@@ -177,10 +176,10 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(screen.getByRole('tab', { name: /^Acquire$/i })).toHaveAttribute('aria-selected', 'false')
   })
 
-  it('activates the Overview tab on the dedicated Sales Overview dashboard', () => {
+  it('does not render the legacy Overview tab on the dedicated Sales Overview dashboard', () => {
     renderTabs('/sales-overview')
 
-    expect(screen.getByRole('tab', { name: /^Overview$/i })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('tab', { name: /^Overview$/i })).toBeNull()
     expect(screen.getByRole('tab', { name: /^Acquire$/i })).toBeTruthy()
   })
 
@@ -285,8 +284,8 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     const tabs = screen.getAllByRole('tab')
     tabs[0].focus()
     fireEvent.keyDown(tabs[0], { key: 'ArrowRight' })
-    expect(document.activeElement.textContent).toContain('Projects')
+    expect(document.activeElement.textContent).toContain('Tasks')
     fireEvent.keyDown(document.activeElement, { key: 'ArrowLeft' })
-    expect(document.activeElement.textContent).toContain('Overview')
+    expect(document.activeElement.textContent).toContain('Projects')
   })
 })
