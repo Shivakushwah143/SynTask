@@ -198,6 +198,9 @@ class Task(Document):
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("parent_task_id", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("related_entity_type", ASCENDING), ("related_entity_id", ASCENDING)]),
+            # Partial unique index: enforce uniqueness only for generated
+            # template/recurring-work markers. Sales follow-ups may create
+            # multiple real tasks for the same lead over time.
             IndexModel(
                 [
                     ("company_id", ASCENDING),
@@ -206,8 +209,11 @@ class Task(Document):
                     ("related_entity_id", ASCENDING),
                 ],
                 unique=True,
-                sparse=True,
                 name="tasks_template_and_schedule_source_marker",
+                partialFilterExpression={
+                    "source_type": {"$in": ["project_template", "scheduled_work"]},
+                    "related_entity_id": {"$type": "string"},
+                },
             ),
             IndexModel([("title", TEXT), ("description", TEXT)]),
         ]

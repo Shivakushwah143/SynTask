@@ -1945,6 +1945,8 @@ No automated index audit exists yet. Phase 6 should review compound indexes for 
 
 `tasks` remains tenant-scoped by `company_id`. Phase 2 adds the strict execution/review lifecycle statuses `todo`, `assigned`, `in_progress`, `in_review`, `revision_required`, `approved`, `completed`, and `cancelled`.
 
+Generated template and recurring scheduled-work task markers use partial unique index `tasks_template_and_schedule_source_marker` on `company_id`, `source_type`, `related_entity_type`, and `related_entity_id`. The partial filter includes only `source_type in ["project_template", "scheduled_work"]` with string `related_entity_id`; Sales follow-up tasks are excluded because multiple follow-up tasks for the same lead are valid history.
+
 Task workflow fields:
 
 - `assigned_at`: timestamp set when an assignee is assigned.

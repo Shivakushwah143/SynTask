@@ -190,6 +190,69 @@ async def _migrate_employee_profile_candidate_index(database) -> None:
     )
 
 
+async def _migrate_task_source_marker_index(database) -> None:
+    """
+    Migrate the tasks_template_and_schedule_source_marker index.
+
+    The old definition used ``sparse=True, unique=True`` which does NOT
+    exclude documents where the indexed fields are explicitly set to
+    ``null`` (sparse only skips documents where the field is *absent*).
+    Since Beanie sets all Optional[str] fields to null by default, every
+    normal task was indexed, causing E11000 duplicate-key errors.
+
+    The new definition uses a partial filter for generated project-template
+    and recurring scheduled-work markers only. Sales follow-ups can create
+    multiple tasks for the same lead over time and are intentionally excluded.
+    """
+    collection = database["tasks"]
+    old_index_name = "tasks_template_and_schedule_source_marker"
+
+    indexes = await collection.index_information()
+    existing = indexes.get(old_index_name)
+
+    if not existing:
+        logger.info(
+            "Task source-marker index does not exist; Beanie will create "
+            "the canonical partial index."
+        )
+        return
+
+    # Check if the existing index is already the new partial definition.
+    current_keys = list(existing.get("key", []))
+    expected_keys = [
+        ("company_id", 1),
+        ("source_type", 1),
+        ("related_entity_type", 1),
+        ("related_entity_id", 1),
+    ]
+    expected_partial_filter = {
+        "source_type": {"$in": ["project_template", "scheduled_work"]},
+        "related_entity_id": {"$type": "string"},
+    }
+    is_canonical = (
+        current_keys == expected_keys
+        and existing.get("unique") is True
+        and existing.get("partialFilterExpression") == expected_partial_filter
+        and existing.get("sparse") is not True
+    )
+
+    if is_canonical:
+        logger.info("Task source-marker partial index is already canonical.")
+        return
+
+    # Old sparse+unique index must be dropped so Beanie can create the
+    # new partial unique index without a conflict.
+    logger.warning(
+        "Dropping legacy task source-marker index %s (keys=%s, partial=%s). "
+        "Beanie will recreate the canonical partial unique index.",
+        old_index_name,
+        current_keys,
+        existing.get("partialFilterExpression"),
+    )
+    await collection.drop_index(old_index_name)
+    logger.info("Legacy task source-marker index removed.")
+
+
 async def init_db():
     """Initialize database connection and Beanie ODM"""
     global client
@@ -228,6 +291,7 @@ async def init_db():
         database = client[settings.DATABASE_NAME]
 
         await _migrate_employee_profile_candidate_index(database)
+        await _migrate_task_source_marker_index(database)
         
         # Initialize Beanie with document models
         await init_beanie(
