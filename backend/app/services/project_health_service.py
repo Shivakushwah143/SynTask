@@ -131,6 +131,23 @@ async def get_project_health(project: Project) -> ProjectHealth:
     return calculate_project_health(project, await load_project_tasks(project))
 
 
+class ProjectHealthService:
+    """Compatibility facade for callers that use class-style service access."""
+
+    @staticmethod
+    async def calculate_project_health(project: Project) -> dict:
+        return serialize_project_health(await get_project_health(project))
+
+    @staticmethod
+    async def calculate_project_progress(project: Project) -> float:
+        health = await get_project_health(project)
+        return health.completion_percentage
+
+    @staticmethod
+    async def get_project_health(project: Project) -> ProjectHealth:
+        return await get_project_health(project)
+
+
 def serialize_project_health(health: ProjectHealth) -> dict:
     return {
         "level": health.level,
