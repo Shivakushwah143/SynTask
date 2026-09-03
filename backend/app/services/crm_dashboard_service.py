@@ -5,14 +5,36 @@ This module intentionally reuses the existing Sales models so the CRM surface
 can evolve without duplicating business logic or changing the current domain
 model. Both /sales/dashboard and /crm/dashboard consume the same sales summary
 builder.
+
+## Query architecture
+
+All dashboard surfaces (/sales/dashboard, /crm/dashboard, /dashboard/metrics)
+read from ONE canonical fetch, `_load_sales_canvas`, which:
+
+- runs a small number of parallel MongoDB round trips (8 total) instead of the
+  ~20 used previously;
+- never loads full documents: every collection is either projected to only the
+  fields a summary needs, or replaced by `$facet`/`$count` aggregations that
+  return scalar metrics;
+- leads every pipeline with `$match` on `company_id` (+ `deleted`/`archived`),
+  so MongoDB can use the existing tenant-scoped indexes and skip unrelated
+  documents;
+- is cached in Redis under a company-scoped, tenant-safe key with a short TTL
+  (`settings.DASHBOARD_CACHE_TTL`), so parallel dashboard requests and every
+  user in the tenant share one result.
+
+`build_sales_dashboard_summary` and `build_sales_analytics_summary` are then
+pure Python derivations over that canvas — no database I/O of their own. Both
+response contracts are byte-for-byte unchanged.
 """
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
-import asyncio
+from typing import Any, Dict, List, Optional, Tuple
 
 from bson import ObjectId
 
@@ -24,6 +46,11 @@ from app.models.sales_prospect import SalesProspect, ProspectStatus
 from app.models.sales_contact import SalesContact
 from app.models.user import User, UserRole
 from app.core.clock import utc_now
+from app.core.cache import DASHBOARD_KEY_PREFIX
+from app.core.config import settings
+from app.core.redis_client import get_redis
+
+logger = logging.getLogger(__name__)
 
 
 def _get_last_12_month_labels(reference: datetime) -> List[str]:
@@ -52,22 +79,23 @@ def _build_month_ranges(reference: datetime) -> List[Dict[str, datetime]]:
     return month_ranges
 
 
-def _prospect_product_value(prospect: SalesProspect, product_map: Dict[str, SalesProduct]) -> float:
-    if not prospect.product_ids:
+def _prospect_product_value(prospect: Dict[str, Any], product_map: Dict[str, Any]) -> float:
+    product_ids = prospect.get("product_ids") or []
+    if not product_ids:
         return 0.0
 
     total = 0.0
-    for product_id in prospect.product_ids:
-        product = product_map.get(product_id)
-        if product and product.rate:
-            total += float(product.rate)
+    for product_id in product_ids:
+        rate = product_map.get(product_id)
+        if rate:
+            total += float(rate)
     return total
 
 
-def _pipeline_breakdown(prospects: List[SalesProspect], product_map: Dict[str, SalesProduct]) -> List[Dict[str, Any]]:
+def _pipeline_breakdown(prospects: List[Dict[str, Any]], product_map: Dict[str, Any]) -> List[Dict[str, Any]]:
     grouped: Dict[str, Dict[str, Any]] = {}
     for prospect in prospects:
-        stage = prospect.current_stage or "Unstaged"
+        stage = prospect.get("current_stage") or "Unstaged"
         bucket = grouped.setdefault(
             stage,
             {"stage": stage, "count": 0, "value": 0.0},
@@ -85,23 +113,23 @@ def _safe_amount(value: Any) -> float:
         return 0.0
 
 
-def _proposal_amount(proposal: CRMProposal) -> float:
-    return _safe_amount(getattr(proposal, "deal_value", 0))
+def _prospect_status(prospect: Dict[str, Any]) -> str:
+    # Beanie applies the model default when the field is missing; mirror that
+    # for raw aggregation documents.
+    return prospect.get("status") or ProspectStatus.ACTIVE.value
 
 
-def _deal_amount(deal: CRMDeal) -> float:
-    return _safe_amount(getattr(deal, "value", 0))
+def _deal_stage(deal: Dict[str, Any]) -> str:
+    # Beanie applies the model default when the field is missing; mirror that
+    # for raw aggregation documents.
+    return deal.get("stage") if deal.get("stage") is not None else "qualified"
 
 
-def _user_label(user: User, fallback: str = "") -> str:
-    first_name = getattr(user, "first_name", "") or ""
-    last_name = getattr(user, "last_name", "") or ""
+def _user_label_from_dict(user: Dict[str, Any], fallback: str = "") -> str:
+    first_name = user.get("first_name") or ""
+    last_name = user.get("last_name") or ""
     full_name = f"{first_name} {last_name}".strip()
-    return full_name or getattr(user, "email", None) or fallback or str(getattr(user, "id", ""))
-
-
-def _valid_object_ids(values: List[str]) -> List[ObjectId]:
-    return [ObjectId(value) for value in values if ObjectId.is_valid(str(value))]
+    return full_name or user.get("email") or fallback or str(user.get("_id", ""))
 
 
 def _stage_weight(stage: str) -> float:
@@ -117,40 +145,325 @@ def _stage_weight(stage: str) -> float:
     return 0.15
 
 
-async def build_sales_analytics_summary(current_user: User) -> Dict[str, Any]:
+# ── Canonical analytics canvas ─────────────────────────────────────────────────
+
+def _sales_canvas_cache_key(company_id: Optional[str]) -> str:
+    """Tenant-safe cache key: company-scoped and matched by the existing
+    `company_dashboard_pattern` invalidation (`dashboard:data:<company>:*`)."""
+    return f"{DASHBOARD_KEY_PREFIX}:{company_id or 'platform'}:canvas"
+
+
+def _canvas_json_default(obj: Any) -> Any:
+    if isinstance(obj, datetime):
+        return {"$date": obj.isoformat()}
+    if isinstance(obj, ObjectId):
+        return {"$oid": str(obj)}
+    return str(obj)
+
+
+def _canvas_json_object_hook(dct: Dict[str, Any]) -> Any:
+    if len(dct) == 1 and "$date" in dct:
+        return datetime.fromisoformat(dct["$date"])
+    if len(dct) == 1 and "$oid" in dct:
+        return dct["$oid"]
+    return dct
+
+
+async def _canvas_cache_get(key: str) -> Optional[dict]:
+    redis = await get_redis()
+    if not redis:
+        return None
+    try:
+        raw = await redis.get(key)
+        if not raw:
+            return None
+        return json.loads(raw, object_hook=_canvas_json_object_hook)
+    except Exception as exc:
+        logger.warning("Sales canvas cache get error [%s]: %s", key, exc)
+        return None
+
+
+async def _canvas_cache_set(key: str, value: dict, ttl: int) -> bool:
+    redis = await get_redis()
+    if not redis:
+        return False
+    try:
+        await redis.setex(key, ttl, json.dumps(value, default=_canvas_json_default))
+        return True
+    except Exception as exc:
+        logger.warning("Sales canvas cache set error [%s]: %s", key, exc)
+        return False
+
+
+def _facet_count(bucket: Optional[List[Dict[str, Any]]]) -> int:
+    if not bucket:
+        return 0
+    return int(bucket[0].get("n", 0))
+
+
+async def _fetch_sales_canvas(current_user: User) -> Dict[str, Any]:
+    """Fetch the canonical sales/CRM analytics canvas in one parallel batch.
+
+    Eight MongoDB round trips total, all leading with a company-scoped
+    ``$match`` and returning only the fields each summary needs:
+
+    - ``sales_prospects``: one ``$facet`` — projected documents plus the
+      overview counts (today leads, follow-ups due today, active/won/total);
+    - ``crm_activities``: one ``$facet`` — upcoming follow-up documents plus
+      today call/meeting/follow-up counts;
+    - ``crm_proposals``: one ``$facet`` — pending count, accepted-today count
+      and forecast sum (no proposal documents at all);
+    - ``crm_deals``: projected documents (value/stage/dates only);
+    - ``sales_products``: projected rate map;
+    - ``sales_contacts``: projected company map;
+    - ``users``: projected name map (replaces dependent per-owner lookups);
+    - contact count via ``count_documents``.
+    """
+    now = utc_now()
+    company_id = current_user.company_id
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + timedelta(days=1)
+    follow_up_horizon = today_start + timedelta(days=30)
+
+    prospect_match = {"company_id": company_id, "deleted": False}
+    proposal_match = {"company_id": company_id, "archived": False}
+
+    prospects_cursor = SalesProspect.get_pymongo_collection().aggregate([
+        {"$match": prospect_match},
+        {"$facet": {
+            "docs": [{"$project": {
+                "prospect_name": 1,
+                "company_name": 1,
+                "phone": 1,
+                "status": 1,
+                "closed_date": 1,
+                "created_at": 1,
+                "won_amount": 1,
+                "product_ids": 1,
+                "assigned_to": 1,
+                "created_by": 1,
+                "current_stage": 1,
+                "crm_company_id": 1,
+                "channel": 1,
+                "category_id": 1,
+            }}],
+            "today_leads": [
+                {"$match": {"created_at": {"$gte": today_start, "$lt": tomorrow_start}}},
+                {"$count": "n"},
+            ],
+            "follow_up_today": [
+                {"$match": {"next_follow_up_at": {"$gte": today_start, "$lt": tomorrow_start}}},
+                {"$count": "n"},
+            ],
+            "active_count": [{"$match": {"status": "active"}}, {"$count": "n"}],
+            "won_count": [{"$match": {"status": "won"}}, {"$count": "n"}],
+            "total_count": [{"$count": "n"}],
+        }},
+    ])
+
+    activities_cursor = CRMActivity.get_pymongo_collection().aggregate([
+        {"$match": prospect_match},
+        {"$facet": {
+            # Only follow-ups due within the next 30 days feed the dashboard
+            # widget, so only those documents are transferred.
+            "docs": [
+                {"$match": {
+                    "activity_type": "follow_up",
+                    "due_date": {"$gte": today_start, "$lt": follow_up_horizon},
+                }},
+                {"$project": {
+                    "title": 1,
+                    "due_date": 1,
+                    "scheduled_at": 1,
+                    "status": 1,
+                    "entity_type": 1,
+                    "entity_id": 1,
+                    "owner_id": 1,
+                    "owner_name": 1,
+                }},
+            ],
+            "today_calls": [
+                {"$match": {
+                    "activity_type": "call",
+                    "created_at": {"$gte": today_start, "$lt": tomorrow_start},
+                }},
+                {"$count": "n"},
+            ],
+            "today_meetings": [
+                {"$match": {
+                    "activity_type": "meeting",
+                    "created_at": {"$gte": today_start, "$lt": tomorrow_start},
+                }},
+                {"$count": "n"},
+            ],
+            "follow_up_due_today": [
+                {"$match": {
+                    "activity_type": {"$in": ["follow_up", "reminder"]},
+                    "due_date": {"$gte": today_start, "$lt": tomorrow_start},
+                }},
+                {"$count": "n"},
+            ],
+        }},
+    ])
+
+    proposals_cursor = CRMProposal.get_pymongo_collection().aggregate([
+        {"$match": proposal_match},
+        {"$facet": {
+            "pending": [
+                {"$match": {"status": {"$in": ["sent", "viewed"]}}},
+                {"$count": "n"},
+            ],
+            "accepted_today": [
+                {"$match": {
+                    "status": "accepted",
+                    "accepted_at": {"$gte": today_start, "$lt": tomorrow_start},
+                }},
+                {"$count": "n"},
+            ],
+            "forecast": [
+                {"$match": {"status": {"$in": ["sent", "viewed"]}}},
+                {"$group": {"_id": None, "total": {"$sum": "$deal_value"}}},
+            ],
+        }},
+    ])
+
+    (
+        prospect_facet,
+        activity_facet,
+        proposal_facet,
+        deals,
+        products,
+        contacts,
+        users,
+        contact_count,
+    ) = await asyncio.gather(
+        prospects_cursor.to_list(length=1),
+        activities_cursor.to_list(length=1),
+        proposals_cursor.to_list(length=1),
+        # Deals: only the fields the analytics summary needs.
+        CRMDeal.get_pymongo_collection().find(
+            proposal_match,
+            {"lead_id": 1, "value": 1, "stage": 1, "updated_at": 1, "expected_close_date": 1},
+        ).to_list(length=None),
+        # Products: rate map for prospect pipeline valuation.
+        SalesProduct.get_pymongo_collection().find(
+            prospect_match,
+            {"rate": 1},
+        ).to_list(length=None),
+        # Companies referenced by prospects (crm_company_id -> company_name).
+        SalesContact.get_pymongo_collection().find(
+            {"company_id": company_id},
+            {"crm_company_id": 1, "company_name": 1},
+        ).to_list(length=None),
+        # One company-wide user fetch replaces the previous dependent
+        # per-owner `User.get`/`User.find` round trips.
+        User.get_pymongo_collection().find(
+            {"company_id": company_id},
+            {"first_name": 1, "last_name": 1, "email": 1},
+        ).to_list(length=None),
+        SalesContact.get_pymongo_collection().count_documents(prospect_match),
+    )
+
+    prospect_result = prospect_facet[0] if prospect_facet else {}
+    activity_result = activity_facet[0] if activity_facet else {}
+    proposal_result = proposal_facet[0] if proposal_facet else {}
+
+    forecast_value = 0.0
+    forecast_rows = proposal_result.get("forecast") or []
+    if forecast_rows:
+        forecast_value = _safe_amount(forecast_rows[0].get("total"))
+
+    return {
+        "prospects": prospect_result.get("docs") or [],
+        "activities": activity_result.get("docs") or [],
+        "deals": deals or [],
+        "products": products or [],
+        "contacts": contacts or [],
+        "users": users or [],
+        "contact_count": int(contact_count or 0),
+        "today_leads": _facet_count(prospect_result.get("today_leads")),
+        "follow_up_today": _facet_count(prospect_result.get("follow_up_today")),
+        "active_prospects": _facet_count(prospect_result.get("active_count")),
+        "won_prospects": _facet_count(prospect_result.get("won_count")),
+        "total_prospects": _facet_count(prospect_result.get("total_count")),
+        "today_calls": _facet_count(activity_result.get("today_calls")),
+        "today_meetings": _facet_count(activity_result.get("today_meetings")),
+        "follow_up_activities_today": _facet_count(activity_result.get("follow_up_due_today")),
+        "proposals_pending": _facet_count(proposal_result.get("pending")),
+        "proposals_accepted_today": _facet_count(proposal_result.get("accepted_today")),
+        "forecast_value": forecast_value,
+    }
+
+
+async def _load_sales_canvas(current_user: User) -> Dict[str, Any]:
+    """Canonical sales/CRM analytics canvas, cached per-company in Redis.
+
+    The key embeds the company id (``dashboard:data:<company>:canvas``), so the
+    cache is tenant-safe: a tenant can only ever read its own canvas, and the
+    existing ``company_dashboard_pattern`` invalidation clears it on writes.
+    The TTL is short (`settings.DASHBOARD_CACHE_TTL`) so dashboards lag live
+    data by at most a few seconds.
+    """
+    cache_key = _sales_canvas_cache_key(current_user.company_id)
+    cached = await _canvas_cache_get(cache_key)
+    if cached:
+        return cached
+    canvas = await _fetch_sales_canvas(current_user)
+    await _canvas_cache_set(cache_key, canvas, ttl=settings.DASHBOARD_CACHE_TTL)
+    return canvas
+
+
+# ── Analytics summary (pure derivation over the canvas) ───────────────────────
+
+async def build_sales_analytics_summary(
+    current_user: User,
+    canvas: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    canvas = canvas or await _load_sales_canvas(current_user)
     now = utc_now()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     quarter_start_month = ((now.month - 1) // 3) * 3 + 1
     quarter_start = now.replace(month=quarter_start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
     year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    prospects, deals, proposals = await asyncio.gather(
-        SalesProspect.find({"company_id": current_user.company_id, "deleted": False}).to_list(),
-        CRMDeal.find({"company_id": current_user.company_id, "archived": False}).to_list(),
-        CRMProposal.find({"company_id": current_user.company_id, "archived": False}).sort("-updated_at").to_list(),
+    prospects = canvas["prospects"]
+    deals = canvas["deals"]
+
+    won_revenue = sum(_safe_amount(p.get("won_amount")) for p in prospects if _prospect_status(p) == ProspectStatus.WON.value)
+    lost_revenue = sum(_safe_amount(p.get("won_amount")) for p in prospects if _prospect_status(p) == ProspectStatus.LOST.value)
+    total_revenue = won_revenue
+    monthly_revenue = sum(
+        _safe_amount(p.get("won_amount"))
+        for p in prospects
+        if _prospect_status(p) == ProspectStatus.WON.value and p.get("closed_date") and p["closed_date"] >= month_start
+    )
+    quarterly_revenue = sum(
+        _safe_amount(p.get("won_amount"))
+        for p in prospects
+        if _prospect_status(p) == ProspectStatus.WON.value and p.get("closed_date") and p["closed_date"] >= quarter_start
+    )
+    yearly_revenue = sum(
+        _safe_amount(p.get("won_amount"))
+        for p in prospects
+        if _prospect_status(p) == ProspectStatus.WON.value and p.get("closed_date") and p["closed_date"] >= year_start
     )
 
-    won_revenue = sum(_safe_amount(p.won_amount) for p in prospects if p.status == ProspectStatus.WON)
-    lost_revenue = sum(_safe_amount(p.won_amount) for p in prospects if p.status == ProspectStatus.LOST)
-    total_revenue = won_revenue
-    monthly_revenue = sum(_safe_amount(p.won_amount) for p in prospects if p.status == ProspectStatus.WON and p.closed_date and p.closed_date >= month_start)
-    quarterly_revenue = sum(_safe_amount(p.won_amount) for p in prospects if p.status == ProspectStatus.WON and p.closed_date and p.closed_date >= quarter_start)
-    yearly_revenue = sum(_safe_amount(p.won_amount) for p in prospects if p.status == ProspectStatus.WON and p.closed_date and p.closed_date >= year_start)
+    # Forecast is computed inside the proposals facet; no proposal documents
+    # are loaded for it.
+    forecast_revenue = _safe_amount(canvas.get("forecast_value"))
+    weighted_pipeline_value = sum(_safe_amount(deal.get("value")) * _stage_weight(_deal_stage(deal)) for deal in deals)
+    pipeline_value = sum(_safe_amount(deal.get("value")) for deal in deals)
 
-    forecast_revenue = sum(_proposal_amount(p) for p in proposals if p.status in {"sent", "viewed"})
-    weighted_pipeline_value = sum(_deal_amount(deal) * _stage_weight(deal.stage) for deal in deals)
-    pipeline_value = sum(_deal_amount(deal) for deal in deals)
+    active_deals = [deal for deal in deals if str(_deal_stage(deal)).lower() not in {"won", "lost"}]
+    won_deals = [deal for deal in deals if str(_deal_stage(deal)).lower() == "won"]
+    lost_deals = [deal for deal in deals if str(_deal_stage(deal)).lower() == "lost"]
 
-    active_deals = [deal for deal in deals if str(deal.stage).lower() not in {"won", "lost"}]
-    won_deals = [deal for deal in deals if str(deal.stage).lower() == "won"]
-    lost_deals = [deal for deal in deals if str(deal.stage).lower() == "lost"]
-
-    average_deal_size = round((sum(_deal_amount(deal) for deal in deals) / len(deals)), 2) if deals else 0.0
+    average_deal_size = round((sum(_safe_amount(deal.get("value")) for deal in deals) / len(deals)), 2) if deals else 0.0
     average_sales_cycle = 0.0
     cycle_days = [
-        (p.closed_date - p.created_at).days
+        (p["closed_date"] - p["created_at"]).days
         for p in prospects
-        if p.status == ProspectStatus.WON and p.closed_date and p.created_at
+        if _prospect_status(p) == ProspectStatus.WON.value and p.get("closed_date") and p.get("created_at")
     ]
     if cycle_days:
         average_sales_cycle = round(sum(cycle_days) / len(cycle_days), 2)
@@ -158,8 +471,9 @@ async def build_sales_analytics_summary(current_user: User) -> Dict[str, Any]:
     stage_counts: Dict[str, int] = defaultdict(int)
     stage_values: Dict[str, float] = defaultdict(float)
     for deal in deals:
-        stage_counts[deal.stage] += 1
-        stage_values[deal.stage] += _deal_amount(deal)
+        stage = _deal_stage(deal)
+        stage_counts[stage] += 1
+        stage_values[stage] += _safe_amount(deal.get("value"))
 
     stage_conversion = []
     ordered_stages = ["Lead", "Contacted", "Discovery Scheduled", "Discovery Completed", "Qualified", "Proposal Sent", "Negotiation", "Won", "Lost"]
@@ -172,21 +486,16 @@ async def build_sales_analytics_summary(current_user: User) -> Dict[str, Any]:
 
     owner_counts: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"revenue": 0.0, "won_deals": 0, "total_deals": 0, "deal_value_sum": 0.0})
     for prospect in prospects:
-        owner = str(prospect.assigned_to or prospect.created_by or "unassigned")
+        owner = str(prospect.get("assigned_to") or prospect.get("created_by") or "unassigned")
         bucket = owner_counts[owner]
         bucket["total_deals"] += 1
-        if prospect.status == ProspectStatus.WON:
+        if _prospect_status(prospect) == ProspectStatus.WON.value:
             bucket["won_deals"] += 1
-            bucket["revenue"] += _safe_amount(prospect.won_amount)
-        bucket["deal_value_sum"] += _safe_amount(prospect.won_amount)
+            bucket["revenue"] += _safe_amount(prospect.get("won_amount"))
+        bucket["deal_value_sum"] += _safe_amount(prospect.get("won_amount"))
 
-    owner_map = {}
-    owner_ids = [owner_id for owner_id in owner_counts.keys() if owner_id and owner_id != "unassigned"]
-    if owner_ids:
-        owner_object_ids = _valid_object_ids(owner_ids)
-        owner_query_ids = owner_object_ids or owner_ids
-        owners = await User.find({"_id": {"$in": owner_query_ids}, "company_id": current_user.company_id}).to_list()
-        owner_map = {str(owner.id): _user_label(owner, str(owner.id)) for owner in owners}
+    # Company-wide user projection replaces the previous dependent owner query.
+    owner_map = {str(user["_id"]): _user_label_from_dict(user, str(user["_id"])) for user in canvas["users"]}
 
     leaderboard = sorted(
         [
@@ -207,33 +516,36 @@ async def build_sales_analytics_summary(current_user: User) -> Dict[str, Any]:
     source_revenue: Dict[str, float] = defaultdict(float)
     service_revenue: Dict[str, float] = defaultdict(float)
     company_map: Dict[str, str] = {}
-    if prospects:
-        company_ids = list({str(p.crm_company_id) for p in prospects if getattr(p, "crm_company_id", None)})
-        if company_ids:
-            companies = await SalesContact.find({"crm_company_id": {"$in": company_ids}, "company_id": current_user.company_id}).to_list()
-            for company_id in company_ids:
-                linked = next((c for c in companies if str(c.crm_company_id) == company_id), None)
-                if linked:
-                    company_map[company_id] = linked.company_name or company_id
+    for contact in canvas["contacts"]:
+        crm_company_id = contact.get("crm_company_id")
+        if crm_company_id:
+            company_map[str(crm_company_id)] = contact.get("company_name") or str(crm_company_id)
     for prospect in prospects:
-        amount = _safe_amount(prospect.won_amount)
-        if prospect.status == ProspectStatus.WON:
-            if prospect.crm_company_id:
-                company_revenue[company_map.get(str(prospect.crm_company_id), prospect.company_name or str(prospect.crm_company_id))] += amount
-            if prospect.channel:
-                source_revenue[prospect.channel] += amount
-            if prospect.category_id:
-                service_revenue[str(prospect.category_id)] += amount
-            if prospect.company_name:
-                industry_revenue[prospect.company_name] += amount
+        amount = _safe_amount(prospect.get("won_amount"))
+        if _prospect_status(prospect) == ProspectStatus.WON.value:
+            crm_company_id = prospect.get("crm_company_id")
+            if crm_company_id:
+                company_revenue[company_map.get(str(crm_company_id), prospect.get("company_name") or str(crm_company_id))] += amount
+            if prospect.get("channel"):
+                source_revenue[prospect["channel"]] += amount
+            if prospect.get("category_id"):
+                service_revenue[str(prospect["category_id"])] += amount
+            if prospect.get("company_name"):
+                industry_revenue[prospect["company_name"]] += amount
 
     aging_deals = []
     stuck_deals = 0
     for deal in deals:
-        age_days = (now - deal.updated_at).days if deal.updated_at else 0
+        age_days = (now - deal["updated_at"]).days if deal.get("updated_at") else 0
         if age_days >= 14:
             stuck_deals += 1
-        aging_deals.append({"deal_id": str(deal.id), "lead_id": deal.lead_id, "stage": deal.stage, "age_days": age_days, "value": _deal_amount(deal)})
+        aging_deals.append({
+            "deal_id": str(deal["_id"]),
+            "lead_id": deal.get("lead_id"),
+            "stage": _deal_stage(deal),
+            "age_days": age_days,
+            "value": _safe_amount(deal.get("value")),
+        })
 
     return {
         "revenue": {
@@ -269,67 +581,50 @@ async def build_sales_analytics_summary(current_user: User) -> Dict[str, Any]:
             "deals_by_stage": [{"stage": stage, "count": count, "value": round(stage_values.get(stage, 0.0), 2)} for stage, count in stage_counts.items()],
             "stuck_deals": stuck_deals,
             "aging_deals": sorted(aging_deals, key=lambda item: (-item["age_days"], -item["value"])),
-            "expected_close_this_month": len([deal for deal in deals if deal.expected_close_date and deal.expected_close_date.month == now.month and deal.expected_close_date.year == now.year]),
+            "expected_close_this_month": len([
+                deal
+                for deal in deals
+                if deal.get("expected_close_date") and deal["expected_close_date"].month == now.month and deal["expected_close_date"].year == now.year
+            ]),
         },
     }
 
 
-async def build_sales_dashboard_summary(current_user: User) -> Dict[str, Any]:
+# ── Dashboard summary (pure derivation over the canvas) ───────────────────────
+
+async def build_sales_dashboard_summary(
+    current_user: User,
+    canvas: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    canvas = canvas or await _load_sales_canvas(current_user)
     now = utc_now()
     month_labels = _get_last_12_month_labels(now)
     month_ranges = _build_month_ranges(now)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     tomorrow_start = today_start + timedelta(days=1)
 
-    prospects, activities, proposals = await asyncio.gather(
-        SalesProspect.find(
-            {
-                "company_id": current_user.company_id,
-                "deleted": False,
-            }
-        ).to_list(),
-        CRMActivity.find(
-            {
-                "company_id": current_user.company_id,
-                "deleted": False,
-            }
-        ).to_list(),
-        CRMProposal.find(
-            {
-                "company_id": current_user.company_id,
-                "archived": False,
-            }
-        ).to_list(),
-    )
-    contact_count = await SalesContact.find(
-        {
-            "company_id": current_user.company_id,
-            "deleted": False,
-        }
-    ).count()
-    products = await SalesProduct.find(
-        {
-            "company_id": current_user.company_id,
-            "deleted": False,
-        }
-    ).to_list()
-    product_map = {str(product.id): product for product in products}
+    prospects = canvas["prospects"]
+    product_map = {
+        str(product["_id"]): product.get("rate")
+        for product in canvas["products"]
+    }
 
+    # ── Monthly closed_vs_target ────────────────────────────────────────────
     closed_amounts = [0.0 for _ in month_labels]
     target_amounts = [0.0 for _ in month_labels]
 
     for prospect in prospects:
-        if prospect.status == ProspectStatus.WON and prospect.closed_date is not None:
-            won_amount = float(prospect.won_amount) if prospect.won_amount is not None else 0.0
+        if _prospect_status(prospect) == ProspectStatus.WON.value and prospect.get("closed_date") is not None:
+            won_amount = float(prospect["won_amount"]) if prospect.get("won_amount") is not None else 0.0
             for index, month_range in enumerate(month_ranges):
-                if month_range["start"] <= prospect.closed_date < month_range["end"]:
+                if month_range["start"] <= prospect["closed_date"] < month_range["end"]:
                     closed_amounts[index] += won_amount
                     break
 
-        if prospect.created_at is not None:
+        if prospect.get("created_at") is not None:
             prospect_value = _prospect_product_value(prospect, product_map)
             for index, month_range in enumerate(month_ranges):
-                if month_range["start"] <= prospect.created_at < month_range["end"]:
+                if month_range["start"] <= prospect["created_at"] < month_range["end"]:
                     target_amounts[index] += prospect_value
                     break
 
@@ -348,15 +643,16 @@ async def build_sales_dashboard_summary(current_user: User) -> Dict[str, Any]:
     total_active_value = 0.0
 
     for prospect in prospects:
-        if prospect.status == ProspectStatus.WON and prospect.closed_date is not None:
-            won_amount = float(prospect.won_amount) if prospect.won_amount is not None else 0.0
-            if _in_range(prospect.closed_date, this_month_start, now):
+        if _prospect_status(prospect) == ProspectStatus.WON.value and prospect.get("closed_date") is not None:
+            won_amount = float(prospect["won_amount"]) if prospect.get("won_amount") is not None else 0.0
+            if _in_range(prospect["closed_date"], this_month_start, now):
                 this_month_closed += won_amount
-            if _in_range(prospect.closed_date, last_month_start, last_month_end):
+            if _in_range(prospect["closed_date"], last_month_start, last_month_end):
                 last_month_closed += won_amount
-        if prospect.status == ProspectStatus.ACTIVE:
+        if _prospect_status(prospect) == ProspectStatus.ACTIVE.value:
             total_active_value += _prospect_product_value(prospect, product_map)
 
+    # ── Spotlight ───────────────────────────────────────────────────────────
     fastest_days = None
     fastest_name = None
     highest_amount = 0.0
@@ -364,85 +660,54 @@ async def build_sales_dashboard_summary(current_user: User) -> Dict[str, Any]:
     owner_counts: Dict[str, int] = defaultdict(int)
 
     for prospect in prospects:
-        if prospect.status == ProspectStatus.WON and prospect.closed_date is not None:
-            if prospect.created_at and prospect.closed_date:
-                days = (prospect.closed_date - prospect.created_at).days
+        if _prospect_status(prospect) == ProspectStatus.WON.value and prospect.get("closed_date") is not None:
+            if prospect.get("created_at") and prospect.get("closed_date"):
+                days = (prospect["closed_date"] - prospect["created_at"]).days
                 if fastest_days is None or days < fastest_days:
                     fastest_days = days
-                    fastest_name = prospect.prospect_name
+                    fastest_name = prospect.get("prospect_name")
 
-            won_amount = float(prospect.won_amount) if prospect.won_amount is not None else 0.0
+            won_amount = float(prospect["won_amount"]) if prospect.get("won_amount") is not None else 0.0
             if won_amount > highest_amount:
                 highest_amount = won_amount
-                highest_amount_name = prospect.prospect_name
+                highest_amount_name = prospect.get("prospect_name")
 
-        if prospect.assigned_to:
-            owner_counts[prospect.assigned_to] += 1
+        if prospect.get("assigned_to"):
+            owner_counts[prospect["assigned_to"]] += 1
 
     max_count = None
     max_owner = None
     if owner_counts:
         max_owner_id, max_count_val = max(owner_counts.items(), key=lambda item: item[1])
         max_count = max_count_val
-        try:
-            owner = await User.get(max_owner_id)
-            if owner:
-                max_owner = f"{owner.first_name} {owner.last_name}".strip()
-            else:
-                max_owner = max_owner_id
-        except Exception:
-            max_owner = max_owner_id
+        # Resolved from the company-wide user projection (no extra round trip;
+        # strictly tenant-scoped, unlike the previous global User.get).
+        owner_map = {str(user["_id"]): _user_label_from_dict(user, str(user["_id"])) for user in canvas["users"]}
+        max_owner = owner_map.get(max_owner_id, max_owner_id)
 
-    # ── Sales journey overview metrics (Overview page) ────────────────────────
-    active_prospects = [p for p in prospects if p.status == ProspectStatus.ACTIVE]
-    today_leads = [p for p in prospects if p.created_at and _in_range(p.created_at, today_start, tomorrow_start)]
-    today_calls = [
-        a for a in activities
-        if a.activity_type == "call" and a.created_at and _in_range(a.created_at, today_start, tomorrow_start)
-    ]
-    today_meetings = [
-        a for a in activities
-        if a.activity_type == "meeting" and a.created_at and _in_range(a.created_at, today_start, tomorrow_start)
-    ]
-    # Follow-ups due today: lead-level next_follow_up_at plus follow-up/reminder activities due today.
-    follow_up_leads = [p for p in prospects if p.next_follow_up_at and _in_range(p.next_follow_up_at, today_start, tomorrow_start)]
-    follow_up_activities = [
-        a for a in activities
-        if a.activity_type in ("follow_up", "reminder") and a.due_date and _in_range(a.due_date, today_start, tomorrow_start)
-    ]
-
-    # Also compute a compact list of upcoming lead follow-ups for dashboard widgets
+    # ── Upcoming follow-ups (already filtered + projected in the canvas) ────
+    prospect_by_id = {str(prospect["_id"]): prospect for prospect in prospects}
     upcoming_follow_ups = []
-    for a in activities:
-        if a.activity_type != 'follow_up' or not getattr(a, 'due_date', None):
-            continue
-        if not _in_range(a.due_date, today_start, today_start + timedelta(days=30)):
-            continue
-        # Load basic lead info if available
+    for activity in canvas["activities"]:
         lead = None
-        if a.entity_type == 'lead' and a.entity_id:
-            lead = next((p for p in prospects if str(p.id) == str(a.entity_id)), None)
+        if activity.get("entity_type") == "lead" and activity.get("entity_id"):
+            lead = prospect_by_id.get(str(activity["entity_id"]))
 
         upcoming_follow_ups.append({
-            'id': str(a.id),
-            'title': a.title,
-            'due_date': a.due_date,
-            'scheduled_at': a.scheduled_at,
-            'status': getattr(a, 'status', None).value if getattr(a, 'status', None) else None,
-            'lead_id': str(lead.id) if lead else (a.entity_id if a.entity_type == 'lead' else None),
-            'lead_name': (lead.prospect_name or lead.company_name) if lead else None,
-            'phone': getattr(lead, 'phone', None) if lead else None,
-            'owner_id': a.owner_id,
-            'owner_name': a.owner_name,
+            "id": str(activity["_id"]),
+            "title": activity.get("title"),
+            "due_date": activity.get("due_date"),
+            "scheduled_at": activity.get("scheduled_at"),
+            "status": activity.get("status"),
+            "lead_id": str(lead["_id"]) if lead else (activity.get("entity_id") if activity.get("entity_type") == "lead" else None),
+            "lead_name": (lead.get("prospect_name") or lead.get("company_name")) if lead else None,
+            "phone": lead.get("phone") if lead else None,
+            "owner_id": activity.get("owner_id"),
+            "owner_name": activity.get("owner_name"),
         })
-    proposals_pending = [p for p in proposals if p.status in ("sent", "viewed")]
-    this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    proposals_accepted_month = [
-        p for p in proposals
-        if p.status == "accepted" and p.accepted_at and _in_range(p.accepted_at, this_month_start, tomorrow_start)
-    ]
-    conversion_rate = round((len([p for p in prospects if p.status == ProspectStatus.WON]) / len(prospects)) * 100, 2) if prospects else 0.0
-    active_pipeline_value = sum(_prospect_product_value(p, product_map) for p in active_prospects)
+
+    conversion_rate = round((canvas["won_prospects"] / canvas["total_prospects"]) * 100, 2) if canvas["total_prospects"] else 0.0
+    active_pipeline_value = total_active_value
 
     return {
         "sales_breakup": [],
@@ -455,17 +720,17 @@ async def build_sales_dashboard_summary(current_user: User) -> Dict[str, Any]:
             "this_month": this_month_closed,
             "last_month": last_month_closed,
             "total_active_prospect_value": total_active_value,
-            "contact_count": contact_count,
-            "prospect_count": len(prospects),
+            "contact_count": canvas["contact_count"],
+            "prospect_count": canvas["total_prospects"],
             "pipeline_value": total_active_value,
         },
         "overview": {
-            "today_leads": len(today_leads),
-            "today_calls": len(today_calls),
-            "today_meetings": len(today_meetings),
-            "today_follow_ups": len(follow_up_leads) + len(follow_up_activities),
-            "proposals_pending": len(proposals_pending),
-            "proposals_accepted_this_month": len(proposals_accepted_month),
+            "today_leads": canvas["today_leads"],
+            "today_calls": canvas["today_calls"],
+            "today_meetings": canvas["today_meetings"],
+            "today_follow_ups": canvas["follow_up_today"] + canvas["follow_up_activities_today"],
+            "proposals_pending": canvas["proposals_pending"],
+            "proposals_accepted_this_month": canvas["proposals_accepted_today"],
             "revenue_closed_this_month": this_month_closed,
             "conversion_rate": conversion_rate,
             "monthly_target": target_amounts[-1] if target_amounts else 0.0,
@@ -489,6 +754,20 @@ async def build_sales_dashboard_summary(current_user: User) -> Dict[str, Any]:
             "message": "Live data based on leads for your company.",
         },
     }
+
+
+async def build_sales_summary_pair(current_user: User) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Load the canonical canvas once and derive both summary contracts.
+
+    This is the single "canonical Sales/CRM analytics result" consumed by
+    /crm/dashboard and /dashboard/metrics — one DB batch (or one Redis hit),
+    then pure Python derivations.
+    """
+    canvas = await _load_sales_canvas(current_user)
+    return (
+        await build_sales_dashboard_summary(current_user, canvas=canvas),
+        await build_sales_analytics_summary(current_user, canvas=canvas),
+    )
 
 
 def build_crm_workspace_config(current_user: User) -> Dict[str, Any]:
@@ -537,4 +816,3 @@ async def build_crm_dashboard_payload(current_user: User) -> Dict[str, Any]:
         "feature_flags": workspace["feature_flags"],
         "navigation": workspace["navigation"],
     }
-

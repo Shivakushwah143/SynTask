@@ -138,11 +138,13 @@ async def get_hr_dashboard(
         LeaveSummary, DocumentSummary, LifecycleSummary,
         RecruitmentSummary, PayrollSummary,
     )
-    from app.services.hr_reporting_service import (
-        get_employee_summary, get_attendance_today_summary,
-        get_leave_summary, get_document_summary, get_lifecycle_summary,
-        get_recruitment_summary, get_payroll_summary, get_attention_items,
-    )
+    from app.services.hr_reporting_service import build_hr_dashboard_canvas
+
+    # One canonical, company-scoped aggregation batch (cached in Redis for
+    # ``settings.DASHBOARD_CACHE_TTL``) feeds every section; the permission
+    # filtering below is pure Python over that canvas. Each section stays
+    # individually resilient: a failed fetch yields ``None`` for that section.
+    canvas = await build_hr_dashboard_canvas(company_id)
 
     # Each dashboard section is permission-aware (backend authoritative).
     employee_summary = None
@@ -152,28 +154,32 @@ async def get_hr_dashboard(
     lifecycle_summary = None
 
     if _is_company_admin(current_user) or await _has_capability(current_user, "employee_management.view"):
-        try:
-            employee_summary = EmployeeSummary(**await get_employee_summary(company_id))
-        except Exception as e:
-            logger.warning("Employee summary failed (non-critical): %s", e)
+        if canvas.get("employee_summary"):
+            try:
+                employee_summary = EmployeeSummary(**canvas["employee_summary"])
+            except Exception as e:
+                logger.warning("Employee summary failed (non-critical): %s", e)
 
     if _is_company_admin(current_user) or await _has_capability(current_user, "attendance_policy.view"):
-        try:
-            attendance_today = AttendanceTodaySummary(**await get_attendance_today_summary(company_id))
-        except Exception as e:
-            logger.warning("Attendance summary failed (non-critical): %s", e)
+        if canvas.get("attendance_today"):
+            try:
+                attendance_today = AttendanceTodaySummary(**canvas["attendance_today"])
+            except Exception as e:
+                logger.warning("Attendance summary failed (non-critical): %s", e)
 
     if _is_company_admin(current_user) or await _has_capability(current_user, "leave_management.view"):
-        try:
-            leave_summary = LeaveSummary(**await get_leave_summary(company_id))
-        except Exception as e:
-            logger.warning("Leave summary failed (non-critical): %s", e)
+        if canvas.get("leave_summary"):
+            try:
+                leave_summary = LeaveSummary(**canvas["leave_summary"])
+            except Exception as e:
+                logger.warning("Leave summary failed (non-critical): %s", e)
 
     if _is_company_admin(current_user) or await _has_capability(current_user, "employee_lifecycle.view"):
-        try:
-            lifecycle_summary = LifecycleSummary(**await get_lifecycle_summary(company_id))
-        except Exception as e:
-            logger.warning("Lifecycle summary failed (non-critical): %s", e)
+        if canvas.get("lifecycle_summary"):
+            try:
+                lifecycle_summary = LifecycleSummary(**canvas["lifecycle_summary"])
+            except Exception as e:
+                logger.warning("Lifecycle summary failed (non-critical): %s", e)
 
     from app.api.v1.endpoints.hr_documents import require_hr_document_view
 
@@ -182,14 +188,14 @@ async def get_hr_dashboard(
         await require_hr_document_view(current_user)
     except HTTPException:
         can_view_documents = False
-    if can_view_documents:
+    if can_view_documents and canvas.get("document_summary"):
         try:
-            document_summary = DocumentSummary(**await get_document_summary(company_id))
+            document_summary = DocumentSummary(**canvas["document_summary"])
         except Exception as e:
             logger.warning("Document summary failed (non-critical): %s", e)
 
     # Attention items — permission-filtered so unauthorized counts never leak.
-    attention_items = await get_attention_items(company_id)
+    attention_items = canvas.get("attention_items") or []
     has_payroll_view = _is_company_admin(current_user) or await _has_capability(current_user, "payroll.view")
     if not has_payroll_view:
         attention_items = [item for item in attention_items if item.get("type") != "payroll_blocked"]
@@ -212,17 +218,16 @@ async def get_hr_dashboard(
 
     recruitment_summary = None
     if _is_company_admin(current_user) or role in (UserRole.MANAGER.value, UserRole.LEAD.value):
-        try:
-            recruitment_summary = RecruitmentSummary(**await get_recruitment_summary(company_id))
-        except Exception as e:
-            logger.warning("Recruitment summary failed (non-critical): %s", e)
+        if canvas.get("recruitment_summary"):
+            try:
+                recruitment_summary = RecruitmentSummary(**canvas["recruitment_summary"])
+            except Exception as e:
+                logger.warning("Recruitment summary failed (non-critical): %s", e)
 
     payroll_summary = None
-    if has_payroll_view:
+    if has_payroll_view and canvas.get("payroll_summary"):
         try:
-            payroll_data = await get_payroll_summary(company_id)
-            if payroll_data:
-                payroll_summary = PayrollSummary(**payroll_data)
+            payroll_summary = PayrollSummary(**canvas["payroll_summary"])
         except Exception as e:
             logger.warning("Payroll summary failed (non-critical): %s", e)
 

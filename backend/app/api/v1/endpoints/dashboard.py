@@ -16,7 +16,7 @@ from app.models.company import Company, Subscription
 from app.models.sales_prospect import SalesProspect
 from app.api.dependencies import get_current_user, get_current_super_admin
 from app.core.cache import cache_get, cache_set, dashboard_cache_key, dashboard_metrics_cache_key, company_dashboard_pattern
-from app.services.crm_dashboard_service import build_sales_analytics_summary, build_sales_dashboard_summary
+from app.services.crm_dashboard_service import build_sales_summary_pair
 from app.services.dashboard_service import build_manager_dashboard_metrics
 from app.core.clock import utc_now
 
@@ -146,15 +146,43 @@ async def _build_report_totals(base_query: dict, now: datetime) -> dict:
     }
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+async def _safe_await(coro, default, label: str):
+    """Await *coro*, returning *default* on any exception.
+
+    Logs the real exception so failures are visible in backend logs
+    instead of surfacing as a bare 500.
+    """
+    try:
+        return await coro
+    except Exception as exc:
+        logger.warning("Dashboard metric '%s' failed: %s", label, exc, exc_info=True)
+        return default
+
+
+_DEFAULT_REPORT_TOTALS: dict = {
+    "tasks": 0, "projects": 0, "meetings": 0,
+    "high_priority": 0, "tasks_due_today": 0,
+}
+
+
 async def _build_company_dashboard_metrics(current_user: User) -> dict:
     now = utc_now()
     base_query = {"company_id": current_user.company_id} if current_user.company_id else {}
-    # Parallelize heavy async calls
-    sales_summary, sales_analytics, report_totals = await asyncio.gather(
-        build_sales_dashboard_summary(current_user),
-        build_sales_analytics_summary(current_user),
-        _build_report_totals(base_query, now),
+
+    # ── Section 1: sales + report totals (each fails independently) ─────────
+    # Both sales summaries are derived from one canonical canvas load (or a
+    # single Redis hit), so the pair fails (or succeeds) as a unit.
+    sales_pair, report_totals = await asyncio.gather(
+        _safe_await(build_sales_summary_pair(current_user), ({}, {}), "sales_summary_pair"),
+        _safe_await(_build_report_totals(base_query, now), _DEFAULT_REPORT_TOTALS, "report_totals"),
     )
+    sales_summary, sales_analytics = sales_pair
+
     month_start = _month_start(now)
     next_month = _next_month(now)
 
@@ -162,30 +190,40 @@ async def _build_company_dashboard_metrics(current_user: User) -> dict:
     revenue = sales_analytics.get("revenue", {})
     sales_summary_values = sales_summary.get("summary", {})
 
-    # Parallelize remaining DB counts
-    current_month_leads, upcoming_meetings_count, project_status_chart, task_due_priority_chart = await asyncio.gather(
-        SalesProspect.find({
-            **base_query,
-            "deleted": False,
-            "created_at": {"$gte": month_start, "$lt": next_month},
-        }).count(),
-        Meeting.find({**base_query, "meeting_date": {"$gte": now}}).count(),
-        _build_project_status_chart(base_query),
-        _build_due_priority_chart(base_query, now),
+    # ── Section 2: supplementary counts (each fails independently) ──────────
+    current_month_leads, upcoming_meetings_count, project_status_chart, task_due_priority_chart = (
+        await asyncio.gather(
+            _safe_await(
+                SalesProspect.find({
+                    **base_query,
+                    "deleted": False,
+                    "created_at": {"$gte": month_start, "$lt": next_month},
+                }).count(),
+                0, "current_month_leads",
+            ),
+            _safe_await(
+                Meeting.find({**base_query, "meeting_date": {"$gte": now}}).count(),
+                0, "upcoming_meetings_count",
+            ),
+            _safe_await(_build_project_status_chart(base_query), [], "project_status_chart"),
+            _safe_await(_build_due_priority_chart(base_query, now), [], "task_due_priority_chart"),
+        )
     )
 
+    # Use .get() everywhere so missing keys from a failed section never KeyError
+    rt = report_totals  # shorthand
     monthly_performance = [
         {"name": "Leads", "value": current_month_leads, "total": sales_summary_values.get("prospect_count", 0), "route": "/crm/leads"},
         {"name": "Deals", "value": kpis.get("active_deals", 0), "total": kpis.get("total_deals", 0), "route": "/crm/pipeline"},
-        {"name": "Projects", "value": report_totals["projects"], "total": report_totals["projects"], "route": "/projects"},
-        {"name": "Tasks", "value": report_totals["tasks"], "total": report_totals["tasks"], "route": "/tasks"},
+        {"name": "Projects", "value": rt.get("projects", 0), "total": rt.get("projects", 0), "route": "/projects"},
+        {"name": "Tasks", "value": rt.get("tasks", 0), "total": rt.get("tasks", 0), "route": "/tasks"},
     ]
 
     report_graph = [
-        {"name": "Tasks", "value": report_totals["tasks"], "route": "/tasks"},
-        {"name": "Projects", "value": report_totals["projects"], "route": "/projects"},
-        {"name": "Meetings", "value": report_totals["meetings"], "route": "/meetings"},
-        {"name": "High Priority", "value": report_totals["high_priority"], "route": "/tasks"},
+        {"name": "Tasks", "value": rt.get("tasks", 0), "route": "/tasks"},
+        {"name": "Projects", "value": rt.get("projects", 0), "route": "/projects"},
+        {"name": "Meetings", "value": rt.get("meetings", 0), "route": "/meetings"},
+        {"name": "High Priority", "value": rt.get("high_priority", 0), "route": "/tasks"},
     ]
 
     return {
@@ -196,14 +234,14 @@ async def _build_company_dashboard_metrics(current_user: User) -> dict:
         "revenue": round(_safe_number(revenue.get("yearly_revenue")), 2),
         "won_deals": kpis.get("won_deals", 0),
         "lost_deals": kpis.get("lost_deals", 0),
-        "projects": report_totals["projects"],
+        "projects": rt.get("projects", 0),
         "upcoming_meetings": upcoming_meetings_count,
-        "tasks_due_today": report_totals["tasks_due_today"],
+        "tasks_due_today": rt.get("tasks_due_today", 0),
         "revenue_trend": _build_revenue_trend(sales_summary),
         "pipeline_funnel": _build_pipeline_funnel(sales_summary, sales_analytics),
         "conversion_trend": _build_conversion_trend(sales_analytics),
         "monthly_performance": monthly_performance,
-        "report_totals": report_totals,
+        "report_totals": rt,
         "report_graph": report_graph,
         "project_status_chart": project_status_chart,
         "task_due_priority_chart": task_due_priority_chart,

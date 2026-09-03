@@ -10,9 +10,11 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.hr.service import HRAgentService
+from app.agents.streaming import DEFAULT_SSE_HEADERS, sse_frame, with_heartbeat
 from app.api.dependencies import get_current_user
 from app.core.config import settings
 from app.models.user import User
@@ -113,6 +115,61 @@ async def hr_agent_chat(
     )
 
     return HRChatResponse(**result)
+
+
+@router.post("/chat/stream")
+async def hr_agent_chat_stream(
+    payload: HRChatRequest,
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """Stream a chat with the HR Operations Agent (SSE).
+
+    Emits user-friendly lifecycle status events, then live answer token
+    deltas, and finally a ``done`` frame carrying the same payload shape as
+    ``POST /chat``. The non-stream endpoint remains available.
+    """
+    _require_hr_agent_enabled()
+
+    if not getattr(current_user, "company_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant scope required",
+        )
+
+    entity_context: dict[str, Any] = {}
+    if payload.selected_record_type and payload.selected_record_id:
+        entity_context = {
+            "selected_record_type": payload.selected_record_type,
+            "selected_record_id": payload.selected_record_id,
+        }
+
+    async def _event_stream():
+        source = hr_service.stream_chat(
+            current_user=current_user,
+            message=payload.message,
+            conversation_id=payload.conversation_id,
+            session_id=payload.session_id,
+            entity_context=entity_context,
+        )
+        try:
+            async for ev in with_heartbeat(source):
+                yield sse_frame(ev)
+        except Exception as exc:  # never break the SSE channel silently
+            yield sse_frame({
+                "type": "error",
+                "message": "The request failed on the server. Please try again.",
+                "data": {
+                    "success": False,
+                    "error": f"STREAM_ERROR: {exc}",
+                    "answer": "I hit a technical issue while processing your request — please try again.",
+                },
+            })
+
+    return StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers=DEFAULT_SSE_HEADERS,
+    )
 
 
 @router.get("/quick-actions", response_model=HRQuickActionsResponse)

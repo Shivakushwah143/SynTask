@@ -236,25 +236,34 @@ function App() {
   // ── Live permission sync ────────────────────────────────────────────────────
   // Poll /auth/me every 60 s so module/role changes made by an admin are
   // reflected in the employee's UI without requiring a logout/login cycle.
+  // Polls are paused while the tab is hidden, and returning to a visible tab
+  // only refetches when the previous refresh is stale — so alt-tab back into
+  // the app no longer forces an immediate /auth/me round trip.
   useEffect(() => {
-    const { refreshUser, isAuthenticated } = useAuthStore.getState()
+    const { isAuthenticated } = useAuthStore.getState()
     if (!isAuthenticated) return
 
-    // Immediate refresh on mount
-    void refreshUser()
+    let lastRefreshAt = 0
+    const refreshIfStale = (force = false) => {
+      const now = Date.now()
+      if (!force && now - lastRefreshAt < 60_000) return
+      if (!useAuthStore.getState().isAuthenticated) return
+      lastRefreshAt = now
+      void useAuthStore.getState().refreshUser()
+    }
 
-    // Poll every 60 seconds
+    // Immediate refresh on mount
+    refreshIfStale(true)
+
+    // Poll every 60 seconds — never while the tab is hidden.
     const interval = setInterval(() => {
-      if (useAuthStore.getState().isAuthenticated) {
-        void useAuthStore.getState().refreshUser()
-      }
+      if (!document.hidden) refreshIfStale()
     }, 60_000)
 
-    // Also refresh when the tab becomes visible again (e.g. user switches back)
+    // Refresh when the tab becomes visible again ONLY if the last refresh is
+    // stale (a long-hidden tab), not on every tab switch.
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && useAuthStore.getState().isAuthenticated) {
-        void useAuthStore.getState().refreshUser()
-      }
+      if (document.visibilityState === 'visible') refreshIfStale()
     }
     document.addEventListener('visibilitychange', handleVisibility)
 
@@ -264,13 +273,8 @@ function App() {
     }
   }, [])
 
-  // Show global loader briefly on route change to indicate navigation
-  useEffect(() => {
-    if (!setLoading) return
-    setLoading(true)
-    const t = setTimeout(() => setLoading(false), 500)
-    return () => clearTimeout(t)
-  }, [location.pathname, setLoading])
+  // No artificial route-loading delay. The Suspense fallback already
+  // handles the loading state during lazy chunk loading.
 
   return (
     <Suspense fallback={<Loader force={true} />}>
@@ -281,7 +285,7 @@ function App() {
         <Route path="/demo/*" element={<DemoLayout />}>
           <Route index element={<DemoHome />} />
         </Route>
-        <Route path="/login" element={<PublicRoute><AuthLayout previewImage="/dashboard-preview.png"><Login /></AuthLayout></PublicRoute>} />
+        <Route path="/login" element={<PublicRoute><AuthLayout previewImage="/dashboard-preview.webp"><Login /></AuthLayout></PublicRoute>} />
         <Route path="/admin-request" element={<PublicRoute><AuthLayout maxWidth="max-w-5xl"><AdminRequest /></AuthLayout></PublicRoute>} />
         <Route path="/forgot-password" element={<PublicRoute><AuthLayout><ForgotPassword /></AuthLayout></PublicRoute>} />
         <Route path="/reset-password" element={<PublicRouteAllowAuth><AuthLayout><ResetPassword /></AuthLayout></PublicRouteAllowAuth>} />

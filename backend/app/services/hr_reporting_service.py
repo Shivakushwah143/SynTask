@@ -11,13 +11,23 @@ It delegates to the source-of-truth domain services.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.core.cache import DASHBOARD_KEY_PREFIX, cache_get, cache_set
 from app.core.clock import utc_now, ClockService
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _facet_count(bucket: Optional[List[Dict[str, Any]]]) -> int:
+    """Extract the count from a ``$count``-producing ``$facet`` bucket."""
+    if not bucket:
+        return 0
+    return int(bucket[0].get("n", 0))
 
 
 # =============================================================================
@@ -112,27 +122,104 @@ async def _resolve_employee_details(
 # Dashboard Metrics
 # =============================================================================
 
+def _hr_canvas_cache_key(company_id: str) -> str:
+    """Tenant-safe cache key for the HR dashboard canvas.
+
+    Uses the shared ``dashboard:data`` prefix and embeds the company id so the
+    existing ``company_dashboard_pattern`` invalidation clears it on writes and
+    a tenant can only ever read its own canvas.
+    """
+    return f"{DASHBOARD_KEY_PREFIX}:{company_id}:hr_canvas"
+
+
+async def build_hr_dashboard_canvas(company_id: str) -> Dict[str, Any]:
+    """Fetch every HR dashboard section in ONE parallel batch, cached per company.
+
+    All eight sections run concurrently via ``asyncio.gather``; each is
+    individually resilient — a failing section degrades to ``None`` exactly
+    like the previous per-section ``try/except`` in the endpoint. The result is
+    cached in Redis under a company-scoped, tenant-safe key with a short TTL
+    (``settings.DASHBOARD_CACHE_TTL``), so every dashboard request — and every
+    user in the tenant — shares one aggregation batch.
+    """
+    cache_key = _hr_canvas_cache_key(company_id)
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+
+    async def _safe(section: str, coro):
+        try:
+            return await coro
+        except Exception as exc:
+            logger.warning("HR dashboard section %s failed (non-critical): %s", section, exc)
+            return None
+
+    (
+        employee_summary,
+        attendance_today,
+        leave_summary,
+        document_summary,
+        lifecycle_summary,
+        recruitment_summary,
+        payroll_summary,
+        attention_items,
+    ) = await asyncio.gather(
+        _safe("employee_summary", get_employee_summary(company_id)),
+        _safe("attendance_today", get_attendance_today_summary(company_id)),
+        _safe("leave_summary", get_leave_summary(company_id)),
+        _safe("document_summary", get_document_summary(company_id)),
+        _safe("lifecycle_summary", get_lifecycle_summary(company_id)),
+        _safe("recruitment_summary", get_recruitment_summary(company_id)),
+        _safe("payroll_summary", get_payroll_summary(company_id)),
+        _safe("attention_items", get_attention_items(company_id)),
+    )
+
+    canvas: Dict[str, Any] = {
+        "employee_summary": employee_summary,
+        "attendance_today": attendance_today,
+        "leave_summary": leave_summary,
+        "document_summary": document_summary,
+        "lifecycle_summary": lifecycle_summary,
+        "recruitment_summary": recruitment_summary,
+        "payroll_summary": payroll_summary,
+        "attention_items": attention_items or [],
+    }
+    await cache_set(cache_key, canvas, ttl=settings.DASHBOARD_CACHE_TTL)
+    return canvas
+
+
 async def get_employee_summary(company_id: str) -> dict:
-    """Employee headcount summary — uses EmployeeProfile status directly."""
+    """Employee headcount summary — uses EmployeeProfile status directly.
+
+    One ``$facet`` aggregation replaces the previous full-collection load:
+    status/department/type distributions and the headcount are computed in
+    MongoDB and only the aggregate rows are transferred.
+    """
     from app.models.employee_profile import EmployeeProfile, EmploymentStatus
     from app.models.department import Department
 
-    profiles = await EmployeeProfile.find(
-        {"company_id": company_id}
-    ).to_list()
+    pipeline = [
+        {"$match": {"company_id": company_id}},
+        {"$facet": {
+            "total": [{"$count": "n"}],
+            "by_status": [
+                {"$group": {"_id": {"$ifNull": ["$employment_status", "unknown"]}, "count": {"$sum": 1}}},
+            ],
+            "by_dept": [
+                {"$group": {"_id": {"$ifNull": ["$department_id", "unassigned"]}, "count": {"$sum": 1}}},
+            ],
+            "by_type": [
+                {"$group": {"_id": {"$ifNull": ["$employment_type", "unknown"]}, "count": {"$sum": 1}}},
+            ],
+        }},
+    ]
+    result = await EmployeeProfile.get_pymongo_collection().aggregate(pipeline).to_list(length=1)
+    facet = result[0] if result else {}
 
-    total = len(profiles)
-    status_counts: Dict[str, int] = {}
-    dept_counts: Dict[str, int] = {}
-    type_counts: Dict[str, int] = {}
-
-    for p in profiles:
-        status = p.employment_status.value if p.employment_status else "unknown"
-        status_counts[status] = status_counts.get(status, 0) + 1
-        dept = p.department_id or "unassigned"
-        dept_counts[dept] = dept_counts.get(dept, 0) + 1
-        etype = p.employment_type.value if p.employment_type else "unknown"
-        type_counts[etype] = type_counts.get(etype, 0) + 1
+    total = _facet_count(facet.get("total"))
+    status_counts = {row["_id"]: int(row["count"]) for row in (facet.get("by_status") or [])}
+    dept_counts = {row["_id"]: int(row["count"]) for row in (facet.get("by_dept") or [])}
+    type_counts = {row["_id"]: int(row["count"]) for row in (facet.get("by_type") or [])}
 
     # Resolve department names
     dept_names = await _resolve_department_names(company_id, list(dept_counts.keys()))
@@ -162,7 +249,11 @@ async def get_employee_summary(company_id: str) -> dict:
 async def get_attendance_today_summary(company_id: str) -> dict:
     """Today's attendance summary using Phase 4 normalized HR statuses.
 
-    "Today" is the company business date (Phase 4 policy timezone).
+    "Today" is the company business date (Phase 4 policy timezone). Two light
+    round trips replace the previous full loads of every active profile and
+    every attendance record: an ids-only aggregation over active employees,
+    then one ``$facet`` over today's attendance for those employees that
+    returns status counts plus the distinct recorded employee count.
     """
     from app.models.attendance import Attendance
     from app.models.employee_profile import EmployeeProfile, EmploymentStatus
@@ -170,16 +261,17 @@ async def get_attendance_today_summary(company_id: str) -> dict:
 
     today_str = (await _company_business_date(company_id)).strftime("%Y-%m-%d")
 
-    # Only count active employees (not exited)
-    active_profiles = await EmployeeProfile.find(
-        {"company_id": company_id, "employment_status": {"$in": [
+    # Only count active employees (not exited) — ids-only, no documents.
+    active_rows = await EmployeeProfile.get_pymongo_collection().aggregate([
+        {"$match": {"company_id": company_id, "employment_status": {"$in": [
             EmploymentStatus.ACTIVE.value,
             EmploymentStatus.PROBATION.value,
             EmploymentStatus.ONBOARDING.value,
-        ]}}
-    ).to_list()
-
-    active_user_ids = [p.user_id for p in active_profiles if p.user_id]
+        ]}}},
+        {"$group": {"_id": None, "ids": {"$push": "$user_id"}}},
+    ]).to_list(length=1)
+    active = active_rows[0] if active_rows else {"ids": []}
+    active_user_ids = [uid for uid in (active.get("ids") or []) if uid]
     total_employees = len(active_user_ids)
 
     if not active_user_ids:
@@ -190,20 +282,31 @@ async def get_attendance_today_summary(company_id: str) -> dict:
             "holiday": 0, "week_off": 0, "in_progress": 0, "no_record": 0,
         }
 
-    # Get today's attendance records for active employees
-    attendance_records = await Attendance.find(
-        {"company_id": company_id, "employee_id": {"$in": active_user_ids}, "date": today_str}
-    ).to_list()
+    # Today's attendance for active employees: status counts + distinct
+    # employees with a record, in one facet.
+    facet_rows = await Attendance.get_pymongo_collection().aggregate([
+        {"$match": {
+            "company_id": company_id,
+            "employee_id": {"$in": active_user_ids},
+            "date": today_str,
+        }},
+        {"$facet": {
+            "by_status": [
+                {"$group": {"_id": {"$ifNull": ["$hr_status", HRAttendanceStatus.NO_RECORD.value]}, "count": {"$sum": 1}}},
+            ],
+            "recorded": [
+                {"$group": {"_id": "$employee_id"}},
+                {"$count": "n"},
+            ],
+        }},
+    ]).to_list(length=1)
+    facet = facet_rows[0] if facet_rows else {}
 
-    # Count by hr_status
-    status_counts: Dict[str, int] = {}
-    for record in attendance_records:
-        hr_status = record.hr_status or HRAttendanceStatus.NO_RECORD.value
-        status_counts[hr_status] = status_counts.get(hr_status, 0) + 1
+    status_counts = {row["_id"]: int(row["count"]) for row in (facet.get("by_status") or [])}
+    recorded_count = _facet_count(facet.get("recorded"))
 
     # Employees without attendance records
-    recorded_ids = {r.employee_id for r in attendance_records}
-    no_record = total_employees - len(recorded_ids)
+    no_record = total_employees - recorded_count
 
     return {
         "date": today_str,
@@ -226,6 +329,10 @@ async def get_leave_summary(company_id: str) -> dict:
     """Leave summary — pending requests, this month's activity, on leave today.
 
     "On leave today" uses the company business date (Phase 4 policy timezone).
+    One ``$facet`` aggregation over leave_requests produces all five buckets
+    (including per-type approved units grouped by ``leave_type_id`` + legacy
+    ``leave_type``) in a single round trip; leave type names come from a
+    projected fetch of the small LeaveTypeConfig collection.
     """
     from app.models.leave import LeaveRequest, LeaveStatus, LeaveTypeConfig
 
@@ -235,62 +342,66 @@ async def get_leave_summary(company_id: str) -> dict:
     today_end = today_start + timedelta(days=1)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    # Pending requests
-    pending_count = await LeaveRequest.find(
-        {"company_id": company_id, "status": LeaveStatus.PENDING.value}
-    ).count()
+    pipeline = [
+        {"$match": {"company_id": company_id}},
+        {"$facet": {
+            "pending": [
+                {"$match": {"status": LeaveStatus.PENDING.value}},
+                {"$count": "n"},
+            ],
+            "approved_month": [
+                {"$match": {"status": LeaveStatus.APPROVED.value, "updated_at": {"$gte": month_start}}},
+                {"$count": "n"},
+            ],
+            "rejected_month": [
+                {"$match": {"status": LeaveStatus.REJECTED.value, "updated_at": {"$gte": month_start}}},
+                {"$count": "n"},
+            ],
+            "on_leave_today": [
+                {"$match": {
+                    "status": LeaveStatus.APPROVED.value,
+                    "start_date": {"$lte": today_end},
+                    "end_date": {"$gte": today_start},
+                }},
+                {"$count": "n"},
+            ],
+            "approved_by_type": [
+                {"$match": {"status": LeaveStatus.APPROVED.value, "start_date": {"$gte": month_start}}},
+                {"$group": {
+                    "_id": {"ltid": "$leave_type_id", "lt": "$leave_type"},
+                    "units": {"$sum": "$requested_units"},
+                }},
+            ],
+        }},
+    ]
+    facet_rows, type_docs = await asyncio.gather(
+        LeaveRequest.get_pymongo_collection().aggregate(pipeline).to_list(length=1),
+        LeaveTypeConfig.get_pymongo_collection().find(
+            {"company_id": company_id, "active": True}, {"name": 1}
+        ).to_list(length=None),
+    )
+    facet = facet_rows[0] if facet_rows else {}
+    type_map = {str(t["_id"]): t["name"] for t in type_docs}
 
-    # Approved this month
-    approved_month = await LeaveRequest.find(
-        {
-            "company_id": company_id,
-            "status": LeaveStatus.APPROVED.value,
-            "updated_at": {"$gte": month_start},
-        }
-    ).count()
-
-    # Rejected this month
-    rejected_month = await LeaveRequest.find(
-        {
-            "company_id": company_id,
-            "status": LeaveStatus.REJECTED.value,
-            "updated_at": {"$gte": month_start},
-        }
-    ).count()
-
-    # Employees on leave today
-    on_leave_today = await LeaveRequest.find(
-        {
-            "company_id": company_id,
-            "status": LeaveStatus.APPROVED.value,
-            "start_date": {"$lte": today_end},
-            "end_date": {"$gte": today_start},
-        }
-    ).count()
-
-    # Leave by type — approved units by type for the current year
-    leave_types = await LeaveTypeConfig.find(
-        {"company_id": company_id, "active": True}
-    ).to_list()
-    type_map = {str(lt.id): lt.name for lt in leave_types}
-
+    # Leave by type — approved units grouped by (leave_type_id, legacy leave_type).
     leave_by_type: Dict[str, float] = {}
-    approved_requests = await LeaveRequest.find(
-        {
-            "company_id": company_id,
-            "status": LeaveStatus.APPROVED.value,
-            "start_date": {"$gte": month_start},
-        }
-    ).to_list()
-    for req in approved_requests:
-        type_name = type_map.get(req.leave_type_id, req.leave_type.value if req.leave_type else "Other")
-        leave_by_type[type_name] = leave_by_type.get(type_name, 0) + req.requested_units
+    for row in facet.get("approved_by_type") or []:
+        key = row.get("_id") or {}
+        ltid = key.get("ltid")
+        lt = key.get("lt")
+        if ltid and ltid in type_map:
+            type_name = type_map[ltid]
+        elif lt:
+            type_name = lt
+        else:
+            type_name = "Other"
+        leave_by_type[type_name] = leave_by_type.get(type_name, 0.0) + float(row.get("units") or 0)
 
     return {
-        "pending_requests": pending_count,
-        "approved_this_month": approved_month,
-        "rejected_this_month": rejected_month,
-        "on_leave_today": on_leave_today,
+        "pending_requests": _facet_count(facet.get("pending")),
+        "approved_this_month": _facet_count(facet.get("approved_month")),
+        "rejected_this_month": _facet_count(facet.get("rejected_month")),
+        "on_leave_today": _facet_count(facet.get("on_leave_today")),
         "leave_by_type": [
             {"type": name, "units": units}
             for name, units in sorted(leave_by_type.items(), key=lambda x: -x[1])
@@ -299,117 +410,146 @@ async def get_leave_summary(company_id: str) -> dict:
 
 
 async def get_document_summary(company_id: str) -> dict:
-    """Document expiry summary — uses Phase 2 expiry states."""
+    """Document expiry summary — uses Phase 2 expiry states.
+
+    One ``$facet`` aggregation mirrors ``compute_expiry_state`` (expired <
+    today, expiring_soon today..today+30d, valid beyond) so no document body
+    is ever loaded; documents without an expiry_date count toward
+    ``total_active`` only.
+    """
     from app.models.hr_document import HRDocument, HRDocumentStatus
-    from app.services.hr_document_service import compute_expiry_state
 
-    documents = await HRDocument.find(
-        {"company_id": company_id, "status": HRDocumentStatus.ACTIVE.value}
-    ).to_list()
+    now = utc_now()
+    today = now.date()
+    day_start = datetime(today.year, today.month, today.day)
+    soon_end = day_start + timedelta(days=30)
 
-    total = len(documents)
-    expired = 0
-    expiring_soon = 0
-    valid = 0
-
-    for doc in documents:
-        state = compute_expiry_state(doc.expiry_date)
-        if state == "expired":
-            expired += 1
-        elif state == "expiring_soon":
-            expiring_soon += 1
-        else:
-            valid += 1
+    pipeline = [
+        {"$match": {"company_id": company_id, "status": HRDocumentStatus.ACTIVE.value}},
+        {"$facet": {
+            "total": [{"$count": "n"}],
+            "expired": [{"$match": {"expiry_date": {"$lt": day_start}}}, {"$count": "n"}],
+            "expiring_soon": [
+                {"$match": {"expiry_date": {"$gte": day_start, "$lte": soon_end}}},
+                {"$count": "n"},
+            ],
+            "valid": [{"$match": {"expiry_date": {"$gt": soon_end}}}, {"$count": "n"}],
+        }},
+    ]
+    result = await HRDocument.get_pymongo_collection().aggregate(pipeline).to_list(length=1)
+    facet = result[0] if result else {}
 
     return {
-        "total_active": total,
-        "expired": expired,
-        "expiring_soon": expiring_soon,
-        "valid": valid,
+        "total_active": _facet_count(facet.get("total")),
+        "expired": _facet_count(facet.get("expired")),
+        "expiring_soon": _facet_count(facet.get("expiring_soon")),
+        "valid": _facet_count(facet.get("valid")),
     }
 
 
 async def get_lifecycle_summary(company_id: str) -> dict:
-    """Lifecycle summary — probation, confirmations due, notice period."""
+    """Lifecycle summary — probation, confirmations due, notice period.
+
+    One ``$facet`` over employee_profiles yields all four profile counts;
+    the separation-request count runs in parallel. No documents are loaded.
+    """
     from app.models.employee_profile import EmployeeProfile, EmploymentStatus
-    from app.models.lifecycle import EmployeeLifecycleEvent, LifecycleEventType, EmployeeSeparationRequest, SeparationStatus
+    from app.models.lifecycle import EmployeeSeparationRequest, SeparationStatus
 
     now = utc_now()
     thirty_days_later = now + timedelta(days=30)
 
-    # Employees on probation
-    probation_count = await EmployeeProfile.find(
-        {"company_id": company_id, "employment_status": EmploymentStatus.PROBATION.value}
-    ).count()
-
-    # Probation ending within 30 days (confirmation due)
-    probation_profiles = await EmployeeProfile.find(
-        {
-            "company_id": company_id,
-            "employment_status": EmploymentStatus.PROBATION.value,
-            "probation.end_date": {"$lte": thirty_days_later, "$gte": now},
-        }
-    ).to_list()
-    confirmations_due = len(probation_profiles)
-
-    # Notice period
-    notice_period_count = await EmployeeProfile.find(
-        {"company_id": company_id, "employment_status": EmploymentStatus.NOTICE_PERIOD.value}
-    ).count()
-
-    # Upcoming joinings (onboarding employees)
-    upcoming_joinings = await EmployeeProfile.find(
-        {"company_id": company_id, "employment_status": EmploymentStatus.ONBOARDING.value}
-    ).count()
-
-    # Upcoming exits (active separation requests)
-    upcoming_exits = await EmployeeSeparationRequest.find(
-        {
+    pipeline = [
+        {"$match": {"company_id": company_id}},
+        {"$facet": {
+            "probation": [
+                {"$match": {"employment_status": EmploymentStatus.PROBATION.value}},
+                {"$count": "n"},
+            ],
+            "confirmations_due": [
+                {"$match": {
+                    "employment_status": EmploymentStatus.PROBATION.value,
+                    "probation.end_date": {"$lte": thirty_days_later, "$gte": now},
+                }},
+                {"$count": "n"},
+            ],
+            "notice_period": [
+                {"$match": {"employment_status": EmploymentStatus.NOTICE_PERIOD.value}},
+                {"$count": "n"},
+            ],
+            "onboarding": [
+                {"$match": {"employment_status": EmploymentStatus.ONBOARDING.value}},
+                {"$count": "n"},
+            ],
+        }},
+    ]
+    exits_count, facet_rows = await asyncio.gather(
+        EmployeeSeparationRequest.get_pymongo_collection().count_documents({
             "company_id": company_id,
             "status": {"$in": [
                 SeparationStatus.SUBMITTED.value,
                 SeparationStatus.UNDER_REVIEW.value,
                 SeparationStatus.ACCEPTED.value,
             ]},
-        }
-    ).count()
+        }),
+        EmployeeProfile.get_pymongo_collection().aggregate(pipeline).to_list(length=1),
+    )
+    facet = facet_rows[0] if facet_rows else {}
 
     return {
-        "probation_count": probation_count,
-        "confirmations_due": confirmations_due,
-        "notice_period_count": notice_period_count,
-        "upcoming_joinings": upcoming_joinings,
-        "upcoming_exits": upcoming_exits,
+        "probation_count": _facet_count(facet.get("probation")),
+        "confirmations_due": _facet_count(facet.get("confirmations_due")),
+        "notice_period_count": _facet_count(facet.get("notice_period")),
+        "upcoming_joinings": _facet_count(facet.get("onboarding")),
+        "upcoming_exits": int(exits_count or 0),
     }
 
 
 async def get_recruitment_summary(company_id: str) -> dict:
-    """Recruitment summary — compact hiring funnel stats."""
-    from app.recruitment.models import Job, Candidate, ApplicationStatus
+    """Recruitment summary — compact hiring funnel stats.
 
-    jobs = await Job.find({"company_id": company_id}).to_list()
-    open_jobs = sum(1 for j in jobs if getattr(j, "status", None) in ("open", "active", None))
+    Two parallel aggregations return only the aggregate rows. This also fixes
+    the previous implementation, which imported non-existent ``Job`` /
+    ``ApplicationStatus`` names from ``app.recruitment.models`` and therefore
+    always raised, silently producing ``recruitment_summary=None``. Open jobs
+    follow the canonical recruitment definition
+    (``lifecycle_status`` in published/approved/paused).
+    """
+    from app.recruitment.models import RecruitmentJob, Candidate
 
-    candidates = await Candidate.find({"company_id": company_id}).to_list()
-    total_candidates = len(candidates)
+    job_pipeline = [
+        {"$match": {"company_id": company_id}},
+        {"$facet": {
+            "open": [
+                {"$match": {"lifecycle_status": {"$in": ["published", "approved", "paused"]}}},
+                {"$count": "n"},
+            ],
+        }},
+    ]
+    candidate_pipeline = [
+        {"$match": {"company_id": company_id}},
+        {"$group": {"_id": {"$ifNull": ["$status", "unknown"]}, "count": {"$sum": 1}}},
+    ]
+    job_facet, candidate_rows = await asyncio.gather(
+        RecruitmentJob.get_pymongo_collection().aggregate(job_pipeline).to_list(length=1),
+        Candidate.get_pymongo_collection().aggregate(candidate_pipeline).to_list(length=None),
+    )
+    job_result = job_facet[0] if job_facet else {}
+    status_counts = {
+        str(row["_id"]): int(row["count"])
+        for row in (candidate_rows or [])
+    }
 
-    # Count by status
-    status_counts: Dict[str, int] = {}
-    for c in candidates:
-        status = getattr(c, "status", "unknown")
-        if isinstance(status, str):
-            status_lower = status.lower()
-        else:
-            status_lower = str(status.value).lower() if hasattr(status, "value") else "unknown"
-        status_counts[status_lower] = status_counts.get(status_lower, 0) + 1
+    def _sum(*keys: str) -> int:
+        return sum(status_counts.get(k, 0) for k in keys)
 
     return {
-        "open_jobs": open_jobs,
-        "total_candidates": total_candidates,
-        "shortlisted": status_counts.get("shortlisted", 0) + status_counts.get("screening", 0),
-        "interviewing": status_counts.get("interviewing", 0) + status_counts.get("interview", 0),
-        "offers_sent": status_counts.get("offered", 0) + status_counts.get("offer_sent", 0),
-        "hired": status_counts.get("hired", 0) + status_counts.get("joined", 0),
+        "open_jobs": _facet_count(job_result.get("open")),
+        "total_candidates": sum(status_counts.values()),
+        "shortlisted": _sum("shortlisted", "screening"),
+        "interviewing": _sum("interview_1", "interview_2", "interviewing", "interview"),
+        "offers_sent": _sum("offer_sent", "offered"),
+        "hired": _sum("joined", "employee", "hired"),
     }
 
 
@@ -438,20 +578,55 @@ async def get_payroll_summary(company_id: str) -> Optional[dict]:
 
 
 async def get_attention_items(company_id: str) -> list:
-    """Build actionable attention items — only items the user can act on."""
+    """Build actionable attention items — only items the user can act on.
+
+    All five probes run as parallel ``count_documents`` calls (one projected
+    latest-period lookup) instead of five sequential queries plus a full
+    document load for the expiring-document check.
+    """
     from app.models.leave import LeaveRequest, LeaveStatus
     from app.models.attendance import AttendanceCorrectionRequest, CorrectionStatus
     from app.models.hr_document import HRDocument, HRDocumentStatus
-    from app.models.payroll import PayrollRecord, PayrollRecordStatus
+    from app.models.payroll import PayrollPeriod, PayrollPeriodStatus, PayrollRecord, PayrollRecordStatus
     from app.models.employee_profile import EmployeeProfile, EmploymentStatus
-    from app.services.hr_document_service import compute_expiry_state
+
+    now = utc_now()
+    thirty_days = now + timedelta(days=30)
+    today = now.date()
+    day_start = datetime(today.year, today.month, today.day)
+    soon_end = day_start + timedelta(days=30)
+
+    (
+        pending_leaves,
+        pending_corrections,
+        expiring_count,
+        confirmations_due,
+        latest_periods,
+    ) = await asyncio.gather(
+        LeaveRequest.get_pymongo_collection().count_documents({
+            "company_id": company_id, "status": LeaveStatus.PENDING.value,
+        }),
+        AttendanceCorrectionRequest.get_pymongo_collection().count_documents({
+            "company_id": company_id, "status": CorrectionStatus.PENDING.value,
+        }),
+        HRDocument.get_pymongo_collection().count_documents({
+            "company_id": company_id,
+            "status": HRDocumentStatus.ACTIVE.value,
+            "expiry_date": {"$gte": day_start, "$lte": soon_end},
+        }),
+        EmployeeProfile.get_pymongo_collection().count_documents({
+            "company_id": company_id,
+            "employment_status": EmploymentStatus.PROBATION.value,
+            "probation.end_date": {"$lte": thirty_days, "$gte": now},
+        }),
+        PayrollPeriod.get_pymongo_collection().find(
+            {"company_id": company_id, "status": PayrollPeriodStatus.CALCULATED.value},
+            {"_id": 1},
+        ).sort([("year", -1), ("month", -1)]).limit(1).to_list(length=1),
+    )
 
     items = []
 
-    # Pending leave requests
-    pending_leaves = await LeaveRequest.find(
-        {"company_id": company_id, "status": LeaveStatus.PENDING.value}
-    ).count()
     if pending_leaves > 0:
         items.append({
             "type": "leave_pending",
@@ -461,10 +636,6 @@ async def get_attention_items(company_id: str) -> list:
             "route": "/leaves",
         })
 
-    # Pending attendance corrections
-    pending_corrections = await AttendanceCorrectionRequest.find(
-        {"company_id": company_id, "status": CorrectionStatus.PENDING.value}
-    ).count()
     if pending_corrections > 0:
         items.append({
             "type": "correction_pending",
@@ -474,11 +645,6 @@ async def get_attention_items(company_id: str) -> list:
             "route": "/attendance/corrections",
         })
 
-    # Expiring documents
-    expiring_docs = await HRDocument.find(
-        {"company_id": company_id, "status": HRDocumentStatus.ACTIVE.value}
-    ).to_list()
-    expiring_count = sum(1 for d in expiring_docs if compute_expiry_state(d.expiry_date) == "expiring_soon")
     if expiring_count > 0:
         items.append({
             "type": "document_expiring",
@@ -488,17 +654,6 @@ async def get_attention_items(company_id: str) -> list:
             "route": "/hr/documents",
         })
 
-    # Probation confirmations due
-    from datetime import timedelta
-    now = utc_now()
-    thirty_days = now + timedelta(days=30)
-    confirmations_due = await EmployeeProfile.find(
-        {
-            "company_id": company_id,
-            "employment_status": EmploymentStatus.PROBATION.value,
-            "probation.end_date": {"$lte": thirty_days, "$gte": now},
-        }
-    ).count()
     if confirmations_due > 0:
         items.append({
             "type": "probation_due",
@@ -508,15 +663,12 @@ async def get_attention_items(company_id: str) -> list:
             "route": "/hr/employees",
         })
 
-    # Blocked payroll records (latest period)
-    from app.models.payroll import PayrollPeriod, PayrollPeriodStatus
-    latest_periods = await PayrollPeriod.find(
-        {"company_id": company_id, "status": PayrollPeriodStatus.CALCULATED.value}
-    ).sort("-year", "-month").limit(1).to_list()
     if latest_periods:
-        blocked = await PayrollRecord.find(
-            {"company_id": company_id, "payroll_period_id": str(latest_periods[0].id), "status": PayrollRecordStatus.BLOCKED.value}
-        ).count()
+        blocked = await PayrollRecord.get_pymongo_collection().count_documents({
+            "company_id": company_id,
+            "payroll_period_id": str(latest_periods[0]["_id"]),
+            "status": PayrollRecordStatus.BLOCKED.value,
+        })
         if blocked > 0:
             items.append({
                 "type": "payroll_blocked",

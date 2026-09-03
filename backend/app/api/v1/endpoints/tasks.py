@@ -542,11 +542,19 @@ async def list_tasks(
         scheduled_jobs = await ScheduledJob.find(scheduled_query).sort("run_at").to_list()
         scheduled_task_placeholders = [serialize_scheduled_task_placeholder(job) for job in scheduled_jobs]
         total += len(scheduled_task_placeholders)
+    # Batch-resolve assignee names in ONE query instead of one User.get per
+    # distinct assignee on the page.
     assignee_names = {}
-    for assignee_id in {task.assigned_to for task in tasks if task.assigned_to}:
-        assignee = await User.get(assignee_id)
-        if assignee:
-            assignee_names[str(assignee.id)] = f"{assignee.first_name} {assignee.last_name}".strip() or assignee.email
+    assignee_ids = {task.assigned_to for task in tasks if task.assigned_to}
+    if assignee_ids:
+        from bson import ObjectId
+        valid_ids = [ObjectId(aid) for aid in assignee_ids if ObjectId.is_valid(aid)]
+        if valid_ids:
+            assignees = await User.find({"_id": {"$in": valid_ids}}).to_list()
+            assignee_names = {
+                str(assignee.id): f"{assignee.first_name} {assignee.last_name}".strip() or assignee.email
+                for assignee in assignees
+            }
 
     return {
         "tasks": scheduled_task_placeholders + [
@@ -950,7 +958,7 @@ async def delete_task(
     await _assert_task_manage(current_user, task)
 
     await task.delete()
-    await cache_delete_pattern(f"dashboard:stats:{task.company_id}:*")
+    await cache_delete_pattern(company_dashboard_pattern(str(task.company_id)))
 
     await publish_event(
         build_domain_event(
@@ -1222,7 +1230,7 @@ async def add_task_comment(
     # Update task's updated_at
     task.updated_at = utc_now()
     await task.save()
-    await cache_delete_pattern(f"dashboard:stats:{task.company_id}:*")
+    await cache_delete_pattern(company_dashboard_pattern(str(task.company_id)))
     await _notify_task_comment(task, comment, current_user)
 
     await publish_event(

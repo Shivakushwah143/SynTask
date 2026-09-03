@@ -183,6 +183,7 @@ class Settings(BaseSettings):
     REDIS_RETRY_ATTEMPTS: int = 3
     REDIS_RETRY_BASE_DELAY_SECONDS: float = 0.2
     DASHBOARD_CACHE_TTL: int = Field(30, description="Cache TTL for dashboard payloads (seconds)")
+    SEARCH_CACHE_TTL: int = Field(15, description="Cache TTL for global search results (seconds)")
 
     # Celery (Background tasks)
     CELERY_BROKER_URL: Optional[str] = None

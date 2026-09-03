@@ -11,6 +11,7 @@ simultaneously — it decides which tools to call based on the investigation.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
@@ -111,22 +112,35 @@ class GetPendingMeetingFollowupsArgs(BaseModel):
     days: int = Field(default=14, ge=1, le=60)
 
 
-class SearchEmployeesArgs(BaseModel):
-    query: str = Field(..., min_length=1, max_length=200, description="Name, email, or employee number")
-    limit: int = Field(default=5, ge=1, le=20)
-
-
-class GetEmployee360Args(BaseModel):
-    employee_id: str = Field(..., min_length=1, description="Employee profile _id or user_id")
-
-
-class GetHrAttentionSummaryArgs(BaseModel):
-    pass
-
-
 class GetEntityDocumentsArgs(BaseModel):
-    entity_type: str = Field(..., description="Type: employee, client, project")
+    entity_type: str = Field(..., description="Type: employee or client")
     entity_id: str = Field(..., min_length=1, description="Entity _id")
+
+
+# ---------------------------------------------------------------------------
+# HR Specialist tool schemas — imported from HR domain, not duplicated.
+# Executive owns the final response; HR tools are implementation-only.
+# ---------------------------------------------------------------------------
+from app.agents.hr.tools import (
+    GetEmployee360Args,
+    GetHrAttentionSummaryArgs,
+    SearchEmployeesArgs,
+    SearchCandidatesArgs,
+    GetCandidate360Args,
+    SearchJobsArgs,
+    GetJob360Args,
+    GetEmployeeAttendanceArgs,
+    GetEmployeeLeaveArgs,
+    GetEmployeeDocumentsArgs,
+    GetRecruitmentOverviewArgs,
+    GetInterviewsArgs,
+    GetInterviewFeedbackStatusArgs,
+    GetOfferStatusArgs,
+    GetEmployeeSalaryArgs,
+    GetPayrollStatusArgs,
+    GetPayrollBlockersArgs,
+    GetEmployeePayslipStatusArgs,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +236,7 @@ EXECUTIVE_TOOL_SCHEMAS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_client_360",
-            "description": "Get a comprehensive client view: profile, status, linked projects, tasks, invoices, meetings, and activity.",
+            "description": "Get a comprehensive client view: profile, status, linked projects, tasks, invoices, and meetings.",
             "parameters": GetClient360Args.model_json_schema(),
         },
     },
@@ -255,7 +269,7 @@ EXECUTIVE_TOOL_SCHEMAS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_lead_360",
-            "description": "Get a comprehensive lead view: profile, stage, activity history, associated contacts, and pipeline position.",
+            "description": "Get a comprehensive lead view: profile, stage, qualification status, follow-up schedule, and pipeline position.",
             "parameters": GetLead360Args.model_json_schema(),
         },
     },
@@ -323,8 +337,130 @@ EXECUTIVE_TOOL_SCHEMAS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_entity_documents",
-            "description": "Get documents associated with an entity (employee, client, or project).",
+            "description": "Get documents associated with an entity (employee or client).",
             "parameters": GetEntityDocumentsArgs.model_json_schema(),
+        },
+    },
+    # ── HR Deep: Recruitment ───────────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "search_candidates",
+            "description": "Search for candidates by name, email, or id. Optionally filter by job.",
+            "parameters": SearchCandidatesArgs.model_json_schema(),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_candidate_360",
+            "description": "Get a comprehensive view of a candidate: profile, applications, resume, scores, interviews, feedback, offers, and timeline.",
+            "parameters": GetCandidate360Args.model_json_schema(),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_jobs",
+            "description": "Search for job openings by title, id, or slug.",
+            "parameters": SearchJobsArgs.model_json_schema(),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_job_360",
+            "description": "Get a comprehensive view of a job opening: details, pipeline counts, candidates by stage, interviews, offers, and bottlenecks.",
+            "parameters": GetJob360Args.model_json_schema(),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_recruitment_overview",
+            "description": "Get an overview of the recruitment pipeline: open jobs, candidate counts by stage, recent activity, and bottlenecks.",
+            "parameters": GetRecruitmentOverviewArgs.model_json_schema(),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_interviews",
+            "description": "Get interviews filtered by job, candidate, or status.",
+            "parameters": GetInterviewsArgs.model_json_schema(),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_interview_feedback_status",
+            "description": "Get interviews that are completed but missing interviewer feedback.",
+            "parameters": GetInterviewFeedbackStatusArgs.model_json_schema(),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_offer_status",
+            "description": "Get offers filtered by candidate, job, or status.",
+            "parameters": GetOfferStatusArgs.model_json_schema(),
+        },
+    },
+    # ── HR Deep: Attendance, Leave, Salary, Payroll ────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "get_employee_attendance",
+            "description": "Get attendance records for an employee within a date range.",
+            "parameters": GetEmployeeAttendanceArgs.model_json_schema(),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_employee_leave",
+            "description": "Get leave requests and balances for an employee.",
+            "parameters": GetEmployeeLeaveArgs.model_json_schema(),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_employee_documents",
+            "description": "Get HR documents (uploaded docs, compliance status) for an employee.",
+            "parameters": GetEmployeeDocumentsArgs.model_json_schema(),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_employee_salary",
+            "description": "Get salary structure for an employee. Only available when payroll module exists in the branch.",
+            "parameters": GetEmployeeSalaryArgs.model_json_schema(),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_payroll_status",
+            "description": "Get payroll status overview. Only available when payroll module exists.",
+            "parameters": GetPayrollStatusArgs.model_json_schema(),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_payroll_blockers",
+            "description": "Get payroll blockers (missing salary structures, incomplete data). Only available when payroll module exists.",
+            "parameters": GetPayrollBlockersArgs.model_json_schema(),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_employee_payslip_status",
+            "description": "Get payslip generation status for an employee. Only available when payroll module exists.",
+            "parameters": GetEmployeePayslipStatusArgs.model_json_schema(),
         },
     },
 ]
@@ -419,75 +555,6 @@ async def _resolve_user_by_name(company_id: str, identifier: str) -> Optional[st
     return None
 
 
-async def _resolve_employee(company_id: str, identifier: str):
-    """Resolve an employee profile by id, user_id, name, or email."""
-    from app.models.employee_profile import EmployeeProfile
-    from app.models.user import User
-
-    # Try exact _id (may fail if not a valid ObjectId)
-    try:
-        profile = await EmployeeProfile.get(identifier)
-        if profile and profile.company_id == company_id:
-            return profile
-    except Exception:
-        pass
-
-    # Try user_id
-    profile = await EmployeeProfile.find_one(
-        {"company_id": company_id, "user_id": identifier}
-    )
-    if profile:
-        return profile
-
-    # Try employee_number
-    profile = await EmployeeProfile.find_one(
-        {"company_id": company_id, "employee_number": identifier}
-    )
-    if profile:
-        return profile
-
-    # Name/email search
-    term = identifier.strip()
-    users = await User.find({
-        "company_id": company_id,
-        "$or": [
-            {"first_name": {"$regex": term, "$options": "i"}},
-            {"last_name": {"$regex": term, "$options": "i"}},
-            {"email": {"$regex": term, "$options": "i"}},
-        ],
-    }).limit(1).to_list()
-
-    if users:
-        profile = await EmployeeProfile.find_one(
-            {"company_id": company_id, "user_id": str(users[0].id)}
-        )
-        if profile:
-            return profile
-
-    return None
-
-
-async def _serialize_employee(profile, user=None) -> dict:
-    """Serialize an employee profile into a concise dict for the LLM."""
-    from app.models.user import User
-    from app.services.employee_profile_service import build_detail
-
-    if user is None:
-        user = await User.get(profile.user_id)
-    if not user:
-        return {"id": str(profile.id), "error": "User account not found"}
-    detail = await build_detail(profile, user)
-    return {
-        "id": detail["id"],
-        "employee_number": detail.get("employee_number"),
-        "full_name": detail.get("full_name"),
-        "email": detail.get("email"),
-        "department": detail.get("department_name"),
-        "designation": detail.get("designation"),
-        "status": detail.get("employment_status"),
-    }
-
-
 async def _get_user_display_name(company_id: str, user_id: str) -> str:
     """Get a display name for a user_id."""
     from app.models.user import User
@@ -571,11 +638,13 @@ async def execute_get_company_summary(company_id: str, args: GetCompanySummaryAr
     active_leads = await SalesProspect.find({
         "company_id": company_id,
         "status": ProspectStatus.ACTIVE.value,
+        "deleted": False,
     }).count()
     won_this_month = await SalesProspect.find({
         "company_id": company_id,
         "status": ProspectStatus.WON.value,
         "closed_date": {"$gte": datetime.utcnow().replace(day=1)},
+        "deleted": False,
     }).count()
 
     # Finance
@@ -659,12 +728,14 @@ async def execute_get_company_attention_summary(company_id: str, args: GetCompan
         "company_id": company_id,
         "status": ProspectStatus.ACTIVE.value,
         "next_follow_up_at": {"$lt": datetime.utcnow()},
+        "deleted": False,
     }).count()
     no_followup = await SalesProspect.find({
         "company_id": company_id,
         "status": ProspectStatus.ACTIVE.value,
         "next_follow_up_at": None,
         "stage_entered_at": {"$lt": datetime.utcnow() - timedelta(days=3)},
+        "deleted": False,
     }).count()
     if stale_leads or no_followup:
         items.append({
@@ -1706,25 +1777,9 @@ async def execute_get_pending_meeting_followups(company_id: str, args: GetPendin
 
 
 async def execute_search_employees(company_id: str, args: SearchEmployeesArgs) -> dict:
-    """Search employees within company scope."""
-    from app.services.employee_profile_service import list_employees
-
-    items, total = await list_employees(company_id, search=args.query, page_size=args.limit)
-    return {
-        "total": total,
-        "employees": [
-            {
-                "id": item["id"],
-                "employee_number": item.get("employee_number"),
-                "full_name": item.get("full_name"),
-                "email": item.get("email"),
-                "department": item.get("department_name"),
-                "designation": item.get("designation"),
-                "status": item.get("employment_status"),
-            }
-            for item in items[:args.limit]
-        ],
-    }
+    """Search employees within company scope — delegates to the HR domain implementation."""
+    from app.agents.hr.tools import execute_search_employees as hr_execute_search_employees
+    return await hr_execute_search_employees(company_id, args)
 
 
 async def execute_get_employee_360(company_id: str, args: GetEmployee360Args) -> dict:
@@ -1745,7 +1800,7 @@ async def execute_get_entity_documents(company_id: str, args: GetEntityDocuments
 
     if entity_type == "employee":
         from app.models.hr_document import HRDocument
-        from app.models.employee_profile import EmployeeProfile
+        from app.agents.hr.tools import _resolve_employee
 
         profile = await _resolve_employee(company_id, args.entity_id)
         if not profile:
@@ -1797,6 +1852,78 @@ async def execute_get_entity_documents(company_id: str, args: GetEntityDocuments
 
 
 # ---------------------------------------------------------------------------
+# HR Deep tool implementations (delegate to HR domain tools)
+# ---------------------------------------------------------------------------
+
+async def _hr_delegate(tool_name: str, company_id: str, args: Any) -> dict:
+    """Delegate to the HR tools implementation for tools owned by the HR domain."""
+    from app.agents.hr.tools import TOOL_DISPATCH as HR_DISPATCH, ARG_SCHEMAS as HR_SCHEMAS
+    # Validate with HR-specific schema if available
+    schema = HR_SCHEMAS.get(tool_name)
+    if schema:
+        try:
+            if isinstance(args, BaseModel):
+                validated = schema(**args.model_dump())
+            else:
+                validated = schema(**args)
+        except Exception as exc:
+            return {"error": f"Invalid arguments for {tool_name}: {exc}"}
+    else:
+        validated = args
+    impl = HR_DISPATCH.get(tool_name)
+    if not impl:
+        return {"error": f"HR tool not found: {tool_name}"}
+    return await impl(company_id, validated)
+
+
+# Named wrappers so each HR tool has a clear dispatcher entry.
+async def _exec_search_candidates(cid: str, a: SearchCandidatesArgs) -> dict:
+    return await _hr_delegate("search_candidates", cid, a)
+
+async def _exec_get_candidate_360(cid: str, a: GetCandidate360Args) -> dict:
+    return await _hr_delegate("get_candidate_360", cid, a)
+
+async def _exec_search_jobs(cid: str, a: SearchJobsArgs) -> dict:
+    return await _hr_delegate("search_jobs", cid, a)
+
+async def _exec_get_job_360(cid: str, a: GetJob360Args) -> dict:
+    return await _hr_delegate("get_job_360", cid, a)
+
+async def _exec_get_recruitment_overview(cid: str, a: GetRecruitmentOverviewArgs) -> dict:
+    return await _hr_delegate("get_recruitment_overview", cid, a)
+
+async def _exec_get_interviews(cid: str, a: GetInterviewsArgs) -> dict:
+    return await _hr_delegate("get_interviews", cid, a)
+
+async def _exec_get_interview_feedback_status(cid: str, a: GetInterviewFeedbackStatusArgs) -> dict:
+    return await _hr_delegate("get_interview_feedback_status", cid, a)
+
+async def _exec_get_offer_status(cid: str, a: GetOfferStatusArgs) -> dict:
+    return await _hr_delegate("get_offer_status", cid, a)
+
+async def _exec_get_employee_attendance(cid: str, a: GetEmployeeAttendanceArgs) -> dict:
+    return await _hr_delegate("get_employee_attendance", cid, a)
+
+async def _exec_get_employee_leave(cid: str, a: GetEmployeeLeaveArgs) -> dict:
+    return await _hr_delegate("get_employee_leave", cid, a)
+
+async def _exec_get_employee_documents(cid: str, a: GetEmployeeDocumentsArgs) -> dict:
+    return await _hr_delegate("get_employee_documents", cid, a)
+
+async def _exec_get_employee_salary(cid: str, a: GetEmployeeSalaryArgs) -> dict:
+    return await _hr_delegate("get_employee_salary", cid, a)
+
+async def _exec_get_payroll_status(cid: str, a: GetPayrollStatusArgs) -> dict:
+    return await _hr_delegate("get_payroll_status", cid, a)
+
+async def _exec_get_payroll_blockers(cid: str, a: GetPayrollBlockersArgs) -> dict:
+    return await _hr_delegate("get_payroll_blockers", cid, a)
+
+async def _exec_get_employee_payslip_status(cid: str, a: GetEmployeePayslipStatusArgs) -> dict:
+    return await _hr_delegate("get_employee_payslip_status", cid, a)
+
+
+# ---------------------------------------------------------------------------
 # Tool dispatcher
 # ---------------------------------------------------------------------------
 
@@ -1824,6 +1951,22 @@ TOOL_DISPATCH: dict[str, Any] = {
     "get_employee_360": execute_get_employee_360,
     "get_hr_attention_summary": execute_get_hr_attention_summary,
     "get_entity_documents": execute_get_entity_documents,
+    # HR Deep tools — delegated to HR domain implementations
+    "search_candidates": _exec_search_candidates,
+    "get_candidate_360": _exec_get_candidate_360,
+    "search_jobs": _exec_search_jobs,
+    "get_job_360": _exec_get_job_360,
+    "get_recruitment_overview": _exec_get_recruitment_overview,
+    "get_interviews": _exec_get_interviews,
+    "get_interview_feedback_status": _exec_get_interview_feedback_status,
+    "get_offer_status": _exec_get_offer_status,
+    "get_employee_attendance": _exec_get_employee_attendance,
+    "get_employee_leave": _exec_get_employee_leave,
+    "get_employee_documents": _exec_get_employee_documents,
+    "get_employee_salary": _exec_get_employee_salary,
+    "get_payroll_status": _exec_get_payroll_status,
+    "get_payroll_blockers": _exec_get_payroll_blockers,
+    "get_employee_payslip_status": _exec_get_employee_payslip_status,
 }
 
 ARG_SCHEMAS: dict[str, type[BaseModel]] = {
@@ -1850,18 +1993,151 @@ ARG_SCHEMAS: dict[str, type[BaseModel]] = {
     "get_employee_360": GetEmployee360Args,
     "get_hr_attention_summary": GetHrAttentionSummaryArgs,
     "get_entity_documents": GetEntityDocumentsArgs,
+    # HR Deep
+    "search_candidates": SearchCandidatesArgs,
+    "get_candidate_360": GetCandidate360Args,
+    "search_jobs": SearchJobsArgs,
+    "get_job_360": GetJob360Args,
+    "get_recruitment_overview": GetRecruitmentOverviewArgs,
+    "get_interviews": GetInterviewsArgs,
+    "get_interview_feedback_status": GetInterviewFeedbackStatusArgs,
+    "get_offer_status": GetOfferStatusArgs,
+    "get_employee_attendance": GetEmployeeAttendanceArgs,
+    "get_employee_leave": GetEmployeeLeaveArgs,
+    "get_employee_documents": GetEmployeeDocumentsArgs,
+    "get_employee_salary": GetEmployeeSalaryArgs,
+    "get_payroll_status": GetPayrollStatusArgs,
+    "get_payroll_blockers": GetPayrollBlockersArgs,
+    "get_employee_payslip_status": GetEmployeePayslipStatusArgs,
 }
+
+
+# ---------------------------------------------------------------------------
+# RBAC / Policy enforcement — sensitive tools require authorized roles
+# ---------------------------------------------------------------------------
+
+_SENSITIVE_TOOLS: dict[str, set[str]] = {
+    # tool_name → set of roles allowed to call it
+    "get_employee_salary": {"admin", "super_admin", "manager"},
+    "get_payroll_status": {"admin", "super_admin", "manager"},
+    "get_payroll_blockers": {"admin", "super_admin", "manager"},
+    "get_employee_payslip_status": {"admin", "super_admin", "manager"},
+    "get_employee_leave": {"admin", "super_admin", "manager", "lead"},
+    "get_employee_attendance": {"admin", "super_admin", "manager", "lead"},
+    "get_employee_documents": {"admin", "super_admin", "manager", "lead"},
+}
+
+# Module gates: tool_name → company module id.  Enforced in
+# execute_executive_tool when the caller supplies the company's module list.
+TOOL_MODULE_GATES: dict[str, str] = {}
+
+# ---------------------------------------------------------------------------
+# Tool result cache — Redis-backed for cross-worker sharing
+# ---------------------------------------------------------------------------
+import time as _time
+
+# Fallback in-memory cache when Redis is unavailable
+_MEM_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_MEM_CACHE_TTL: dict[str, float] = {
+    "get_company_summary": 60.0,
+    "get_company_attention_summary": 30.0,
+    "get_sales_summary": 60.0,
+    "get_finance_summary": 60.0,
+    "get_team_workload": 30.0,
+    "get_overdue_tasks": 15.0,
+    "search_employees": 60.0,
+    "get_hr_attention_summary": 30.0,
+    "get_recruitment_overview": 60.0,
+}
+
+def _cache_key(tool_name: str, company_id: str, arguments: dict[str, Any]) -> str:
+    return f"exec:tool:{tool_name}:{company_id}:{json.dumps(arguments, sort_keys=True, default=str)}"
+
+
+async def _get_cached(key: str, tool_name: str) -> dict[str, Any] | None:
+    """Try Redis first, then in-memory cache."""
+    ttl = _MEM_CACHE_TTL.get(tool_name, 0)
+    if ttl <= 0:
+        return None
+    # Try Redis
+    try:
+        from app.core.redis_client import get_redis
+        redis = await get_redis()
+        if redis:
+            raw = await redis.get(key)
+            if raw:
+                return json.loads(raw)
+    except Exception:
+        pass
+    # Fallback to in-memory
+    entry = _MEM_CACHE.get(key)
+    if entry and (_time.monotonic() - entry[0]) < ttl:
+        return entry[1]
+    return None
+
+
+async def _set_cached(key: str, tool_name: str, result: dict[str, Any]) -> None:
+    """Store in Redis (preferred) and in-memory (fallback)."""
+    ttl = _MEM_CACHE_TTL.get(tool_name, 0)
+    if ttl <= 0 or "error" in result:
+        return
+    # Try Redis
+    try:
+        from app.core.redis_client import get_redis
+        redis = await get_redis()
+        if redis:
+            await redis.setex(key, int(ttl), json.dumps(result, default=str))
+    except Exception:
+        pass
+    # Also store in-memory
+    _MEM_CACHE[key] = (_time.monotonic(), result)
+    if len(_MEM_CACHE) > 200:
+        now = _time.monotonic()
+        stale = [k for k, (ts, _) in _MEM_CACHE.items() if now - ts > 120]
+        for k in stale[:100]:
+            _MEM_CACHE.pop(k, None)
 
 
 async def execute_executive_tool(
     tool_name: str,
     arguments: dict[str, Any],
     company_id: str,
+    user_role: str = "employee",
+    modules: Optional[list[str]] = None,
 ) -> dict[str, Any]:
-    """Execute an executive tool by name with validated arguments."""
+    """Execute an executive tool by name with validated arguments.
+
+    Includes:
+    - Pydantic argument validation
+    - RBAC policy enforcement for sensitive tools
+    - Module availability gates (when the company module list is supplied)
+    - Redis-backed result caching for expensive reads
+    """
     if tool_name not in TOOL_DISPATCH:
         return {"error": f"Unknown tool: {tool_name}"}
 
+    # ── RBAC check ──────────────────────────────────────────────────────────
+    allowed_roles = _SENSITIVE_TOOLS.get(tool_name)
+    if allowed_roles and user_role not in allowed_roles:
+        return {
+            "error": f"Access denied: '{tool_name}' requires role in {sorted(allowed_roles)}.",
+            "rbac_denied": True,
+            "required_roles": sorted(allowed_roles),
+        }
+
+    # ── Module gate ─────────────────────────────────────────────────────────
+    # Enforced only when the caller explicitly supplies a non-empty module
+    # list (companies without module metadata stay permissive).
+    module_gate = TOOL_MODULE_GATES.get(tool_name)
+    enabled_modules = {str(m).lower() for m in modules} if modules else None
+    if module_gate and enabled_modules and module_gate not in enabled_modules:
+        return {
+            "error": f"Access denied: '{tool_name}' requires the '{module_gate}' module.",
+            "module_denied": True,
+            "required_module": module_gate,
+        }
+
+    # ── Validate arguments ──────────────────────────────────────────────────
     schema = ARG_SCHEMAS.get(tool_name)
     if schema:
         try:
@@ -1871,9 +2147,37 @@ async def execute_executive_tool(
     else:
         validated = arguments
 
+    # ── Check cache ─────────────────────────────────────────────────────────
+    cache_key = _cache_key(tool_name, company_id, arguments)
+    cached = await _get_cached(cache_key, tool_name)
+    if cached is not None:
+        return cached
+
+    # ── Execute ─────────────────────────────────────────────────────────────
     try:
         result = await TOOL_DISPATCH[tool_name](company_id, validated)
+        await _set_cached(cache_key, tool_name, result)
         return result
     except Exception as exc:
         logger.exception("Executive tool %s failed", tool_name)
         return {"error": f"Tool execution failed: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# Read-tools registry merge — bounded company-wide read tools (one definition)
+# ---------------------------------------------------------------------------
+try:
+    from app.agents.executive.read_tools import (  # type: ignore[import-not-found]
+        READ_TOOL_ARG_SCHEMAS,
+        READ_TOOL_HANDLERS,
+        READ_TOOL_MODULE_GATES,
+        READ_TOOL_SCHEMAS,
+        READ_TOOL_SENSITIVE_TOOLS,
+    )
+    EXECUTIVE_TOOL_SCHEMAS = [*EXECUTIVE_TOOL_SCHEMAS, *READ_TOOL_SCHEMAS]
+    TOOL_DISPATCH.update(READ_TOOL_HANDLERS)
+    ARG_SCHEMAS.update(READ_TOOL_ARG_SCHEMAS)
+    _SENSITIVE_TOOLS.update(READ_TOOL_SENSITIVE_TOOLS)
+    TOOL_MODULE_GATES.update(READ_TOOL_MODULE_GATES)
+except Exception as exc:  # pragma: no cover - defensive import guard
+    logger.exception("Failed to load executive read tools: %s", exc)

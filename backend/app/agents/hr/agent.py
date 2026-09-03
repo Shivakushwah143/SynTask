@@ -12,6 +12,7 @@ The LLM is never the source of truth. SynTask database/services are.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -283,6 +284,323 @@ class HROperationsAgent:
             error="MAX_STEPS_EXCEEDED",
             entity_context=entity_ctx,
         )
+
+    # ------------------------------------------------------------------
+    # Streaming variant
+    # ------------------------------------------------------------------
+
+    async def run_stream(
+        self,
+        *,
+        company_id: str,
+        user_id: str,
+        user_role: str,
+        message: str,
+        conversation_history: list[dict[str, str]] | None = None,
+        entity_context: dict[str, Any] | None = None,
+        timings: dict[str, Any] | None = None,
+    ) -> Any:
+        """Async-generator variant of ``run`` with live token streaming.
+
+        Yields user-safe wire events (see ``app.agents.streaming``): status /
+        token / done / error. Tool-call argument deltas are accumulated inside
+        the provider; only the final answer content is streamed as tokens.
+        Independent tool calls run concurrently while friendly progress events
+        are emitted (tool names are never exposed).
+        """
+        from app.agents.streaming import (
+            STATUS_ANALYZING,
+            STATUS_ANSWER,
+            STATUS_CHECKING_DATA,
+            STATUS_UNDERSTANDING,
+            status_event,
+            token_event,
+        )
+
+        def _mark(name: str) -> None:
+            if timings is not None and timings.get(name) is None and timings.get("_t0"):
+                timings[name] = round((time.perf_counter() - timings["_t0"]) * 1000, 1)
+
+        if not settings.HR_AGENT_ENABLED:
+            yield {
+                "type": "error",
+                "message": "The HR Agent is currently disabled.",
+                "data": {
+                    "success": False,
+                    "answer": "The HR Agent is currently disabled. Please enable HR_AGENT_ENABLED in your environment.",
+                    "error": "HR_AGENT_DISABLED",
+                },
+            }
+            return
+
+        if not settings.GROQ_API_KEY:
+            yield {
+                "type": "error",
+                "message": "The HR Agent cannot respond because GROQ_API_KEY is not configured.",
+                "data": {
+                    "success": False,
+                    "answer": "The HR Agent cannot respond because GROQ_API_KEY is not configured.",
+                    "error": "GROQ_API_KEY_MISSING",
+                },
+            }
+            return
+
+        entity_ctx = dict(entity_context or {})
+        yield status_event("accepted", STATUS_UNDERSTANDING)
+
+        messages = self._build_initial_messages(
+            company_id=company_id,
+            user_id=user_id,
+            user_role=user_role,
+            message=message,
+            conversation_history=conversation_history,
+            entity_context=entity_ctx,
+        )
+        yield status_event("routing", STATUS_UNDERSTANDING)
+
+        tool_executions: list[ToolExecution] = []
+
+        for step in range(1, self.max_steps + 1):
+            if step > 1:
+                yield status_event("analyzing", STATUS_ANALYZING)
+
+            _mark("first_groq_started")
+            try:
+                step_content_parts: list[str] = []
+                step_tool_calls = []
+                step_tools_emitted = False
+                step_answer_started = False
+                model = ""
+                usage: dict[str, Any] = {}
+
+                async for ev in self.provider.generate_with_tools_stream(
+                    prompt="",
+                    context={"company_id": company_id, "user_id": user_id, "role": user_role},
+                    tools=HR_TOOL_SCHEMAS,
+                    options={
+                        "system_prompt": HR_AGENT_SYSTEM_PROMPT,
+                        "messages": messages,
+                        "temperature": 0.1,
+                        "max_tokens": 4096,
+                    },
+                ):
+                    etype = ev["type"]
+                    if etype == "content":
+                        if not step_answer_started:
+                            step_answer_started = True
+                            _mark("first_answer_token")
+                            yield status_event("answer", STATUS_ANSWER)
+                        step_content_parts.append(ev["text"])
+                        yield token_event(ev["text"])
+                    elif etype == "tool_call_delta":
+                        if not step_tools_emitted:
+                            step_tools_emitted = True
+                            yield status_event("tools", STATUS_CHECKING_DATA)
+                    elif etype == "complete":
+                        model = ev.get("model") or model
+                        usage = ev.get("usage") or {}
+                        step_tool_calls = (ev.get("message") or {}).get("tool_calls") or []
+                        _mark("first_groq_done")
+            except Exception as exc:
+                logger.exception("HR Agent Groq call failed at step %d", step)
+                yield {
+                    "type": "error",
+                    "message": "I hit a technical issue while processing your request — please try again.",
+                    "data": {
+                        "success": False,
+                        "answer": f"I encountered an error while processing your request: {exc}",
+                        "error": f"PROVIDER_ERROR: {exc}",
+                        "entity_context": entity_ctx,
+                        "model": model or "",
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                        "steps_used": step,
+                        "max_steps": self.max_steps,
+                        "groq_call_count": step,
+                        "tool_calls_summary": [
+                            {
+                                "tool": te.tool_name,
+                                "step": te.step,
+                                "duration_ms": round(te.duration_ms, 1),
+                                "has_error": "error" in te.result,
+                            }
+                            for te in tool_executions
+                        ],
+                    },
+                }
+                return
+
+            # ── No tool calls → final answer ──────────────────────────────────
+            if not step_tool_calls:
+                answer = "".join(step_content_parts) or "I was unable to generate a response."
+                _mark("response_done")
+                yield {
+                    "type": "done",
+                    "data": {
+                        "success": True,
+                        "answer": answer,
+                        "error": None,
+                        "entity_context": entity_ctx,
+                        "model": model,
+                        "prompt_tokens": (usage.get("prompt_tokens") or 0),
+                        "completion_tokens": (usage.get("completion_tokens") or 0),
+                        "total_tokens": (usage.get("total_tokens") or 0),
+                        "steps_used": step,
+                        "max_steps": self.max_steps,
+                        "groq_call_count": step,
+                        "selected_tools": [],
+                        "tool_calls_summary": [
+                            {
+                                "tool": te.tool_name,
+                                "step": te.step,
+                                "duration_ms": round(te.duration_ms, 1),
+                                "has_error": "error" in te.result,
+                            }
+                            for te in tool_executions
+                        ],
+                    },
+                }
+                return
+
+            # ── Append assistant message with tool calls ──────────────────────
+            assistant_msg: dict[str, Any] = {
+                "role": "assistant",
+                "content": "".join(step_content_parts),
+            }
+            assistant_msg["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.name,
+                        "arguments": json.dumps(tc.arguments),
+                    },
+                }
+                for tc in step_tool_calls
+            ]
+            messages.append(assistant_msg)
+
+            if not step_tools_emitted:
+                yield status_event("tools", STATUS_CHECKING_DATA)
+
+            # ── Execute tool calls concurrently, streaming progress ───────────
+            async def _exec_one(tc):
+                tc_start = time.perf_counter()
+                res = await execute_hr_tool(
+                    tool_name=tc.name,
+                    arguments=tc.arguments,
+                    company_id=company_id,
+                )
+                tc_duration = (time.perf_counter() - tc_start) * 1000
+                return tc, res, tc_duration
+
+            try:
+                pending = [asyncio.ensure_future(_exec_one(tc)) for tc in step_tool_calls]
+                total_tools = len(pending)
+                completed_by_id: dict[str, tuple] = {}
+                done_count = 0
+                try:
+                    for fut in asyncio.as_completed(pending):
+                        tc, tool_result, tc_duration = await fut
+                        completed_by_id[tc.id] = (tc, tool_result, tc_duration)
+                        done_count += 1
+                        yield status_event(
+                            "tools", STATUS_CHECKING_DATA, done=done_count, total=total_tools,
+                        )
+                    _mark("tools_done")
+                finally:
+                    # Client disconnect / cancellation: stop unfinished tool work.
+                    for fut in pending:
+                        if not fut.done():
+                            fut.cancel()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.exception("HR Agent tool execution failed at step %d", step)
+                yield {
+                    "type": "error",
+                    "message": "I hit a technical issue while checking HR records — please try again.",
+                    "data": {
+                        "success": False,
+                        "answer": f"I encountered an error while processing your request: {exc}",
+                        "error": f"TOOL_ERROR: {exc}",
+                        "entity_context": entity_ctx,
+                        "model": model,
+                        "prompt_tokens": (usage.get("prompt_tokens") or 0),
+                        "completion_tokens": (usage.get("completion_tokens") or 0),
+                        "total_tokens": (usage.get("total_tokens") or 0),
+                        "steps_used": step,
+                        "max_steps": self.max_steps,
+                        "groq_call_count": step,
+                        "tool_calls_summary": [
+                            {
+                                "tool": te.tool_name,
+                                "step": te.step,
+                                "duration_ms": round(te.duration_ms, 1),
+                                "has_error": "error" in te.result,
+                            }
+                            for te in tool_executions
+                        ],
+                    },
+                }
+                return
+
+            # Tool results appended in the model's original call order so the
+            # conversation history stays deterministic (parity with ``run``).
+            for tc in step_tool_calls:
+                entry = completed_by_id.get(tc.id)
+                if not entry:
+                    continue
+                tool_call, tool_result, tc_duration = entry
+                tool_executions.append(ToolExecution(
+                    tool_name=tool_call.name,
+                    arguments=tool_call.arguments,
+                    result=tool_result,
+                    step=step,
+                    duration_ms=tc_duration,
+                ))
+                self._update_entity_context(entity_ctx, tool_call.name, tool_call.arguments, tool_result)
+                result_str = json.dumps(tool_result, default=str)
+                if len(result_str) > 4000:
+                    result_str = result_str[:4000] + '... (truncated)'
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result_str,
+                })
+
+        # Max steps reached
+        _mark("response_done")
+        yield {
+            "type": "done",
+            "data": {
+                "success": False,
+                "answer": (
+                    "I was unable to fully complete your request within the allowed processing steps. "
+                    "Please try a more specific question or break your request into smaller parts."
+                ),
+                "error": "MAX_STEPS_EXCEEDED",
+                "entity_context": entity_ctx,
+                "model": "",
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "steps_used": self.max_steps,
+                "max_steps": self.max_steps,
+                "groq_call_count": self.max_steps,
+                "selected_tools": [],
+                "tool_calls_summary": [
+                    {
+                        "tool": te.tool_name,
+                        "step": te.step,
+                        "duration_ms": round(te.duration_ms, 1),
+                        "has_error": "error" in te.result,
+                    }
+                    for te in tool_executions
+                ],
+            },
+        }
 
     def _build_initial_messages(
         self,

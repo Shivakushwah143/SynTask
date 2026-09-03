@@ -4,6 +4,7 @@ Main Application Entry Point
 
 
 
+import asyncio
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -65,8 +66,20 @@ async def _startup_tasks() -> None:
     try:
         await init_db()
         logger.info("Database initialized successfully")
-        await rebuild_all_ancestors()
         app.state.db_ready = True
+        # Rebuild ancestor hierarchy as a non-blocking background task so
+        # startup is not delayed by potentially thousands of user documents.
+        # Leader-gated: with multiple API workers only ONE worker runs the
+        # full-collection rebuild instead of every worker scanning + saving
+        # the same documents.
+        try:
+            from app.core.leader import try_acquire_leader
+            if await try_acquire_leader("startup_rebuild_ancestors", ttl_seconds=60 * 60):
+                asyncio.create_task(_background_rebuild_ancestors())
+            else:
+                logger.info("Ancestor rebuild skipped — another worker owns the lease")
+        except Exception as anc_err:
+            logger.warning(f"Ancestor rebuild startup task skipped: {anc_err}")
     except Exception as db_err:
         logger.error(f"Database connection failed on startup: {db_err}")
         app.state.db_ready = False
@@ -91,7 +104,6 @@ async def _startup_tasks() -> None:
         app.state.db_ready = False if not app.state.db_ready else app.state.db_ready
         logger.warning(f"Redis startup check skipped or failed: {redis_err}")
 
-    import asyncio
     from app.core.deadline_checker import run_deadline_checker
     from app.services.hr_mail_sync import run_imap_recruitment_sync_loop
     from app.services.reminder_service import run_reminder_scheduler
@@ -131,6 +143,12 @@ async def _shutdown_tasks() -> None:
     logger.info("Shutting down application")
     await close_redis()
     await close_db()
+    # Close pooled AI HTTP connections (best-effort, never blocks shutdown)
+    try:
+        from app.ai.providers.http_client import close_shared_clients
+        await close_shared_clients()
+    except Exception:
+        pass
     logger.info("Database connections closed")
 
 
@@ -253,6 +271,14 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"success": False, "message": "Internal server error"}
     )
+
+
+async def _background_rebuild_ancestors():
+    """Run ancestor rebuild in the background so startup is not blocked."""
+    try:
+        await rebuild_all_ancestors()
+    except Exception as e:
+        logger.error(f"Background ancestor rebuild failed: {e}")
 
 
 async def rebuild_all_ancestors():

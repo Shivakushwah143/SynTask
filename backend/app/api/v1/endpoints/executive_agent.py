@@ -10,9 +10,11 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.executive.service import ExecutiveAgentService
+from app.agents.streaming import DEFAULT_SSE_HEADERS, sse_frame, with_heartbeat
 from app.api.dependencies import get_current_user
 from app.core.config import settings
 from app.models.user import User
@@ -62,6 +64,10 @@ class ExecutiveChatResponse(BaseModel):
     entity_context: dict[str, Any] = Field(default_factory=dict)
     usage: dict[str, Any] = Field(default_factory=dict)
     tool_calls_summary: list[dict[str, Any]] = Field(default_factory=list)
+    # Deterministic, UI-renderable blocks (count/list/table/summary/detail/
+    # risk) derived from the tool results the agent used. The frontend renders
+    # these as cards/tables instead of parsing Markdown pipes out of prose.
+    answer_blocks: list[dict[str, Any]] = Field(default_factory=list)
     error_detail: str | None = None
 
 
@@ -111,6 +117,57 @@ async def executive_agent_chat(
     )
 
     return ExecutiveChatResponse(**result)
+
+
+@router.post("/chat/stream")
+async def executive_agent_chat_stream(
+    payload: ExecutiveChatRequest,
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """Stream a chat with the Executive Operations Agent (SSE).
+
+    Emits user-friendly lifecycle status events, then live answer token
+    deltas, and finally a ``done`` frame carrying the same payload shape as
+    ``POST /chat``. The non-stream endpoint remains available.
+    """
+    _require_executive_agent_enabled()
+
+    if not getattr(current_user, "company_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant scope required",
+        )
+
+    entity_context: dict[str, Any] = {}
+    if payload.selected_record_type and payload.selected_record_id:
+        entity_context = {
+            "selected_record_type": payload.selected_record_type,
+            "selected_record_id": payload.selected_record_id,
+        }
+
+    async def _event_stream():
+        source = executive_service.stream_chat(
+            current_user=current_user,
+            message=payload.message,
+            conversation_id=payload.conversation_id,
+            session_id=payload.session_id,
+            entity_context=entity_context,
+        )
+        try:
+            async for ev in with_heartbeat(source):
+                yield sse_frame(ev)
+        except Exception as exc:  # never break the SSE channel silently
+            yield sse_frame({
+                "type": "error",
+                "message": "The request failed on the server. Please try again.",
+                "data": {"success": False, "error": f"STREAM_ERROR: {exc}", "answer": "I hit a technical issue while processing your request — please try again."},
+            })
+
+    return StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers=DEFAULT_SSE_HEADERS,
+    )
 
 
 @router.get("/quick-actions", response_model=ExecutiveQuickActionsResponse)

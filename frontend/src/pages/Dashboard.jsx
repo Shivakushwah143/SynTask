@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format, addDays } from 'date-fns'
 import { 
@@ -77,14 +77,17 @@ import { projectsApi } from '../api/projects'
 import { calendarApi } from '../api/calendar'
 import { contentCalendarApi } from '../api/contentCalendar'
 import toast from 'react-hot-toast'
-import AIBriefingCenter from '../components/AIBriefingCenter'
+// AI Briefing Center is a large, below-the-fold widget — code-split it so its
+// dependencies (framer-motion, AI icons, charts) load after first paint.
+const AIBriefingCenter = lazy(() => import('../components/AIBriefingCenter'))
+const WorkflowJourney = lazy(() => import('../components/workflow/WorkflowJourney'))
 import { Badge, Button, EmptyState, PageHeader, SkeletonCard, SkeletonTable, Table } from '../components/ui'
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { attendanceAPI } from '../api/attendance'
+import { useAttendanceStore } from '../store/attendanceStore'
 import { eodAPI } from '../api/eod'
 import { ChartTooltip } from '../components/charts/ChartTooltip'
 import { WorkflowGuide } from '../components/workflow/WorkflowGuide'
-import WorkflowJourney from '../components/workflow/WorkflowJourney'
 import { ChartCard } from '../components/charts/ChartCard'
 const IncomeExpenseBarChart = lazy(() => import('../components/charts/IncomeExpenseBarChart'))
 const DonutLegendChart = lazy(() => import('../components/charts/DonutLegendChart'))
@@ -282,6 +285,9 @@ const Dashboard = () => {
   const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(getDefaultSectionPanelCollapsed)
   const [sectionSearch, setSectionSearch] = useState('')
   const [leadFollowUps, setLeadFollowUps] = useState([])
+  // Reuse the attendance store (already fetched by AttendanceStatusBootstrap)
+  // to avoid a duplicate /attendance/me/today request for employees.
+  const attendanceStoreRecord = useAttendanceStore((s) => s.record)
 
   // Load cached dashboard data on mount (stale‑while‑revalidate)
   useEffect(() => {
@@ -307,122 +313,187 @@ const Dashboard = () => {
     }
   }, [])
 
-  const refreshDashboard = useCallback(async (isMounted = () => true) => {
-    try {
-      setLoading(true)
-      // Fire all primary API calls concurrently using Promise.allSettled
-      const primaryPromises = {
-        stats: dashboardAPI.getStats().catch(() => null),
-        tasks: tasksAPI.listTasks({ limit: 8 }).catch(() => null),
-        meetings: meetingsApi.list({ limit: 6, upcoming: true }).catch(() => null),
-        projects: projectsApi.getProjects({ limit: 8 }).catch(() => null),
-        metrics: dashboardAPI.getMetrics().catch(() => null),
-      }
-      const primaryResults = await Promise.allSettled(Object.values(primaryPromises))
-      const [statsData, tasksData, meetingsData, projectsData, metricsData] = primaryResults.map((r) => (r.status === 'fulfilled' ? r.value : null))
+  // ── React-Query-style dedup ────────────────────────────────────────────
+  // Concurrent full refreshes (mount + live-sync event races, StrictMode
+  // double-effects) share ONE in-flight promise instead of doubling the
+  // ~16-request fan-out.
+  const inFlightRefreshRef = useRef(null)
+  // ``revenueMode`` must NOT recreate refreshDashboard — that previously
+  // re-ran the whole 16-request fan-out AND the calendar fetch on every
+  // mode toggle. Read the latest value through a ref instead.
+  const revenueModeRef = useRef(revenueMode)
+  revenueModeRef.current = revenueMode
 
-      const dashboardRole = normalizeRole(statsData?.role || user?.role)
-      const shouldLoadCrmDashboard = [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(dashboardRole)
-
-      // Conditional and additional parallel calls
-      const crmDashboardPromise = shouldLoadCrmDashboard
-        ? crmApi.getDashboard().then((r) => r?.data || null).catch(() => null)
-        : Promise.resolve(null)
-      // Leads with a follow-up scheduled (next_follow_up_at set) — drives the
-      // Lead Follow-ups dashboard section. Only CRM-capable roles can see the
-      // full company list; employees keep their own calendar-based follow-ups.
-      // limit 500 = backend MAX_PAGE_SIZE; companies with more follow-up leads
-      // silently show the soonest 500 (documented trade-off).
-      const followUpsPromise = shouldLoadCrmDashboard
-        ? crmApi.getLeads({ has_follow_up: true, limit: 500 }).then((r) => r?.data?.prospects || r?.prospects || []).catch(() => [])
-        : Promise.resolve([])
-      const healthPromise =
-        dashboardRole === ROLE.EMPLOYEE
-          ? tasksAPI.getMyTaskHealth().catch(() => null)
-          : tasksAPI.getTaskHealthSummary().catch(() => null)
-      const extensionPromise = tasksAPI.getExtensionRequestSummary().catch(() => null)
-      const teamPromise =
-        dashboardRole !== ROLE.EMPLOYEE ? tasksAPI.getTeamCompletionSummary().catch(() => null) : Promise.resolve(null)
-      const ticketsPromise =
-        dashboardRole === ROLE.EMPLOYEE ? ticketsAPI.listTickets({ limit: 8 }).catch(() => null) : Promise.resolve({ tickets: [] })
-      const attendancePromise =
-        dashboardRole === ROLE.EMPLOYEE ? attendanceAPI.getTodayAttendance().catch(() => null) : attendanceAPI.getDashboardStats().catch(() => null)
-      const eodPromise = dashboardRole === ROLE.EMPLOYEE ? eodAPI.today().catch(() => null) : Promise.resolve(null)
-      const productionDashboardPromise =
-        [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(dashboardRole)
-          ? tasksAPI.getProductionDashboard().catch(() => null)
-          : Promise.resolve(null)
-
-      const [crmDashboardData, healthData, extensionData, teamData, ticketsData, attendanceRes, eodTodayRes, productionDashboardData, followUpsData] = await Promise.all([
-        crmDashboardPromise,
-        healthPromise,
-        extensionPromise,
-        teamPromise,
-        ticketsPromise,
-        attendancePromise,
-        eodPromise,
-        productionDashboardPromise,
-        followUpsPromise,
-      ])
-
-      if (!isMounted()) return
-
-      // Update state
-      setStats(statsData || { role: dashboardRole || 'employee' })
-      setMetrics(metricsData)
-      setCrmDashboard(crmDashboardData)
-      setRecentTasks(tasksData?.tasks || [])
-      setRecentTickets(ticketsData?.tickets || [])
-      setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
-      setProjects((projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8))
-      setTaskHealth(healthData)
-      setTaskExtensions(extensionData)
-      setTeamCompletion(teamData)
-      setProductionDashboard(productionDashboardData)
-      setLeadFollowUps(followUpsData)
-
-      if (dashboardRole === ROLE.EMPLOYEE) {
-        if (attendanceRes && attendanceRes.data) setAttendanceToday(attendanceRes.data)
-        setEodToday(eodTodayRes)
-      } else {
-        if (attendanceRes && attendanceRes.data) setAttendanceStats(attendanceRes.data)
-      }
-
-      // Stale‑while‑revalidate: cache the fetched dashboard data in sessionStorage
+  const refreshDashboard = useCallback(async (isMounted = () => true, { showLoader = true } = {}) => {
+    // Dedup: share the in-flight refresh instead of doubling the fan-out when
+    // mount + live-sync events (or StrictMode double-effects) race.
+    if (inFlightRefreshRef.current) return inFlightRefreshRef.current
+    const run = (async () => {
       try {
-        const cachePayload = {
-          stats: statsData,
-          metrics: metricsData,
-          crmDashboard: crmDashboardData,
-          recentTasks: tasksData?.tasks || [],
-          recentTickets: ticketsData?.tickets || [],
-          upcomingMeetings: (meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6),
-          projects: (projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8),
-          taskHealth: healthData,
-          taskExtensions: extensionData,
-          teamCompletion: teamData,
-          attendanceToday: attendanceRes?.data || null,
-          eodToday: eodTodayRes,
-          attendanceStats: attendanceRes?.data || null,
-          revenueMode,
-          leadFollowUps: followUpsData,
+        // Only show full-page skeleton loader on first load (no cache).
+        // When cached data is already displayed, refresh in the background.
+        if (showLoader) setLoading(true)
+        // Fire all primary API calls concurrently using Promise.allSettled
+        const primaryPromises = {
+          stats: dashboardAPI.getStats().catch(() => null),
+          tasks: tasksAPI.listTasks({ limit: 8 }).catch(() => null),
+          meetings: meetingsApi.list({ limit: 6, upcoming: true }).catch(() => null),
+          projects: projectsApi.getProjects({ limit: 8 }).catch(() => null),
+          metrics: dashboardAPI.getMetrics().catch(() => null),
         }
-        sessionStorage.setItem('syntask-dashboard-cache', JSON.stringify(cachePayload))
-      } catch (e) {
-        // ignore storage errors
+        const primaryResults = await Promise.allSettled(Object.values(primaryPromises))
+        const [statsData, tasksData, meetingsData, projectsData, metricsData] = primaryResults.map((r) => (r.status === 'fulfilled' ? r.value : null))
+
+        const dashboardRole = normalizeRole(statsData?.role || user?.role)
+        const shouldLoadCrmDashboard = [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(dashboardRole)
+
+        // Conditional and additional parallel calls
+        const crmDashboardPromise = shouldLoadCrmDashboard
+          ? crmApi.getDashboard().then((r) => r?.data || null).catch(() => null)
+          : Promise.resolve(null)
+        // Leads with a follow-up scheduled — drives the Lead Follow-ups section.
+        // Use the compact /dashboard/follow-ups endpoint that returns only the
+        // fields the dashboard needs, instead of loading full lead documents.
+        const followUpsPromise = shouldLoadCrmDashboard
+          ? crmApi.getDashboardFollowUps().then((r) => r?.data?.prospects || r?.prospects || []).catch(() => [])
+          : Promise.resolve([])
+        const healthPromise =
+          dashboardRole === ROLE.EMPLOYEE
+            ? tasksAPI.getMyTaskHealth().catch(() => null)
+            : tasksAPI.getTaskHealthSummary().catch(() => null)
+        const extensionPromise = tasksAPI.getExtensionRequestSummary().catch(() => null)
+        const teamPromise =
+          dashboardRole !== ROLE.EMPLOYEE ? tasksAPI.getTeamCompletionSummary().catch(() => null) : Promise.resolve(null)
+        const ticketsPromise =
+          dashboardRole === ROLE.EMPLOYEE ? ticketsAPI.listTickets({ limit: 8 }).catch(() => null) : Promise.resolve({ tickets: [] })
+        // For employees, reuse the attendance store data (already loaded by
+        // AttendanceStatusBootstrap in MainLayout) instead of a duplicate API call.
+        const attendancePromise =
+          dashboardRole === ROLE.EMPLOYEE ? Promise.resolve(null) : attendanceAPI.getDashboardStats().catch(() => null)
+        const eodPromise = dashboardRole === ROLE.EMPLOYEE ? eodAPI.today().catch(() => null) : Promise.resolve(null)
+        const productionDashboardPromise =
+          [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(dashboardRole)
+            ? tasksAPI.getProductionDashboard().catch(() => null)
+            : Promise.resolve(null)
+
+        const [crmDashboardData, healthData, extensionData, teamData, ticketsData, attendanceRes, eodTodayRes, productionDashboardData, followUpsData] = await Promise.all([
+          crmDashboardPromise,
+          healthPromise,
+          extensionPromise,
+          teamPromise,
+          ticketsPromise,
+          attendancePromise,
+          eodPromise,
+          productionDashboardPromise,
+          followUpsPromise,
+        ])
+
+        if (!isMounted()) return
+
+        // Update state
+        setStats(statsData || { role: dashboardRole || 'employee' })
+        setMetrics(metricsData)
+        setCrmDashboard(crmDashboardData)
+        setRecentTasks(tasksData?.tasks || [])
+        setRecentTickets(ticketsData?.tickets || [])
+        setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
+        setProjects((projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8))
+        setTaskHealth(healthData)
+        setTaskExtensions(extensionData)
+        setTeamCompletion(teamData)
+        setProductionDashboard(productionDashboardData)
+        setLeadFollowUps(followUpsData)
+
+        if (dashboardRole === ROLE.EMPLOYEE) {
+          // Use attendance store data (already fetched by AttendanceStatusBootstrap)
+          // instead of the now-skipped duplicate API call.
+          setAttendanceToday(attendanceStoreRecord)
+          setEodToday(eodTodayRes)
+        } else {
+          if (attendanceRes && attendanceRes.data) setAttendanceStats(attendanceRes.data)
+        }
+
+        // Stale‑while‑revalidate: cache the fetched dashboard data in sessionStorage
+        try {
+          const cachePayload = {
+            stats: statsData,
+            metrics: metricsData,
+            crmDashboard: crmDashboardData,
+            recentTasks: tasksData?.tasks || [],
+            recentTickets: ticketsData?.tickets || [],
+            upcomingMeetings: (meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6),
+            projects: (projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8),
+            taskHealth: healthData,
+            taskExtensions: extensionData,
+            teamCompletion: teamData,
+            attendanceToday: attendanceRes?.data || null,
+            eodToday: eodTodayRes,
+            attendanceStats: attendanceRes?.data || null,
+            revenueMode: revenueModeRef.current,
+            leadFollowUps: followUpsData,
+          }
+          sessionStorage.setItem('syntask-dashboard-cache', JSON.stringify(cachePayload))
+        } catch (e) {
+          // ignore storage errors
+        }
+      } catch (error) {
+        console.error('Error loading dashboard:', error)
+      } finally {
+        if (isMounted()) setLoading(false)
       }
-    } catch (error) {
-      console.error('Error loading dashboard:', error)
+    })()
+    inFlightRefreshRef.current = run
+    try {
+      await run
     } finally {
-      if (isMounted()) setLoading(false)
+      if (inFlightRefreshRef.current === run) inFlightRefreshRef.current = null
     }
-  }, [user?.role, revenueMode])
+    return run
+  }, [user?.role])
+
+  // Scoped refresh helpers: after a task/project mutation the dashboard only
+  // re-fetches that slice (1 request) instead of re-firing the full fan-out.
+  const updateCachedSlice = useCallback((patch) => {
+    try {
+      const raw = sessionStorage.getItem(DASHBOARD_CACHE_KEY)
+      if (!raw) return
+      sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify({ ...JSON.parse(raw), ...patch }))
+    } catch {
+      // ignore storage errors
+    }
+  }, [])
+
+  const refreshTaskSlice = useCallback(async (isMounted = () => true) => {
+    try {
+      const tasksData = await tasksAPI.listTasks({ limit: 8 }).catch(() => null)
+      if (!isMounted() || !tasksData?.tasks) return
+      setRecentTasks(tasksData.tasks)
+      updateCachedSlice({ recentTasks: tasksData.tasks })
+    } catch (error) {
+      console.error('Error refreshing task slice:', error)
+    }
+  }, [updateCachedSlice])
+
+  const refreshProjectSlice = useCallback(async (isMounted = () => true) => {
+    try {
+      const projectsData = await projectsApi.getProjects({ limit: 8 }).catch(() => null)
+      const projects = (projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8)
+      if (!isMounted()) return
+      setProjects(projects)
+      updateCachedSlice({ projects })
+    } catch (error) {
+      console.error('Error refreshing project slice:', error)
+    }
+  }, [updateCachedSlice])
 
   useEffect(() => {
     let active = true;
     const run = async () => {
       if (!active) return;
-      await refreshDashboard(() => active);
+      // If cached data was loaded from sessionStorage, refresh silently
+      // (no skeleton loader flash).
+      const hasCache = !!readDashboardCache()
+      await refreshDashboard(() => active, { showLoader: !hasCache });
     };
     run();
 
@@ -432,20 +503,29 @@ const Dashboard = () => {
     // after successful create/update/delete operations.
     // The cascade that previously made this dangerous (NotificationBell dispatching
     // on every poll) has been eliminated.
-    const handleLiveSync = () => {
-      if (active) refreshDashboard(() => active);
+    // Scoped sync: task/project mutations refresh only their own 1-request slice
+    // instead of re-firing the full ~16-request fan-out; generic data-updated
+    // events (CRM, attendance, ...) still refresh the whole dashboard.
+    const handleTasksUpdated = () => {
+      if (active) refreshTaskSlice(() => active);
     };
-    window.addEventListener('syntask:tasks-updated', handleLiveSync);
-    window.addEventListener('syntask:projects-updated', handleLiveSync);
-    window.addEventListener('syntask:data-updated', handleLiveSync);
+    const handleProjectsUpdated = () => {
+      if (active) refreshProjectSlice(() => active);
+    };
+    const handleDataUpdated = () => {
+      if (active) refreshDashboard(() => active, { showLoader: false });
+    };
+    window.addEventListener('syntask:tasks-updated', handleTasksUpdated);
+    window.addEventListener('syntask:projects-updated', handleProjectsUpdated);
+    window.addEventListener('syntask:data-updated', handleDataUpdated);
 
     return () => {
       active = false;
-      window.removeEventListener('syntask:tasks-updated', handleLiveSync);
-      window.removeEventListener('syntask:projects-updated', handleLiveSync);
-      window.removeEventListener('syntask:data-updated', handleLiveSync);
+      window.removeEventListener('syntask:tasks-updated', handleTasksUpdated);
+      window.removeEventListener('syntask:projects-updated', handleProjectsUpdated);
+      window.removeEventListener('syntask:data-updated', handleDataUpdated);
     };
-  }, [refreshDashboard]);
+  }, [refreshDashboard, refreshTaskSlice, refreshProjectSlice]);
 
   // Fetch workspace and content calendar data for dashboard widgets
   useEffect(() => {
@@ -456,15 +536,20 @@ const Dashboard = () => {
         const today = timeService.now();
         const startStr = format(today, 'yyyy-MM-dd');
         const endStr = format(addDays(today, 30), 'yyyy-MM-dd');
-        const { data: workspaceResp } = await calendarApi.getEvents({
-          start_date: startStr,
-          end_date: endStr,
-          view_type: 'my_calendar',
-        });
-        const { data: contentResp } = await contentCalendarApi.getCalendar({
-          start_date: startStr,
-          end_date: endStr,
-        });
+        // Parallelize independent calendar requests instead of sequential await.
+        const [workspaceResult, contentResult] = await Promise.all([
+          calendarApi.getEvents({
+            start_date: startStr,
+            end_date: endStr,
+            view_type: 'my_calendar',
+          }),
+          contentCalendarApi.getCalendar({
+            start_date: startStr,
+            end_date: endStr,
+          }),
+        ]);
+        const { data: workspaceResp } = workspaceResult;
+        const { data: contentResp } = contentResult;
         if (!active) return;
         const workspaceEvents = workspaceResp?.events || [];
         const contentEvents = contentResp?.events || [];
@@ -505,7 +590,10 @@ const Dashboard = () => {
     return () => {
       active = false;
     };
-  }, [refreshDashboard]);
+    // Calendar events are independent of the dashboard payload — fetch once on
+    // mount instead of re-firing both calendar requests every time the
+    // refreshDashboard callback is recreated (e.g. role or revenue-mode toggles).
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     try {
@@ -1351,7 +1439,9 @@ const Dashboard = () => {
       {/* AI BRIEFING CENTER */}
       {/* ============================================================ */}
       {renderDashboardSection('ai-briefing', (
-        <AIBriefingCenter user={user} stats={stats} recentTasks={recentTasks} recentTickets={recentTickets} />
+        <Suspense fallback={null}>
+          <AIBriefingCenter user={user} stats={stats} recentTasks={recentTasks} recentTickets={recentTickets} />
+        </Suspense>
       ))}
 
       {/* ============================================================ */}

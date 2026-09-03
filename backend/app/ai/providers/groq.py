@@ -4,16 +4,86 @@ import asyncio
 import json
 import logging
 import random
+import time
 from typing import Any
 
 import httpx
 
 from app.ai.provider import AIProvider, AIProviderResult, ToolCall
 from app.ai.providers.context_envelope import provider_context_message
+from app.ai.providers.http_client import close_shared_clients, get_shared_client
 from app.core.config import settings
 from app.core.json_safe import to_json_safe
 
 logger = logging.getLogger(__name__)
+
+
+class Groq400Error(Exception):
+    """Structured 400 error from the Groq API.
+
+    Carries the parsed error body so callers can distinguish invalid
+    tool definitions, malformed JSON, content-policy violations, etc.
+    """
+
+    def __init__(
+        self,
+        *,
+        status_code: int = 400,
+        message: str = "Bad Request",
+        error_type: str | None = None,
+        code: str | None = None,
+        failed_generation: str | None = None,
+        raw_body: dict[str, Any] | None = None,
+    ):
+        self.status_code = status_code
+        self.message = message
+        self.error_type = error_type
+        self.code = code
+        self.failed_generation = failed_generation
+        self.raw_body = raw_body or {}
+        super().__init__(f"Groq 400: {message} (type={error_type}, code={code})")
+
+
+# ── Telemetry counters (in-process; shared across the event loop) ─────────
+_telemetry_lock = asyncio.Lock() if hasattr(asyncio, "Lock") else None
+_telemetry: dict[str, Any] = {
+    "total_calls": 0,
+    "total_429": 0,
+    "total_400": 0,
+    "total_retries": 0,
+    "total_tokens": 0,
+    "last_429_at": None,
+}
+
+
+def get_groq_telemetry() -> dict[str, Any]:
+    """Return a snapshot of Groq gateway telemetry."""
+    return dict(_telemetry)
+
+
+async def _share_rate_limit_state(delay: float) -> None:
+    """Push rate-limit cooldown to Redis so other workers avoid the API."""
+    try:
+        from app.core.redis_client import get_redis
+        redis = await get_redis()
+        if redis:
+            await redis.setex("groq:rate_limited_until", int(delay) + 1, str(time.monotonic() + delay))
+    except Exception:
+        pass  # best-effort
+
+
+async def _check_rate_limit_cooldown() -> float | None:
+    """If Redis reports an active rate-limit window, return the remaining delay."""
+    try:
+        from app.core.redis_client import get_redis
+        redis = await get_redis()
+        if redis:
+            raw = await redis.get("groq:rate_limited_until")
+            if raw:
+                return max(0.0, float(raw) - time.monotonic())
+    except Exception:
+        pass
+    return None
 
 
 class GroqProvider(AIProvider):
@@ -93,6 +163,190 @@ class GroqProvider(AIProvider):
         data = await self._post(payload)
         return self._parse_result(data, payload["model"])
 
+    async def generate_with_tools_stream(
+        self,
+        prompt: str,
+        context: dict[str, Any],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any] | None = None,
+    ) -> Any:
+        """Stream a tool-calling completion (SSE) as an async generator.
+
+        Yields dict events:
+          {"type": "content", "text": <delta>}            — answer token delta
+          {"type": "tool_call_delta", ...}                — internal accumulation only
+          {"type": "complete", "message": {...}}         — final assembled message
+
+        Tool-call argument deltas are accumulated internally into a single
+        OpenAI-compatible ``message.tool_calls`` payload (same shape as
+        ``_parse_result``) so callers never handle raw argument fragments.
+        Retries on 429 and structured 400 handling mirror ``_post``.
+        """
+        if not settings.GROQ_API_KEY:
+            raise RuntimeError("GROQ_API_KEY is not configured")
+
+        opts = options or {}
+        messages = list(opts.get("messages") or [])
+        if not messages:
+            system_prompt = opts.get("system_prompt", "")
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            ctx_msg = provider_context_message(context)
+            if ctx_msg:
+                messages.append({"role": "system", "content": ctx_msg})
+            messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": opts.get("model") or settings.HR_AGENT_MODEL or settings.AI_MODEL_GROQ,
+            "temperature": opts.get("temperature", 0.1),
+            "max_tokens": opts.get("max_tokens", 4096),
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": opts.get("tool_choice", "auto"),
+            "stream": True,
+        }
+
+        timeout = httpx.Timeout(settings.AI_TIMEOUT)
+        cooldown = await _check_rate_limit_cooldown()
+        if cooldown and cooldown > 0:
+            logger.info("Groq rate-limit cooldown active — waiting %.1fs", cooldown)
+            await asyncio.sleep(cooldown)
+
+        # Shared keep-alive client — avoids a fresh TCP+TLS handshake per call.
+        client = get_shared_client(timeout=timeout)
+
+        last_exc: Exception | None = None
+        for attempt in range(self._MAX_RETRIES):
+            _telemetry["total_calls"] += 1
+            try:
+                async with client.stream(
+                    "POST",
+                    self.base_url,
+                    headers={
+                        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    content=json.dumps(to_json_safe(payload)),
+                ) as response:
+                    if response.status_code == 429:
+                        _telemetry["total_429"] += 1
+                        _telemetry["last_429_at"] = time.time()
+                        retry_after = response.headers.get("Retry-After")
+                        delay = (
+                            min(float(retry_after), 30)
+                            if retry_after and retry_after.isdigit()
+                            else min(self._BASE_DELAY * (2 ** attempt) + random.uniform(0, 1), 30)
+                        )
+                        logger.warning("Groq rate-limited (429) on attempt %d/%d — retrying in %.1fs", attempt + 1, self._MAX_RETRIES, delay)
+                        await _share_rate_limit_state(delay)
+                        _telemetry["total_retries"] += 1
+                        await asyncio.sleep(delay)
+                        last_exc = httpx.HTTPStatusError("429 Too Many Requests", request=response.request, response=response)
+                        continue
+                    if response.status_code == 400:
+                        _telemetry["total_400"] += 1
+                        body = self._parse_400_body(response)
+                        raise Groq400Error(
+                            status_code=400,
+                            message=body.get("message", "Bad Request"),
+                            error_type=body.get("type"),
+                            code=body.get("code"),
+                            failed_generation=body.get("failed_generation"),
+                            raw_body=body,
+                        )
+                    if response.status_code >= 400:
+                        response.raise_for_status()
+
+                    # ── Accumulate streamed deltas ────────────────────────
+                    content_parts: list[str] = []
+                    tool_calls: dict[int, dict[str, Any]] = {}
+                    finish_reason: str | None = None
+                    model: str = payload["model"]
+                    usage: dict[str, Any] = {}
+                    delivered_content = False
+
+                    async for line in response.aiter_lines():
+                        if not line or not line.startswith("data:"):
+                            continue
+                        raw = line[len("data:"):].strip()
+                        if raw == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
+
+                        model = chunk.get("model") or model
+                        if chunk.get("usage"):
+                            usage = chunk["usage"]
+                        choice = (chunk.get("choices") or [{}])[0]
+                        delta = choice.get("delta") or {}
+
+                        delta_content = delta.get("content")
+                        if delta_content:
+                            content_parts.append(delta_content)
+                            delivered_content = True
+                            yield {"type": "content", "text": delta_content}
+
+                        for raw_tc in delta.get("tool_calls") or []:
+                            idx = int(raw_tc.get("index", 0))
+                            slot = tool_calls.setdefault(
+                                idx,
+                                {"id": "", "name": "", "arguments": ""},
+                            )
+                            if raw_tc.get("id"):
+                                slot["id"] = raw_tc["id"]
+                            func = raw_tc.get("function") or {}
+                            if func.get("name"):
+                                slot["name"] = func["name"]
+                            if func.get("arguments"):
+                                slot["arguments"] += func["arguments"]
+                            yield {
+                                "type": "tool_call_delta",
+                                "index": idx,
+                                "name": slot.get("name"),
+                            }
+
+                        if choice.get("finish_reason"):
+                            finish_reason = choice["finish_reason"]
+
+                    # Assemble OpenAI-compatible message
+                    parsed_tool_calls: list[ToolCall] = []
+                    for idx in sorted(tool_calls):
+                        slot = tool_calls[idx]
+                        raw_args = slot.get("arguments") or "{}"
+                        try:
+                            args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                        except (json.JSONDecodeError, TypeError):
+                            args = {"_raw": raw_args}
+                        parsed_tool_calls.append(
+                            ToolCall(id=slot.get("id") or "", name=slot.get("name") or "", arguments=args)
+                        )
+
+                    _telemetry["total_tokens"] += usage.get("total_tokens") or 0
+                    yield {
+                        "type": "complete",
+                        "message": {
+                            "content": "".join(content_parts),
+                            "tool_calls": parsed_tool_calls,
+                        },
+                        "finish_reason": finish_reason,
+                        "model": model,
+                        "usage": usage,
+                    }
+                    return
+            except Groq400Error:
+                raise
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                if response is not None and response.status_code == 429:
+                    continue
+                raise
+
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("Groq API request failed after retries")
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -104,50 +358,94 @@ class GroqProvider(AIProvider):
         timeout = httpx.Timeout(settings.AI_TIMEOUT)
         last_exc: Exception | None = None
 
+        # Check if another worker already hit a rate-limit window
+        cooldown = await _check_rate_limit_cooldown()
+        if cooldown and cooldown > 0:
+            logger.info("Groq rate-limit cooldown active — waiting %.1fs", cooldown)
+            await asyncio.sleep(cooldown)
+
+        # Shared keep-alive client — avoids a fresh TCP+TLS handshake per call
+        # (agent loops make 2-3 sequential calls per request).
+        client = get_shared_client(timeout=timeout)
+
         for attempt in range(self._MAX_RETRIES):
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(
-                    self.base_url,
-                    headers={
-                        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
-                        "Content-Type": "application/json",
-                    },
-                    content=json.dumps(to_json_safe(payload)),
+            _telemetry["total_calls"] += 1
+            response = await client.post(
+                self.base_url,
+                headers={
+                    "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                content=json.dumps(to_json_safe(payload)),
+            )
+
+            if response.status_code == 429:
+                _telemetry["total_429"] += 1
+                _telemetry["last_429_at"] = time.time()
+                retry_after = response.headers.get("Retry-After")
+                if retry_after and retry_after.isdigit():
+                    delay = min(float(retry_after), 30)
+                else:
+                    delay = min(
+                        self._BASE_DELAY * (2 ** attempt)
+                        + random.uniform(0, 1),
+                        30,
+                    )
+                logger.warning(
+                    "Groq rate-limited (429) on attempt %d/%d — retrying in %.1fs",
+                    attempt + 1,
+                    self._MAX_RETRIES,
+                    delay,
+                )
+                await _share_rate_limit_state(delay)
+                _telemetry["total_retries"] += 1
+                await asyncio.sleep(delay)
+                continue
+
+            if response.status_code == 400:
+                _telemetry["total_400"] += 1
+                body = self._parse_400_body(response)
+                logger.error(
+                    "Groq 400 Bad Request: %s | model=%s | tool_count=%d",
+                    body.get("message", "unknown"),
+                    payload.get("model", "?"),
+                    len(payload.get("tools") or []),
+                )
+                # 400 is not retryable — raise immediately
+                raise Groq400Error(
+                    status_code=400,
+                    message=body.get("message", "Bad Request"),
+                    error_type=body.get("type"),
+                    code=body.get("code"),
+                    failed_generation=body.get("failed_generation"),
+                    raw_body=body,
                 )
 
-                if response.status_code == 429:
-                    retry_after = response.headers.get("Retry-After")
-                    if retry_after and retry_after.isdigit():
-                        delay = min(float(retry_after), 30)
-                    else:
-                        delay = min(
-                            self._BASE_DELAY * (2 ** attempt)
-                            + random.uniform(0, 1),
-                            30,
-                        )
-                    logger.warning(
-                        "Groq rate-limited (429) on attempt %d/%d — retrying in %.1fs",
-                        attempt + 1,
-                        self._MAX_RETRIES,
-                        delay,
-                    )
-                    await asyncio.sleep(delay)
-                    continue
-
-                response.raise_for_status()
-                return response.json()
-
-            # Only store the exception if we didn't get a 429 (we already logged it)
-            last_exc = httpx.HTTPStatusError(
-                f"HTTP {response.status_code}",
-                request=response.request,
-                response=response,
-            )
+            response.raise_for_status()
+            data = response.json()
+            # Track tokens
+            usage = data.get("usage") or {}
+            _telemetry["total_tokens"] += usage.get("total_tokens") or 0
+            return data
 
         # All retries exhausted
         if last_exc:
             raise last_exc
         raise RuntimeError("Groq API request failed after retries")
+
+    @staticmethod
+    def _parse_400_body(response: httpx.Response) -> dict[str, Any]:
+        """Safely extract structured error details from a 400 response body."""
+        try:
+            body = response.json()
+        except Exception:
+            body = {"message": response.text[:500]}
+        return {
+            "message": body.get("error", {}).get("message") or body.get("message") or str(body),
+            "type": body.get("error", {}).get("type"),
+            "code": body.get("error", {}).get("code"),
+            "failed_generation": body.get("error", {}).get("failed_generation"),
+        }
 
     @staticmethod
     def _parse_result(data: dict[str, Any], default_model: str) -> AIProviderResult:

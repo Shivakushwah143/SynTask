@@ -19,6 +19,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+from app.core.cache import cache_get, cache_set
+from app.core.config import settings
 from app.models.attendance import Attendance
 from app.models.automation import AutomationRule
 from app.models.chat import ChatMessage, Conversation
@@ -604,18 +606,40 @@ async def _search_entity(
     return results[: entity.limit]
 
 
+def _search_cache_key(user: User, module: Optional[str], q: str, limit: int) -> str:
+    """Tenant-safe, user-scoped cache key.
+
+    Results are permission-filtered per user, so the key embeds both the
+    company (tenant isolation) and the user id — a tenant or user can only
+    ever read back its own cached result set. The query is normalized so
+    "  Proj " and "proj" share one entry.
+    """
+    company = getattr(user, "company_id", None) or "platform"
+    return f"search:{company}:{user.id}:{module or 'all'}:{limit}:{normalize_query(q)}"
+
+
 async def global_search(
     q: str,
     current_user: User,
     limit: int = 40,
     module: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Run the registry search and group results by navigation module."""
+    """Run the registry search and group results by navigation module.
+
+    Repeated queries (backspace re-typing, module-filter clicks, repeat
+    searches while typing) hit a short per-user Redis cache so the ~35
+    parallel regex scans only run for genuinely new queries.
+    """
     tokens = normalize_query(q).split() if normalize_query(q) else []
     if not tokens:
         return {"query": q, "total": 0, "groups": []}
 
     import asyncio
+
+    cache_key = _search_cache_key(current_user, module, q, limit)
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
 
     entity_results = await asyncio.gather(
         *[_search_entity(entity, current_user, tokens) for entity in SEARCHABLE_ENTITIES]
@@ -652,4 +676,6 @@ async def global_search(
         capped_groups.append({**group, "items": capped_items})
         total += len(capped_items)
 
-    return {"query": q, "total": total, "groups": capped_groups}
+    result = {"query": q, "total": total, "groups": capped_groups}
+    await cache_set(cache_key, result, ttl=settings.SEARCH_CACHE_TTL)
+    return result

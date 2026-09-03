@@ -51,13 +51,24 @@ async def sync_task_health(task: Task, now: Optional[datetime] = None) -> Task:
     now = now or utc_now()
     previous = _health_value(getattr(task, "health_status", None))
     next_health = calculate_task_health(task, now)
-    if previous != next_health.value:
+    transitioned = previous != next_health.value
+    if transitioned:
         task.health_status = next_health
         task.health_updated_at = now
         task.updated_at = now
         await task.save()
 
-    if task.assigned_to and task.due_date and task.status != TaskStatus.COMPLETED:
+    # Timeline events are recorded ONLY when the health state transitions.
+    # Recording on every read (even when health is unchanged) made each list/
+    # dashboard call run an idempotency lookup per due-today/overdue task.
+    # The previous insert-only-on-first-occurrence semantics are preserved,
+    # because the idempotency key made repeat attempts no-ops anyway.
+    if (
+        transitioned
+        and task.assigned_to
+        and task.due_date
+        and task.status != TaskStatus.COMPLETED
+    ):
         if next_health == TaskHealthStatus.DUE_TODAY:
             await _record_task_event(
                 task,
@@ -230,14 +241,29 @@ async def build_task_health_summary(current_user: User) -> Dict[str, Any]:
 
 async def build_team_completion_summary(current_user: User) -> Dict[str, Any]:
     employees = await visible_employees(current_user)
+    if not employees:
+        return {"employees": []}
+    employee_ids = [str(employee.id) for employee in employees]
+
+    # ONE query fetches every relevant task; the previous per-employee loop ran
+    # a separate (repeated) full load for each team member.
+    query: Dict[str, Any] = {"assigned_to": {"$in": employee_ids}}
+    if current_user.role != UserRole.SUPER_ADMIN:
+        query["company_id"] = current_user.company_id
+    tasks = await Task.find(query).to_list()
+    await _sync_many(tasks)
+
+    tasks_by_employee: Dict[str, list[Task]] = {employee_id: [] for employee_id in employee_ids}
+    for task in tasks:
+        if task.assigned_to in tasks_by_employee:
+            tasks_by_employee[task.assigned_to].append(task)
+
     rows = []
     for employee in employees:
-        tasks = await Task.find(Task.company_id == employee.company_id, Task.assigned_to == str(employee.id)).to_list()
-        await _sync_many(tasks)
         rows.append({
             "employee_id": str(employee.id),
             "employee_name": employee.full_name(),
-            **calculate_performance_metrics(tasks),
+            **calculate_performance_metrics(tasks_by_employee.get(str(employee.id), [])),
         })
     return {"employees": rows}
 

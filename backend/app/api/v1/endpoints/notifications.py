@@ -139,16 +139,12 @@ async def mark_all_notifications_as_read(
     current_user: User = Depends(get_current_user)
 ):
     """Mark all notifications as read"""
-    notifications = await Notification.find(
-        {"user_id": str(current_user.id), "is_read": False}
-    ).to_list()
-    
-    for notification in notifications:
-        notification.is_read = True
-        notification.read_at = utc_now()
-        await notification.save()
-    
-    return {"message": f"{len(notifications)} notifications marked as read"}
+    # ONE bulk update replaces the previous load-all + save-per-notification.
+    result = await Notification.get_pymongo_collection().update_many(
+        {"user_id": str(current_user.id), "is_read": False},
+        {"$set": {"is_read": True, "read_at": utc_now()}},
+    )
+    return {"message": f"{result.modified_count} notifications marked as read"}
 
 
 @router.delete("/{notification_id}")

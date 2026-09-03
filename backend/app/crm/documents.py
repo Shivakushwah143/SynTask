@@ -261,7 +261,7 @@ async def list_documents(current_user: User, lead_id: str) -> dict[str, Any]:
     except Exception:
         raw_documents = await get_database()[CRMDocument.Settings.name].find(
             {"company_id": str(lead.company_id), "lead_id": str(lead.id)}
-        ).sort("created_at", -1).to_list(length=None)
+        ).sort("-created_at").to_list(length=None)
         return {"documents": [_serialize_raw_document(document) for document in raw_documents]}
 
 

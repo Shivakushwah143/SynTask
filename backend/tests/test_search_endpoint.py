@@ -173,3 +173,51 @@ async def test_global_search_module_filter(monkeypatch):
     result = await search_service.global_search("x", user("emp-1", UserRole.EMPLOYEE), module="sales")
     assert result["total"] > 0
     assert all(g["moduleKey"] == "sales" for g in result["groups"])
+
+
+@pytest.mark.asyncio
+async def test_global_search_second_call_hits_cache(monkeypatch):
+    """Identical queries are served from the short per-user cache, so the ~35
+    entity scans only run once; tenants/users can never read each other's keys."""
+    store: dict = {}
+    calls = {"search": 0}
+
+    async def fake_get(key):
+        return store.get(key)
+
+    async def fake_set(key, value, ttl=300):
+        store[key] = value
+        return True
+
+    monkeypatch.setattr(search_service, "cache_get", fake_get)
+    monkeypatch.setattr(search_service, "cache_set", fake_set)
+
+    async def fake_search_entity(entity, user, tokens):
+        calls["search"] += 1
+        return [{
+            "id": f"{entity.key}-1", "type": entity.key, "title": entity.key, "subtitle": "",
+            "href": "/x", "module": entity.module, "moduleKey": entity.module_key,
+            "parent": entity.module, "score": 100, "updated_at": None,
+        }]
+
+    monkeypatch.setattr(search_service, "_search_entity", fake_search_entity)
+
+    first = await search_service.global_search("login", user("emp-1", UserRole.EMPLOYEE))
+    entity_calls_after_first = calls["search"]
+    assert entity_calls_after_first > 0
+
+    second = await search_service.global_search("  LOGIN ", user("emp-1", UserRole.EMPLOYEE))
+    assert second == first
+    assert calls["search"] == entity_calls_after_first  # no re-scan on cache hit
+
+    # Different user -> different key (permission-filtered results are never shared).
+    await search_service.global_search("login", user("emp-2", UserRole.EMPLOYEE))
+    assert calls["search"] > entity_calls_after_first
+
+    # Key is company-scoped and normalized.
+    key_1 = search_service._search_cache_key(user("emp-1", UserRole.EMPLOYEE), None, "login", 40)
+    key_2 = search_service._search_cache_key(user("emp-1", UserRole.EMPLOYEE), None, "  LOGIN ", 40)
+    key_other_company = search_service._search_cache_key(user("emp-1", UserRole.EMPLOYEE, company_id="company-2"), None, "login", 40)
+    assert key_1 == key_2
+    assert key_1.startswith("search:company-1:")
+    assert key_other_company != key_1
