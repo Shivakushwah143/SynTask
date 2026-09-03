@@ -145,37 +145,23 @@ class AutomationEngine:
     
     @staticmethod
     async def _assign_task(action: Dict[str, Any], trigger_data: Dict[str, Any]):
-        """Assign task to a user through the authoritative TaskWorkflow."""
+        """Assign task to a user through the unified authoritative assign_task service."""
         task_id = trigger_data.get("entity_id")
         assignee_id = action.get("assignee_id")
 
         if not task_id or not assignee_id:
             return
 
-        task = await Task.get(task_id)
-        if not task:
-            return
         actor_id = trigger_data.get("user_id")
         actor = await User.get(actor_id) if actor_id else None
         if not actor:
             raise ValueError("Automation assignment requires the triggering user")
-        if str(actor.company_id) != str(task.company_id):
-            raise PermissionError("Automation actor cannot modify a task outside its company")
 
-        # Validate assignee belongs to the same company.
-        assignee = await User.get(assignee_id)
-        if not assignee or str(assignee.company_id) != str(task.company_id):
-            raise ValueError(f"Assignee {assignee_id} is not a valid user in this company")
-
-        # Use transition_task with the assign action for full validation,
-        # company scope, status transition, audit, and notification.
-        from app.services.task_workflow import transition_task
-        await transition_task(
-            task=task,
-            actor=actor,
-            action="assign",
-            target_status="assigned",
+        from app.services.task_workflow import assign_task
+        await assign_task(
+            task_id=task_id,
             assignee_id=assignee_id,
+            actor=actor,
         )
     
     @staticmethod

@@ -23,6 +23,17 @@ const DEFAULT_TASK_TEMPLATE = {
   tags: [],
 }
 
+// Collect all unique placeholders from template tasks
+function collectPlaceholders(tasks) {
+  const assigneePlaceholders = new Set()
+  const reviewerPlaceholders = new Set()
+  for (const t of tasks) {
+    if (t.assignee_placeholder) assigneePlaceholders.add(t.assignee_placeholder)
+    if (t.reviewer_placeholder) reviewerPlaceholders.add(t.reviewer_placeholder)
+  }
+  return { assigneePlaceholders: [...assigneePlaceholders], reviewerPlaceholders: [...reviewerPlaceholders] }
+}
+
 export default function ProjectTemplates() {
   const queryClient = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
@@ -247,6 +258,53 @@ function TemplateTaskEditor({ tasks, onChange }) {
               Required for completion
             </label>
           </div>
+          {/* Checklist editor */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-text-muted">Checklist ({(task.checklist || []).length} items)</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const cl = [...(task.checklist || []), { text: '', required: false }]
+                  updateTask(idx, 'checklist', cl)
+                }}
+                className="text-[10px] text-primary-600 hover:text-primary-700"
+              >+ Add item</button>
+            </div>
+            {(task.checklist || []).map((item, ci) => (
+              <div key={ci} className="flex items-center gap-2">
+                <input
+                  className={`${inputClassName} text-xs flex-1`}
+                  value={typeof item === 'string' ? item : item.text || ''}
+                  onChange={(e) => {
+                    const cl = [...(task.checklist || [])]
+                    if (typeof cl[ci] === 'string') cl[ci] = e.target.value
+                    else cl[ci] = { ...cl[ci], text: e.target.value }
+                    updateTask(idx, 'checklist', cl)
+                  }}
+                  placeholder="Checklist item"
+                />
+                <label className="flex items-center gap-1 text-[10px] text-text-muted whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={typeof item === 'object' && item.required}
+                    onChange={(e) => {
+                      const cl = [...(task.checklist || [])]
+                      if (typeof cl[ci] === 'string') cl[ci] = { text: cl[ci], required: e.target.checked }
+                      else cl[ci] = { ...cl[ci], required: e.target.checked }
+                      updateTask(idx, 'checklist', cl)
+                    }}
+                    className="h-3 w-3 rounded"
+                  />
+                  Req.
+                </label>
+                <button type="button" onClick={() => {
+                  const cl = (task.checklist || []).filter((_, j) => j !== ci)
+                  updateTask(idx, 'checklist', cl)
+                }} className="text-red-400 hover:text-red-600 text-xs">&times;</button>
+              </div>
+            ))}
+          </div>
         </div>
       ))}
       {tasks.length === 0 && (
@@ -344,6 +402,8 @@ function GenerateProjectModal({ template, onGenerate, onClose }) {
   const [startDate, setStartDate] = useState('')
   const [deliveryDate, setDeliveryDate] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [assigneeMap, setAssigneeMap] = useState({})
+  const [reviewerMap, setReviewerMap] = useState({})
 
   const { data: clientsData } = useQuery('clients-list', async () => {
     const res = await clientsAPI.listClients({})
@@ -351,10 +411,26 @@ function GenerateProjectModal({ template, onGenerate, onClose }) {
   })
   const clients = clientsData || []
 
+  // Load template tasks to discover placeholders
+  const { data: templateDetail } = useQuery(
+    ['project-template-detail', template.id],
+    async () => (await api.get(`/project-templates/${template.id}`)).data,
+    { enabled: !!template.id }
+  )
+  const templateTasks = templateDetail?.task_templates || []
+  const { assigneePlaceholders, reviewerPlaceholders } = collectPlaceholders(templateTasks)
+  const hasUnresolvedPlaceholders =
+    assigneePlaceholders.some(p => !assigneeMap[p]) ||
+    reviewerPlaceholders.some(p => !reviewerMap[p])
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (!name.trim() || !key.trim() || !projectId.trim() || !leadId.trim() || !startDate) {
       toast.error('All required fields must be filled')
+      return
+    }
+    if (hasUnresolvedPlaceholders) {
+      toast.error('Please map all assignee and reviewer placeholders before generating.')
       return
     }
     setSubmitting(true)
@@ -367,6 +443,8 @@ function GenerateProjectModal({ template, onGenerate, onClose }) {
         client_id: clientId || '',
         start_date: startDate,
         delivery_date: deliveryDate || '',
+        assignee_map_json: JSON.stringify(assigneeMap),
+        reviewer_map_json: JSON.stringify(reviewerMap),
       })
     } finally {
       setSubmitting(false)
@@ -375,9 +453,9 @@ function GenerateProjectModal({ template, onGenerate, onClose }) {
 
   return (
     <Modal isOpen onClose={onClose} title={`Create Project from "${template.name}"`} size="lg">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto">
         <div className="rounded-lg border border-surface-border bg-surface-muted p-3 text-sm text-text-muted">
-          This will create a project with {template.task_count} tasks based on the template.
+          This will create a project with {templateTasks.length} tasks based on the template.
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField label="Project name" required>
@@ -407,9 +485,56 @@ function GenerateProjectModal({ template, onGenerate, onClose }) {
             <input type="datetime-local" className={inputClassName} value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} />
           </FormField>
         </div>
-        <div className="flex justify-end gap-2 pt-2">
+
+        {/* Placeholder mapping */}
+        {(assigneePlaceholders.length > 0 || reviewerPlaceholders.length > 0) && (
+          <div className="rounded-lg border border-surface-border p-3 space-y-3">
+            <p className="text-xs font-semibold text-text-primary">
+              Map Template Placeholders to Users
+              {hasUnresolvedPlaceholders && <span className="ml-2 text-red-500">(all required)</span>}
+            </p>
+            {assigneePlaceholders.length > 0 && (
+              <div>
+                <p className="text-[10px] font-medium text-text-muted uppercase mb-1">Assignee Placeholders</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {assigneePlaceholders.map(p => (
+                    <FormField key={p} label={p} required>
+                      <input
+                        className={inputClassName}
+                        value={assigneeMap[p] || ''}
+                        onChange={(e) => setAssigneeMap({ ...assigneeMap, [p]: e.target.value })}
+                        placeholder="User ID"
+                      />
+                    </FormField>
+                  ))}
+                </div>
+              </div>
+            )}
+            {reviewerPlaceholders.length > 0 && (
+              <div>
+                <p className="text-[10px] font-medium text-text-muted uppercase mb-1">Reviewer Placeholders</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {reviewerPlaceholders.map(p => (
+                    <FormField key={p} label={p} required>
+                      <input
+                        className={inputClassName}
+                        value={reviewerMap[p] || ''}
+                        onChange={(e) => setReviewerMap({ ...reviewerMap, [p]: e.target.value })}
+                        placeholder="User ID"
+                      />
+                    </FormField>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2 sticky bottom-0 bg-white dark:bg-gray-900 border-t border-surface-border pt-3">
           <Button variant="secondary" type="button" onClick={onClose}>Cancel</Button>
-          <Button type="submit" loading={submitting} loadingText="Creating"><Sparkles className="h-4 w-4" /> Generate Project</Button>
+          <Button type="submit" loading={submitting} loadingText="Creating" disabled={hasUnresolvedPlaceholders && (assigneePlaceholders.length > 0 || reviewerPlaceholders.length > 0)}>
+            <Sparkles className="h-4 w-4" /> Generate Project
+          </Button>
         </div>
       </form>
     </Modal>

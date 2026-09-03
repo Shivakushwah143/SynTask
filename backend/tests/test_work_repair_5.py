@@ -84,10 +84,12 @@ def _project(**kwargs):
 
 
 def _user(**kwargs):
+    from app.models.user import UserStatus
     defaults = {
         "id": "user-1", "company_id": "company-1",
         "role": UserRole.EMPLOYEE, "first_name": "Test",
         "last_name": "User", "email": "test@example.com",
+        "status": UserStatus.ACTIVE,
     }
     defaults.update(kwargs)
     obj = _FakeObj(**defaults)
@@ -175,9 +177,12 @@ class TestAutomationAssignmentUsesWorkflow:
         actor = _user(id="evil", company_id="company-2", role=UserRole.ADMIN)
 
         monkeypatch.setattr("app.core.automation_engine.Task.get", staticmethod(_async_return(task)))
-        monkeypatch.setattr("app.core.automation_engine.User.get", staticmethod(_async_return(actor)))
+        async def fake_user_get(uid):
+            return actor if uid == actor.id else None
+        monkeypatch.setattr("app.core.automation_engine.User.get", fake_user_get)
 
-        with pytest.raises(PermissionError, match="company"):
+        # assign_task validates company scope; raises HTTPException
+        with pytest.raises(HTTPException):
             await AutomationEngine._assign_task(
                 {"assignee_id": "user-2"},
                 {"entity_id": task.id, "user_id": actor.id},
@@ -436,9 +441,11 @@ class TestCrossCompanyProtections:
         actor = _user(id="evil", company_id="company-2", role=UserRole.ADMIN)
 
         monkeypatch.setattr("app.core.automation_engine.Task.get", staticmethod(_async_return(task)))
-        monkeypatch.setattr("app.core.automation_engine.User.get", staticmethod(_async_return(actor)))
+        async def fake_user_get(uid):
+            return actor if uid == actor.id else None
+        monkeypatch.setattr("app.core.automation_engine.User.get", fake_user_get)
 
-        with pytest.raises(PermissionError, match="company"):
+        with pytest.raises(HTTPException):
             await AutomationEngine._assign_task(
                 {"assignee_id": "user-1"},
                 {"entity_id": task.id, "user_id": actor.id},

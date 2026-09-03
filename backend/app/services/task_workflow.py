@@ -440,3 +440,76 @@ async def allowed_actions(task: Task, actor: User) -> list[str]:
     if await blocking_dependencies(task):
         actions = [action for action in actions if action not in {"start_work", "submit_review", "complete"}]
     return actions
+
+
+# ---------------------------------------------------------------------------
+# Unified Assignment Service
+# ---------------------------------------------------------------------------
+
+async def assign_task(
+    *,
+    task_id: str,
+    assignee_id: str,
+    actor: User,
+) -> Task:
+    """Authoritative task assignment used by both UI/API and automation.
+
+    Validates:
+    - assignee is a valid active user in the same company
+    - assignee has an appropriate role (not blocked)
+    - actor has assignment permission (manager, project lead, admin, or creator)
+    - task is in a state that allows assignment
+    - creates TODO -> ASSIGNED transition with audit and notification
+
+    Returns the updated Task.
+    """
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    if str(task.company_id) != str(actor.company_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    project = await load_task_project(task, actor)
+
+    # 1. Actor permission: must be manager, project lead, admin, or creator
+    if not await can_manage_workflow(actor, task, project):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to assign this task",
+        )
+
+    # 2. Assignee validation: must be active, same company
+    assignee = await User.get(assignee_id)
+    if not assignee:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee not found")
+    if assignee.status != UserStatus.ACTIVE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee is not active")
+    if str(assignee.company_id) != str(task.company_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee is not in the same company")
+
+    # 3. Role-based scope: who can assign to whom
+    if project and has_project_permission(actor, project, ProjectPermission.ASSIGN_TASK):
+        # Project-level assignment permission — allow valid roles
+        if assignee.role not in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE, UserRole.ADMIN, UserRole.SUB_ADMIN}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid assignee role")
+    elif actor.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}:
+        if assignee.role not in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE, UserRole.ADMIN, UserRole.SUB_ADMIN}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid assignee role")
+    elif actor.role == UserRole.MANAGER:
+        if assignee.role not in {UserRole.LEAD, UserRole.EMPLOYEE}:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager can assign tasks only to Leads or Employees")
+    elif actor.role == UserRole.LEAD:
+        if assignee.role != UserRole.EMPLOYEE:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Lead can assign tasks only to Employees")
+    else:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to assign tasks")
+
+    # 3. Use transition_task for the actual state change, audit, and notification.
+    task = await transition_task(
+        task=task,
+        actor=actor,
+        action="assign",
+        target_status="assigned",
+        assignee_id=assignee_id,
+    )
+    return task

@@ -146,7 +146,7 @@ async def test_assigned_task_start_timer_transitions_to_in_progress(monkeypatch,
         return task
 
     monkeypatch.setattr(timer_module.Task, "get", staticmethod(get_task))
-    monkeypatch.setattr(timer_module, "load_task_project", lambda task: _none_async())
+    monkeypatch.setattr(timer_module, "load_task_project", lambda task, actor: _none_async())
     monkeypatch.setattr(timer_module, "transition_task", fake_transition)
     monkeypatch.setattr(timer_module, "ActiveTimeSession", FakeSession)
     FakeSessionStore.active = None
@@ -180,7 +180,7 @@ async def test_start_timer_is_idempotent_and_creates_one_session(monkeypatch, ac
         FakeSessionStore.active = self
 
     monkeypatch.setattr(timer_module.Task, "get", staticmethod(get_task))
-    monkeypatch.setattr(timer_module, "load_task_project", lambda task: _none_async())
+    monkeypatch.setattr(timer_module, "load_task_project", lambda task, actor: _none_async())
     monkeypatch.setattr(timer_module.ActiveTimeSession, "find_one", FakeSession.find_one)
     monkeypatch.setattr(FakeSession, "insert", insert)
     monkeypatch.setattr(timer_module, "ActiveTimeSession", FakeSession)
@@ -231,6 +231,36 @@ async def test_stop_timer_is_atomic_and_creates_one_time_log(monkeypatch, actor)
         async def find_one(cls, query):
             return await fake_timelog_find_one(query)
 
+    async def fake_find_one_and_update(query, update, return_document=None):
+        """Simulate atomic find_one_and_update for stop claim."""
+        from bson import ObjectId
+        s = FakeSessionStore.active
+        if not s:
+            return None
+        status_val = getattr(s.status, 'value', s.status) if hasattr(s.status, 'value') else s.status
+        allowed = {ActiveTimeSessionStatus.RUNNING.value, ActiveTimeSessionStatus.PAUSED.value}
+        if status_val not in allowed:
+            return None
+        # Atomically claim: transition to STOPPING
+        s.status = ActiveTimeSessionStatus.STOPPING
+        FakeSessionStore.active = s
+        return {"_id": ObjectId(), "company_id": s.company_id, "user_id": s.user_id,
+                "task_id": s.task_id, "status": ActiveTimeSessionStatus.STOPPING.value,
+                "started_at": s.started_at, "last_resumed_at": s.last_resumed_at,
+                "accumulated_seconds": s.accumulated_seconds, "finalized": False,
+                "project_id": getattr(s, 'project_id', None), "client_id": getattr(s, 'client_id', None),
+                "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)}
+
+    class FakeMotorCollection:
+        @staticmethod
+        async def find_one_and_update(query, update, return_document=None):
+            return await fake_find_one_and_update(query, update, return_document)
+
+    @staticmethod
+    def fake_get_pymongo_collection():
+        return FakeMotorCollection()
+
+    monkeypatch.setattr(timer_module.ActiveTimeSession, "get_pymongo_collection", fake_get_pymongo_collection)
     monkeypatch.setattr(timer_module.ActiveTimeSession, "find_one", fake_find_session)
     monkeypatch.setattr(timer_module.ActiveTimeSession, "save", fake_session_save)
     monkeypatch.setattr(timer_module.ActiveTimeSession, "delete", fake_session_delete)

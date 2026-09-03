@@ -1468,25 +1468,19 @@ async def update_task(
             if enum_or_string_value(task.status) == TaskStatus.ASSIGNED.value:
                 await transition_task(task=task, actor=current_user, action="assign", target_status=TaskStatus.TODO.value)
         else:
-            # Validate assigned user exists and is in same company
-            assigned_user = await User.get(assigned_to)
-            if not assigned_user:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Assigned user not found"
-                )
-            if assigned_user.company_id != task.company_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Assigned user must be from the same company"
-                )
             if assigned_to != previous_assigned_to:
-                await _assert_can_assign_task(current_user, assigned_user, task_project)
-            task.assigned_to = assigned_to
-            task.assigned_by = str(current_user.id)
-            task.assigned_at = utc_now()
-            if assigned_to != previous_assigned_to and enum_or_string_value(task.status) == TaskStatus.TODO.value:
-                await transition_task(task=task, actor=current_user, action="assign", target_status=TaskStatus.ASSIGNED.value)
+                # Use the unified authoritative assign_service for reassignment
+                from app.services.task_workflow import assign_task
+                await assign_task(
+                    task_id=str(task.id),
+                    assignee_id=assigned_to,
+                    actor=current_user,
+                )
+                # Refresh task from DB after assign_task
+                task = await Task.get(str(task.id))
+            else:
+                # Same assignee — no-op for assignment, just ensure fields are set
+                task.assigned_at = task.assigned_at or utc_now()
     if review_required is not None:
         if getattr(task, "source_type", None) == "sales_follow_up" and review_required:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sales follow-up tasks do not require review")

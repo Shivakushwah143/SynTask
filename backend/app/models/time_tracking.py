@@ -27,16 +27,17 @@ class TimeLog(Document):
     company_id: str
     user_id: str
     user_name: str
-    
+
     # Time Details
     hours: float  # Hours worked
     minutes: Optional[int] = None  # Additional minutes
-    
+
     # Date/Time
     date: datetime  # Date when work was done
     started_at: Optional[datetime] = None  # When timer started
     ended_at: Optional[datetime] = None  # When timer ended
     source: TimeLogSource = TimeLogSource.MANUAL
+    timer_session_id: Optional[str] = None  # Links to ActiveTimeSession.id for exactly-once guarantee
     project_id: Optional[str] = None
     client_id: Optional[str] = None
     created_by: Optional[str] = None
@@ -45,18 +46,18 @@ class TimeLog(Document):
     voided_at: Optional[datetime] = None
     voided_by: Optional[str] = None
     void_reason: Optional[str] = None
-    
+
     # Description
     description: Optional[str] = None
-    
+
     # Billable
     is_billable: bool = False
     billing_rate: Optional[float] = None
-    
+
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
     class Settings:
         name = "time_logs"
         indexes = [
