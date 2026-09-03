@@ -165,10 +165,75 @@ export default function ProjectTemplates() {
 
 // ── Template Task Editor ─────────────────────────────────────────────────
 
+const OPTIONAL_TASK_FIELDS = [
+  { key: 'relative_start_day', label: 'Start day (relative)', type: 'number' },
+  { key: 'relative_due_day', label: 'Due day (relative)', type: 'number' },
+  { key: 'estimated_hours', label: 'Est. hours', type: 'number' },
+  { key: 'assignee_placeholder', label: 'Assignee placeholder', type: 'text', placeholder: 'e.g. developer' },
+  { key: 'reviewer_placeholder', label: 'Reviewer placeholder', type: 'text', placeholder: 'e.g. reviewer' },
+  { key: 'depends_on_refs', label: 'Dependencies (comma-separated ref_ids)', type: 'deps', placeholder: 'e.g. task_0, task_1' },
+  { key: 'review_required', label: 'Review required', type: 'checkbox' },
+  { key: 'required_for_project_completion', label: 'Required for completion', type: 'checkbox' },
+  { key: 'checklist', label: 'Checklist', type: 'checklist' },
+]
+
+// Determine which optional fields a task already has non-default values for
+function detectActiveFields(task) {
+  const active = []
+  for (const f of OPTIONAL_TASK_FIELDS) {
+    const val = task[f.key]
+    if (f.type === 'checkbox') {
+      // Active if user explicitly set it to false (default is true)
+      if (val === false) active.push(f.key)
+    } else if (f.type === 'checklist') {
+      if (Array.isArray(val) && val.length > 0) active.push(f.key)
+    } else if (f.type === 'deps') {
+      if (Array.isArray(val) && val.length > 0) active.push(f.key)
+    } else if (f.type === 'number') {
+      if (val != null && val !== 0 && val !== 3) active.push(f.key)
+    } else {
+      if (val) active.push(f.key)
+    }
+  }
+  return active
+}
+
 function TemplateTaskEditor({ tasks, onChange }) {
+  const [activeFieldsMap, setActiveFieldsMap] = useState(() => {
+    const map = {}
+    tasks.forEach((t, i) => { map[i] = new Set(detectActiveFields(t)) })
+    return map
+  })
+  const [savedTasks, setSavedTasks] = useState(new Set())
+  const [openMenuIdx, setOpenMenuIdx] = useState(null)
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (openMenuIdx === null) return
+    const handler = (e) => {
+      if (!e.target.closest('[data-field-menu]')) setOpenMenuIdx(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [openMenuIdx])
+
+  const saveTask = (idx) => {
+    const task = tasks[idx]
+    if (!task.title?.trim()) { toast.error('Task title is required'); return }
+    if (!task.ref_id?.trim()) { toast.error('Task ref ID is required'); return }
+    setSavedTasks(prev => { const next = new Set(prev); next.add(idx); return next })
+  }
+
+  const editTask = (idx) => {
+    setSavedTasks(prev => { const next = new Set(prev); next.delete(idx); return next })
+  }
+
   const addTask = () => {
     const idx = tasks.length
     onChange([...tasks, { ...DEFAULT_TASK_TEMPLATE, ref_id: `task_${idx}` }])
+    setActiveFieldsMap(prev => ({ ...prev, [idx]: new Set() }))
+    // New task starts in editing mode
+    setSavedTasks(prev => { const next = new Set(prev); return next })
   }
 
   const updateTask = (idx, field, value) => {
@@ -177,14 +242,110 @@ function TemplateTaskEditor({ tasks, onChange }) {
     onChange(updated)
   }
 
+  const addField = (idx, fieldKey) => {
+    setActiveFieldsMap(prev => {
+      const next = { ...prev }
+      const set = new Set(prev[idx] || [])
+      set.add(fieldKey)
+      next[idx] = set
+      return next
+    })
+    setOpenMenuIdx(null)
+  }
+
+  const removeField = (idx, fieldKey) => {
+    // Reset field to default value
+    const defaults = { ...DEFAULT_TASK_TEMPLATE }
+    updateTask(idx, fieldKey, defaults[fieldKey])
+    setActiveFieldsMap(prev => {
+      const next = { ...prev }
+      const set = new Set(prev[idx] || [])
+      set.delete(fieldKey)
+      next[idx] = set
+      return next
+    })
+  }
+
   const removeTask = (idx) => {
     const removed_ref = tasks[idx].ref_id
     const updated = tasks.filter((_, i) => i !== idx)
-    // Remove from depends_on_refs in other tasks
     updated.forEach(t => {
       t.depends_on_refs = (t.depends_on_refs || []).filter(r => r !== removed_ref)
     })
     onChange(updated)
+    setActiveFieldsMap(prev => {
+      const next = {}
+      for (const [k, v] of Object.entries(prev)) {
+        const ki = parseInt(k)
+        if (ki < idx) next[ki] = v
+        else if (ki > idx) next[ki - 1] = v
+      }
+      return next
+    })
+    setSavedTasks(prev => {
+      const next = new Set()
+      for (const i of prev) {
+        if (i < idx) next.add(i)
+        else if (i > idx) next.add(i - 1)
+      }
+      return next
+    })
+  }
+
+  const renderOptionalField = (f, task, idx) => {
+    if (f.type === 'checkbox') {
+      return (
+        <div key={f.key} className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs">
+            <input type="checkbox" checked={task[f.key] !== false} onChange={(e) => updateTask(idx, f.key, e.target.checked)} className="h-3.5 w-3.5 rounded" />
+            {f.label}
+          </label>
+          <button type="button" onClick={() => removeField(idx, f.key)} className="text-[10px] text-red-400 hover:text-red-600">&times;</button>
+        </div>
+      )
+    }
+    if (f.type === 'deps') {
+      return (
+        <div key={f.key} className="flex items-center gap-2">
+          <FormField label={f.label} className="flex-1">
+            <input className={inputClassName} value={(task[f.key] || []).join(', ')} onChange={(e) => updateTask(idx, f.key, e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder={f.placeholder} />
+          </FormField>
+          <button type="button" onClick={() => removeField(idx, f.key)} className="text-[10px] text-red-400 hover:text-red-600 mt-5">&times;</button>
+        </div>
+      )
+    }
+    if (f.type === 'checklist') {
+      return (
+        <div key={f.key} className="space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-text-muted">Checklist ({(task.checklist || []).length} items)</span>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => { const cl = [...(task.checklist || []), { text: '', required: false }]; updateTask(idx, 'checklist', cl) }} className="text-[10px] text-primary-600 hover:text-primary-700">+ Add item</button>
+              <button type="button" onClick={() => removeField(idx, f.key)} className="text-[10px] text-red-400 hover:text-red-600">&times;</button>
+            </div>
+          </div>
+          {(task.checklist || []).map((item, ci) => (
+            <div key={ci} className="flex items-center gap-2">
+              <input className={`${inputClassName} text-xs flex-1`} value={typeof item === 'string' ? item : item.text || ''} onChange={(e) => { const cl = [...(task.checklist || [])]; if (typeof cl[ci] === 'string') cl[ci] = e.target.value; else cl[ci] = { ...cl[ci], text: e.target.value }; updateTask(idx, 'checklist', cl) }} placeholder="Checklist item" />
+              <label className="flex items-center gap-1 text-[10px] text-text-muted whitespace-nowrap">
+                <input type="checkbox" checked={typeof item === 'object' && item.required} onChange={(e) => { const cl = [...(task.checklist || [])]; if (typeof cl[ci] === 'string') cl[ci] = { text: cl[ci], required: e.target.checked }; else cl[ci] = { ...cl[ci], required: e.target.checked }; updateTask(idx, 'checklist', cl) }} className="h-3 w-3 rounded" />
+                Req.
+              </label>
+              <button type="button" onClick={() => { const cl = (task.checklist || []).filter((_, j) => j !== ci); updateTask(idx, 'checklist', cl) }} className="text-red-400 hover:text-red-600 text-xs">&times;</button>
+            </div>
+          ))}
+        </div>
+      )
+    }
+    // Default: text/number input
+    return (
+      <div key={f.key} className="flex items-center gap-2">
+        <FormField label={f.label} className="flex-1">
+          <input type={f.type} className={inputClassName} value={task[f.key] ?? ''} onChange={(e) => updateTask(idx, f.key, f.type === 'number' ? (e.target.value ? parseFloat(e.target.value) : null) : e.target.value)} placeholder={f.placeholder || ''} min={f.type === 'number' ? '0' : undefined} step={f.key === 'estimated_hours' ? '0.5' : undefined} />
+        </FormField>
+        <button type="button" onClick={() => removeField(idx, f.key)} className="text-[10px] text-red-400 hover:text-red-600 mt-5">&times;</button>
+      </div>
+    )
   }
 
   return (
@@ -195,118 +356,110 @@ function TemplateTaskEditor({ tasks, onChange }) {
           <Plus className="h-3 w-3" /> Add Task
         </Button>
       </div>
-      {tasks.map((task, idx) => (
-        <div key={idx} className="rounded-lg border border-surface-border bg-surface-muted p-3 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <GripVertical className="h-4 w-4 text-text-muted" />
-              <span className="text-xs font-medium text-text-muted">Task {idx + 1}</span>
-              <span className="text-[10px] text-text-muted">ref: {task.ref_id}</span>
+      {tasks.map((task, idx) => {
+        const isSaved = savedTasks.has(idx)
+        const activeFields = activeFieldsMap[idx] || new Set()
+        const availableFields = OPTIONAL_TASK_FIELDS.filter(f => !activeFields.has(f.key))
+
+        // Collapsed summary for saved tasks
+        if (isSaved) {
+          return (
+            <div key={idx} className="rounded-lg border border-green-300 bg-green-50 dark:bg-green-900/20 p-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3 min-w-0">
+                <GripVertical className="h-4 w-4 text-text-muted flex-shrink-0" />
+                <span className="text-xs font-medium text-text-muted flex-shrink-0">Task {idx + 1}</span>
+                <span className="text-sm font-medium text-text-primary truncate">{task.title}</span>
+                <span className="text-[10px] text-text-muted flex-shrink-0">ref: {task.ref_id}</span>
+                <Badge label={task.priority} colorKey={task.priority === 'critical' ? 'cancelled' : task.priority === 'high' ? 'pending' : 'completed'} />
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button type="button" onClick={() => editTask(idx)} className="rounded p-1 text-text-muted hover:bg-surface-muted hover:text-text-primary">
+                  <Edit2 className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" onClick={() => removeTask(idx)} className="rounded p-1 text-red-500 hover:bg-red-50 hover:text-red-700">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
-            <button type="button" onClick={() => removeTask(idx)} className="text-red-500 hover:text-red-700">
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <FormField label="Title" required>
-              <input className={inputClassName} value={task.title} onChange={(e) => updateTask(idx, 'title', e.target.value)} placeholder="Task title" />
-            </FormField>
-            <FormField label="Ref ID" required>
-              <input className={inputClassName} value={task.ref_id} onChange={(e) => updateTask(idx, 'ref_id', e.target.value)} placeholder="task_0" />
-            </FormField>
-          </div>
-          <FormField label="Description">
-            <textarea className={inputClassName} rows={2} value={task.description || ''} onChange={(e) => updateTask(idx, 'description', e.target.value)} placeholder="Optional description" />
-          </FormField>
-          <div className="grid gap-2 sm:grid-cols-4">
-            <FormField label="Priority">
-              <select className={inputClassName} value={task.priority} onChange={(e) => updateTask(idx, 'priority', e.target.value)}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-            </FormField>
-            <FormField label="Start day (relative)">
-              <input type="number" className={inputClassName} value={task.relative_start_day} onChange={(e) => updateTask(idx, 'relative_start_day', parseInt(e.target.value) || 0)} />
-            </FormField>
-            <FormField label="Due day (relative)">
-              <input type="number" className={inputClassName} value={task.relative_due_day} onChange={(e) => updateTask(idx, 'relative_due_day', parseInt(e.target.value) || 3)} />
-            </FormField>
-            <FormField label="Est. hours">
-              <input type="number" className={inputClassName} value={task.estimated_hours || ''} onChange={(e) => updateTask(idx, 'estimated_hours', e.target.value ? parseFloat(e.target.value) : null)} min="0" step="0.5" />
-            </FormField>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-3">
-            <FormField label="Assignee placeholder">
-              <input className={inputClassName} value={task.assignee_placeholder || ''} onChange={(e) => updateTask(idx, 'assignee_placeholder', e.target.value)} placeholder="e.g. developer" />
-            </FormField>
-            <FormField label="Reviewer placeholder">
-              <input className={inputClassName} value={task.reviewer_placeholder || ''} onChange={(e) => updateTask(idx, 'reviewer_placeholder', e.target.value)} placeholder="e.g. reviewer" />
-            </FormField>
-            <FormField label="Dependencies (comma-separated ref_ids)">
-              <input className={inputClassName} value={(task.depends_on_refs || []).join(', ')} onChange={(e) => updateTask(idx, 'depends_on_refs', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder="e.g. task_0, task_1" />
-            </FormField>
-          </div>
-          <div className="flex items-center gap-4 text-xs">
-            <label className="flex items-center gap-1.5">
-              <input type="checkbox" checked={task.review_required !== false} onChange={(e) => updateTask(idx, 'review_required', e.target.checked)} className="h-3.5 w-3.5 rounded" />
-              Review required
-            </label>
-            <label className="flex items-center gap-1.5">
-              <input type="checkbox" checked={task.required_for_project_completion !== false} onChange={(e) => updateTask(idx, 'required_for_project_completion', e.target.checked)} className="h-3.5 w-3.5 rounded" />
-              Required for completion
-            </label>
-          </div>
-          {/* Checklist editor */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-text-muted">Checklist ({(task.checklist || []).length} items)</span>
-              <button
-                type="button"
-                onClick={() => {
-                  const cl = [...(task.checklist || []), { text: '', required: false }]
-                  updateTask(idx, 'checklist', cl)
-                }}
-                className="text-[10px] text-primary-600 hover:text-primary-700"
-              >+ Add item</button>
+          )
+        }
+
+        // Full editor for unsaved tasks
+        return (
+          <div key={idx} className="rounded-lg border border-surface-border bg-surface-muted p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <GripVertical className="h-4 w-4 text-text-muted" />
+                <span className="text-xs font-medium text-text-muted">Task {idx + 1}</span>
+                <span className="text-[10px] text-text-muted">ref: {task.ref_id}</span>
+              </div>
+              <button type="button" onClick={() => removeTask(idx)} className="text-red-500 hover:text-red-700">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
             </div>
-            {(task.checklist || []).map((item, ci) => (
-              <div key={ci} className="flex items-center gap-2">
-                <input
-                  className={`${inputClassName} text-xs flex-1`}
-                  value={typeof item === 'string' ? item : item.text || ''}
-                  onChange={(e) => {
-                    const cl = [...(task.checklist || [])]
-                    if (typeof cl[ci] === 'string') cl[ci] = e.target.value
-                    else cl[ci] = { ...cl[ci], text: e.target.value }
-                    updateTask(idx, 'checklist', cl)
-                  }}
-                  placeholder="Checklist item"
-                />
-                <label className="flex items-center gap-1 text-[10px] text-text-muted whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={typeof item === 'object' && item.required}
-                    onChange={(e) => {
-                      const cl = [...(task.checklist || [])]
-                      if (typeof cl[ci] === 'string') cl[ci] = { text: cl[ci], required: e.target.checked }
-                      else cl[ci] = { ...cl[ci], required: e.target.checked }
-                      updateTask(idx, 'checklist', cl)
-                    }}
-                    className="h-3 w-3 rounded"
-                  />
-                  Req.
-                </label>
-                <button type="button" onClick={() => {
-                  const cl = (task.checklist || []).filter((_, j) => j !== ci)
-                  updateTask(idx, 'checklist', cl)
-                }} className="text-red-400 hover:text-red-600 text-xs">&times;</button>
+            {/* Core fields: always visible */}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <FormField label="Title" required>
+                <input className={inputClassName} value={task.title} onChange={(e) => updateTask(idx, 'title', e.target.value)} placeholder="Task title" />
+              </FormField>
+              <FormField label="Ref ID" required>
+                <input className={inputClassName} value={task.ref_id} onChange={(e) => updateTask(idx, 'ref_id', e.target.value)} placeholder="task_0" />
+              </FormField>
+            </div>
+            <FormField label="Description">
+              <textarea className={inputClassName} rows={2} value={task.description || ''} onChange={(e) => updateTask(idx, 'description', e.target.value)} placeholder="Optional description" />
+            </FormField>
+            <div className="grid gap-2 sm:grid-cols-1">
+              <FormField label="Priority">
+                <select className={inputClassName} value={task.priority} onChange={(e) => updateTask(idx, 'priority', e.target.value)}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </FormField>
+            </div>
+            {/* Active optional fields */}
+            {OPTIONAL_TASK_FIELDS.filter(f => activeFields.has(f.key)).map(f => (
+              <div key={f.key} className="border-t border-surface-border pt-2">
+                {renderOptionalField(f, task, idx)}
               </div>
             ))}
+            {/* Add field button + dropdown */}
+            {availableFields.length > 0 && (
+              <div className="relative" data-field-menu>
+                <button
+                  type="button"
+                  onClick={() => setOpenMenuIdx(openMenuIdx === idx ? null : idx)}
+                  className="flex items-center gap-1 text-[11px] font-medium text-primary-600 hover:text-primary-700"
+                >
+                  <Plus className="h-3 w-3" /> Add field
+                </button>
+                {openMenuIdx === idx && (
+                  <div className="absolute z-10 mt-1 w-56 rounded-md border border-surface-border bg-white shadow-lg dark:bg-gray-800">
+                    {availableFields.map(f => (
+                      <button
+                        key={f.key}
+                        type="button"
+                        onClick={() => addField(idx, f.key)}
+                        className="w-full px-3 py-1.5 text-left text-xs text-text-primary hover:bg-surface-muted"
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Save Task button */}
+            <div className="border-t border-surface-border pt-2 flex justify-end">
+              <Button size="sm" type="button" onClick={() => saveTask(idx)}>
+                Save Task
+              </Button>
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
       {tasks.length === 0 && (
         <p className="rounded-lg border border-dashed border-surface-border p-4 text-center text-xs text-text-muted">
           No task definitions. Click &quot;Add Task&quot; to define tasks for this template.
