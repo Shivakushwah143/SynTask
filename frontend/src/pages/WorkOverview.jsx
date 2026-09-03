@@ -6,9 +6,10 @@
  * - Manager/Lead: Team Work (what needs my attention?)
  * - Admin/Super Admin: Business Work (company execution attention)
  */
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery } from 'react-query'
+import { useQuery, useQueryClient } from 'react-query'
+import toast from 'react-hot-toast'
 import {
   AlertTriangle,
   ArrowRight,
@@ -18,17 +19,16 @@ import {
   ChevronRight,
   Clock,
   Eye,
-  FileText,
   Flame,
   GitPullRequest,
   Layers,
   Lock,
-  ShieldCheck,
+  Pause,
+  Play,
+  Square,
   TrendingUp,
-  User,
-  Users,
 } from 'lucide-react'
-import { tasksAPI } from '../api/tasks'
+import { timeTrackingApi } from '../api/timeTracking'
 import { useAuthStore } from '../store/authStore'
 import { normalizeRole } from '../utils/roles'
 
@@ -120,7 +120,7 @@ function TaskRow({ task, actionLabel, actionHref, showAssignee = false }) {
   )
 }
 
-function SectionHeader({ title, count, viewAllLink, viewAllLabel = 'View All' }) {
+function SectionHeader({ title, count, viewAllLink }) {
   return (
     <div className="mb-2 flex items-center justify-between">
       <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
@@ -259,8 +259,11 @@ function EmployeeWorkOverview({ data }) {
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-text-primary">{greeting}</h1>
-        <p className="text-sm text-text-muted">Here's what needs your attention today.</p>
+        <p className="text-sm text-text-muted">Here&apos;s what needs your attention today.</p>
       </div>
+
+      {/* Active Timer */}
+      <ActiveTimerBar />
 
       {/* Summary Cards */}
       <section className="grid grid-cols-2 gap-2 lg:grid-cols-4">
@@ -342,7 +345,7 @@ function EmployeeWorkOverview({ data }) {
 
       {/* Empty State */}
       {!data.next_action && (!data.needs_attention?.length) && (!data.today?.length) && (
-        <EmptyState message="You're clear for now. Check upcoming work or take a break." />
+        <EmptyState message="You&apos;re clear for now. Check upcoming work or take a break." />
       )}
     </div>
   )
@@ -358,7 +361,7 @@ function ManagerWorkOverview({ data }) {
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-text-primary">Team Work</h1>
-        <p className="text-sm text-text-muted">What requires your team's attention right now.</p>
+        <p className="text-sm text-text-muted">What requires your team&apos;s attention right now.</p>
       </div>
 
       {/* Summary Cards */}
@@ -489,6 +492,136 @@ function ManagerWorkOverview({ data }) {
         <EmptyState message="No operational issues detected. Team is running smoothly." />
       )}
     </div>
+  )
+}
+
+// ── Active Timer Bar ──────────────────────────────────────────────────────
+
+function ActiveTimerBar() {
+  const queryClient = useQueryClient()
+  const [elapsed, setElapsed] = useState(0)
+
+  const { data: timerData, isLoading } = useQuery(
+    ['activeTimer'],
+    async () => {
+      const response = await timeTrackingApi.getActive()
+      return response.data?.active_timer || null
+    },
+    { refetchOnWindowFocus: true, staleTime: 10000 }
+  )
+
+  const session = timerData
+  const isRunning = session && session.status === 'running'
+  const isPaused = session && session.status === 'paused'
+  const isActive = isRunning || isPaused
+
+  // Elapsed timer tick
+  useEffect(() => {
+    if (!isActive || !session?.started_at) return
+    const baseMs = new Date(session.started_at).getTime()
+    const pausedMs = session.paused_duration_ms || 0
+    const tick = () => {
+      const nowMs = Date.now()
+      setElapsed(Math.max(0, Math.floor((nowMs - baseMs - pausedMs) / 1000)))
+    }
+    tick()
+    const interval = setInterval(tick, 1000)
+    return () => clearInterval(interval)
+  }, [isActive, session?.started_at, session?.paused_duration_ms])
+
+  const formatElapsed = useCallback((totalSeconds) => {
+    const h = Math.floor(totalSeconds / 3600)
+    const m = Math.floor((totalSeconds % 3600) / 60)
+    const s = totalSeconds % 60
+    if (h > 0) return `${h}h ${m}m ${s}s`
+    if (m > 0) return `${m}m ${s}s`
+    return `${s}s`
+  }, [])
+
+  const handlePause = useCallback(async () => {
+    try {
+      await timeTrackingApi.pause()
+      toast.success('Timer paused')
+      queryClient.invalidateQueries(['activeTimer'])
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to pause timer')
+    }
+  }, [queryClient])
+
+  const handleResume = useCallback(async () => {
+    try {
+      await timeTrackingApi.resume()
+      toast.success('Timer resumed')
+      queryClient.invalidateQueries(['activeTimer'])
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to resume timer')
+    }
+  }, [queryClient])
+
+  const handleStop = useCallback(async () => {
+    try {
+      await timeTrackingApi.stop()
+      toast.success('Timer stopped')
+      queryClient.invalidateQueries(['activeTimer'])
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to stop timer')
+    }
+  }, [queryClient])
+
+  if (isLoading || !isActive) return null
+
+  return (
+    <section className="rounded-lg border border-primary-200 bg-primary-50/80 p-3 shadow-sm dark:border-primary-700/50 dark:bg-primary-900/20">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isRunning ? 'bg-emerald-100 text-emerald-600 animate-pulse' : 'bg-amber-100 text-amber-600'}`}>
+            <Clock className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase text-text-muted">Active Timer</p>
+            <p className="mt-0.5 truncate text-sm font-medium text-text-primary">
+              {session.task_title || session.task_id || 'Working'}
+              <span className="ml-2 text-text-muted">({isRunning ? 'Running' : 'Paused'})</span>
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-lg font-bold tabular-nums text-text-primary">
+            {formatElapsed(elapsed)}
+          </span>
+          <div className="flex gap-1">
+            {isRunning && (
+              <button
+                type="button"
+                onClick={handlePause}
+                className="rounded-md bg-amber-500 px-2 py-1.5 text-xs font-medium text-white hover:bg-amber-600"
+                aria-label="Pause timer"
+              >
+                <Pause className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {isPaused && (
+              <button
+                type="button"
+                onClick={handleResume}
+                className="rounded-md bg-emerald-500 px-2 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"
+                aria-label="Resume timer"
+              >
+                <Play className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleStop}
+              className="rounded-md bg-red-500 px-2 py-1.5 text-xs font-medium text-white hover:bg-red-600"
+              aria-label="Stop timer"
+            >
+              <Square className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 

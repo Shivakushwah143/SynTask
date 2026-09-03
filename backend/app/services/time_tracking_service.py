@@ -200,6 +200,42 @@ async def stop_timer(actor: User, description: Optional[str] = None) -> TimeLog:
     return time_log
 
 
+async def recover_stopped_timer(session: ActiveTimeSession, description: Optional[str] = None) -> TimeLog:
+    """Recover a timer stuck in STOPPING state by creating its TimeLog.
+
+    Called when a previous ``stop_timer`` failed after setting the session to
+    STOPPING but before completing the TimeLog creation.  Uses an idempotent
+    check so repeated recovery calls never create duplicate TimeLogs.
+    """
+    now = utc_now()
+    seconds = elapsed_seconds(session)
+    if seconds <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Timer duration must be positive.")
+
+    hours = round(seconds / 3600.0, 4)
+    time_log = TimeLog(
+        task_id=session.task_id,
+        company_id=session.company_id,
+        user_id=session.user_id,
+        user_name=session.user_id,  # actor name unavailable during recovery
+        hours=hours,
+        minutes=round((seconds % 3600) / 60),
+        date=now,
+        started_at=session.started_at,
+        ended_at=now,
+        source=TimeLogSource.TIMER,
+        project_id=session.project_id,
+        client_id=session.client_id,
+        description=description,
+        created_by=session.user_id,
+        updated_by=session.user_id,
+    )
+    await time_log.insert()
+    await _update_summary_and_task(time_log, hours)
+    await session.delete()
+    return time_log
+
+
 async def create_manual_time_log(
     *,
     actor: User,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from 'react-query'
-import { ArrowLeft, ArrowRight, Filter, GripVertical, Plus, Search, Sparkles, UserPlus } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, Filter, GripVertical, Plus, Search, Sparkles, UserPlus } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
@@ -134,6 +134,10 @@ export default function ProjectBoard() {
   const [editFormErrors, setEditFormErrors] = useState({})
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [completionReadiness, setCompletionReadiness] = useState(null)
+  const [showReopenModal, setShowReopenModal] = useState(false)
+  const [reopenReason, setReopenReason] = useState('')
+  const [completionAction, setCompletionAction] = useState(null)
 
   const projectAssigneeOptions = useMemo(
     () => projectAssignableUsers.filter((item) => item.status === 'active'),
@@ -201,6 +205,50 @@ export default function ProjectBoard() {
     }
   }
 
+  const handleCompleteProject = async () => {
+    if (completionAction) return
+    try {
+      setCompletionAction('complete')
+      await projectsApi.completeProject(projectId)
+      toast.success('Project completed')
+      await loadProjectInfo()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to complete project')
+    } finally {
+      setCompletionAction(null)
+    }
+  }
+
+  const handleArchiveProject = async () => {
+    if (completionAction) return
+    try {
+      setCompletionAction('archive')
+      await projectsApi.archiveProject(projectId)
+      toast.success('Project archived')
+      await loadProjectInfo()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to archive project')
+    } finally {
+      setCompletionAction(null)
+    }
+  }
+
+  const handleReopenProject = async () => {
+    if (completionAction || !reopenReason.trim()) return
+    try {
+      setCompletionAction('reopen')
+      await projectsApi.reopenProject(projectId, reopenReason.trim())
+      toast.success('Project reopened')
+      setShowReopenModal(false)
+      setReopenReason('')
+      await loadProjectInfo()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to reopen project')
+    } finally {
+      setCompletionAction(null)
+    }
+  }
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -226,6 +274,10 @@ export default function ProjectBoard() {
       ])
       setPages(pagesResponse.data.pages || [])
       setProjectFiles(filesResponse.data.files || [])
+      // Load completion readiness (non-blocking)
+      projectsApi.getCompletionReadiness(projectId)
+        .then((res) => setCompletionReadiness(res.data))
+        .catch(() => setCompletionReadiness(null))
     } catch (error) {
       console.error(error)
     }
@@ -647,6 +699,22 @@ export default function ProjectBoard() {
                 <Button variant="secondary" size="sm" onClick={openEditModal}>
                   Edit project
                 </Button>
+                {completionReadiness?.ready && projectStatus === 'review' && (
+                  <Button size="sm" onClick={handleCompleteProject} loading={completionAction === 'complete'} loadingText="Completing" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Complete
+                  </Button>
+                )}
+                {projectStatus === 'completed' && (
+                  <Button size="sm" onClick={() => setShowReopenModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white">
+                    Reopen
+                  </Button>
+                )}
+                {projectStatus === 'reporting' && (
+                  <Button size="sm" onClick={handleArchiveProject} loading={completionAction === 'archive'} loadingText="Archiving" className="bg-gray-600 hover:bg-gray-700 text-white">
+                    Archive
+                  </Button>
+                )}
                 <Button variant="secondary" size="sm" onClick={() => setShowDeleteConfirm(true)} className="hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-950/20 dark:hover:text-red-400 dark:hover:border-red-900/50">
                   Delete project
                 </Button>
@@ -742,6 +810,7 @@ export default function ProjectBoard() {
               <ProjectOverviewLine label="Type" value={(projectRecord.type || 'software').replace(/_/g, ' ')} />
               <ProjectOverviewLine label="Priority" value={projectRecord.priority || 'medium'} />
               <ProjectOverviewLine label="Health" value={(projectHealth.level || projectRecord.health || 'healthy').replace(/_/g, ' ')} />
+              <CompletionReadinessLine readiness={completionReadiness} />
               <ProjectOverviewLine label="Open tasks" value={projectHealth.total_open_tasks ?? allProjectTasks.length} />
               <ProjectOverviewLine label="Overdue" value={projectHealth.overdue_task_count ?? overdueTasks} />
               <ProjectOverviewLine label="Assets" value={`${projectFiles.length} files / ${pages.length} pages`} />
@@ -1228,6 +1297,26 @@ export default function ProjectBoard() {
         onConfirm={handleDeleteProject}
         onClose={() => setShowDeleteConfirm(false)}
       />
+
+      {/* Reopen Project Modal */}
+      <Modal isOpen={showReopenModal} onClose={() => setShowReopenModal(false)} title="Reopen project">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">Provide a reason for reopening this project. It will be moved back to Review status.</p>
+          <FormField label="Reason" required>
+            <textarea
+              rows={3}
+              className={inputClassName}
+              value={reopenReason}
+              onChange={(event) => setReopenReason(event.target.value)}
+              placeholder="Why does this project need to be reopened?"
+            />
+          </FormField>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" type="button" onClick={() => { setShowReopenModal(false); setReopenReason('') }}>Cancel</Button>
+            <Button onClick={handleReopenProject} loading={completionAction === 'reopen'} loadingText="Reopening" disabled={!reopenReason.trim()}>Reopen project</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
@@ -1348,6 +1437,34 @@ function ProjectOverviewLine({ label, value, action = null }) {
       <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">{label}</span>
       <span className="ml-auto min-w-0 truncate text-right font-medium text-text-primary dark:text-text-primary">{value}</span>
       {action ? <span className="flex-none">{action}</span> : null}
+    </div>
+  )
+}
+
+function CompletionReadinessLine({ readiness }) {
+  if (!readiness) return <ProjectOverviewLine label="Completion" value="Loading..." />
+  const ready = readiness.ready
+  const completed = readiness.completed_required_tasks || 0
+  const total = readiness.required_tasks || 0
+  const label = ready ? 'Ready to complete' : `${completed}/${total} required tasks done`
+  return (
+    <div className={`rounded-lg border px-3 py-2 dark:bg-black/35 ${ready ? 'border-emerald-200/70 bg-emerald-50/70 dark:border-emerald-800/50' : 'border-amber-200/70 bg-amber-50/70 dark:border-amber-800/50'}`}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Completion</span>
+        <span className={`ml-auto text-xs font-semibold ${ready ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
+          {ready ? 'READY' : 'NOT READY'}
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-text-secondary dark:text-text-secondary">{label}</p>
+      {!ready && readiness.blocking_reasons?.length > 0 && (
+        <ul className="mt-1.5 space-y-0.5">
+          {readiness.blocking_reasons.map((reason, index) => (
+            <li key={index} className="text-[10px] text-amber-700 dark:text-amber-300">
+              • {reason.type?.replace(/_/g, ' ')} ({reason.count})
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

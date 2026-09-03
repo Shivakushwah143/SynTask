@@ -141,12 +141,13 @@ async def project_report(
         # Progress
         progress = await ProjectHealthService.calculate_project_progress(project)
 
-        # Task counts
+        # Task counts (use both project_id and project_object_id for dual-link tasks)
         task_filter: Dict[str, Any] = {
             "company_id": current_user.company_id,
             "$or": [
                 {"project_id": str(project.project_id or project.id)},
                 {"project_id": str(project.id)},
+                {"project_object_id": str(project.id)},
             ],
         }
         all_tasks = await Task.find(task_filter).to_list()
@@ -386,19 +387,25 @@ async def client_report(
 
         for p in projects:
             project_ids.append(str(p.id))
+            # Also include the logical project_id for dual-format task linking.
+            if getattr(p, 'project_id', None):
+                project_ids.append(str(p.project_id))
             status_val = p.status.value if hasattr(p.status, "value") else str(p.status)
             if status_val == ProjectStatus.COMPLETED.value:
                 completed += 1
             elif status_val not in (ProjectStatus.ARCHIVED.value, ProjectStatus.CANCELLED.value):
                 active += 1
                 health = await ProjectHealthService.calculate_project_health(p)
-                if health and health.get("health") == "at_risk":
+                if health and health.get("level") == "at_risk":
                     at_risk_count += 1
 
-        # Task counts
+        # Task counts — support both logical project_id and Mongo _id linking.
         task_query: Dict[str, Any] = {
             "company_id": current_user.company_id,
-            "project_id": {"$in": project_ids},
+            "$or": [
+                {"project_id": {"$in": project_ids}},
+                {"project_object_id": {"$in": [str(p.id) for p in projects]}},
+            ],
         } if project_ids else {"company_id": current_user.company_id, "project_id": "__none__"}
         client_tasks = await Task.find(task_query).to_list() if project_ids else []
         open_tasks = sum(1 for t in client_tasks if t.status not in (TaskStatus.COMPLETED, TaskStatus.CANCELLED))

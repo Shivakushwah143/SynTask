@@ -244,6 +244,14 @@ class ProjectService:
 
         if lead_id is not None:
             old_lead_id = project.lead_id
+            # Project Owner must not be cleared from an operational project.
+            if not lead_id and old_lead_id:
+                current_status = getattr(project.status, 'value', str(project.status))
+                if current_status not in ('cancelled', 'archived'):
+                    raise HTTPException(
+                        status_code=http_status.HTTP_400_BAD_REQUEST,
+                        detail="Project Owner cannot be removed from an operational project",
+                    )
             if lead_id:
                 await ProjectService._validate_project_lead(lead_id, current_user.company_id)
                 await ProjectService.transfer_project_team_between_leads(
@@ -256,7 +264,15 @@ class ProjectService:
             project.lead_id = lead_id
 
         if type is not None:
+            old_type = project.type
             project.type = await ProjectService.ensure_project_type(current_user.company_id, type, current_user)
+            # Changing from internal to client-facing requires a valid Client.
+            if ProjectService._is_internal_project_type(old_type) and not ProjectService._is_internal_project_type(project.type):
+                if not client_id and not getattr(project, 'client_id', None):
+                    raise HTTPException(
+                        status_code=http_status.HTTP_400_BAD_REQUEST,
+                        detail="Client is required when changing to a client-facing project type",
+                    )
 
         if priority is not None:
             project.priority = ProjectService._validate_priority(priority)
@@ -317,6 +333,14 @@ class ProjectService:
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Start date cannot be after delivery date",
             )
+
+        # Validate final project state: client-facing projects must have a Client.
+        if not ProjectService._is_internal_project_type(project.type):
+            if not getattr(project, 'client_id', None):
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="Client is required for client-facing projects",
+                )
 
         project.updated_at = utc_now()
         await project.save()

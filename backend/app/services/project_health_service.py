@@ -94,14 +94,15 @@ def calculate_project_health(project: Project, tasks: Iterable[Task], now: Optio
 
     if urgency == "overdue" and not terminal:
         reasons.append("Project deadline has passed")
-    if overdue_critical_tasks:
+    if overdue_critical_tasks and not terminal:
         reasons.append("At least one critical task is overdue")
-    if open_tasks and len(overdue_tasks) / len(open_tasks) >= OVERDUE_TASK_AT_RISK_RATIO:
+    if open_tasks and len(overdue_tasks) / len(open_tasks) >= OVERDUE_TASK_AT_RISK_RATIO and not terminal:
         reasons.append("Thirty percent or more of open tasks are overdue")
     if reasons:
         level = "at_risk"
     else:
-        if overdue_tasks:
+        # Terminal projects should not show as at-risk from historical task data.
+        if overdue_tasks and not terminal:
             reasons.append("At least one task is overdue")
         if days_until_deadline is not None and 0 <= days_until_deadline <= DEADLINE_ATTENTION_DAYS and progress < DEADLINE_ATTENTION_COMPLETION_THRESHOLD and not terminal:
             reasons.append("Deadline is within 7 days and progress is below 80%")

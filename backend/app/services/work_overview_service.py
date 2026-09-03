@@ -21,7 +21,7 @@ from app.models.task import TaskExtensionRequest, TaskExtensionStatus
 from app.models.user import User, UserRole, UserStatus
 from app.services.project_health_service import calculate_project_health
 from app.services.task_health_service import sync_task_health, visible_employees
-from app.services.task_workflow import blocking_dependencies, effective_review_required, normalize_status
+from app.services.task_workflow import effective_review_required, normalize_status, status_value
 
 
 # ── Workload Pressure Thresholds ────────────────────────────────────────────
@@ -170,11 +170,44 @@ async def _batch_resolve_projects(company_id: str, project_ids: List[str]) -> Di
 # ── Blocker Resolution ──────────────────────────────────────────────────────
 
 async def _resolve_blockers(tasks: List[Task]) -> Dict[str, List[Dict[str, Any]]]:
-    """Compute blocking_dependencies for each task. Returns {task_id: [blockers]}."""
+    """Compute blocking_dependencies for all tasks in batch.
+
+    Instead of one Task.get() per dependency (N+1), collect all unique dependency
+    IDs, fetch them in a single query, then resolve blockers from the in-memory map.
+    """
     result: Dict[str, List[Dict[str, Any]]] = {}
+    if not tasks:
+        return result
+
+    # Collect all unique dependency IDs across all tasks
+    all_dep_ids: set[str] = set()
     for task in tasks:
-        blockers = await blocking_dependencies(task)
-        result[str(task.id)] = blockers
+        for dep_id in getattr(task, "dependencies", None) or []:
+            dep_str = str(dep_id)
+            if dep_str:
+                all_dep_ids.add(dep_str)
+
+    if not all_dep_ids:
+        for task in tasks:
+            result[str(task.id)] = []
+        return result
+
+    # Batch-fetch all dependency tasks in a single query
+    dep_tasks = await Task.find({"_id": {"$in": list(all_dep_ids)}}).to_list()
+    dep_map: Dict[str, Task] = {str(t.id): t for t in dep_tasks}
+
+    for task in tasks:
+        task_id = str(task.id)
+        blockers: List[Dict[str, Any]] = []
+        for dep_id in getattr(task, "dependencies", None) or []:
+            dep_str = str(dep_id)
+            dep = dep_map.get(dep_str)
+            if not dep or str(dep.company_id) != str(task.company_id):
+                continue
+            if normalize_status(dep.status) != TaskStatus.COMPLETED:
+                blockers.append({"id": str(dep.id), "title": dep.title, "status": status_value(dep.status)})
+        result[task_id] = blockers
+
     return result
 
 
