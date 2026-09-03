@@ -93,10 +93,18 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(screen.getByRole('tab', { name: /^Meta Messages$/i })).toBeTruthy()
   })
 
-  it('renders the Work tabs without the legacy Overview tab', () => {
+  it('renders the Work tabs with the Overview tab', () => {
     renderTabs('/sections/work')
 
-    expect(screen.queryByRole('tab', { name: /^Overview$/i })).toBeNull()
+    expect(screen.getByRole('tab', { name: /^Overview$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^Projects$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^Tasks$/i })).toBeTruthy()
+  })
+
+  it('renders the Overview tab as active on the dedicated Work overview page', () => {
+    renderTabs('/work/overview')
+
+    expect(screen.getByRole('tab', { name: /^Overview$/i })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tab', { name: /^Projects$/i })).toBeTruthy()
     expect(screen.getByRole('tab', { name: /^Tasks$/i })).toBeTruthy()
   })
@@ -120,6 +128,7 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     const home = SECTIONS.find((section) => section.key === 'home')
     const clients = SECTIONS.find((section) => section.key === 'clients')
     const sales = SECTIONS.find((section) => section.key === 'sales')
+    const work = SECTIONS.find((section) => section.key === 'work')
 
     expect(home.overviewHref).toBe('/dashboard')
     expect(home.hideOverviewTab).toBe(true)
@@ -127,6 +136,7 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(clients.hideOverviewTab).toBe(true)
     expect(sales.overviewHref).toBe('/sales-overview')
     expect(sales.hideOverviewTab).toBeUndefined()
+    expect(work.overviewHref).toBe('/work/overview')
   })
 
   it('does not render the legacy Overview tab on the dedicated Sales dashboard', () => {
@@ -282,8 +292,11 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
   it('supports arrow-key navigation between tabs (a11y)', () => {
     renderTabs('/projects')
     const tabs = screen.getAllByRole('tab')
+    // First tab is now Overview; focus on it and arrow-right to Projects.
     tabs[0].focus()
     fireEvent.keyDown(tabs[0], { key: 'ArrowRight' })
+    expect(document.activeElement.textContent).toContain('Projects')
+    fireEvent.keyDown(document.activeElement, { key: 'ArrowRight' })
     expect(document.activeElement.textContent).toContain('Tasks')
     fireEvent.keyDown(document.activeElement, { key: 'ArrowLeft' })
     expect(document.activeElement.textContent).toContain('Projects')

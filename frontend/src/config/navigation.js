@@ -317,6 +317,7 @@ export const SECTIONS = [
       "Work Reports",
       "Project Templates",
     ],
+    overviewHref: "/work/overview",
   },
 
   {
