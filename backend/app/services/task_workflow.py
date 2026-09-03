@@ -266,6 +266,7 @@ async def transition_task(
     action: str,
     target_status: Optional[str] = None,
     reviewer_id: Optional[str] = None,
+    assignee_id: Optional[str] = None,
     reason: Optional[str] = None,
     comment: Optional[str] = None,
 ) -> Task:
@@ -293,10 +294,9 @@ async def transition_task(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Complete all required checklist items before submitting for review.")
         if review_required:
             task.reviewer_id = await reviewer_for_submission(task, actor, project)
-    if reviewer_id is not None:
-        if action != "assign":
-            await validate_reviewer(task, reviewer_id or None, project)
-            task.reviewer_id = reviewer_id or None
+    if reviewer_id is not None and action != "assign":
+        await validate_reviewer(task, reviewer_id or None, project)
+        task.reviewer_id = reviewer_id or None
     if action == "request_revision" and not (reason or "").strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Revision reason is required")
     if target == TaskStatus.COMPLETED and review_required and current != TaskStatus.APPROVED:
@@ -311,10 +311,14 @@ async def transition_task(
     task.status_changed_at = now
     if target == TaskStatus.IN_PROGRESS and not task.start_date:
         task.start_date = now
-    if action == "assign" and reviewer_id:
-        # reviewer_id is repurposed as the assignee for automation assignment.
-        # Skip validate_reviewer for the assign action.
-        task.assigned_to = reviewer_id
+    if action == "assign" and (assignee_id or reviewer_id):
+        effective_assignee = assignee_id or reviewer_id
+        # Validate assignee belongs to the same company
+        from app.models.user import User as UserModel
+        assignee_user = await UserModel.get(effective_assignee)
+        if not assignee_user or str(assignee_user.company_id) != str(task.company_id):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Assignee {effective_assignee} is not a valid user in this company")
+        task.assigned_to = effective_assignee
         task.assigned_by = str(actor.id)
     if target == TaskStatus.IN_REVIEW:
         task.review_round = int(getattr(task, "review_round", 0) or 0) + 1

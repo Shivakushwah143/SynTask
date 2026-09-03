@@ -68,14 +68,36 @@ async def completion_readiness(project: Project, actor: User) -> dict[str, Any]:
     required_tasks = [task for task in tasks if getattr(task, "required_for_project_completion", True) is not False]
     incomplete = []
     pending_review = []
-    blockers = []
+
+    # Batch dependency lookups: collect all dependency IDs, fetch in one query.
+    dep_id_set: set[str] = set()
+    task_dep_map: dict[str, list[str]] = {}  # task_id -> [dep_ids]
     for task in required_tasks:
         task_status = normalize_status(task.status)
         if task_status in {TaskStatus.IN_REVIEW, TaskStatus.REVISION_REQUIRED, TaskStatus.APPROVED}:
             pending_review.append(task)
         if task_status != TaskStatus.COMPLETED:
             incomplete.append(task)
-        deps = await blocking_dependencies(task)
+        dep_ids = [str(d) for d in (task.dependencies or []) if d]
+        if dep_ids:
+            task_dep_map[str(task.id)] = dep_ids
+            dep_id_set.update(dep_ids)
+
+    dep_tasks: dict[str, Task] = {}
+    if dep_id_set:
+        all_deps = await Task.find({"_id": {"$in": list(dep_id_set)}}).to_list()
+        dep_tasks = {str(dt.id): dt for dt in all_deps}
+
+    blockers = []
+    for task in required_tasks:
+        dep_ids = task_dep_map.get(str(task.id), [])
+        if not dep_ids:
+            continue
+        deps = []
+        for dep_id in dep_ids:
+            dep_task = dep_tasks.get(dep_id)
+            if dep_task and normalize_status(dep_task.status) != TaskStatus.COMPLETED:
+                deps.append({"task_id": dep_id, "title": dep_task.title})
         if deps:
             blockers.append({"task_id": str(task.id), "title": task.title, "dependencies": deps})
 

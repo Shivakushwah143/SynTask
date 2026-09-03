@@ -175,7 +175,7 @@ class AutomationEngine:
             actor=actor,
             action="assign",
             target_status="assigned",
-            reviewer_id=assignee_id,
+            assignee_id=assignee_id,
         )
     
     @staticmethod

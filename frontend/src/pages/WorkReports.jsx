@@ -4,10 +4,27 @@ import { FileBarChart2 } from 'lucide-react'
 import { workReportsAPI } from '../api/workReports'
 import { Button, PageHeader, SkeletonCard } from '../components/ui'
 
+const TASK_HEALTH_OPTIONS = [
+  { value: '', label: 'All task health' },
+  { value: 'healthy', label: 'Healthy' },
+  { value: 'due_today', label: 'Due today' },
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'extended', label: 'Extended' },
+  { value: 'completed', label: 'Completed' },
+]
+
+const PROJECT_HEALTH_OPTIONS = [
+  { value: '', label: 'All project health' },
+  { value: 'healthy', label: 'Healthy' },
+  { value: 'needs_attention', label: 'Needs attention' },
+  { value: 'at_risk', label: 'At risk' },
+]
+
 export default function WorkReports() {
   const [view, setView] = useState('tasks')
   const [status, setStatus] = useState('')
-  const [health, setHealth] = useState('')
+  const [taskHealth, setTaskHealth] = useState('')
+  const [projectHealth, setProjectHealth] = useState('')
   const [priority, setPriority] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 20
@@ -17,13 +34,13 @@ export default function WorkReports() {
     page_size: pageSize,
     ...(status ? { status_filter: status } : {}),
     ...(priority ? { priority } : {}),
-    ...(health ? { health } : {}),
+    ...(taskHealth ? { health: taskHealth } : {}),
   }
 
   const projectParams = {
     page,
     page_size: pageSize,
-    ...(health ? { health } : {}),
+    ...(projectHealth ? { health: projectHealth } : {}),
     ...(status ? { status } : {}),
   }
 
@@ -82,13 +99,15 @@ export default function WorkReports() {
           </select>
         )}
 
-        <select value={health} onChange={(e) => { setHealth(e.target.value); setPage(1) }} className="rounded-md border border-surface-border bg-surface px-3 py-2 text-sm text-text-primary">
-          <option value="">All health</option>
-          <option value="healthy">Healthy</option>
-          <option value="due_today">Due today</option>
-          <option value="overdue">Overdue</option>
-          <option value="at_risk">At risk</option>
-        </select>
+        {view === 'tasks' ? (
+          <select value={taskHealth} onChange={(e) => { setTaskHealth(e.target.value); setPage(1) }} className="rounded-md border border-surface-border bg-surface px-3 py-2 text-sm text-text-primary">
+            {TASK_HEALTH_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        ) : (
+          <select value={projectHealth} onChange={(e) => { setProjectHealth(e.target.value); setPage(1) }} className="rounded-md border border-surface-border bg-surface px-3 py-2 text-sm text-text-primary">
+            {PROJECT_HEALTH_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        )}
       </div>
 
       {/* Content */}
@@ -199,6 +218,8 @@ function HealthBadge({ health }) {
     needs_attention: 'bg-amber-100 text-amber-700',
     overdue: 'bg-red-100 text-red-700',
     due_today: 'bg-orange-100 text-orange-700',
+    extended: 'bg-purple-100 text-purple-700',
+    completed: 'bg-green-100 text-green-700',
   }
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${colors[health] || 'bg-gray-100 text-gray-600'}`}>

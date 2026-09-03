@@ -120,6 +120,12 @@ async def _startup_tasks() -> None:
             logger.info("HR document expiry background task started")
         except Exception as hr_doc_err:
             logger.warning(f"HR document expiry startup skipped: {hr_doc_err}")
+        try:
+            from app.services.time_tracking_service import recover_stale_stopping_timers
+            asyncio.create_task(recover_stale_stopping_timers())
+            logger.info("Timer recovery background task started")
+        except Exception as timer_err:
+            logger.warning(f"Timer recovery startup skipped: {timer_err}")
     else:
         logger.warning("Database background workers skipped because MongoDB/Beanie is not ready.")
 

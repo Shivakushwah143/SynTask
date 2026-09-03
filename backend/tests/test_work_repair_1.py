@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -195,19 +195,46 @@ async def test_start_timer_is_idempotent_and_creates_one_session(monkeypatch, ac
 
 @pytest.mark.asyncio
 async def test_stop_timer_is_atomic_and_creates_one_time_log(monkeypatch, actor):
-    FakeSessionStore.active = FakeSession(task_id="task-1", accumulated_seconds=120)
+    session = FakeSession(task_id="task-1", accumulated_seconds=120)
+    session.status = ActiveTimeSessionStatus.RUNNING
+    session.id = "session-1"
+    session.started_at = datetime.now(timezone.utc) - timedelta(seconds=120)
+    session.last_resumed_at = datetime.now(timezone.utc) - timedelta(seconds=120)
+    session.task_id = "task-1"
+    session.updated_at = None
+    session.finalized = None
+    FakeSessionStore.active = session
     FakeTimeLog.records = []
 
-    class ClaimQuery:
-        async def find_one_and_update(self, update):
-            session = FakeSessionStore.active
-            if not session or session.status != ActiveTimeSessionStatus.RUNNING:
-                return None
-            FakeSessionStore.active = None
-            return session
+    async def fake_find_session(query):
+        s = FakeSessionStore.active
+        if not s:
+            return None
+        status_val = getattr(s.status, 'value', s.status) if hasattr(s.status, 'value') else s.status
+        allowed = {ActiveTimeSessionStatus.RUNNING.value, ActiveTimeSessionStatus.PAUSED.value}
+        if status_val in allowed:
+            return s
+        return None
 
-    monkeypatch.setattr(timer_module.ActiveTimeSession, "find_one", lambda query: ClaimQuery())
-    monkeypatch.setattr(timer_module, "TimeLog", FakeTimeLog)
+    async def fake_session_save(self_s):
+        FakeSessionStore.active = self_s
+
+    async def fake_session_delete(self_s):
+        if FakeSessionStore.active is self_s:
+            FakeSessionStore.active = None
+
+    async def fake_timelog_find_one(query):
+        return None
+
+    class PatchedTimeLog(FakeTimeLog):
+        @classmethod
+        async def find_one(cls, query):
+            return await fake_timelog_find_one(query)
+
+    monkeypatch.setattr(timer_module.ActiveTimeSession, "find_one", fake_find_session)
+    monkeypatch.setattr(timer_module.ActiveTimeSession, "save", fake_session_save)
+    monkeypatch.setattr(timer_module.ActiveTimeSession, "delete", fake_session_delete)
+    monkeypatch.setattr(timer_module, "TimeLog", PatchedTimeLog)
     monkeypatch.setattr(timer_module, "_update_summary_and_task", lambda *args: _none_async())
 
     first = await timer_module.stop_timer(actor)
@@ -215,7 +242,7 @@ async def test_stop_timer_is_atomic_and_creates_one_time_log(monkeypatch, actor)
         await timer_module.stop_timer(actor)
 
     assert first.source == TimeLogSource.TIMER
-    assert len(FakeTimeLog.records) == 1
+    assert len(PatchedTimeLog.records) == 1
 
 
 @pytest.mark.asyncio

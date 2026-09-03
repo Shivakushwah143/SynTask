@@ -140,9 +140,11 @@ class TestAutomationAssignmentUsesWorkflow:
         async def fake_transition(**kwargs):
             calls.append(kwargs)
             task.status = TaskStatus.ASSIGNED
-            # Simulate what transition_task does with reviewer_id for assign action
-            if kwargs.get("action") == "assign" and kwargs.get("reviewer_id"):
-                task.assigned_to = kwargs["reviewer_id"]
+            # Simulate what transition_task does with assignee_id for assign action
+            if kwargs.get("action") == "assign":
+                aid = kwargs.get("assignee_id") or kwargs.get("reviewer_id")
+                if aid:
+                    task.assigned_to = aid
             return task
 
         monkeypatch.setattr("app.core.automation_engine.Task.get", staticmethod(_async_return(task)))
@@ -164,7 +166,7 @@ class TestAutomationAssignmentUsesWorkflow:
         assert len(calls) == 1
         assert calls[0]["action"] == "assign"
         assert calls[0]["target_status"] == "assigned"
-        assert calls[0]["reviewer_id"] == "user-2"
+        assert calls[0]["assignee_id"] == "user-2"
         assert task.assigned_to == "user-2"
 
     @pytest.mark.asyncio

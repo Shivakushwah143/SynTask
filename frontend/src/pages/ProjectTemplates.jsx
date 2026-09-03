@@ -1,9 +1,27 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from 'react-query'
-import { ClipboardCheck, Edit2, Eye, EyeOff, Plus, Sparkles } from 'lucide-react'
+import { ClipboardCheck, Edit2, Eye, EyeOff, GripVertical, Plus, Sparkles, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../api/axios'
+import { clientsAPI } from '../api/clients'
 import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonCard, inputClassName } from '../components/ui'
+
+const DEFAULT_TASK_TEMPLATE = {
+  ref_id: '',
+  title: '',
+  description: '',
+  priority: 'medium',
+  relative_start_day: 0,
+  relative_due_day: 3,
+  estimated_hours: null,
+  review_required: true,
+  required_for_project_completion: true,
+  assignee_placeholder: '',
+  reviewer_placeholder: '',
+  depends_on_refs: [],
+  checklist: [],
+  tags: [],
+}
 
 export default function ProjectTemplates() {
   const queryClient = useQueryClient()
@@ -97,9 +115,9 @@ export default function ProjectTemplates() {
               </div>
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-muted">
                 <span>{template.task_count} tasks</span>
-                {template.project_type && <span>• {template.project_type}</span>}
-                {template.estimated_hours && <span>• {template.estimated_hours}h est.</span>}
-                {template.version > 1 && <span>• v{template.version}</span>}
+                {template.project_type && <span>&bull; {template.project_type}</span>}
+                {template.estimated_hours && <span>&bull; {template.estimated_hours}h est.</span>}
+                {template.version > 1 && <span>&bull; v{template.version}</span>}
               </div>
               <div className="mt-4 flex items-center gap-2">
                 <Button size="sm" variant="primary" onClick={() => { setGeneratingTemplate(template); setShowGenerate(true) }}>
@@ -134,13 +152,133 @@ export default function ProjectTemplates() {
   )
 }
 
+// ── Template Task Editor ─────────────────────────────────────────────────
+
+function TemplateTaskEditor({ tasks, onChange }) {
+  const addTask = () => {
+    const idx = tasks.length
+    onChange([...tasks, { ...DEFAULT_TASK_TEMPLATE, ref_id: `task_${idx}` }])
+  }
+
+  const updateTask = (idx, field, value) => {
+    const updated = [...tasks]
+    updated[idx] = { ...updated[idx], [field]: value }
+    onChange(updated)
+  }
+
+  const removeTask = (idx) => {
+    const removed_ref = tasks[idx].ref_id
+    const updated = tasks.filter((_, i) => i !== idx)
+    // Remove from depends_on_refs in other tasks
+    updated.forEach(t => {
+      t.depends_on_refs = (t.depends_on_refs || []).filter(r => r !== removed_ref)
+    })
+    onChange(updated)
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium text-text-primary">Task Definitions ({tasks.length})</label>
+        <Button size="sm" variant="secondary" type="button" onClick={addTask}>
+          <Plus className="h-3 w-3" /> Add Task
+        </Button>
+      </div>
+      {tasks.map((task, idx) => (
+        <div key={idx} className="rounded-lg border border-surface-border bg-surface-muted p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <GripVertical className="h-4 w-4 text-text-muted" />
+              <span className="text-xs font-medium text-text-muted">Task {idx + 1}</span>
+              <span className="text-[10px] text-text-muted">ref: {task.ref_id}</span>
+            </div>
+            <button type="button" onClick={() => removeTask(idx)} className="text-red-500 hover:text-red-700">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <FormField label="Title" required>
+              <input className={inputClassName} value={task.title} onChange={(e) => updateTask(idx, 'title', e.target.value)} placeholder="Task title" />
+            </FormField>
+            <FormField label="Ref ID" required>
+              <input className={inputClassName} value={task.ref_id} onChange={(e) => updateTask(idx, 'ref_id', e.target.value)} placeholder="task_0" />
+            </FormField>
+          </div>
+          <FormField label="Description">
+            <textarea className={inputClassName} rows={2} value={task.description || ''} onChange={(e) => updateTask(idx, 'description', e.target.value)} placeholder="Optional description" />
+          </FormField>
+          <div className="grid gap-2 sm:grid-cols-4">
+            <FormField label="Priority">
+              <select className={inputClassName} value={task.priority} onChange={(e) => updateTask(idx, 'priority', e.target.value)}>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+            </FormField>
+            <FormField label="Start day (relative)">
+              <input type="number" className={inputClassName} value={task.relative_start_day} onChange={(e) => updateTask(idx, 'relative_start_day', parseInt(e.target.value) || 0)} />
+            </FormField>
+            <FormField label="Due day (relative)">
+              <input type="number" className={inputClassName} value={task.relative_due_day} onChange={(e) => updateTask(idx, 'relative_due_day', parseInt(e.target.value) || 3)} />
+            </FormField>
+            <FormField label="Est. hours">
+              <input type="number" className={inputClassName} value={task.estimated_hours || ''} onChange={(e) => updateTask(idx, 'estimated_hours', e.target.value ? parseFloat(e.target.value) : null)} min="0" step="0.5" />
+            </FormField>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <FormField label="Assignee placeholder">
+              <input className={inputClassName} value={task.assignee_placeholder || ''} onChange={(e) => updateTask(idx, 'assignee_placeholder', e.target.value)} placeholder="e.g. developer" />
+            </FormField>
+            <FormField label="Reviewer placeholder">
+              <input className={inputClassName} value={task.reviewer_placeholder || ''} onChange={(e) => updateTask(idx, 'reviewer_placeholder', e.target.value)} placeholder="e.g. reviewer" />
+            </FormField>
+            <FormField label="Dependencies (comma-separated ref_ids)">
+              <input className={inputClassName} value={(task.depends_on_refs || []).join(', ')} onChange={(e) => updateTask(idx, 'depends_on_refs', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder="e.g. task_0, task_1" />
+            </FormField>
+          </div>
+          <div className="flex items-center gap-4 text-xs">
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" checked={task.review_required !== false} onChange={(e) => updateTask(idx, 'review_required', e.target.checked)} className="h-3.5 w-3.5 rounded" />
+              Review required
+            </label>
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" checked={task.required_for_project_completion !== false} onChange={(e) => updateTask(idx, 'required_for_project_completion', e.target.checked)} className="h-3.5 w-3.5 rounded" />
+              Required for completion
+            </label>
+          </div>
+        </div>
+      ))}
+      {tasks.length === 0 && (
+        <p className="rounded-lg border border-dashed border-surface-border p-4 text-center text-xs text-text-muted">
+          No task definitions. Click &quot;Add Task&quot; to define tasks for this template.
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ── Template Form Modal ──────────────────────────────────────────────────
+
 function TemplateFormModal({ title, template, onSubmit, onClose }) {
   const [name, setName] = useState(template?.name || '')
   const [description, setDescription] = useState(template?.description || '')
   const [projectType, setProjectType] = useState(template?.project_type || '')
   const [priority, setPriority] = useState(template?.default_priority || 'medium')
   const [estimatedHours, setEstimatedHours] = useState(template?.estimated_hours || '')
+  const [taskTemplates, setTaskTemplates] = useState(template?.task_templates || [])
   const [submitting, setSubmitting] = useState(false)
+
+  // For edit mode, load existing template tasks from API
+  useEffect(() => {
+    if (template?.id) {
+      api.get(`/project-templates/${template.id}`).then(res => {
+        if (res.data?.task_templates) {
+          setTaskTemplates(res.data.task_templates)
+        }
+      }).catch(() => { /* keep existing state */ })
+    }
+  }, [template?.id])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -153,7 +291,7 @@ function TemplateFormModal({ title, template, onSubmit, onClose }) {
       formData.append('project_type', projectType)
       formData.append('default_priority', priority)
       if (estimatedHours) formData.append('estimated_hours', String(estimatedHours))
-      formData.append('task_templates_json', JSON.stringify(template?.task_templates || []))
+      formData.append('task_templates_json', JSON.stringify(taskTemplates))
       await onSubmit(formData)
     } finally {
       setSubmitting(false)
@@ -161,15 +299,15 @@ function TemplateFormModal({ title, template, onSubmit, onClose }) {
   }
 
   return (
-    <Modal isOpen onClose={onClose} title={title}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal isOpen onClose={onClose} title={title} size="lg">
+      <form onSubmit={handleSubmit} className="space-y-4 max-h-[75vh] overflow-y-auto">
         <FormField label="Template name" required>
           <input className={inputClassName} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Website Redesign" />
         </FormField>
         <FormField label="Description">
           <textarea className={inputClassName} rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What this template is for" />
         </FormField>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <FormField label="Project type">
             <input className={inputClassName} value={projectType} onChange={(e) => setProjectType(e.target.value)} placeholder="e.g. software" />
           </FormField>
@@ -185,7 +323,8 @@ function TemplateFormModal({ title, template, onSubmit, onClose }) {
             <input type="number" className={inputClassName} value={estimatedHours} onChange={(e) => setEstimatedHours(e.target.value)} min="0" step="0.5" placeholder="Optional" />
           </FormField>
         </div>
-        <div className="flex justify-end gap-2 pt-2">
+        <TemplateTaskEditor tasks={taskTemplates} onChange={setTaskTemplates} />
+        <div className="flex justify-end gap-2 pt-2 sticky bottom-0 bg-white dark:bg-gray-900 border-t border-surface-border pt-3">
           <Button variant="secondary" type="button" onClick={onClose}>Cancel</Button>
           <Button type="submit" loading={submitting}>{template ? 'Save Changes' : 'Create Template'}</Button>
         </div>
@@ -194,14 +333,23 @@ function TemplateFormModal({ title, template, onSubmit, onClose }) {
   )
 }
 
+// ── Generate Project Modal ───────────────────────────────────────────────
+
 function GenerateProjectModal({ template, onGenerate, onClose }) {
   const [name, setName] = useState('')
   const [key, setKey] = useState('')
   const [projectId, setProjectId] = useState('')
   const [leadId, setLeadId] = useState('')
+  const [clientId, setClientId] = useState('')
   const [startDate, setStartDate] = useState('')
   const [deliveryDate, setDeliveryDate] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  const { data: clientsData } = useQuery('clients-list', async () => {
+    const res = await clientsAPI.listClients({})
+    return res.data?.clients || []
+  })
+  const clients = clientsData || []
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -216,6 +364,7 @@ function GenerateProjectModal({ template, onGenerate, onClose }) {
         key: key.trim(),
         project_id: projectId.trim(),
         lead_id: leadId,
+        client_id: clientId || '',
         start_date: startDate,
         delivery_date: deliveryDate || '',
       })
@@ -242,6 +391,14 @@ function GenerateProjectModal({ template, onGenerate, onClose }) {
           </FormField>
           <FormField label="Owner user ID" required>
             <input className={inputClassName} value={leadId} onChange={(e) => setLeadId(e.target.value)} placeholder="User ID" />
+          </FormField>
+          <FormField label="Client (for client-facing projects)">
+            <select className={inputClassName} value={clientId} onChange={(e) => setClientId(e.target.value)}>
+              <option value="">No client (internal project)</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.name || c.company_name || c.id}</option>
+              ))}
+            </select>
           </FormField>
           <FormField label="Start date" required>
             <input type="datetime-local" className={inputClassName} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
