@@ -134,15 +134,27 @@ class TestAutomationAssignmentUsesWorkflow:
     async def test_assign_task_calls_transition(self, monkeypatch):
         task = _task(status=TaskStatus.TODO)
         actor = _user(id="admin-1", role=UserRole.ADMIN)
+        assignee = _user(id="user-2", role=UserRole.EMPLOYEE)
         calls: list[dict] = []
 
         async def fake_transition(**kwargs):
             calls.append(kwargs)
             task.status = TaskStatus.ASSIGNED
+            # Simulate what transition_task does with reviewer_id for assign action
+            if kwargs.get("action") == "assign" and kwargs.get("reviewer_id"):
+                task.assigned_to = kwargs["reviewer_id"]
             return task
 
         monkeypatch.setattr("app.core.automation_engine.Task.get", staticmethod(_async_return(task)))
-        monkeypatch.setattr("app.core.automation_engine.User.get", staticmethod(_async_return(actor)))
+        # User.get is called for both actor and assignee validation
+        original_user_get = _async_return(actor)
+        async def fake_user_get(uid):
+            if uid == actor.id:
+                return actor
+            if uid == assignee.id:
+                return assignee
+            return None
+        monkeypatch.setattr("app.core.automation_engine.User.get", fake_user_get)
         monkeypatch.setattr("app.services.task_workflow.transition_task", fake_transition)
 
         await AutomationEngine._assign_task(
@@ -152,6 +164,7 @@ class TestAutomationAssignmentUsesWorkflow:
         assert len(calls) == 1
         assert calls[0]["action"] == "assign"
         assert calls[0]["target_status"] == "assigned"
+        assert calls[0]["reviewer_id"] == "user-2"
         assert task.assigned_to == "user-2"
 
     @pytest.mark.asyncio
@@ -300,6 +313,9 @@ class TestTimerRecovery:
                 created_logs.append(self_inner)
             async def insert(self_inner):
                 pass
+            @classmethod
+            def find_one(cls_inner, *args, **kwargs):
+                return AsyncMock(return_value=None)()
 
         monkeypatch.setattr("app.services.time_tracking_service.TimeLog", FakeTimeLog)
         monkeypatch.setattr("app.services.time_tracking_service._update_summary_and_task", AsyncMock())
@@ -321,20 +337,36 @@ class TestTimerRecovery:
                 self_inner.__dict__.update(kw)
             async def insert(self_inner):
                 pass
+            @classmethod
+            def find_one(cls_inner, *args, **kwargs):
+                # On second call, return existing log to test idempotency
+                if call_count >= 1:
+                    existing = FakeTimeLog(hours=1.0)
+                    return AsyncMock(return_value=existing)()
+                return AsyncMock(return_value=None)()
 
         monkeypatch.setattr("app.services.time_tracking_service.TimeLog", FakeTimeLog)
         monkeypatch.setattr("app.services.time_tracking_service._update_summary_and_task", AsyncMock())
 
         s1 = _session(accumulated_seconds=120)
-        await recover_stopped_timer(s1)
+        log1 = await recover_stopped_timer(s1)
         s2 = _session(accumulated_seconds=120)
-        await recover_stopped_timer(s2)
-        assert call_count == 2
+        log2 = await recover_stopped_timer(s2)
+        # Second call returns existing log, no new TimeLog created
+        assert log1 is not None
+        assert log2 is not None
 
     @pytest.mark.asyncio
-    async def test_recover_rejects_zero_duration(self):
+    async def test_recover_rejects_zero_duration(self, monkeypatch):
         from app.services.time_tracking_service import recover_stopped_timer
         session = _session(accumulated_seconds=0)
+
+        class FakeTimeLog:
+            @classmethod
+            def find_one(cls_inner, *args, **kwargs):
+                return AsyncMock(return_value=None)()
+
+        monkeypatch.setattr("app.services.time_tracking_service.TimeLog", FakeTimeLog)
 
         with pytest.raises(HTTPException, match="positive"):
             await recover_stopped_timer(session)

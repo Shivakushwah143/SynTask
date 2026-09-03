@@ -168,7 +168,7 @@ async def stop_timer(actor: User, description: Optional[str] = None) -> TimeLog:
             "status": {"$in": [ActiveTimeSessionStatus.RUNNING.value, ActiveTimeSessionStatus.PAUSED.value]},
         }
     ).find_one_and_update(
-        {"$set": {"status": "stopping", "updated_at": now}}
+        {"$set": {"status": "stopping", "updated_at": now, "finalized": False}}
     )
     if not session:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active timer found.")
@@ -196,6 +196,9 @@ async def stop_timer(actor: User, description: Optional[str] = None) -> TimeLog:
     )
     await time_log.insert()
     await _update_summary_and_task(time_log, hours)
+    # Mark session as finalized before deletion for crash recovery.
+    session.finalized = True
+    await session.save()
     await session.delete()
     return time_log
 
@@ -208,6 +211,21 @@ async def recover_stopped_timer(session: ActiveTimeSession, description: Optiona
     check so repeated recovery calls never create duplicate TimeLogs.
     """
     now = utc_now()
+
+    # Idempotency: if a TimeLog already exists for this session's time window,
+    # do not create a duplicate.
+    existing_log = await TimeLog.find_one({
+        "company_id": session.company_id,
+        "user_id": session.user_id,
+        "task_id": session.task_id,
+        "started_at": session.started_at,
+        "source": TimeLogSource.TIMER,
+    })
+    if existing_log:
+        # Already finalized — just clean up the session.
+        await session.delete()
+        return existing_log
+
     seconds = elapsed_seconds(session)
     if seconds <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Timer duration must be positive.")
@@ -232,6 +250,8 @@ async def recover_stopped_timer(session: ActiveTimeSession, description: Optiona
     )
     await time_log.insert()
     await _update_summary_and_task(time_log, hours)
+    session.finalized = True
+    await session.save()
     await session.delete()
     return time_log
 

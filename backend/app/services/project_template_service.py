@@ -143,8 +143,10 @@ async def update_template(
     if enabled is not None:
         template.enabled = enabled
 
-    # Replace task templates if provided
-    if task_templates is not None:
+    # Replace task templates ONLY if explicitly provided AND non-empty.
+    # Metadata-only edits (name, description, priority, etc.) must NOT
+    # delete existing template tasks.
+    if task_templates is not None and len(task_templates) > 0:
         # Delete old template tasks
         old_tasks = await TemplateTask.find(
             TemplateTask.template_id == str(template.id)

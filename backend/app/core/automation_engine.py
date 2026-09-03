@@ -148,10 +148,10 @@ class AutomationEngine:
         """Assign task to a user through the authoritative TaskWorkflow."""
         task_id = trigger_data.get("entity_id")
         assignee_id = action.get("assignee_id")
-        
+
         if not task_id or not assignee_id:
             return
-        
+
         task = await Task.get(task_id)
         if not task:
             return
@@ -161,19 +161,22 @@ class AutomationEngine:
             raise ValueError("Automation assignment requires the triggering user")
         if str(actor.company_id) != str(task.company_id):
             raise PermissionError("Automation actor cannot modify a task outside its company")
-        # Preserve company scope and validation via the workflow layer.
+
+        # Validate assignee belongs to the same company.
+        assignee = await User.get(assignee_id)
+        if not assignee or str(assignee.company_id) != str(task.company_id):
+            raise ValueError(f"Assignee {assignee_id} is not a valid user in this company")
+
+        # Use transition_task with the assign action for full validation,
+        # company scope, status transition, audit, and notification.
         from app.services.task_workflow import transition_task
         await transition_task(
             task=task,
             actor=actor,
             action="assign",
             target_status="assigned",
+            reviewer_id=assignee_id,
         )
-        # Apply the specific assignee after the status transition.
-        task.assigned_to = assignee_id
-        task.assigned_by = str(actor.id)
-        task.updated_at = utc_now()
-        await task.save()
     
     @staticmethod
     async def _change_status(action: Dict[str, Any], trigger_data: Dict[str, Any]):

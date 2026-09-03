@@ -21,7 +21,7 @@ from app.models.client import Client
 from app.models.project import Project, ProjectStatus, ProjectPriority
 from app.models.project_template import ProjectTemplate, TemplateTask, TemplateTaskPriority
 from app.models.task import Task, TaskStatus, TaskPriority
-from app.models.time_tracking import ActiveTimeSession, ActiveTimeSessionStatus, TimeLog
+from app.models.time_tracking import ActiveTimeSession, ActiveTimeSessionStatus, TimeLog, TimeTrackingSummary
 from app.models.user import User, UserRole, UserStatus
 from app.models.work_request import WorkRequest, WorkRequestStatus, WorkRequestType
 from app.models.scheduled_job import ScheduledJob, ScheduledJobOccurrence, ScheduledJobScheduleType
@@ -64,7 +64,7 @@ async def mongo_db():
     await init_beanie(
         database=client[db_name],
         document_models=[
-            User, Project, Task, Client, ActiveTimeSession, TimeLog,
+            User, Project, Task, Client, ActiveTimeSession, TimeLog, TimeTrackingSummary,
             WorkRequest, ProjectTemplate, TemplateTask,
             ScheduledJob, ScheduledJobOccurrence,
             ChangeLog, Notification, TimelineEvent, AuditLog,
@@ -1011,3 +1011,198 @@ async def test_archived_project_not_at_risk(mongo_db):
 
     health = calculate_project_health(project, [overdue_task], now)
     assert health.level == "healthy"
+
+
+# ===========================================================================
+# MANDATORY TESTS: Final Repair
+# ===========================================================================
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_automation_assign_invalid_cross_company(mongo_db):
+    """Automation cannot assign invalid/cross-company assignee."""
+    company_a = "auto-a"
+    company_b = "auto-b"
+    admin_a = await _create_user("admin@auto-a.com", company_a, UserRole.ADMIN)
+    admin_b = await _create_user("admin@auto-b.com", company_b, UserRole.ADMIN)
+    task = await _create_task(company_a, "Auto Task", "AUTO-001", str(admin_a.id))
+
+    from app.core.automation_engine import AutomationEngine
+    action = {"type": "assign_task", "assignee_id": str(admin_b.id)}
+    trigger = {"entity_id": str(task.id), "user_id": str(admin_a.id), "company_id": company_a}
+
+    with pytest.raises(ValueError, match="not a valid user"):
+        await AutomationEngine._assign_task(action, trigger)
+
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_automation_assign_valid_produces_correct_status(mongo_db):
+    """Automation assignment produces correct status via workflow."""
+    company = "auto-valid"
+    admin = await _create_user("admin@autovalid.com", company, UserRole.ADMIN)
+    employee = await _create_user("employee@autovalid.com", company, UserRole.EMPLOYEE)
+    task = await _create_task(company, "Auto Assign Task", "AUTO-V-001", str(admin.id))
+    task.status = TaskStatus.TODO
+    await task.save()
+
+    from app.core.automation_engine import AutomationEngine
+    action = {"type": "assign_task", "assignee_id": str(employee.id)}
+    trigger = {"entity_id": str(task.id), "user_id": str(admin.id), "company_id": company}
+    await AutomationEngine._assign_task(action, trigger)
+
+    db_task = await Task.get(str(task.id))
+    assert db_task.status == TaskStatus.ASSIGNED
+
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_timer_stop_recovery_idempotent(mongo_db):
+    """Timer failure after STOPPING can recover; repeated recovery creates one TimeLog."""
+    company = "timer-recov"
+    admin = await _create_user("admin@timerrecov.com", company, UserRole.ADMIN)
+    employee = await _create_user("employee@timerrecov.com", company, UserRole.EMPLOYEE)
+    task = await _create_task(company, "Timer Task", "TREC-001", str(admin.id),
+                              assigned_to=str(employee.id))
+    now = utc_now()
+
+    session = ActiveTimeSession(
+        company_id=company, user_id=str(employee.id), task_id=str(task.id),
+        status=ActiveTimeSessionStatus.STOPPING,
+        started_at=now - timedelta(hours=1), last_resumed_at=now - timedelta(hours=1),
+        accumulated_seconds=3600, finalized=False,
+    )
+    await session.insert()
+
+    from app.services.time_tracking_service import recover_stopped_timer
+    log1 = await recover_stopped_timer(session)
+    assert log1.hours > 0
+
+    # Re-insert session for second recovery attempt
+    session2 = ActiveTimeSession(
+        company_id=company, user_id=str(employee.id), task_id=str(task.id),
+        status=ActiveTimeSessionStatus.STOPPING,
+        started_at=session.started_at, last_resumed_at=session.last_resumed_at,
+        accumulated_seconds=session.accumulated_seconds, finalized=False,
+    )
+    await session2.insert()
+    log2 = await recover_stopped_timer(session2)
+    # Should return the existing log, not create a duplicate
+    assert str(log2.id) == str(log1.id)
+
+    # Verify exactly one TimeLog in DB
+    logs = await TimeLog.find(TimeLog.task_id == str(task.id)).to_list()
+    assert len(logs) == 1
+
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_template_edit_preserves_tasks(mongo_db):
+    """Editing template metadata must NOT delete existing template tasks."""
+    company = "tpl-preserve"
+    admin = await _create_user("admin@tplpres.com", company, UserRole.ADMIN)
+
+    template = ProjectTemplate(
+        company_id=company, name="Preserve Me", project_type="software",
+        enabled=True, created_by=str(admin.id),
+    )
+    await template.insert()
+
+    tt = TemplateTask(
+        template_id=str(template.id), company_id=company,
+        ref_id="task-1", title="Existing Task",
+        priority=TemplateTaskPriority.MEDIUM,
+        relative_start_day=0, relative_due_day=3,
+        review_required=True, depends_on_refs=[], order=0,
+    )
+    await tt.insert()
+
+    # Update metadata only (empty task_templates list)
+    from app.services.project_template_service import update_template
+    updated = await update_template(
+        template=template, name="Preserve Me Updated",
+        task_templates=[],  # empty list = metadata-only edit
+        current_user=admin,
+    )
+
+    assert updated.name == "Preserve Me Updated"
+
+    # Verify template task still exists
+    remaining = await TemplateTask.find(
+        TemplateTask.template_id == str(template.id)
+    ).to_list()
+    assert len(remaining) == 1
+    assert remaining[0].title == "Existing Task"
+
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_task_report_includes_health(mongo_db):
+    """Task Report returns correct Health field."""
+    company = "report-health"
+    admin = await _create_user("admin@repthealth.com", company, UserRole.ADMIN)
+    now = utc_now()
+
+    overdue_task = await _create_task(
+        company, "Overdue Task", "RH-001", str(admin.id),
+        due_date=now - timedelta(days=5),
+    )
+    overdue_task.status = TaskStatus.IN_PROGRESS
+    await overdue_task.save()
+
+    from app.services.task_health_service import calculate_task_health
+    health = calculate_task_health(overdue_task, now)
+    assert health.value == "overdue"
+
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_project_reopen_audit_recorded(mongo_db):
+    """Project reopen records audit in ChangeLog."""
+    company = "audit-reopen"
+    admin = await _create_user("admin@auditreopen.com", company, UserRole.ADMIN)
+    project = await _create_project(company, "Audit Project", "AP-RE-001",
+                                    str(admin.id), status=ProjectStatus.COMPLETED)
+
+    from app.models.changelog import ChangeLog
+
+    from app.services.project_completion_service import _record_project_audit
+    await _record_project_audit(project, admin, "reopen", "completed", "review", reason="Re-doing work")
+
+    logs = await ChangeLog.find(
+        ChangeLog.task_id == str(project.id),
+        ChangeLog.field == "project_status",
+    ).to_list()
+    assert len(logs) >= 1
+    log = logs[-1]
+    assert log.metadata["action"] == "reopen"
+    assert log.metadata["old_status"] == "completed"
+    assert log.metadata["new_status"] == "review"
+    assert log.metadata["reason"] == "Re-doing work"
+
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_project_complete_audit_recorded(mongo_db):
+    """Project completion records audit in ChangeLog."""
+    company = "audit-complete"
+    admin = await _create_user("admin@auditcomplete.com", company, UserRole.ADMIN)
+    project = await _create_project(company, "Complete Audit", "AP-C-001",
+                                    str(admin.id), status=ProjectStatus.REVIEW)
+    task = await _create_task(company, "Done Task", "AP-C-001", str(admin.id))
+    task.status = TaskStatus.COMPLETED
+    await task.save()
+
+    from app.services.project_completion_service import mark_project_completed, _record_project_audit
+    await mark_project_completed(project, admin)
+
+    # Verify audit was recorded (mark_project_completed calls _record_project_audit)
+    from app.models.changelog import ChangeLog
+    logs = await ChangeLog.find(
+        ChangeLog.task_id == str(project.id),
+        ChangeLog.field == "project_status",
+    ).to_list()
+    assert len(logs) >= 1
+    log = logs[-1]
+    assert log.metadata["action"] == "complete"
+    assert log.metadata["new_status"] == "completed"

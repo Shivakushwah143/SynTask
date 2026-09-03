@@ -124,6 +124,30 @@ async def project_report(
     projects = await Project.find(query).to_list()
     start_at, end_at = _date_bounds(start_date, end_date, current_user)
 
+    # Pre-fetch ALL tasks for matching projects in one query (batch N+1).
+    project_identifiers: list[str] = []
+    project_oid_map: dict[str, str] = {}  # project_oid -> project_id_str
+    for project in projects:
+        pid = str(project.project_id or project.id)
+        project_identifiers.append(pid)
+        project_oid_map[str(project.id)] = pid
+    all_project_tasks = await Task.find({
+        "company_id": current_user.company_id,
+        "$or": [
+            {"project_id": {"$in": project_identifiers}},
+            {"project_object_id": {"$in": [str(p.id) for p in projects]}},
+        ],
+    }).to_list()
+    # Index tasks by project ID (supports both project_id and project_object_id links)
+    tasks_by_project: Dict[str, list] = {}
+    for t in all_project_tasks:
+        t_pid = t.project_id or ""
+        t_poid = getattr(t, "project_object_id", None) or ""
+        for key in {t_pid, t_poid}:
+            if key:
+                tasks_by_project.setdefault(key, []).append(t)
+
+    now_utc = utc_now()
     results = []
     for project in projects:
         if not await _project_visible(project, current_user, visible_ids):
@@ -132,28 +156,21 @@ async def project_report(
             continue
         if end_at and project.start_date and project.start_date > end_at:
             continue
-        # Health
-        health_data = await ProjectHealthService.calculate_project_health(project)
-        project_health = health_data.get("level", health_data.get("health", "healthy")) if health_data else "healthy"
+
+        proj_key = str(project.project_id or project.id)
+        proj_tasks = tasks_by_project.get(proj_key, []) or tasks_by_project.get(str(project.id), [])
+
+        # Health (computed from pre-fetched tasks)
+        from app.services.project_health_service import calculate_project_health, calculate_project_progress
+        health_data = calculate_project_health(project, proj_tasks, now_utc)
+        project_health = health_data.level
         if health and project_health != health:
             continue
 
-        # Progress
-        progress = await ProjectHealthService.calculate_project_progress(project)
-
-        # Task counts (use both project_id and project_object_id for dual-link tasks)
-        task_filter: Dict[str, Any] = {
-            "company_id": current_user.company_id,
-            "$or": [
-                {"project_id": str(project.project_id or project.id)},
-                {"project_id": str(project.id)},
-                {"project_object_id": str(project.id)},
-            ],
-        }
-        all_tasks = await Task.find(task_filter).to_list()
-        completed = sum(1 for t in all_tasks if t.status == TaskStatus.COMPLETED)
-        open_tasks = sum(1 for t in all_tasks if t.status not in (TaskStatus.COMPLETED, TaskStatus.CANCELLED))
-        overdue = sum(1 for t in all_tasks if t.status not in (TaskStatus.COMPLETED, TaskStatus.CANCELLED) and t.due_date and t.due_date < utc_now())
+        progress = health_data.completion_percentage
+        completed = health_data.completed_task_count
+        open_tasks = health_data.total_open_tasks
+        overdue = health_data.overdue_task_count
 
         # Time
         time_data = await aggregate_time_by_project(current_user.company_id, str(project.id))
@@ -265,6 +282,7 @@ async def task_report(
 
     results = []
     for task in tasks:
+        task_health = calculate_task_health(task, now)
         results.append({
             "task_id": str(task.id),
             "title": task.title,
@@ -275,6 +293,7 @@ async def task_report(
             "priority": task.priority.value if hasattr(task.priority, "value") else str(task.priority),
             "due_date": task.due_date.isoformat() if task.due_date else None,
             "review_round": getattr(task, "review_round", 0),
+            "health": getattr(task_health, "value", str(task_health)),
         })
 
     return {

@@ -515,19 +515,18 @@ function ActiveTimerBar() {
   const isPaused = session && session.status === 'paused'
   const isActive = isRunning || isPaused
 
-  // Elapsed timer tick
+  // Elapsed timer tick — use backend's elapsed_seconds and accumulate on tick
   useEffect(() => {
-    if (!isActive || !session?.started_at) return
-    const baseMs = new Date(session.started_at).getTime()
-    const pausedMs = session.paused_duration_ms || 0
-    const tick = () => {
-      const nowMs = Date.now()
-      setElapsed(Math.max(0, Math.floor((nowMs - baseMs - pausedMs) / 1000)))
-    }
-    tick()
-    const interval = setInterval(tick, 1000)
+    if (!isActive) return
+    // Start from the server-computed elapsed_seconds
+    const baseSeconds = session?.elapsed_seconds || 0
+    setElapsed(baseSeconds)
+    if (!isRunning) return // paused: don't tick
+    const interval = setInterval(() => {
+      setElapsed((prev) => prev + 1)
+    }, 1000)
     return () => clearInterval(interval)
-  }, [isActive, session?.started_at, session?.paused_duration_ms])
+  }, [isActive, isRunning, session?.elapsed_seconds])
 
   const formatElapsed = useCallback((totalSeconds) => {
     const h = Math.floor(totalSeconds / 3600)

@@ -55,9 +55,12 @@ async def reopen_project(
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Reopen reason is required")
     if enum_or_string_value(project.status) != ProjectStatus.COMPLETED.value:
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Only completed projects can be reopened")
+    old_status = enum_or_string_value(project.status)
     project.status = ProjectStatus.REVIEW
     project.completed_at = None
     project.completed_by = None
     project.updated_at = utc_now()
     await project.save()
+    from app.services.project_completion_service import _record_project_audit
+    await _record_project_audit(project, current_user, "reopen", old_status, ProjectStatus.REVIEW.value, reason=reason)
     return {"message": "Project reopened", "project_id": str(project.id), "status": project.status.value}

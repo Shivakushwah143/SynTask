@@ -49,6 +49,9 @@ class FakeSession:
     async def insert(self):
         FakeSessionStore.active = self
 
+    async def save(self):
+        FakeSessionStore.active = self
+
     @classmethod
     def find_one(cls, query):
         session = FakeSessionStore.active

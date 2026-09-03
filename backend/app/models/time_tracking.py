@@ -85,6 +85,7 @@ class ActiveTimeSession(Document):
     paused_at: Optional[datetime] = None
     accumulated_seconds: int = 0
     status: ActiveTimeSessionStatus = ActiveTimeSessionStatus.RUNNING
+    finalized: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

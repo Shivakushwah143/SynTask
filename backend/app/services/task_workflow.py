@@ -294,8 +294,9 @@ async def transition_task(
         if review_required:
             task.reviewer_id = await reviewer_for_submission(task, actor, project)
     if reviewer_id is not None:
-        await validate_reviewer(task, reviewer_id or None, project)
-        task.reviewer_id = reviewer_id or None
+        if action != "assign":
+            await validate_reviewer(task, reviewer_id or None, project)
+            task.reviewer_id = reviewer_id or None
     if action == "request_revision" and not (reason or "").strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Revision reason is required")
     if target == TaskStatus.COMPLETED and review_required and current != TaskStatus.APPROVED:
@@ -310,6 +311,11 @@ async def transition_task(
     task.status_changed_at = now
     if target == TaskStatus.IN_PROGRESS and not task.start_date:
         task.start_date = now
+    if action == "assign" and reviewer_id:
+        # reviewer_id is repurposed as the assignee for automation assignment.
+        # Skip validate_reviewer for the assign action.
+        task.assigned_to = reviewer_id
+        task.assigned_by = str(actor.id)
     if target == TaskStatus.IN_REVIEW:
         task.review_round = int(getattr(task, "review_round", 0) or 0) + 1
         task.submitted_for_review_at = now
