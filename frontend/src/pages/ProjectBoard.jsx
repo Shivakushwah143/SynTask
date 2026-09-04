@@ -35,6 +35,7 @@ import { useProjectPermissions } from '../hooks/useProjectPermissions'
 import { Badge, Button, ConfirmDialog, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
+import TaskStageMenu from '../components/tasks/TaskStageMenu'
 import { DEFAULT_STATUSES, buildProjectTaskQuery, getProjectRoleAssignmentIds, getProjectRoleNames, getTaskAssigneeUsers, getUserDisplayName, groupTasksByStatus, normalizeBoardPayload, normalizeEstimatedHours, normalizeStatusId, resolveWorkspaceTab, workspaceTabParam } from './ProjectBoard.helpers'
 import {
   ATTENTION_FILTERS,
@@ -728,6 +729,9 @@ export default function ProjectBoard() {
   const canManageColumns = projectPermissions.hasProjectPermission('manage_board')
   const canAssignProject = hasCompanyAdminAccess(user?.role) || (userRole === 'manager' && canManageCurrentProject)
   const canCreateProjectTask = projectPermissions.hasProjectPermission('create_task')
+  // Task workflow power for the row-level stage-advance menus: project task
+  // managers and company admins always, plus per-row task creators below.
+  const canManageProjectTasks = projectPermissions.hasProjectPermission('manage_task') || hasCompanyAdminAccess(user?.role)
   const activeProject = projectInfo?.name || boardData?.project?.name || 'Project'
   const projectDescription = projectRecord.description || 'No project description available.'
   const projectStatus = projectRecord.status || 'active'
@@ -1310,6 +1314,7 @@ export default function ProjectBoard() {
                     {projectTasks.map((task) => {
                       const reviewerName = taskReviewerName(task)
                       const needsYourReview = task.status === 'in_review' && task.reviewer_id && String(task.reviewer_id) === String(user?.id)
+                      const canManageTaskStage = canManageProjectTasks || Boolean(user && task.created_by && String(task.created_by) === String(user?.id || user?._id || ''))
                       return (
                         <tr
                           key={task.id}
@@ -1362,10 +1367,20 @@ export default function ProjectBoard() {
                           <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{taskAssigneeName(task)}</td>
                           <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{reviewerName || '\u2014'}</td>
                           <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="sm" onClick={() => navigate(`/projects/${projectId}/tasks/${task.id}`)}>
-                              Open
-                              <ArrowRight className="h-4 w-4" />
-                            </Button>
+                            <div className="inline-flex items-center justify-end gap-1">
+                              <TaskStageMenu
+                                task={task}
+                                user={user}
+                                canManage={canManageTaskStage}
+                                assignableUsers={assignableUsers}
+                                updating={updatingTaskId === task.id}
+                                onUpdated={refreshProjectTasks}
+                              />
+                              <Button variant="ghost" size="sm" onClick={() => navigate(`/projects/${projectId}/tasks/${task.id}`)}>
+                                Open
+                                <ArrowRight className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       )
