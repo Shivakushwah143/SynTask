@@ -265,7 +265,7 @@ async def get_overdue_tasks_list(
     }
     if visible_user_ids is not None:
         query["assigned_to"] = {"$in": visible_user_ids}
-    tasks = await Task.find(query).sort("due_date", 1).limit(limit).to_list()
+    tasks = await Task.find(query).sort("due_date").limit(limit).to_list()
     return [
         {
             "task_id": str(t.id),

@@ -22,6 +22,7 @@ import { canCreateProject, canManageProject, normalizeRole } from '../utils/role
 import { Badge, Button, ConfirmDialog, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, inputClassName } from '../components/ui'
 import { excludeCurrentUser } from '../utils/userFilters'
 import { QuickCreateClientModal, QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
+import TemplateApplyModal from '../components/templates/TemplateApplyModal'
 import { timeService } from '@/services/timeService'
 import {
   buildProjectGraphRows,
@@ -190,6 +191,10 @@ export default function Projects() {
   })
   const [formData, setFormData] = useState({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', client_id: '', start_date: '', delivery_date: '', priority: 'medium' })
   const [formErrors, setFormErrors] = useState({})
+  const [executionPlan, setExecutionPlan] = useState('empty') // 'empty' | 'template'
+  const [showTemplateApplyModal, setShowTemplateApplyModal] = useState(false)
+  const [createdProjectId, setCreatedProjectId] = useState(null)
+  const [createdProjectName, setCreatedProjectName] = useState(null)
 
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingProject, setEditingProject] = useState(null)
@@ -531,15 +536,27 @@ export default function Projects() {
       const response = await projectsApi.createProject(payload)
       toast.success('Project created successfully')
 
-      setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', client_id: '', start_date: '', delivery_date: '', priority: 'medium' })
-      setCreateMode('now')
-      setScheduleRunAt('')
-      setShowCreateModal(false)
+      const newProjectId = response.data?.project_id || response.data?.id
+      const newProjectName = formData.name
 
-      if (response.data && response.data.project) {
-        setProjects(prevProjects => [response.data.project, ...prevProjects])
-      } else {
+      if (executionPlan === 'template' && newProjectId) {
+        // Keep form data intact, close modal, open template apply modal
+        setShowCreateModal(false)
+        setCreatedProjectId(newProjectId)
+        setCreatedProjectName(newProjectName)
+        setShowTemplateApplyModal(true)
         await loadProjects()
+      } else {
+        setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', client_id: '', start_date: '', delivery_date: '', priority: 'medium' })
+        setCreateMode('now')
+        setScheduleRunAt('')
+        setExecutionPlan('empty')
+        setShowCreateModal(false)
+        if (response.data && response.data.project) {
+          setProjects(prevProjects => [response.data.project, ...prevProjects])
+        } else {
+          await loadProjects()
+        }
       }
 
       setProjectPage(1)
@@ -846,12 +863,41 @@ export default function Projects() {
               </FormField>
             )}
           </div>
+          {/* Execution Plan */}
+          <div className="rounded-xl border border-gray-200 p-3 dark:border-[var(--color-app-border)]">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Execution Plan</p>
+            <div className="flex flex-col gap-2">
+              <label className="inline-flex items-center gap-2">
+                <input type="radio" name="executionPlan" value="empty" checked={executionPlan === 'empty'} onChange={() => setExecutionPlan('empty')} className="h-4 w-4 text-indigo-600 focus:ring-indigo-500" />
+                <span className="text-sm text-gray-700 dark:text-gray-200">Start Empty</span>
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input type="radio" name="executionPlan" value="template" checked={executionPlan === 'template'} onChange={() => setExecutionPlan('template')} className="h-4 w-4 text-indigo-600 focus:ring-indigo-500" />
+                <span className="text-sm text-gray-700 dark:text-gray-200">Use Project Template</span>
+              </label>
+            </div>
+            {executionPlan === 'template' && (
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">After creating the project, you'll be guided through template selection and customization.</p>
+            )}
+          </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" type="button" onClick={() => setShowCreateModal(false)}>Cancel</Button>
+            <Button variant="secondary" type="button" onClick={() => { setShowCreateModal(false); setExecutionPlan('empty') }}>Cancel</Button>
             <Button type="submit" loading={submitting} loadingText={createMode === 'schedule' ? 'Scheduling' : 'Creating'}>{createMode === 'schedule' ? 'Schedule project' : 'Create project'}</Button>
           </div>
         </form>
       </Modal>
+
+      {/* Template Apply Modal (after project creation with template) */}
+      {showTemplateApplyModal && createdProjectId && (
+        <TemplateApplyModal
+          isOpen={showTemplateApplyModal}
+          onClose={() => { setShowTemplateApplyModal(false); setCreatedProjectId(null); setCreatedProjectName(null); setExecutionPlan('empty'); setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', client_id: '', start_date: '', delivery_date: '', priority: 'medium' }) }}
+          projectId={createdProjectId}
+          projectName={createdProjectName}
+          projectStartDate={formData.start_date ? timeService.toUtcISOString(formData.start_date) : undefined}
+          onApplied={() => { setCreatedProjectId(null); setCreatedProjectName(null); setExecutionPlan('empty'); setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', client_id: '', start_date: '', delivery_date: '', priority: 'medium' }); loadProjects() }}
+        />
+      )}
 
       <Modal isOpen={showProjectTypeModal} onClose={() => setShowProjectTypeModal(false)} title="Add project type">
         <form onSubmit={handleCreateProjectType} className="space-y-4">

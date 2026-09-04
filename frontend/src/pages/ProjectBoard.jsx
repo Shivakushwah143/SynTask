@@ -38,6 +38,7 @@ import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
 import { DEFAULT_STATUSES, getProjectRoleAssignmentIds, getProjectRoleNames, getTaskAssigneeUsers, getUserDisplayName, normalizeBoardPayload, normalizeEstimatedHours, normalizeStatusId } from './ProjectBoard.helpers'
 import { timeService } from '../services/timeService'
 import { excludeCurrentUser } from '../utils/userFilters'
+import TemplateApplyModal from '../components/templates/TemplateApplyModal'
 
 const STATUS_COLORS = {
   todo: '#7C6FE0',
@@ -138,6 +139,7 @@ export default function ProjectBoard() {
   const [showReopenModal, setShowReopenModal] = useState(false)
   const [reopenReason, setReopenReason] = useState('')
   const [completionAction, setCompletionAction] = useState(null)
+  const [showTemplateApplyModal, setShowTemplateApplyModal] = useState(false)
 
   const projectAssigneeOptions = useMemo(
     () => projectAssignableUsers.filter((item) => item.status === 'active'),
@@ -734,8 +736,23 @@ export default function ProjectBoard() {
                 Create task
               </Button>
             ) : null}
+            {canManageCurrentProject && (
+              <Button variant="secondary" size="sm" onClick={() => setShowTemplateApplyModal(true)}>
+                <Sparkles className="h-4 w-4" />
+                Apply Template
+              </Button>
+            )}
           </div>
         )}
+      />
+
+      <TemplateApplyModal
+        isOpen={showTemplateApplyModal}
+        onClose={() => setShowTemplateApplyModal(false)}
+        projectId={projectRecord?.project_id || projectId}
+        projectName={activeProject}
+        projectStartDate={projectRecord?.start_date}
+        onApplied={() => { setShowTemplateApplyModal(false); loadProject() }}
       />
 
       <section className="overflow-hidden rounded-2xl border border-primary-200/60 bg-[linear-gradient(135deg,rgba(255,250,244,0.98),rgba(248,242,232,0.92))] shadow-[0_18px_45px_rgba(63,49,37,0.08)] dark:border-[#5a4635] dark:bg-[linear-gradient(135deg,rgba(36,28,20,0.98),rgba(20,16,12,0.96))] dark:shadow-[0_20px_50px_rgba(0,0,0,0.28)]">

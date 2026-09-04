@@ -228,3 +228,55 @@ async def generate_project_from_template(
     )
 
     return result
+
+
+@router.post("/apply/{project_id}")
+async def apply_template_to_project_endpoint(
+    project_id: str,
+    template_id: str = Form(...),
+    customized_tasks_json: str = Form(None),
+    assignee_map_json: str = Form("{}"),
+    reviewer_map_json: str = Form("{}"),
+    start_date: str = Form(None),
+    application_id: str = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    """Apply a template to an existing project (or a newly created one).
+
+    Both Flow A (new project) and Flow B (existing project) use this endpoint.
+    Flow A simply creates the project first, then calls this endpoint.
+    """
+    import json
+
+    customized_tasks = None
+    if customized_tasks_json:
+        try:
+            customized_tasks = json.loads(customized_tasks_json)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Invalid customized_tasks_json format.",
+            )
+
+    try:
+        assignee_map = json.loads(assignee_map_json) if assignee_map_json else {}
+    except json.JSONDecodeError:
+        assignee_map = {}
+    try:
+        reviewer_map = json.loads(reviewer_map_json) if reviewer_map_json else {}
+    except json.JSONDecodeError:
+        reviewer_map = {}
+
+    result = await project_template_service.apply_template_to_project(
+        project_id=project_id,
+        template_id=template_id,
+        company_id=current_user.company_id,
+        customized_tasks=customized_tasks,
+        assignee_map=assignee_map,
+        reviewer_map=reviewer_map,
+        start_date=start_date,
+        current_user=current_user,
+        application_id=application_id,
+    )
+
+    return result
