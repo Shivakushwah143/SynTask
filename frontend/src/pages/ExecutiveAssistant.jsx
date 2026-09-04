@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react'
 import { streamExecutiveChat } from '../api/ai'
+import { ProductPreviewImage } from '../config/visualAssets'
 import AnswerBlocks, { friendlyToolLabel } from '../components/ai/AnswerBlocks'
 import MarkdownText from '../components/ai/MarkdownText'
 import { Badge, Button, PageHeader } from '../components/ui'
@@ -376,6 +377,10 @@ function EmptyStateExperience({ firstName, onPrompt, busy }) {
       <h3 className="mt-2 text-2xl font-semibold tracking-tight text-gray-950 dark:text-gray-50 sm:text-3xl">
         What would you like to know about your company, {firstName}?
       </h3>
+      {/* Real SynTask product visual — the surface the agent operates across */}
+      <div className="mt-6 w-full max-w-md">
+        <ProductPreviewImage crop={2} alt="SynTask company dashboard preview" className="h-24" />
+      </div>
       <p className="mt-2 max-w-xl text-sm leading-6 text-gray-500 dark:text-gray-400">
         Ask across employees, tasks, projects, clients, sales, HR, finance and more — every answer is grounded in live SynTask data.
       </p>

@@ -134,7 +134,7 @@ export default function RecruitmentDashboard() {
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
         
         <div className="relative z-10">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
               <div className="rounded-lg bg-white/15 p-2 backdrop-blur-sm">
                 <Users className="h-5 w-5" />
@@ -144,6 +144,15 @@ export default function RecruitmentDashboard() {
                 <p className="truncate text-xs text-emerald-100">Monitor hiring pipeline and urgent work.</p>
               </div>
             </div>
+            {/* Compact team visual — hiring is a people context, photo stays small */}
+            <img
+              src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=600&q=80"
+              alt="Hiring team collaborating during an interview"
+              loading="lazy"
+              width="600"
+              height="220"
+              className="hidden h-16 w-52 rounded-lg object-cover opacity-95 shadow-md ring-1 ring-white/20 md:block"
+            />
           </div>
         </div>
       </div>
@@ -302,7 +311,16 @@ export default function RecruitmentDashboard() {
                           ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
                           : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
                       }`}>
-                        {isInterview ? <CalendarClock className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                        {isInterview ? (
+                          <CalendarClock className="h-4 w-4" />
+                        ) : isApplication ? (
+                          /* Candidate monogram avatar when a name exists */
+                          <span className="text-xs font-bold">
+                            {(item.full_name || item.fullName || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}
+                          </span>
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-gray-900 dark:text-white">

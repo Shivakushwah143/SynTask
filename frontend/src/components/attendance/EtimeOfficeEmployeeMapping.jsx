@@ -3,6 +3,7 @@ import { ArrowRight, Link2, RefreshCw, Trash2, UserCheck, Users } from 'lucide-r
 import toast from 'react-hot-toast'
 import { attendanceAPI } from '../../api/attendance'
 import { Badge } from '../ui'
+import { BiometricSyncIcon } from '../../config/visualAssets'
 
 /**
  * HR-admin Employee Mapping panel for the eTimeOffice biometric integration.
@@ -112,9 +113,10 @@ const EtimeOfficeEmployeeMapping = () => {
         </button>
       </div>
 
-      <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
-        Attendance sync resolves each eTimeOffice code only through this table. Suggested employees
-        below are never assigned automatically — confirm each mapping explicitly.
+      <p className="mb-3 flex items-start gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+        <BiometricSyncIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-indigo-500" />
+        <span>Attendance sync resolves each eTimeOffice code only through this table. Suggested employees
+        below are never assigned automatically — confirm each mapping explicitly.</span>
       </p>
 
       {loading ? (
