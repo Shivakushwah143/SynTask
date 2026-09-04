@@ -573,7 +573,20 @@ export default function Projects() {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-6 px-2 pt-1.5 pb-4 md:px-3 md:pt-2 md:pb-6">
+      {/* Lifecycle tabs + health/needs-setup quick filters - pinned at the very
+          top of the page with a minimal top margin, rendered transparently */}
+      <section>
+        <ProjectLifecycleTabs
+          current={route.status}
+          activeHealth={route.health}
+          activeAttention={route.attention}
+          summary={summary}
+          onSelectStatus={applyStatusTab}
+          onSelectHealth={applyHealthFilter}
+        />
+      </section>
+
       {/* Hero Section */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 px-5 py-3.5 text-white shadow-lg">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
@@ -600,18 +613,6 @@ export default function Projects() {
           )}
         </div>
       </div>
-
-      {/* Lifecycle tabs + health/needs-setup quick filters */}
-      <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <ProjectLifecycleTabs
-          current={route.status}
-          activeHealth={route.health}
-          activeAttention={route.attention}
-          summary={summary}
-          onSelectStatus={applyStatusTab}
-          onSelectHealth={applyHealthFilter}
-        />
-      </section>
 
       {/* Search & Advanced Filters */}
       <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
