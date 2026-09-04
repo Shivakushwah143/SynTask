@@ -873,6 +873,50 @@ export default function ProjectBoard() {
     cancelled: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
   }
 
+  // Lifecycle rendered as a stage pipeline: All Tasks and Cancelled stay as
+  // plain quick chips, while the ordered stages render as color-coded nodes
+  // with arrows flowing between them (To Do → … → Completed).
+  const leadingTab = LIFECYCLE_TABS.find((tab) => !tab.id) || { id: '', label: 'All Tasks' }
+  const cancelledTab = LIFECYCLE_TABS.find((tab) => tab.id === 'cancelled') || null
+  const pipelineTabs = LIFECYCLE_TABS.filter((tab) => tab.id && tab.id !== 'cancelled')
+
+  const renderLifecycleChip = (tab) => {
+    const isActive = taskStatus === tab.id && !taskAttention
+    const count = tabCount(taskSummary, tab.id)
+    const stageColor = STATUS_COLORS[tab.id]
+    const isPlain = !tab.id || tab.id === 'cancelled'
+    return (
+      <button
+        key={tab.id || 'all'}
+        type="button"
+        role="tab"
+        aria-selected={isActive}
+        onClick={() => handleTaskTabClick(tab.id)}
+        title={`Show ${tab.label} for this project`}
+        className={`relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all ${
+          isActive
+            ? 'border-transparent text-white shadow-sm'
+            : isPlain
+              ? 'border-transparent text-gray-500 hover:bg-white/70 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-gray-200'
+              : 'border-gray-200/70 bg-white/85 text-gray-700 shadow-sm hover:border-gray-300 hover:bg-white dark:border-gray-600/60 dark:bg-gray-900/60 dark:text-gray-200 dark:hover:bg-gray-800'
+        }`}
+        style={isActive ? { backgroundColor: stageColor || '#6366F1' } : undefined}
+      >
+        {isPlain ? null : (
+          <span
+            aria-hidden="true"
+            className="h-1.5 w-1.5 shrink-0 rounded-full"
+            style={{ backgroundColor: isActive ? 'rgba(255,255,255,0.9)' : stageColor || '#9CA3AF' }}
+          />
+        )}
+        <span>{tab.label}</span>
+        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${isActive ? 'bg-white/25 text-white' : 'bg-gray-200/90 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>
+          {count}
+        </span>
+      </button>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -1109,45 +1153,30 @@ export default function ProjectBoard() {
             </div>
           </div>
 
-          {/* Lifecycle Stage Tabs - project-scoped counts; Scheduled is not a lifecycle stage */}
+          {/* Lifecycle Stage Pipeline - project-scoped counts; Scheduled is not a lifecycle stage */}
           <div
             role="tablist"
             aria-label="Task lifecycle stages"
-            className="flex items-center gap-0.5 rounded-xl border border-gray-200 bg-gray-100/80 px-1.5 py-1.5 shadow-sm dark:border-gray-700 dark:bg-gray-800/80"
+            className="flex items-center gap-1.5 overflow-x-auto rounded-xl border border-gray-200 bg-gray-100/80 px-2.5 py-2 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden dark:border-gray-700 dark:bg-gray-800/80"
           >
-            {LIFECYCLE_TABS.map((tab) => {
-              const isActive = taskStatus === tab.id && !taskAttention
-              const count = tabCount(taskSummary, tab.id)
-              return (
-                <button
-                  key={tab.id || 'all'}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => handleTaskTabClick(tab.id)}
-                  title={`Show ${tab.label} for this project`}
-                  className={`relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                    isActive
-                      ? 'bg-white text-indigo-700 shadow-sm dark:bg-gray-900 dark:text-indigo-300'
-                      : 'text-gray-600 hover:bg-white/70 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/70 dark:hover:text-gray-200'
-                  }`}
-                >
-                  <span>{tab.label}</span>
-                  <span
-                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                      isActive
-                        ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300'
-                        : 'bg-gray-200/80 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                    }`}
-                  >
-                    {count}
+            {renderLifecycleChip(leadingTab)}
+            <span aria-hidden="true" className="h-5 w-px shrink-0 bg-gray-300 dark:bg-gray-600" />
+            {pipelineTabs.map((tab, index) => (
+              <div key={tab.id} className="flex shrink-0 items-center gap-1.5">
+                {index > 0 ? (
+                  <span aria-hidden="true" className="text-gray-300 dark:text-gray-600">
+                    <ArrowRight className="h-3.5 w-3.5" />
                   </span>
-                  {isActive ? (
-                    <span className="absolute inset-x-2 -bottom-1 h-0.5 rounded-full bg-indigo-500" />
-                  ) : null}
-                </button>
-              )
-            })}
+                ) : null}
+                {renderLifecycleChip(tab)}
+              </div>
+            ))}
+            {cancelledTab ? (
+              <>
+                <span aria-hidden="true" className="h-5 w-px shrink-0 bg-gray-300 dark:bg-gray-600" />
+                {renderLifecycleChip(cancelledTab)}
+              </>
+            ) : null}
           </div>
 
           {/* Needs Attention - project-scoped conditions; NOT lifecycle statuses */}

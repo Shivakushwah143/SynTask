@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
-  ArrowLeft, Trash2, Paperclip, Eye, History, Mail,
+  ArrowLeft, Trash2, Paperclip, Eye, History, Mail, CalendarClock, GitBranch, GitPullRequest, User,
   X, Lock, Share2, MoreVertical, Maximize2, CheckSquare,
   ChevronRight, Zap, Sparkles, Plus, List, FileText
 } from 'lucide-react'
@@ -16,7 +16,7 @@ import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
 import { EmailComposer } from '../components/EmailComposer'
 import { Badge, EmptyState, Modal } from '../components/ui'
-import { TASK_STATUS_TONES, buildTaskAssignmentOptions, canEditTaskDetails, getAttachmentKind, getProjectLeadName, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
+import { TASK_STATUS_TONES, buildTaskAssignmentOptions, canEditTaskDetails, getAttachmentKind, getProjectLeadName, getRevisionReasonContext, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
 import { normalizeRole } from '../utils/roles'
 import { buildTaskShareUrl, resolveTaskBackTarget, resolveTaskCloseFallback } from './taskNavigation'
 import toast from 'react-hot-toast'
@@ -89,6 +89,9 @@ const TaskDetail = () => {
   const [showAssignFirstModal, setShowAssignFirstModal] = useState(false)
   const [assignFirstEmployeeId, setAssignFirstEmployeeId] = useState('')
   const [assigningFirstAssignee, setAssigningFirstAssignee] = useState(false)
+  const [showRevisionModal, setShowRevisionModal] = useState(false)
+  const [revisionModalReason, setRevisionModalReason] = useState('')
+  const [submittingRevision, setSubmittingRevision] = useState(false)
   const [extensionForm, setExtensionForm] = useState({ requested_due_date: '', reason: '' })
   const [submittingExtension, setSubmittingExtension] = useState(false)
   const [reviewingExtensionId, setReviewingExtensionId] = useState(null)
@@ -437,6 +440,13 @@ const TaskDetail = () => {
         return
       }
     }
+    if (newStatus === 'revision_required') {
+      // The backend rejects a revision without a written reason, so collect it
+      // in a modal before calling the semantic request-revision endpoint.
+      setRevisionModalReason('')
+      setShowRevisionModal(true)
+      return
+    }
     try {
       setUpdatingStatus(true)
       await tasksAPI.updateTaskStatus(taskId, newStatus)
@@ -466,6 +476,25 @@ const TaskDetail = () => {
       toast.error(error?.response?.data?.detail || 'Failed to assign task')
     } finally {
       setAssigningFirstAssignee(false)
+    }
+  }
+
+  const handleRevisionConfirm = async () => {
+    if (!revisionModalReason.trim()) {
+      toast.error('A revision reason is required')
+      return
+    }
+    try {
+      setSubmittingRevision(true)
+      await tasksAPI.requestRevision(taskId, revisionModalReason.trim())
+      setShowRevisionModal(false)
+      setTaskStatus('revision_required')
+      toast.success('Revision requested')
+      await loadTask()
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to request revision')
+    } finally {
+      setSubmittingRevision(false)
     }
   }
 
@@ -685,6 +714,33 @@ const TaskDetail = () => {
   const statuses = TASK_STATUS_TONES
   const currentStatusTone = getTaskStatusTone(taskStatus || task?.status)
 
+  // ── Revision reason section ────────────────────────────────────────────────
+  // The reviewer's requested changes can get lost on the detail page (no
+  // revision panel existed), so surface the latest revision reason as a
+  // color-coded call-out: red while the task waits in Revision Required,
+  // amber while the assignee is reworking an earlier revision request.
+  const revisionContext = getRevisionReasonContext(task, { status: taskStatus, users })
+  const isRevisionRequired = revisionContext.isRevisionRequired
+  const revisionReason = revisionContext.reason
+  const revisionRequesterName = revisionContext.requesterName
+  const showRevisionSection = revisionContext.show
+  const revisionDateLabel = revisionContext.revisionRequestedAt
+    ? (() => { try { return timeService.formatPattern(revisionContext.revisionRequestedAt, 'MMM d, yyyy') } catch { return String(revisionContext.revisionRequestedAt).slice(0, 10) } })()
+    : ''
+  const revisionTone = isRevisionRequired
+    ? {
+        header: 'from-rose-600 to-red-500',
+        iconWrap: 'bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300',
+        quote: 'border-rose-400/70 bg-rose-50/80 text-rose-950 dark:border-rose-800/60 dark:bg-rose-950/25 dark:text-rose-50',
+        badge: 'Revision required',
+      }
+    : {
+        header: 'from-amber-500 to-orange-500',
+        iconWrap: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300',
+        quote: 'border-amber-400/70 bg-amber-50/80 text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/25 dark:text-amber-50',
+        badge: 'Rework in progress',
+      }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -898,6 +954,54 @@ const TaskDetail = () => {
               </div>
             )}
           </div>
+
+          {/* Revision reason — color-coded highlight so requested changes are never missed */}
+          {showRevisionSection ? (
+            <div className="mb-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+              <div className={`flex items-center justify-between gap-2 bg-gradient-to-r px-4 py-2.5 ${revisionTone.header}`}>
+                <p className="flex items-center gap-2 text-sm font-bold tracking-wide text-white">
+                  <GitPullRequest className="h-4 w-4" />
+                  Revision reason
+                </p>
+                <span className="rounded-full bg-white/25 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                  {revisionTone.badge}
+                </span>
+              </div>
+              <div className="flex items-start gap-3 px-4 py-3.5">
+                <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${revisionTone.iconWrap}`}>
+                  <GitPullRequest className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {isRevisionRequired ? 'The reviewer sent this task back for changes.' : 'Rework is in progress after an earlier revision request.'}
+                  </p>
+                  <p className={`mt-2 whitespace-pre-wrap rounded-xl border-l-4 px-3.5 py-2.5 text-sm font-medium leading-6 ${revisionTone.quote}`}>
+                    {revisionReason || 'The reviewer requested changes but did not leave a written reason.'}
+                  </p>
+                  <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                    {revisionRequesterName ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <User className="h-3.5 w-3.5" />
+                        Requested by {revisionRequesterName}
+                      </span>
+                    ) : null}
+                    {revisionDateLabel ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        {revisionDateLabel}
+                      </span>
+                    ) : null}
+                    {Number(task?.review_round) > 0 ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <GitBranch className="h-3.5 w-3.5" />
+                        Review round {task.review_round}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {isEditing && (
             <div className="mb-6 grid gap-4 sm:grid-cols-2">
@@ -1602,6 +1706,54 @@ const TaskDetail = () => {
                 <button
                   type="button"
                   onClick={() => setShowAssignFirstModal(false)}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </Modal>
+
+          {/* Revision-reason modal — required before moving to Revision Required */}
+          <Modal
+            isOpen={showRevisionModal}
+            onClose={() => { if (!submittingRevision) setShowRevisionModal(false) }}
+            title="Request revision"
+            size="sm"
+          >
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                A revision always needs a written reason. Explain what has to change before the task moves to
+                <strong className="text-gray-900 dark:text-gray-100"> Revision Required</strong> — the assignee will
+                see this reason when the task comes back to them.
+              </p>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">
+                  Revision reason <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={revisionModalReason}
+                  onChange={(e) => setRevisionModalReason(e.target.value)}
+                  disabled={submittingRevision}
+                  rows={4}
+                  autoFocus
+                  placeholder="Explain what needs to change before this task can be approved."
+                  className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleRevisionConfirm}
+                  disabled={submittingRevision || !revisionModalReason.trim()}
+                  className="flex-1 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                >
+                  {submittingRevision ? 'Requesting...' : 'Request revision'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRevisionModal(false)}
+                  disabled={submittingRevision}
                   className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                   Cancel
