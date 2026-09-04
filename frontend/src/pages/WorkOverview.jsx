@@ -378,20 +378,11 @@ function ManagerWorkOverview({ data }) {
         <SummaryCard label="At-Risk Projects" value={summary.at_risk_projects || 0} icon={TrendingUp} color="text-red-600" link="/projects" />
       </section>
 
-      {/* Management Attention */}
-      {data.management_attention?.length > 0 && (
-        <section>
-          <SectionHeader title="Management Attention" count={data.management_attention.length} />
-          <div className="space-y-2">
-            {data.management_attention.map((item, i) => (
-              <AttentionItem key={`${item.type}-${i}`} item={item} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* My Review Queue */}
-      {data.my_reviews?.length > 0 && (
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+        {/* Main column - existing top-to-bottom order preserved */}
+        <div className="space-y-5">
+          {/* My Review Queue */}
+          {data.my_reviews?.length > 0 && (
         <section>
           <SectionHeader title="My Review Queue" count={data.my_reviews.length} viewAllLink="/tasks?status=in_review" />
           <div className="space-y-2">
@@ -487,10 +478,24 @@ function ManagerWorkOverview({ data }) {
         </section>
       )}
 
-      {/* Empty State */}
-      {(!data.management_attention?.length) && (!data.my_reviews?.length) && (!data.team_workload?.length) && (
-        <EmptyState message="No operational issues detected. Team is running smoothly." />
-      )}
+          {/* Empty State */}
+          {(!data.management_attention?.length) && (!data.my_reviews?.length) && (!data.team_workload?.length) && (
+            <EmptyState message="No operational issues detected. Team is running smoothly." />
+          )}
+        </div>
+
+        {/* Management Attention - compact right side panel */}
+        {data.management_attention?.length > 0 && (
+          <aside className="rounded-2xl border border-surface-border bg-surface p-3 shadow-sm lg:sticky lg:top-4 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto">
+            <SectionHeader title="Management Attention" count={data.management_attention.length} />
+            <div className="space-y-2">
+              {data.management_attention.map((item, i) => (
+                <AttentionItem key={`${item.type}-${i}`} item={item} />
+              ))}
+            </div>
+          </aside>
+        )}
+      </div>
     </div>
   )
 }
