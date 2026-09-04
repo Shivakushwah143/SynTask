@@ -70,7 +70,7 @@ docs/                    Testing guide and diagrams
 - Google Workspace module for Gmail, Calendar, Meet, and connection diagnostics
 - Sales CRM for categories, products, contacts, prospects, stage-specific pipeline pages, masters, and reports
 - Super-admin tenant, usage, plans, and billing management
-- **HRMS (Human Resource Management System):** Employee profiles, HR documents, leave management (configurable types + balances), attendance with policy engine + corrections, versioned salary structures, payroll processing, payslip PDF generation, employee self-service (My HR), employee lifecycle management (confirmation/promotion/transfer/resignation/exit), HR dashboard with real metrics, and HR reports with role-based access control
+- **HRMS (Human Resource Management System):** Employee profiles, HR documents, leave management (configurable types + balances), attendance with policy engine + corrections + eTimeOffice biometric sync (server-side), versioned salary structures, payroll processing, payslip PDF generation, employee self-service (My HR), employee lifecycle management (confirmation/promotion/transfer/resignation/exit), HR dashboard with real metrics, and HR reports with role-based access control
 - **Executive Operations Agent (`/executive-assistant`):** a company-wide command-center chat backed by the Executive Agent. Streamed operational states, structured answer cards (KPIs, tables, risk items, summaries) instead of raw Markdown, capability chips, expandable "Sources checked" evidence, and contextual follow-up actions. See the [Executive Assistant user flow](docs/user-flows/executive-assistant.md).
 
 ## User Roles

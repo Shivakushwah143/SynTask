@@ -205,6 +205,35 @@ class Settings(BaseSettings):
     META_LEAD_FORM_ID: Optional[str] = None
     META_WHATSAPP_BUSINESS_ID: Optional[str] = None
     
+    # eTimeOffice biometric attendance integration (server-side only).
+    # Credentials live in backend environment variables and are never exposed
+    # to the frontend, through APIs, in logs, or in source code.
+    ETIMEOFFICE_ENABLED: bool = False
+    ETIMEOFFICE_WEB_BASE_URL: str = "https://etimeoffice.com"
+    # Evidence-proven machine-data API base (vendors/API docs all point here).
+    ETIMEOFFICE_API_BASE_URL: str = "https://api.etimeoffice.com/api"
+    ETIMEOFFICE_CORPORATE_ID: Optional[str] = None
+    ETIMEOFFICE_USERNAME: Optional[str] = None
+    ETIMEOFFICE_PASSWORD: Optional[str] = None
+    # Timezone of the eTimeOffice corporate clock (device wall times). Wall
+    # clock times from the API are interpreted in this zone and stored as UTC.
+    # Set to the company's actual timezone; it must match what HR users see.
+    ETIMEOFFICE_TIMEZONE: str = "Asia/Kolkata"
+    # Background automatic sync interval (seconds); manual sync always allowed.
+    ETIMEOFFICE_SYNC_INTERVAL_SECONDS: int = 180
+    # Default look-back window for a sync when no explicit range is supplied.
+    ETIMEOFFICE_SYNC_LOOKBACK_DAYS: int = 7
+
+    @property
+    def etimeoffice_configured(self) -> bool:
+        """True when credentials are fully present (value checks only)."""
+        return bool(
+            self.ETIMEOFFICE_ENABLED
+            and self.ETIMEOFFICE_CORPORATE_ID
+            and self.ETIMEOFFICE_USERNAME
+            and self.ETIMEOFFICE_PASSWORD
+        )
+
     # Pagination
     DEFAULT_PAGE_SIZE: int = 20
     MAX_PAGE_SIZE: int = 500

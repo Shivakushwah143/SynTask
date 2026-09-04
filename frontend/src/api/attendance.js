@@ -147,4 +147,35 @@ export const attendanceAPI = {
     const response = await api.get(`/attendance/payroll-summary?${params.toString()}`)
     return response.data
   },
+
+  // ── eTimeOffice biometric attendance integration ───────────────────────
+  syncEtimeOffice: async (fromDate = null, toDate = null) => {
+    const params = new URLSearchParams()
+    if (fromDate) params.append('from_date', fromDate)
+    if (toDate) params.append('to_date', toDate)
+    const response = await api.post(`/attendance/integrations/etimeoffice/sync?${params.toString()}`)
+    return response.data
+  },
+  getEtimeOfficeStatus: async () => {
+    const response = await api.get('/attendance/integrations/etimeoffice/status')
+    return response.data
+  },
+
+  // ── eTimeOffice employee mapping (HR-admin only) ────────────────────────
+  getEtimeOfficeMappings: async (refreshDirectory = false) => {
+    const params = new URLSearchParams()
+    if (refreshDirectory) params.append('refresh', 'true')
+    const response = await api.get(`/attendance/integrations/etimeoffice/mappings?${params.toString()}`)
+    return response.data
+  },
+  mapEtimeOfficeEmployee: async (externalCode, employeeId) => {
+    const response = await api.put(`/attendance/integrations/etimeoffice/mappings/${encodeURIComponent(externalCode)}`, {
+      employee_id: employeeId || null,
+    })
+    return response.data
+  },
+  removeEtimeOfficeMapping: async (externalCode) => {
+    const response = await api.delete(`/attendance/integrations/etimeoffice/mappings/${encodeURIComponent(externalCode)}`)
+    return response.data
+  },
 }

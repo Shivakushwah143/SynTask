@@ -166,10 +166,25 @@ async def notify_meeting_participants(meeting: Meeting, current_user: User) -> N
         await notification.insert()
 
 
+async def _load_users_by_ids(user_ids: List[str]) -> dict:
+    """Batch-load users by id in ONE query instead of one ``User.get`` per id.
+
+    Returns a ``{str(id): User}`` map. Invalid or unknown ids are simply
+    skipped (the previous per-id lookups would surface them as missing users).
+    """
+    from bson import ObjectId
+    valid = [ObjectId(uid) for uid in dict.fromkeys(filter(None, user_ids)) if ObjectId.is_valid(uid)]
+    if not valid:
+        return {}
+    users = await User.find({"_id": {"$in": valid}}).to_list()
+    return {str(user.id): user for user in users}
+
+
 async def get_participant_details(participant_ids: List[str]) -> List[dict]:
+    users_by_id = await _load_users_by_ids(participant_ids or [])
     participants = []
     for pid in participant_ids:
-        user = await User.get(pid)
+        user = users_by_id.get(pid)
         if user:
             participants.append({
                 "id": str(user.id),
@@ -181,8 +196,19 @@ async def get_participant_details(participant_ids: List[str]) -> List[dict]:
 
 
 async def serialize_meeting_response(meeting: Meeting, current_user: User) -> dict:
-    host = await User.get(meeting.host_id)
-    participants = await get_participant_details(meeting.participant_ids or [])
+    # Batch host + participants into a single user query.
+    users_by_id = await _load_users_by_ids([meeting.host_id, *(meeting.participant_ids or [])])
+    host = users_by_id.get(meeting.host_id)
+    participants = []
+    for pid in meeting.participant_ids or []:
+        user = users_by_id.get(pid)
+        if user:
+            participants.append({
+                "id": str(user.id),
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+            })
     return serialize_meeting(meeting, host, participants, current_user)
 
 
@@ -390,22 +416,29 @@ async def list_meetings(
     meetings = await Meeting.find(query).sort(sort_direction).skip(skip).limit(limit).to_list()
     total = await Meeting.find(query).count()
     
-    # Enrich with user details
+    # Enrich with user details. All hosts + participants on the page are
+    # resolved in ONE batched query (previously 1 User.get per host plus 1
+    # per participant, i.e. N+1 queries per meeting).
     meetings_data = []
-    for meeting in meetings:
-        host = await User.get(meeting.host_id)
-        participants = []
-        for pid in meeting.participant_ids:
-            user = await User.get(pid)
-            if user:
-                participants.append({
-                    "id": str(user.id),
-                    "email": user.email,
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                })
-        
-        meetings_data.append(serialize_meeting(meeting, host, participants, current_user))
+    if meetings:
+        all_user_ids = []
+        for meeting in meetings:
+            all_user_ids.append(meeting.host_id)
+            all_user_ids.extend(meeting.participant_ids or [])
+        users_by_id = await _load_users_by_ids(all_user_ids)
+        for meeting in meetings:
+            host = users_by_id.get(meeting.host_id)
+            participants = []
+            for pid in meeting.participant_ids or []:
+                user = users_by_id.get(pid)
+                if user:
+                    participants.append({
+                        "id": str(user.id),
+                        "email": user.email,
+                        "first_name": user.first_name,
+                        "last_name": user.last_name,
+                    })
+            meetings_data.append(serialize_meeting(meeting, host, participants, current_user))
     
     return {
         "meetings": meetings_data,

@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pytz
 
-from app.core.clock import utc_now
+from app.core.clock import ClockService, utc_now
 from app.models.attendance import (
     Attendance,
     AttendanceStatus,
@@ -69,24 +69,28 @@ def compute_late_minutes(
     login_time_utc: datetime,
 ) -> Tuple[bool, float]:
     """Compute whether login is late and by how many minutes.
-    
-    Uses policy expected_start_time + late_grace_minutes in company timezone.
+
+    Persisted attendance instants are naive UTC (``app.core.clock``), so the
+    value is treated as UTC when naive and converted to the company timezone.
+    The policy deadline is localized in the same zone, keeping the comparison
+    tz-aware (a naive/aware mix previously raised TypeError on every call).
+
     Returns (is_late, late_minutes).
     """
     tz = pytz.timezone(policy.timezone) if policy.timezone else pytz.UTC
-    local_login = login_time_utc.astimezone(tz)
-    
+    local_login = ClockService.ensure_utc(login_time_utc).astimezone(tz)
+
     expected_start = parse_policy_time(policy.expected_start_time)
     grace = policy.late_grace_minutes or 0.0
-    
-    # Deadline = expected_start + grace
+
+    # Deadline = expected_start + grace (localized to the company timezone)
     start_dt = datetime.combine(local_login.date(), expected_start)
-    grace_dt = start_dt + timedelta(minutes=grace)
-    
+    grace_dt = tz.localize(start_dt) + timedelta(minutes=grace)
+
     if local_login > grace_dt:
         late_minutes = (local_login - grace_dt).total_seconds() / 60.0
         return True, round(late_minutes, 2)
-    
+
     return False, 0.0
 
 
@@ -95,24 +99,27 @@ def compute_early_departure(
     logout_time_utc: datetime,
 ) -> Tuple[bool, float]:
     """Compute whether checkout is early and by how many minutes.
-    
-    Uses policy expected_end_time - early_departure_grace_minutes in company timezone.
+
+    Persisted attendance instants are naive UTC, so the value is treated as
+    UTC when naive and converted to the company timezone; the policy threshold
+    is localized in the same zone (fixes a naive/aware comparison TypeError).
+
     Returns (is_early, early_minutes).
     """
     tz = pytz.timezone(policy.timezone) if policy.timezone else pytz.UTC
-    local_logout = logout_time_utc.astimezone(tz)
-    
+    local_logout = ClockService.ensure_utc(logout_time_utc).astimezone(tz)
+
     expected_end = parse_policy_time(policy.expected_end_time)
     grace = policy.early_departure_grace_minutes or 0.0
-    
-    # Threshold = expected_end - grace
+
+    # Threshold = expected_end - grace (localized to the company timezone)
     end_dt = datetime.combine(local_logout.date(), expected_end)
-    threshold_dt = end_dt - timedelta(minutes=grace)
-    
+    threshold_dt = tz.localize(end_dt) - timedelta(minutes=grace)
+
     if local_logout < threshold_dt:
         early_minutes = (threshold_dt - local_logout).total_seconds() / 60.0
         return True, round(early_minutes, 2)
-    
+
     return False, 0.0
 
 

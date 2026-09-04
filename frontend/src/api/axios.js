@@ -9,9 +9,11 @@ const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 const axiosInstance = axios.create({
   baseURL: API_URL,
   withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  // NOTE: no global Content-Type default. Axios sets application/json
+  // automatically when a request carries a JSON body, so GET/HEAD requests send
+  // no Content-Type — that keeps requests CORS-simple (no preflight) whenever
+  // VITE_API_URL points at a cross-origin dev backend. Previously the static
+  // header forced a preflight round-trip on every API call.
 })
 
 // Singleton promise for concurrent refresh deduplication

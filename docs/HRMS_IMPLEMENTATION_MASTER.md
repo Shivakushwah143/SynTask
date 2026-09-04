@@ -1758,7 +1758,7 @@ frontend: npx vitest run src/pages/payroll (18 passed — PayrollRecordDetail + 
 
 ### Audited
 
-- **Existing employee-facing APIs (all reused, none rebuilt)** — `GET /employees/me` (Phase 1 self profile), `GET/POST /attendance/me/today`, `GET /attendance/me/history`, `GET /attendance/me/today-enhanced`, `GET /attendance/corrections/me` + correction request (Phase 4), `GET /leaves/balances/me` + `GET /leaves/my` + leave request/cancel (Phase 3), `GET /hr/employees/me-documents` (Phase 2 employee-visible documents), `GET /payroll/me/payslips` (Phase 7 own payslips). ESS adds only what was missing and mounts the My HR frontend over these existing APIs.
+- **Existing employee-facing APIs (all reused, none rebuilt)** — `GET /employees/me` (Phase 1 self profile), `GET/POST /attendance/me/today`, `GET /attendance/me/history`, `GET /attendance/me/today-enhanced`, `GET /attendance/corrections/me` + correction request (Phase 4), `GET /leaves/balances/me` + `GET /leaves/my` + leave request/cancel (Phase 3), `GET /hr/me/documents` (Phase 2 employee-visible documents — self-scoped since the document-submission workflow), `GET /payroll/me/payslips` (Phase 7 own payslips). ESS adds only what was missing and mounts the My HR frontend over these existing APIs.
 - **Identity model** — `User` remains the authenticated identity; `EmployeeProfile` is the 1:1 company-scoped HR companion keyed by `company_id + user_id`. No employee_id is ever accepted from the frontend on self endpoints.
 - **Existing frontend** — Main sidebar (`Sidebar.jsx` with HR section at `People → HR`), `SectionTabs` bar (per-section sub-nav with per-tab routes), breadcrumbs (`utils/breadcrumbs.js`), React Query (`react-query` 3.x, not TanStack Query v5 — `useQuery` used, `placeholderData` not `placeholderData`), shared UI kit (`Button`/`Modal`/`ConfirmDialog`/`EmptyState`/`Skeleton`/`Badge` from `components/ui`), attendance navbar store (`store/attendanceStore.js`) kept in sync by the same Attendance API client used by My Attendance. No employee-facing My HR workspace existed before Phase 8 — the only self entry points were the navbar attendance widget and scattered module pages.
 - **Salary structure keying** — `SalaryStructure` is keyed by **User ID** (`user_id`), so `GET /salary/me` resolves the current user's own structure directly (current + upcoming), with ownership enforced by construction.
@@ -1768,7 +1768,7 @@ frontend: npx vitest run src/pages/payroll (18 passed — PayrollRecordDetail + 
 - **`backend/app/services/ess_service.py`** — the single ESS service:
   - `resolve_employee_profile(user)` / `require_employee_profile(user)` — the ONE identity-resolution helper every self endpoint uses (company scope + `user_id`, no request-supplied employee ids; returns graceful None/404 for platform/non-employee accounts).
   - `get_my_profile` / `update_my_profile` — whitelisted self-edit. `EMPLOYEE_EDITABLE_FIELDS = {personal_email, personal_phone, address, emergency_contact}`; `PROTECTED_PROFILE_FIELDS` (employee_number, department, designation, reports_to, employment_type/status, joining_date, work mode/location, DOB, gender, ...) are **explicitly rejected with a 400** (never silently ignored). Address/emergency contact merge over stored values (partial updates never erase sibling fields). Self-changes are audited via the existing profile event bus (`EmployeeProfileSelfUpdated`).
-  - `build_my_summary(user)` — lightweight My HR overview aggregate: profile essentials (department/manager names resolved, no raw ids), today's attendance (Phase 4 normalized `hr_status` via `resolve_attendance_status`, live working-time math for WORKING/ON_BREAK, late flags, holiday/week-off), leave balance summary + pending count (backend-computed), employee-visible document alert counts (expiring/expired metadata only — no filenames leak), latest generated payslip (period + gross/deductions/net only), and ESS capability flags. Summaries only — never embeds full histories (module pages use their own APIs).
+  - `build_my_summary(user)` — lightweight My HR overview aggregate: profile essentials (department/manager names resolved, no raw ids), today's attendance (Phase 4 normalized `hr_status` via `resolve_attendance_status`, live working-time math for WORKING/ON_BREAK, late flags, holiday/week-off), leave balance summary + pending count (backend-computed), employee-visible document alert counts (expiring/expired/pending-review/rejected metadata only — no filenames leak), latest generated payslip (period + gross/deductions/net only), and ESS capability flags (`can_upload_document: true` since the document-submission workflow). Summaries only — never embeds full histories (module pages use their own APIs).
 - **`backend/app/api/v1/endpoints/ess.py`** — `GET /hr/me/summary` (self-only overview aggregate; 404 when no Employee Profile).
 - **`backend/app/api/v1/endpoints/employees.py`** — `PATCH /employees/me` (self-edit, whitelist enforced server-side; HR-controlled fields rejected).
 - **`backend/app/api/v1/endpoints/salary.py`** — `GET /salary/me` (own current + upcoming Salary Structure, ownership by construction).
@@ -1785,7 +1785,7 @@ frontend: npx vitest run src/pages/payroll (18 passed — PayrollRecordDetail + 
   - `MyProfile.jsx` — personal/employment/contact/emergency sections; employment is read-only (badge, department/designation/manager names); `Edit Personal Details` modal edits only the whitelist (personal email/phone, address, emergency contact) with clear editable-vs-HR-managed distinction; save → toast + query refresh; explicit protected-field error surfaced if the backend rejects.
   - `MyAttendance.jsx` — today's status card with Check In / Start Break / End Break / Check Out actions wired to the same Attendance API + navbar attendance store (navbar stays synchronized), attendance history table (date, status, check-in/out, working/break time, late, correction status), correction request modal reusing the Phase 4 correction API + my corrections list.
   - `MyLeave.jsx` — leave balances (allocated/used/pending/available from backend), Request Leave modal (active types, duration, dates, reason, attachment, available balance hint, employee-friendly validation errors), my leave requests with status + cancel-when-pending.
-  - `MyDocuments.jsx` — employee-visible documents table (type, file name, uploaded date, expiry state VALID/EXPIRING SOON/EXPIRED from backend, status, version), secure preview (blob → object URL, revoked) + download via shared `downloadBlob`; no employee self-upload (Phase 2 does not allow it — surfaced as a capability flag, not a hidden feature).
+  - `MyDocuments.jsx` — employee **self-service document submission**: Upload Document modal limited to HR-enabled types (`employee_upload_allowed`), required-document cards with distinct **Missing / Pending Review / Approved / Rejected** states (rejection shows the HR reason; pending shows "awaiting review"), a documents table with per-document review state + secure preview/download (blob → object URL, revoked) via shared `downloadBlob`, and **Resubmit** for rejected documents. A new submission appears immediately as Pending Review (self-scoped `/hr/me/documents` + `/hr/me/documents/status` + `POST /hr/me/documents`).
   - `MyPayslips.jsx` — my payslip history (month/year, gross, deductions, net, generated date, secure Preview/Download via the shared Phase 7 pattern), empty state (`No Payslips are available yet.`); no company payroll access exposed.
 - **Routing/navigation** — `frontend/src/App.jsx` lazy routes: `/hr/me`, `/hr/me/profile`, `/hr/me/attendance`, `/hr/me/leave`, `/hr/me/documents`, `/hr/me/payslips`. `frontend/src/config/navigation.js` — My HR sidebar entry (after People/HR) + sub-page tab config (`STANDARD_ROLES` — available to any authenticated role with an Employee Profile, not just EMPLOYEE). `frontend/src/utils/breadcrumbs.js` — `/hr/me*` trails read `Home → My HR → My Attendance` etc. `frontend/src/config/sectionOverview.js` — My HR section overview text.
 
@@ -1812,7 +1812,7 @@ frontend: npx vitest run src/pages/payroll (18 passed — PayrollRecordDetail + 
 
 ### Known Limitations
 
-- Employee self-upload of documents is not enabled — Phase 2 has no employee-upload capability; surfaced as `can_upload_document: false` rather than a hidden feature.
+- Employee self-submission is limited to document types HR marks `employee_upload_allowed` and only for employee-visible types — HR-only/confidential types stay HR-uploaded.
 - Salary self-view shows the employee's own current/upcoming structure only (no salary history, no component-level breakdown beyond what `/salary/me` returns).
 - My HR Overview is a single lightweight aggregate endpoint; full module histories intentionally live on their own pages/APIs.
 - Test runs and browser verification remain pending for this phase.
@@ -1858,6 +1858,8 @@ Record important architectural decisions here so later Codex sessions do not und
 | 2026-08-14 | My HR availability is driven by Employee Profile existence (company-scoped `user_id` resolution), not role string | MANAGER/LEAD/HR/ADMIN users who are also employees get self-service; platform/non-employee accounts get a graceful state | 8 |
 | 2026-08-14 | Self-edit is whitelisted to personal email/phone/address/emergency contact; HR-controlled fields (department, designation, manager, employee number, employment status, salary-affecting fields) are explicitly rejected with 400 | Employees can never manipulate HR-controlled data; explicit rejection beats silent ignore | 8 |
 | 2026-08-14 | Employee self-access to documents/payslips/salary is ownership-scoped and separate from management permissions; self-service never grants company payroll/HR access | Reporting relationship and company permissions ≠ personal data rights | 8 |
+| 2026-09-04 | Employee document submissions get a review workflow separated from the stored lifecycle: documents/versions gain `submission_source` (`hr`/`employee`) + `review_status` (`pending`/`approved`/`rejected`) + `reviewed_by`/`reviewed_at`/`review_note`; HR uploads stay auto-approved; resubmission creates the next version on the same document record (history preserved); per-type `employee_upload_allowed` gates self-service uploads; idempotent `scripts/migrate_hr_document_review_flow.py` backfills legacy rows (approved/hr, code-based type defaults) | Lifecycle (`active`/`archived`) and approval stay independent; one document record per type-submission chain; required documents count only `approved`; normal employees hold no HR manage permission and self endpoints resolve identity server-side (no client employee_id) | 2/8 |
+| 2026-09-04 | Fix: legacy `hr_document_types` seeded before (or while) the self-service field landed carried missing/explicit-`False` `employee_upload_allowed`, leaving My HR “Upload Document” disabled and (because no pending submissions could exist) HR review actions unseen. `ensure_default_document_types` now runs an idempotent `backfill_employee_upload_defaults` repair: standard uploadable codes (resume/aadhaar/pan/passport/driving_license/educational_certificate/experience_letter) are enabled exactly once when missing/null/False and stamped with `employee_upload_defaults_repaired_at`; every other code is defaulted to `False` only when missing/null. `GET /hr/me/documents/status` self-heals the same way. After the repair stamp, an explicit HR toggle (Settings edits bump `updated_at`) is never overwritten; migration script reuses the same helper | One-time default repair + durable marker keeps later HR decisions permanent; no per-type manual enabling needed for standard codes | 2/8 |
 
 ---
 
@@ -2273,3 +2275,143 @@ Do not begin Payroll, Documents, or other later phases before Phase 1 has a stab
 
 
 
+
+---
+
+# 21. eTimeOffice BIOMETRIC ATTENDANCE INTEGRATION
+
+## Objective
+
+Pull the company's eTimeOffice biometric device punches into the **existing**
+SynTask Attendance module so HR sees device attendance (employee, date, check
+in, check out, working hours, present/absent, late/on-time, source) inside the
+normal attendance experience — no duplicate attendance module.
+
+## Discovery (evidence-based, read-only)
+
+- eTimeOffice does **not** expose a working session/CSRF API contract at
+  `https://etimeoffice.com/api` (HTTP 404/500). The machine-data download API
+  lives at **`https://api.etimeoffice.com/api`**.
+- Endpoint: `GET /DownloadInOutPunchData?Empcode=ALL&FromDate=DD/MM/YYYY&ToDate=DD/MM/YYYY`
+  (also documented: `DownloadPunchData`, `DownloadPunchDataMCID`, `DownloadInOutPunchData`).
+- Authentication is **HTTP Basic**: username `CorporateID:Username:Password:true`,
+  empty Basic password (the trailing `:true` is required; without it the API
+  answers HTTP 500 "String was not recognized as a valid Boolean"). Confirmed by
+  safe read-only probes against the live corporate account.
+- Response envelope: `{ Error, Msg, IsAdmin, InOutPunchData: [...] }`, one row per
+  employee per workday. Fields: `Empcode`, `Name`, `DateString` (DD/MM/YYYY),
+  `INTime`/`OUTTime`/`WorkTime`/`OverTime`/`BreakTime`/`Erl_Out`/`Late_In` (HH:MM
+  or `--:--`), `Status` (`P`/`A`), `Remark`.
+- The API is read-only and returns no cookies/session; provider is stateless.
+
+## Backend
+
+- Provider: `app/integrations/etimeoffice/client.py` — `ETimeOfficeClient`
+  (httpx, pooled, TLS verified), normalizes vendor fields into
+  `ETimeOfficeInOutDay`; vendor field names never leave the provider layer.
+- Sync orchestration: `app/services/etimeoffice_sync_service.py` — mapping →
+  normalization → idempotent upsert into the existing `Attendance` collection.
+- Mapping (never by name, company-scoped): eTimeOffice `Empcode` →
+  `EmployeeProfile.employee_number` (exact, or unambiguous numeric tail such as
+  `EMP-2026-0001` ↔ `0001`). Unmapped external employees are counted and never
+  fail the run.
+- Records written only for mapped employees on days with an actual check-in;
+  absent days remain "no record" (existing SynTask convention). Repeated sync of
+  the same window is idempotent (`duplicates_skipped`); manual app attendance is
+  never overwritten and never deleted; failed provider runs leave existing
+  attendance untouched.
+- Late/early/overtime flags are recomputed through SynTask policy rules in the
+  corporate wall-clock timezone (vendor `Late_In` values are not copied).
+- Env (backend only): `ETIMEOFFICE_ENABLED`, `ETIMEOFFICE_WEB_BASE_URL`,
+  `ETIMEOFFICE_API_BASE_URL`, `ETIMEOFFICE_CORPORATE_ID`, `ETIMEOFFICE_USERNAME`,
+  `ETIMEOFFICE_PASSWORD`, `ETIMEOFFICE_TIMEZONE`, `ETIMEOFFICE_SYNC_INTERVAL_SECONDS`,
+  `ETIMEOFFICE_SYNC_LOOKBACK_DAYS`. Credentials are never exposed to the
+  frontend, through APIs, in logs, or in source.
+- API: `POST /api/v1/attendance/integrations/etimeoffice/sync` (admin) and
+  `GET /api/v1/attendance/integrations/etimeoffice/status` (company user).
+- Automatic sync reuses the existing leader-gated in-process loop pattern
+  (default every 3 minutes when enabled); a per-company in-flight guard plus the
+  Redis leader lease prevent overlapping sync jobs.
+- Models: new optional `Attendance.source` / `Attendance.external_employee_code`
+  fields and the new `attendance_sync_states` collection (`ETimeOfficeSyncState`).
+
+## Frontend
+
+- HR → Attendance Reports (`/attendance-reports`): biometric integration card
+  (Connected/Disconnected, last successful/attempted sync, mapped/unmapped
+  employees, Sync Now for admins, safe failure banner) and a `Source` column
+  (`eTimeOffice` badge) on attendance rows. Attendance rows themselves are read
+  from the existing endpoints (now enriched with `source`).
+
+## Security
+
+- Read-only integration; no eTimeOffice writeback; TLS verification on; no
+  credentials/cookies/CSRF/session state in the frontend, API responses, logs,
+  or persisted state; tenant isolation (records only written for the requesting
+  company's employees); one bad record never fails the whole run.
+
+## Acceptance
+
+1. Manual Sync Now succeeds and shows counts (employees_received/mapped/unmapped/updated/duplicates).
+2. Mapped employees appear in Attendance Reports with `Source: eTimeOffice` and correct check-in/out/wall-clock times for HR viewers.
+3. Unmapped employees do not crash the sync (reported in `unmapped`).
+4. Re-running Sync Now for the same window does not duplicate records.
+5. eTimeOffice outage returns the safe message and existing attendance stays available.
+6. Status card shows connection + last sync; secrets are not exposed anywhere.
+
+
+## Attendance UI consistency for biometric source (follow-up)
+
+Makes synced biometric attendance behave as *normal* attendance across the
+employee-facing UI without a second attendance model or new data source:
+
+- **One resolution path.** Today's state (navbar pill, Today card, timer,
+  Today's Activity, Recent Attendance) all resolve from the stored
+  `Attendance` record for the authenticated user, regardless of
+  `source` (`manual`/app or `etimeoffice`). The 60-second silent store refresh
+  picks up newly-synced biometric rows without a reload.
+- **Fixed `attendance_status_resolver` late/early helpers.** They compared an
+  aware local time against a naive policy threshold and raised `TypeError` on
+  every call, which silently broke `/attendance/me/today-enhanced` (and policy
+  day resolution) whenever an attendance row had a login time. They now treat
+  stored naive-UTC instants as UTC and localize the policy deadline.
+- **Strict self-scoping for personal pages.** `GET /attendance/me/history`
+  (and the sibling `/attendance/me/*` today endpoints) now return **only the
+  authenticated user's** rows for every role — managers/admins no longer see
+  team/company rows in their personal Recent Attendance (this was the source
+  of duplicated same-date rows without employee names). HR/company-wide views
+  remain on `GET /attendance/history` (Attendance Reports), which includes the
+  Employee column and `source`.
+- **Today + self-view UX for biometric rows.** Working day without checkout →
+  `Working`/live duration, real check-in time, no manual Check In/Break/Out
+  buttons (server rows are never rewritten by manual flows); completed day →
+  check-in/check-out + duration; no record → unchanged manual check-in flow.
+  Biometric rows are labelled with a compact **Biometric** source badge; Recent
+  Attendance shows one row per date with human durations (`4h 01m`), and
+  `Completed`/`Currently Working`/`Missing Checkout`/`Late`/`On Leave` chips.
+
+## Correction (2026-09-04): explicit eTimeOffice employee mapping
+
+The first implementation inferred SynTask employees from the numeric suffix of
+`EmployeeProfile.employee_number` (`EMP-2026-0001` → eTimeOffice `0001`). That
+attached biometric punches to the wrong people, so the inference was removed:
+
+- Sync resolves punches **only** through a new company-scoped mapping table
+  (`etimeoffice_employee_mappings`, model `ETimeOfficeEmployeeMapping`):
+  `unique (company_id, provider, external_employee_code)` and `unique
+  (company_id, provider, employee_id)` (one code per SynTask employee).
+- The provider directory (`Empcode` + `Name`) is persisted on every fetch and
+  is used only to suggest a likely SynTask employee in the mapping UI — a
+  suggestion is never an assignment, and placeholder names (`Empname0005`) are
+  never suggested.
+- Mapping management endpoints under `/attendance/integrations/etimeoffice`:
+  `GET /mappings` (directory + status + suggestion), `PUT /mappings/{code}`
+  (confirm/change), `DELETE /mappings/{code}` (remove) — company admin /
+  sub-admin only, tenant-scoped by `company_id`.
+- UI: HR → Attendance Reports → Biometric Attendance (eTimeOffice) card now has
+  an **Employee Mapping** panel (Map / Change Mapping / Remove Mapping) plus a
+  **Biometric Code** column on HR attendance rows.
+- Existing wrong rows: `scripts/reconcile_etimeoffice_mappings.py` seeds the
+  confirmed mappings and moves/merges historical biometric Attendance rows to
+  the correct employees (dry-run by default). It never guesses for unmapped
+  codes and never touches manual/app attendance.

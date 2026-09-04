@@ -20,10 +20,17 @@ export const hrDocumentsApi = {
   updateType: (id, payload) => api.patch(`/hr/document-types/${id}`, payload),
   deactivateType: (id) => api.delete(`/hr/document-types/${id}`),
 
-  // ── Employee documents ────────────────────────────────────────────────────
+  // ── Employee documents (HR-managed) ──────────────────────────────────────
   listEmployeeDocuments: (employeeId, params) => api.get(`/hr/employees/${employeeId}/documents`, { params }),
   uploadEmployeeDocument: (employeeId, formData) => api.post(`/hr/employees/${employeeId}/documents`, formData),
   missingRequired: (employeeId) => api.get(`/hr/employees/${employeeId}/documents/missing-required`),
+
+  // ── Employee self-service (My HR → My Documents) ─────────────────────────
+  // The backend resolves the employee from the authenticated user; no
+  // employee_id is ever sent from the client.
+  listMyDocuments: (params) => api.get('/hr/me/documents', { params }),
+  myDocumentStatus: () => api.get('/hr/me/documents/status'),
+  uploadMyDocument: (formData) => api.post('/hr/me/documents', formData),
 
   // ── Candidate documents ───────────────────────────────────────────────────
   listCandidateDocuments: (candidateId, params) => api.get(`/hr/candidates/${candidateId}/documents`, { params }),
@@ -34,6 +41,7 @@ export const hrDocumentsApi = {
   getDocument: (id) => api.get(`/hr/documents/${id}`),
   updateDocument: (id, payload) => api.patch(`/hr/documents/${id}`, payload),
   replaceDocument: (id, formData) => api.post(`/hr/documents/${id}/replace`, formData),
+  reviewDocument: (id, payload) => api.post(`/hr/documents/${id}/review`, payload),
   archiveDocument: (id) => api.post(`/hr/documents/${id}/archive`),
   listVersions: (id) => api.get(`/hr/documents/${id}/versions`),
 }

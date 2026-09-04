@@ -17,7 +17,16 @@ import { useAttendanceStore } from '../../../store/attendanceStore'
 import { attendanceAPI } from '../../../api/attendance'
 import { useMyAttendanceHistory, useMyAttendanceToday, useMyCorrections } from '../../../hooks/useMyHr'
 import { Button, EmptyState, FormField, Modal, Skeleton, inputClassName } from '../../../components/ui'
-import { HR_STATUS_META, attendanceStatusMeta, getAttendanceMeta } from '../../../features/attendance/attendanceStatus'
+import {
+  HR_ATTENDANCE_STATUS,
+  HR_STATUS_META,
+  attendanceStatusMeta,
+  formatDayDuration,
+  getAttendanceMeta,
+  getHistoryDayMeta,
+  isBiometricSource,
+  sourcePillClassName,
+} from '../../../features/attendance/attendanceStatus'
 import {
   CORRECTION_STATUS_BADGES,
   CORRECTION_TYPE_LABELS,
@@ -63,6 +72,8 @@ const MyAttendance = () => {
   const meta = getAttendanceMeta(status)
   const todayStatus = todayEnhanced?.hr_status
   const hrMeta = HR_STATUS_META[todayStatus] || HR_STATUS_META.no_record
+  const hrLabel = todayStatus === HR_ATTENDANCE_STATUS.IN_PROGRESS ? 'Currently Working' : hrMeta.label
+  const hrIcon = todayStatus === HR_ATTENDANCE_STATUS.IN_PROGRESS ? attendanceStatusMeta.working?.icon || hrMeta.icon : hrMeta.icon
   const corrections = correctionsData?.items || []
   const busy = Boolean(pendingAction)
 
@@ -70,18 +81,18 @@ const MyAttendance = () => {
     <div className="space-y-5">
       {/* Today */}
       <section className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="rounded-lg bg-indigo-50 p-1.5 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400">
-              <Clock className="h-4 w-4" />
+        <div className="mb-4 flex items-center justify-between">            <div className="flex items-center gap-2">
+              <div className="rounded-lg bg-indigo-50 p-1.5 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400">
+                <Clock className="h-4 w-4" />
+              </div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Today's Attendance</h3>
+              {isBiometricSource(record) && <span className={sourcePillClassName}>Biometric</span>}
             </div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Today's Attendance</h3>
-          </div>
           {enhancedLoading ? (
             <Skeleton className="h-6 w-28" />
           ) : (
             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${hrMeta.badge}`}>
-              <hrMeta.icon className="h-3.5 w-3.5" /> {hrMeta.label}
+              <hrIcon className="h-3.5 w-3.5" /> {hrLabel}
             </span>
           )}
         </div>
@@ -98,7 +109,9 @@ const MyAttendance = () => {
           </div>
           <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50">
             <p className="text-xs text-gray-400">Check-out</p>
-            <p className="mt-1 font-semibold text-gray-900 dark:text-white">{formatTime(record?.check_out_at)}</p>
+            <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+              {record?.check_out_at ? formatTime(record.check_out_at) : record && status !== 'not_checked_in' ? '—' : '-'}
+            </p>
           </div>
           <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50">
             <p className="text-xs text-gray-400">Net Working Time</p>
@@ -108,36 +121,45 @@ const MyAttendance = () => {
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          {!record || status === 'not_checked_in' ? (
-            <Button onClick={() => runAction(checkIn, 'Checked in')} loading={busy} loadingText="Checking in…">
-              <LogIn className="mr-2 h-4 w-4" /> Check In
-            </Button>
-          ) : null}
-          {status === 'working' ? (
-            <>
-              <Button variant="secondary" onClick={() => runAction(startBreak, 'Break started')} loading={busy} loadingText="Starting break…">
-                <Coffee className="mr-2 h-4 w-4" /> Start Break
-              </Button>
-              <Button onClick={() => runAction(checkOut, 'Checked out')} loading={busy} loadingText="Checking out…">
-                <LogOut className="mr-2 h-4 w-4" /> Check Out
-              </Button>
-            </>
-          ) : null}
-          {status === 'on_break' ? (
-            <>
-              <Button onClick={() => runAction(resumeWork, 'Break ended')} loading={busy} loadingText="Resuming…">
-                <Play className="mr-2 h-4 w-4" /> End Break
-              </Button>
-              <Button variant="secondary" onClick={() => runAction(checkOut, 'Checked out')} loading={busy} loadingText="Checking out…">
-                <LogOut className="mr-2 h-4 w-4" /> Check Out
-              </Button>
-            </>
-          ) : null}
-          {status === 'checked_out' ? (
-            <p className="inline-flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-400">
-              <CheckCircle2 className="h-4 w-4" /> Your attendance has been saved for today.
+          {isBiometricSource(record) ? (
+            <p className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-indigo-500" />
+              {record?.check_out_at ? 'Attendance recorded via biometric device.' : 'Checked in via biometric — no manual check-in needed.'}
             </p>
-          ) : null}
+          ) : (
+            <>
+              {!record || status === 'not_checked_in' ? (
+                <Button onClick={() => runAction(checkIn, 'Checked in')} loading={busy} loadingText="Checking in…">
+                  <LogIn className="mr-2 h-4 w-4" /> Check In
+                </Button>
+              ) : null}
+              {status === 'working' ? (
+                <>
+                  <Button variant="secondary" onClick={() => runAction(startBreak, 'Break started')} loading={busy} loadingText="Starting break…">
+                    <Coffee className="mr-2 h-4 w-4" /> Start Break
+                  </Button>
+                  <Button onClick={() => runAction(checkOut, 'Checked out')} loading={busy} loadingText="Checking out…">
+                    <LogOut className="mr-2 h-4 w-4" /> Check Out
+                  </Button>
+                </>
+              ) : null}
+              {status === 'on_break' ? (
+                <>
+                  <Button onClick={() => runAction(resumeWork, 'Break ended')} loading={busy} loadingText="Resuming…">
+                    <Play className="mr-2 h-4 w-4" /> End Break
+                  </Button>
+                  <Button variant="secondary" onClick={() => runAction(checkOut, 'Checked out')} loading={busy} loadingText="Checking out…">
+                    <LogOut className="mr-2 h-4 w-4" /> Check Out
+                  </Button>
+                </>
+              ) : null}
+              {status === 'checked_out' ? (
+                <p className="inline-flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-400">
+                  <CheckCircle2 className="h-4 w-4" /> Your attendance has been saved for today.
+                </p>
+              ) : null}
+            </>
+          )}
         </div>
       </section>
 
@@ -222,23 +244,31 @@ const MyAttendance = () => {
                   <th className="py-2 pr-3">Status</th>
                   <th className="py-2 pr-3">Check In</th>
                   <th className="py-2 pr-3">Check Out</th>
-                  <th className="py-2">Working Time</th>
+                  <th className="py-2 pr-3">Working Time</th>
+                  <th className="py-2">Source</th>
                 </tr>
               </thead>
               <tbody>
                 {history.map((item) => {
-                  const rowMeta = attendanceStatusMeta[item.status] || attendanceStatusMeta.not_checked_in
+                  const dayMeta = getHistoryDayMeta(item)
+                  const DayIcon = dayMeta.icon
+                  const rowOpen = item.status === 'working' || item.status === 'Working'
+                  const showLate = Boolean(item.is_late) && Boolean(item.check_out_at || item.logout_time)
                   return (
                     <tr key={item.id} className="border-b border-gray-50 dark:border-gray-800">
                       <td className="py-2.5 pr-3 font-medium text-gray-800 dark:text-gray-200">{formatDate(item.date)}</td>
                       <td className="py-2.5 pr-3">
-                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs ${rowMeta.badge}`}>
-                          <rowMeta.icon className="h-3 w-3" /> {rowMeta.label}
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${dayMeta.badge}`}>
+                          <DayIcon className="h-3 w-3" /> {dayMeta.label}
                         </span>
+                        {showLate && <span className="ml-1.5 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600 dark:bg-red-950/40 dark:text-red-300">Late</span>}
                       </td>
-                      <td className="py-2.5 pr-3 text-gray-600 dark:text-gray-400">{formatTime(item.check_in_at)}</td>
-                      <td className="py-2.5 pr-3 text-gray-600 dark:text-gray-400">{formatTime(item.check_out_at)}</td>
-                      <td className="py-2.5 text-gray-600 dark:text-gray-400">{formatDuration(item.total_work_seconds)}</td>
+                      <td className="py-2.5 pr-3 text-gray-600 dark:text-gray-400">{formatTime(item.check_in_at || item.login_time)}</td>
+                      <td className="py-2.5 pr-3 text-gray-600 dark:text-gray-400">{rowOpen ? '—' : formatTime(item.check_out_at || item.logout_time)}</td>
+                      <td className="py-2.5 pr-3 text-gray-600 dark:text-gray-400">{formatDayDuration(item.total_work_seconds ?? item.total_working_hours)}</td>
+                      <td className="py-2.5 text-gray-600 dark:text-gray-400">
+                        {isBiometricSource(item) ? <span className={sourcePillClassName}>Biometric</span> : '—'}
+                      </td>
                     </tr>
                   )
                 })}

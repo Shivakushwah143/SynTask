@@ -1,3 +1,4 @@
+import inspect
 from fastapi import APIRouter
 
 from .shared import *
@@ -8,6 +9,97 @@ from app.api.v1.endpoints.tasks import serialize_utc_datetime
 from app.core.clock import utc_now
 
 router = APIRouter()
+
+
+async def _batch_project_task_counts(projects: list) -> dict:
+    """Count tasks per listed project in ONE aggregation.
+
+    Mirrors the previous per-project query semantics exactly: a task links to a
+    project through either the user-provided logical ``project_id`` or the
+    MongoDB ``_id`` as a string (backward compatibility), scoped to that
+    project's company. On any aggregation failure (e.g. mocked collections in
+    tests) it falls back to the original per-project ``.count()`` loop so
+    behavior never regresses.
+    """
+    if not projects:
+        return {}
+
+    # Candidate (company_id, project_id-string) pairs each project is linked by.
+    conditions = []
+    per_project = {}
+    for project in projects:
+        logical = project.project_id if project.project_id else str(project.id)
+        candidates = list(dict.fromkeys([logical, str(project.id)]))
+        per_project[str(project.id)] = candidates
+        for candidate in candidates:
+            conditions.append({"company_id": project.company_id, "project_id": candidate})
+
+    try:
+        pipeline = [
+            {"$match": {"$or": conditions}},
+            {"$group": {"_id": {"company_id": "$company_id", "project_id": "$project_id"}, "count": {"$sum": 1}}},
+        ]
+        cursor = Task.get_pymongo_collection().aggregate(pipeline)
+        if inspect.isawaitable(cursor):
+            cursor = await cursor
+        if hasattr(cursor, "to_list"):
+            result = cursor.to_list(length=100000)
+            if inspect.isawaitable(result):
+                rows = await result
+            else:
+                rows = list(result)
+        else:
+            rows = [row async for row in cursor]
+    except Exception:
+        # Fall back to the original per-project count query.
+        counts = {}
+        for project in projects:
+            project_id_for_query = project.project_id if project.project_id else str(project.id)
+            counts[str(project.id)] = await Task.find({
+                "$or": [
+                    {"project_id": project_id_for_query},
+                    {"project_id": str(project.id)},
+                ],
+                "company_id": project.company_id,
+            }).count()
+        return counts
+
+    grouped = {}
+    for row in rows:
+        key = row.get("_id") or {}
+        grouped[(key.get("company_id"), key.get("project_id"))] = row.get("count", 0)
+
+    return {
+        str(project.id): sum(
+            grouped.get((project.company_id, candidate), 0)
+            for candidate in per_project[str(project.id)]
+        )
+        for project in projects
+    }
+
+
+async def _batch_project_users(projects: list) -> dict:
+    """Resolve every project assignee on the page in ONE user query."""
+    assignee_ids = []
+    for project in projects:
+        assignee_ids.extend(project_assignee_ids(project))
+    valid_ids = [ObjectId(uid) for uid in dict.fromkeys(assignee_ids) if ObjectId.is_valid(uid)]
+    if not valid_ids:
+        return {}
+    try:
+        users = await User.find({"_id": {"$in": valid_ids}}).to_list()
+        return {str(user.id): user for user in users}
+    except Exception:
+        # Fall back to the original per-assignee lookups on mocked collections.
+        users_by_id = {}
+        for user_id in dict.fromkeys(assignee_ids):
+            try:
+                user = await User.get(user_id)
+                if user:
+                    users_by_id[str(user.id)] = user
+            except Exception:
+                continue
+        return users_by_id
 
 
 def serialize_scheduled_project_placeholder(job: ScheduledJob) -> dict:
@@ -110,24 +202,22 @@ async def list_projects(
     projects = await Project.find(query).skip(skip).limit(limit).sort("-created_at").to_list()
     total = await Project.find(query).count()
     
-    # Get task counts for each project
+    # Task counts for every project on the page are resolved in ONE aggregation
+    # (previously a Task.find(...).count() round-trip per project), and all
+    # assignee users in ONE batched query (previously a User.get per assignee).
+    task_counts = await _batch_project_task_counts(projects)
+    users_by_id = await _batch_project_users(projects)
+
     projects_with_stats = []
     for project in projects:
         # Use user-provided project_id for querying tasks, fallback to MongoDB _id for backward compatibility
         project_id_for_query = project.project_id if project.project_id else str(project.id)
-        # Query tasks by both user-provided project_id and MongoDB _id (for backward compatibility)
-        task_count = await Task.find({
-            "$or": [
-                {"project_id": project_id_for_query},
-                {"project_id": str(project.id)}  # Also check MongoDB _id for old tasks
-            ],
-            "company_id": project.company_id
-        }).count()
-        
+        task_count = task_counts.get(str(project.id), 0)
+
         assigned_ids = project_assignee_ids(project)
         assigned_users = []
         for user_id in assigned_ids:
-            assigned_user = await User.get(user_id)
+            assigned_user = users_by_id.get(user_id)
             if assigned_user:
                 assigned_users.append({"id": str(assigned_user.id), "name": assigned_user.full_name(), "role": assigned_user.role.value})
         

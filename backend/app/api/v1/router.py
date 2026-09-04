@@ -13,7 +13,7 @@ from app.api.v1.endpoints import (
     activity, auth_2fa, projects, time_tracking, workflows, automation, backlog, webhooks,
     issue_types, components, versions, watchers, issue_links, changelog, tickets, chat, subscriptions, clients, invoices, msa, ledger, meetings, calendar, timesheet,
     sales, search, departments, attendance, notification_emails, timeline, leaves, eod, admin_permissions, time,
-    employees, hr_documents, attendance_phase4, salary, payroll, ess, lifecycle, hr_dashboard
+    employees, hr_documents, attendance_phase4, attendance_etimeoffice, salary, payroll, ess, lifecycle, hr_dashboard
 )
 from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import ai_assistant
@@ -156,6 +156,12 @@ api_router.include_router(hr_documents.router, prefix="/hr", tags=["HR Documents
 # Expose attendance HTTP endpoints to authenticated users; gate specific admin/report endpoints inside the module where needed.
 api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
 api_router.include_router(attendance_phase4.router, prefix="/attendance", tags=["Attendance Phase 4"])
+# eTimeOffice biometric attendance integration (server-side provider sync)
+api_router.include_router(
+    attendance_etimeoffice.router,
+    prefix="/attendance/integrations/etimeoffice",
+    tags=["Attendance Integration"],
+)
 # WebSocket handler for attendance is mounted without module dependency so token-auth via query param works for WS clients
 api_router.include_router(attendance.ws_router, prefix="/attendance")
 api_router.include_router(timeline.router, prefix="/timeline", tags=["Timeline"])

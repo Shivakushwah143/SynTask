@@ -92,6 +92,10 @@ from app.models.attendance import (
     MonitoringSession, CameraSession, ScreenShareSession,
     AttendancePolicy, Holiday, AttendanceCorrectionRequest
 )
+from app.integrations.etimeoffice.models import (
+    ETimeOfficeEmployeeMapping,
+    ETimeOfficeSyncState,
+)
 from app.models.timeline import TimelineEvent
 from app.models.leave import LeaveBalance, LeaveRequest, LeaveTypeConfig
 from app.models.salary import SalaryComponent, SalaryStructure
@@ -336,6 +340,8 @@ async def init_db():
                 AttendancePolicy,
                 Holiday,
                 AttendanceCorrectionRequest,
+                ETimeOfficeEmployeeMapping,
+                ETimeOfficeSyncState,
                 TimelineEvent,
                 LeaveRequest,
                 LeaveTypeConfig,

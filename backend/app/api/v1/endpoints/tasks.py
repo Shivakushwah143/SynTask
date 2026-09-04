@@ -22,6 +22,7 @@ from app.services.task_service import TaskService
 from app.services.task_health_service import (
     assert_task_manage_access,
     assert_task_view_access,
+    build_dashboard_task_health,
     build_employee_task_summary,
     build_extension_request_summary,
     build_overdue_task_summary,
@@ -665,6 +666,20 @@ async def my_task_health(current_user: User = Depends(get_current_user)):
 @router.get("/health/summary")
 async def task_health_summary(current_user: User = Depends(get_current_user)):
     return await build_task_health_summary(current_user)
+
+
+@router.get("/health/dashboard")
+async def dashboard_task_health(current_user: User = Depends(get_current_user)):
+    """Combined Task Health payload for the dashboard (one task scan).
+
+    Returns the health summary, team-completion rows and extension-request
+    counts the dashboard renders, so it can replace the three separate
+    ``/health/summary`` + ``/health/team-completion`` + ``/health/extensions``
+    requests that each scanned the same task dataset.
+    """
+    if current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or Admin access required")
+    return await build_dashboard_task_health(current_user)
 
 
 @router.get("/health/team-completion")

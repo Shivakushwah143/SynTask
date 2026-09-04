@@ -135,6 +135,15 @@ async def _startup_tasks() -> None:
             logger.info("HR document expiry background task started")
         except Exception as hr_doc_err:
             logger.warning(f"HR document expiry startup skipped: {hr_doc_err}")
+        try:
+            if settings.ETIMEOFFICE_ENABLED:
+                from app.services.etimeoffice_sync_service import run_etimeoffice_sync_loop
+                asyncio.create_task(run_etimeoffice_sync_loop())
+                logger.info("eTimeOffice attendance sync background task started")
+            else:
+                logger.info("eTimeOffice attendance sync disabled (ETIMEOFFICE_ENABLED=false)")
+        except Exception as eto_err:
+            logger.warning(f"eTimeOffice attendance sync startup skipped: {eto_err}")
     else:
         logger.warning("Database background workers skipped because MongoDB/Beanie is not ready.")
 

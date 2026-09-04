@@ -18,6 +18,7 @@ vi.mock('../../../../api/hrDocuments', () => ({
     uploadCandidateDocument: vi.fn(),
     updateDocument: vi.fn(),
     replaceDocument: vi.fn(),
+    reviewDocument: vi.fn(),
     archiveDocument: vi.fn(),
     listVersions: vi.fn(),
   },
@@ -342,6 +343,123 @@ describe('DocumentsTab', () => {
 
     await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /Upload Document/i })).toBeNull()
+  })
+
+  it('shows review status and approve/reject actions for a pending employee submission', async () => {
+    hrDocumentsApi.listEmployeeDocuments.mockResolvedValue({
+      data: {
+        items: [{
+          ...doc,
+          submission_source: 'employee',
+          review_status: 'pending',
+          can_review: true,
+          can_resubmit: false,
+        }],
+        total: 1,
+        page: 1,
+        page_size: 15,
+        has_next: false,
+      },
+    })
+    hrDocumentsApi.reviewDocument.mockResolvedValue({ data: { ...doc, review_status: 'approved' } })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    expect(screen.getByText('Pending Review')).toBeInTheDocument()
+    expect(screen.getByText('Employee')).toBeInTheDocument()
+    expect(screen.getByTitle('Approve')).toBeInTheDocument()
+    expect(screen.getByTitle('Reject')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTitle('Approve'))
+    await waitFor(() => expect(hrDocumentsApi.reviewDocument).toHaveBeenCalledWith('doc-1', { action: 'approve' }))
+  })
+
+  it('rejects a pending submission with a required reason and refreshes without reload', async () => {
+    hrDocumentsApi.listEmployeeDocuments.mockResolvedValue({
+      data: {
+        items: [{
+          ...doc,
+          submission_source: 'employee',
+          review_status: 'pending',
+          can_review: true,
+        }],
+        total: 1,
+        page: 1,
+        page_size: 15,
+        has_next: false,
+      },
+    })
+    hrDocumentsApi.reviewDocument.mockResolvedValue({ data: { ...doc, review_status: 'rejected', review_note: 'Not legible' } })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('Pending Review')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Reject'))
+    await waitFor(() => expect(screen.getByLabelText('Rejection reason')).toBeInTheDocument())
+
+    // Rejection without a reason is blocked.
+    fireEvent.click(screen.getByRole('button', { name: /Reject Document/i }))
+    await waitFor(() => expect(hrDocumentsApi.reviewDocument).not.toHaveBeenCalled())
+
+    fireEvent.change(screen.getByLabelText('Rejection reason'), { target: { value: 'Not legible — please re-upload' } })
+    fireEvent.click(screen.getByRole('button', { name: /Reject Document/i }))
+    await waitFor(() =>
+      expect(hrDocumentsApi.reviewDocument).toHaveBeenCalledWith('doc-1', { action: 'reject', note: 'Not legible — please re-upload' }),
+    )
+  })
+
+  it('hides review actions for non-pending documents', async () => {
+    hrDocumentsApi.listEmployeeDocuments.mockResolvedValue({
+      data: { items: [doc], total: 1, page: 1, page_size: 15, has_next: false },
+    })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    expect(screen.queryByTitle('Approve')).toBeNull()
+    expect(screen.queryByTitle('Reject')).toBeNull()
+  })
+
+  it('shows per-version review badges in the history modal', async () => {
+    hrDocumentsApi.listVersions.mockResolvedValue({
+      data: [
+        {
+          id: 'v2', version_number: 2, original_filename: 'aadhaar-v2.pdf', uploaded_by_name: 'Jane Doe',
+          uploaded_at: '2026-08-10T10:00:00Z', file_size: 2048, can_download: true,
+          submission_source: 'employee', review_status: 'pending',
+        },
+        {
+          id: 'v1', version_number: 1, original_filename: 'aadhaar.pdf', uploaded_by_name: 'HR User',
+          uploaded_at: '2026-08-01T10:00:00Z', file_size: 1024, can_download: true,
+          submission_source: 'employee', review_status: 'rejected', review_note: 'Old copy was blurry',
+        },
+      ],
+    })
+    hrDocumentsApi.listEmployeeDocuments.mockResolvedValue({
+      data: {
+        items: [{
+          ...doc,
+          submission_source: 'employee',
+          review_status: 'pending',
+          can_review: true,
+          current_version: 2,
+        }],
+        total: 1,
+        page: 1,
+        page_size: 15,
+        has_next: false,
+      },
+    })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByTitle('History')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('History'))
+
+    await waitFor(() => expect(screen.getByText('Rejected')).toBeInTheDocument())
+    expect(screen.getAllByText('Pending Review').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('“Old copy was blurry”')).toBeInTheDocument()
   })
 
   it('hides manage actions when the backend forbids them', async () => {

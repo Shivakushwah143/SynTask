@@ -34,6 +34,40 @@ export const STATUS_LABELS = {
   archived: 'Archived',
 }
 
+// Review workflow state — separate from the active/archived lifecycle.
+export const REVIEW_STATUS_META = {
+  pending: {
+    label: 'Pending Review',
+    color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  },
+  approved: {
+    label: 'Approved',
+    color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  },
+  rejected: {
+    label: 'Rejected',
+    color: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+  },
+  missing: {
+    label: 'Missing',
+    color: 'bg-gray-100 text-gray-600 dark:bg-gray-700/40 dark:text-gray-300',
+  },
+}
+
+export const SUBMISSION_SOURCE_LABELS = {
+  hr: 'HR',
+  employee: 'Employee',
+}
+
+/** Build a review status badge for HR/employee document tables. */
+export function reviewBadge(status) {
+  const conf = REVIEW_STATUS_META[status] || REVIEW_STATUS_META.missing
+  return {
+    ...conf,
+    className: `inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${conf.color}`,
+  }
+}
+
 /** Format a raw byte count as 248 KB / 1.4 MB. */
 export function formatFileSize(bytes) {
   if (!bytes && bytes !== 0) return '—'

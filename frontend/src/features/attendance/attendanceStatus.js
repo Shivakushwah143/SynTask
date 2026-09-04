@@ -137,6 +137,55 @@ export function getAttendanceMeta(status) {
 }
 
 /**
+ * Compact pill shown for attendance rows that came from the eTimeOffice
+ * biometric sync (server `source === 'etimeoffice'`). Never shows provider
+ * credentials or other external details.
+ */
+export const sourcePillClassName =
+  'inline-flex shrink-0 items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300'
+
+export const isBiometricSource = (item) => item?.source === 'etimeoffice'
+
+/**
+ * Label/badge for a history row (per-day, one row per date). Rows always come
+ * from persisted Attendance documents, so the absent-day state stays implicit
+ * (matching the rest of the app) unless a leave marker is stored.
+ */
+export function getHistoryDayMeta(item) {
+  if (item?.leave_status) {
+    return { label: 'On Leave', icon: CalendarDays, badge: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' }
+  }
+  const status = item?.status
+  if (status === 'working' || status === 'Working') {
+    return { label: 'Currently Working', icon: Play, badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' }
+  }
+  if (status === 'on_break' || status === 'On Break') {
+    return { label: 'On Break', icon: Coffee, badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' }
+  }
+  const hasCheckIn = Boolean(item?.check_in_at || item?.login_time)
+  if (hasCheckIn) {
+    const hasCheckOut = Boolean(item?.check_out_at || item?.logout_time)
+    if (!hasCheckOut) {
+      return { label: 'Missing Checkout', icon: MinusCircle, badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' }
+    }
+    return { label: 'Completed', icon: CheckCircle2, badge: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300' }
+  }
+  return { label: 'Absent', icon: Ban, badge: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300' }
+}
+
+/**
+ * Human-readable duration for history rows: 14460s -> '4h 01m', 0 -> '—'.
+ */
+export function formatDayDuration(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0))
+  if (!total) return '—'
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const mm = String(minutes).padStart(2, '0')
+  return hours ? `${hours}h ${mm}m` : `${minutes}m`
+}
+
+/**
  * Extract the normalized attendance record from an attendance API response.
  *
  * The API methods in `api/attendance.js` return the response body

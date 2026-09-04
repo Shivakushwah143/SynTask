@@ -56,11 +56,24 @@ export const useMyLeaveBalances = (options) =>
 export const useMyLeaveRequests = (options) =>
   useQuery(MY_HR_KEYS.leaveRequests, () => leavesAPI.myLeaves(), options)
 
-export const useMyDocuments = (profileId, options) =>
-  useQuery(MY_HR_KEYS.documents, () => hrDocumentsApi.listEmployeeDocuments(profileId, { status: 'active' }), {
-    enabled: Boolean(profileId),
-    ...options,
+export const useMyDocuments = (options) =>
+  useQuery(MY_HR_KEYS.documents, () => hrDocumentsApi.listMyDocuments(), options)
+
+/** My Documents status overview (required + uploadable types with states). */
+export const useMyDocumentStatus = (options) =>
+  useQuery(['my-hr', 'documents', 'status'], () => hrDocumentsApi.myDocumentStatus(), options)
+
+export function useMyDocumentActions() {
+  const queryClient = useQueryClient()
+  return useMutation((formData) => hrDocumentsApi.uploadMyDocument(formData), {
+    onSuccess: () => {
+      // The new pending submission must be visible immediately.
+      queryClient.invalidateQueries(MY_HR_KEYS.documents)
+      queryClient.invalidateQueries(['my-hr', 'documents', 'status'])
+      queryClient.invalidateQueries(MY_HR_KEYS.summary)
+    },
   })
+}
 
 export const useMyPayslips = (options) =>
   useQuery(MY_HR_KEYS.payslips, () => payrollAPI.getMyPayslips(), options)

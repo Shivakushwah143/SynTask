@@ -3,6 +3,9 @@ import { useAttendanceStore } from '../../store/attendanceStore'
 import { useAuthStore } from '../../store/authStore'
 
 const REFRESH_DEBOUNCE_MS = 250
+// Periodic silent refresh so newly-synced attendance (e.g. an eTimeOffice
+// biometric record appearing for today) is picked up without a page reload.
+const POLL_INTERVAL_MS = 60 * 1000
 
 /**
  * Mounted once per authenticated layout. Owns the attendance store lifecycle:
@@ -45,8 +48,13 @@ export function AttendanceStatusBootstrap() {
 
     window.addEventListener('focus', scheduleRefresh)
     document.addEventListener('visibilitychange', handleVisibility)
+    const pollId = window.setInterval(() => {
+      if (!useAuthStore.getState().isAuthenticated) return
+      useAttendanceStore.getState().refresh({ silent: true })
+    }, POLL_INTERVAL_MS)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
+      window.clearInterval(pollId)
       window.removeEventListener('focus', scheduleRefresh)
       document.removeEventListener('visibilitychange', handleVisibility)
     }

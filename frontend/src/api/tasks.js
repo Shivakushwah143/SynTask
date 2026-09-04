@@ -43,6 +43,14 @@ export const tasksAPI = {
     return response.data
   },
 
+  // Combined Task Health payload for the dashboard: health summary + team
+  // completion + extension counts fetched with ONE request / one backend scan
+  // instead of the previous three summary endpoints.
+  getDashboardTaskHealth: async () => {
+    const response = await api.get('/tasks/health/dashboard')
+    return response.data
+  },
+
   getTeamCompletionSummary: async () => {
     const response = await api.get('/tasks/health/team-completion')
     return response.data

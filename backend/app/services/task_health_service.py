@@ -275,6 +275,57 @@ async def build_overdue_task_summary(current_user: User) -> Dict[str, Any]:
     return {"total": len(overdue), "tasks": [serialize_task_health(task) for task in overdue]}
 
 
+async def build_dashboard_task_health(current_user: User) -> Dict[str, Any]:
+    """Single-scan payload backing the dashboard Task Health widgets.
+
+    The dashboard previously fetched ``/health/summary``, ``/health/team-completion``
+    and ``/health/extensions`` — three requests that each ran their own full Task
+    (or extension-request) scan over the same dataset. This builder runs ONE task
+    load (+ one health sync pass) plus one extension-request query, and its three
+    sections are shape-compatible with those endpoints for the same caller:
+
+    - ``summary`` == the health counts of ``/health/summary``
+    - ``team_completion`` == the employee rows of ``/health/team-completion``
+    - ``extension_summary`` == the ``summary`` half of ``/health/extensions``
+    """
+    employees = await visible_employees(current_user)
+    employee_ids = [str(employee.id) for employee in employees]
+
+    query: Dict[str, Any] = {}
+    if current_user.role != UserRole.SUPER_ADMIN:
+        query["company_id"] = current_user.company_id
+        if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
+            query["assigned_to"] = {"$in": employee_ids}
+    tasks = await Task.find(query).to_list()
+    await _sync_many(tasks)
+
+    tasks_by_employee: Dict[str, list[Task]] = {employee_id: [] for employee_id in employee_ids}
+    for task in tasks:
+        if task.assigned_to in tasks_by_employee:
+            tasks_by_employee[task.assigned_to].append(task)
+
+    rows = []
+    for employee in employees:
+        rows.append({
+            "employee_id": str(employee.id),
+            "employee_name": employee.full_name(),
+            **calculate_performance_metrics(tasks_by_employee.get(str(employee.id), [])),
+        })
+
+    ext_query: Dict[str, Any] = {}
+    if current_user.role != UserRole.SUPER_ADMIN:
+        ext_query["company_id"] = current_user.company_id
+        if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
+            ext_query["employee_id"] = {"$in": employee_ids}
+    requests = await TaskExtensionRequest.find(ext_query).sort("-created_at").to_list()
+
+    return {
+        "summary": _health_counts(tasks),
+        "team_completion": {"employees": rows},
+        "extension_summary": _extension_status_counts(requests),
+    }
+
+
 async def build_extension_request_summary(current_user: User) -> Dict[str, Any]:
     query: Dict[str, Any] = {}
     if current_user.role != UserRole.SUPER_ADMIN:

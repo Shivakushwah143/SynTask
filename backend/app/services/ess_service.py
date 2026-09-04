@@ -258,7 +258,7 @@ async def build_my_summary(user: User) -> dict:
             "can_edit_profile": True,
             "can_request_leave": True,
             "can_request_attendance_correction": True,
-            "can_upload_document": False,  # Phase 2 does not allow employee self-upload.
+            "can_upload_document": True,  # My HR → My Documents self-service upload.
             "can_view_salary": True,  # Own salary only, via /salary/me.
             "can_view_payslips": True,  # Own payslips only, via /payroll/me/payslips.
         },
@@ -397,6 +397,8 @@ async def _document_alerts(user: User, profile: EmployeeProfile) -> dict:
     """Employee-visible document alert counts (metadata only — no filenames)."""
     if not user.company_id:
         return {"total": 0, "expiring_soon": 0, "expired": 0}
+    from app.services.hr_document_service import review_status_value
+
     documents = await HRDocument.find({
         "company_id": user.company_id,
         "employee_id": str(profile.id),
@@ -407,13 +409,19 @@ async def _document_alerts(user: User, profile: EmployeeProfile) -> dict:
     total = len(documents)
     expiring_soon = 0
     expired = 0
+    pending_review = 0
+    rejected = 0
     for document in documents:
+        if review_status_value(document.review_status) == "pending":
+            pending_review += 1
+        elif review_status_value(document.review_status) == "rejected":
+            rejected += 1
         state = compute_expiry_state(document.expiry_date)
         if state == "expiring_soon":
             expiring_soon += 1
         elif state == "expired":
             expired += 1
-    return {"total": total, "expiring_soon": expiring_soon, "expired": expired}
+    return {"total": total, "pending_review": pending_review, "rejected": rejected, "expiring_soon": expiring_soon, "expired": expired}
 
 
 async def _latest_payslip(user: User) -> Optional[dict]:

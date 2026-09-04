@@ -69,6 +69,15 @@ class Attendance(Document):
     # Phase 3 Leave integration: "paid_leave" | "unpaid_leave" | None when the
     # day is covered by an APPROVED leave so it is distinguishable from absence.
     leave_status: Optional[str] = None
+
+    # Attendance source: None/manual (app check-in/check-out) or "etimeoffice"
+    # when the record was written by the biometric provider sync. Records
+    # written by the sync are never overwritten by later manual check-ins and
+    # manual records are never overwritten by the sync.
+    source: Optional[str] = None
+    # Provider employee identifier (eTimeOffice Empcode) that produced this
+    # record; kept for audit/reconciliation and never used for RBAC.
+    external_employee_code: Optional[str] = None
     
     # Phase 4: Normalized HR status (computed by AttendanceStatusResolver)
     hr_status: Optional[str] = None  # HRAttendanceStatus value

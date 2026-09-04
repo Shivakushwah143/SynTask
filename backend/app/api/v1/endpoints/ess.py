@@ -7,9 +7,9 @@ Mounted at ``/hr/me``:
 
 The identity is always the authenticated user — no employee_id is accepted
 from the request. Module pages keep using their own existing APIs
-(/employees/me, /attendance/me/*, /leaves/*,
-/hr/employees/{own-profile-id}/documents, /payroll/me/payslips); this
-router only adds the overview aggregate.
+(/employees/me, /attendance/me/*, /leaves/*, /hr/me/documents*,
+/payroll/me/payslips); this router only adds the overview aggregate (the
+self-scoped document endpoints live on the hr_documents router).
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 
