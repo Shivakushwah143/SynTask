@@ -829,6 +829,9 @@ class ProjectService:
             "start_date": start_date_obj,
             "delivery_date": delivery_date_obj,
             "created_by": str(current_user.id),
+            # New Projects begin their lifecycle in Created; legacy documents
+            # keep their stored values and are mapped for browsing.
+            "status": ProjectStatus.CREATED.value,
         }
         
         project = Project(**project_data)

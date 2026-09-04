@@ -6,6 +6,10 @@ export const projectsApi = {
     return api.get('/projects/', { params })
   },
 
+  getProjectStatusSummary: () => {
+    return api.get('/projects/status-summary')
+  },
+
   getProjectTypes: () => {
     return api.get('/projects/types')
   },

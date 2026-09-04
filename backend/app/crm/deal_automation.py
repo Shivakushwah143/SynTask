@@ -393,7 +393,9 @@ async def _resolve_project(current_user: User, lead: SalesProspect, client: Clie
         description=f"Onboarding project generated from won deal for {client.name}.",
         company_id=str(lead.company_id),
         type=ProjectType.OPERATIONS,
-        status=ProjectStatus.ACTIVE,
+        # Auto-created Projects begin in Created and appear under the Created
+        # lifecycle tab (and Needs Setup until execution Tasks exist).
+        status=ProjectStatus.CREATED,
         lead_id=str(lead.id),
         assigned_to=owner_id,
         assigned_by=str(getattr(current_user, "id", "")),
