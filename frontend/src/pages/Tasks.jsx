@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from 'react-query'
 import { AlertTriangle, Plus, Calendar, User, Search, Filter, CheckCircle2, ListTodo, RefreshCcw, LayoutGrid, Clock, Lock, Eye, Activity, X, Pencil, Trash2, Timer } from 'lucide-react'
@@ -142,16 +142,22 @@ const Tasks = () => {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const routeState = useMemo(() => readTaskRouteState(searchParams), [searchParams])
+  // Holds the URL whose query state has already been applied to component
+  // state. Write effects skip while an external navigation (Back/Forward/deep
+  // link) is in flight so they never rewrite the incoming URL with stale state
+  // and the address bar flickers. Synced by an effect declared after the write
+  // effects, so an in-flight URL change is visible to them.
+  const appliedUrlRef = useRef(searchParams.toString())
   const [searchQuery, setSearchQuery] = useState(routeState.searchQuery)
   const [attention, setAttention] = useState(routeState.attention)
   const [summary, setSummary] = useState(null)
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState({
     status: routeState.filters.status || '',
-    priority: '',
-    assigned_to: '',
-    department_id: '',
-    project_id: '',
+    priority: routeState.filters.priority || '',
+    assigned_to: routeState.filters.assigned_to || '',
+    department_id: routeState.filters.department_id || '',
+    project_id: routeState.filters.project_id || '',
     due_from: routeState.filters.due_from || '',
     due_to: routeState.filters.due_to || '',
   })
@@ -236,6 +242,9 @@ useEffect(() => {
   }, [routeState.attention, routeState.filters.assigned_to, routeState.filters.department_id, routeState.filters.due_from, routeState.filters.due_to, routeState.filters.priority, routeState.filters.project_id, routeState.filters.status, routeState.searchQuery, routeState.view, setView, view])
 
   useEffect(() => {
+    // Skip while an external URL change is still being applied to state (see
+    // appliedUrlRef) so Back/Forward never re-writes the old query back.
+    if (appliedUrlRef.current !== searchParams.toString()) return
     const nextParams = writeTaskRouteState(searchParams, { view, searchQuery, attention, filters })
     if (nextParams.toString() !== searchParams.toString()) {
       setSearchParams(nextParams, { replace: true })
@@ -243,11 +252,18 @@ useEffect(() => {
   }, [attention, filters, searchParams, searchQuery, setSearchParams, view])
 
   useEffect(() => {
+    if (appliedUrlRef.current !== searchParams.toString()) return
     const nextParams = writeTaskRouteState(searchParams, { view, searchQuery, attention, filters, page })
     if (nextParams.toString() !== searchParams.toString()) {
       setSearchParams(nextParams, { replace: true })
     }
   }, [attention, filters, page, searchQuery, searchParams, setSearchParams, view])
+
+  // Mark the URL as applied AFTER the write effects have run for this commit,
+  // so a URL change that arrived in this commit is still visible to them.
+  useEffect(() => {
+    appliedUrlRef.current = searchParams.toString()
+  }, [searchParams])
 
   const loadAssignableUsers = useCallback(async () => {
     try {
@@ -1103,7 +1119,7 @@ useEffect(() => {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                          {assignedUser ? `${assignedUser.first_name} ${assignedUser.last_name}` : 'Unassigned'}
+                          {task.assigned_to_name || (assignedUser ? `${assignedUser.first_name} ${assignedUser.last_name}` : 'Unassigned')}
                         </td>
                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                           {scheduled ? (
@@ -1221,12 +1237,12 @@ useEffect(() => {
                                   {timeService.formatMonthDay(task.due_date)}
                                 </span>
                               )}
-                              {assignedUser && (
+                              {assignedUser || task.assigned_to_name ? (
                                 <span className="text-xs text-gray-500 dark:text-gray-400">
                                   <User className="inline h-3 w-3 mr-1" />
-                                  {assignedUser.first_name}
+                                  {assignedUser ? assignedUser.first_name : String(task.assigned_to_name).split(' ')[0]}
                                 </span>
-                              )}
+                              ) : null}
                             </div>
                           </button>
                           <div className="mt-2 flex items-center gap-1 border-t border-gray-100 pt-2 dark:border-gray-700">

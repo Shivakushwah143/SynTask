@@ -39,9 +39,13 @@ export const tasksAPI = {
     return response.data
   },
 
-  // Global lifecycle + attention counts for the Tasks workspace (backend scoped)
-  getStatusSummary: async () => {
-    const response = await api.get('/tasks/status-summary')
+  // Lifecycle + attention counts for the Tasks workspace (backend scoped).
+  // Pass { project_id } to scope counts to a single Project Workspace.
+  getStatusSummary: async (params = {}) => {
+    const query = new URLSearchParams()
+    if (params.project_id) query.append('project_id', params.project_id)
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    const response = await api.get(`/tasks/status-summary${suffix}`)
     return response.data
   },
 

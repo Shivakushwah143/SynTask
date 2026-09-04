@@ -9,6 +9,7 @@ import {
   attentionCount,
   buildTaskQueryParams,
   emptyStateMessage,
+  projectEmptyStateMessage,
   tabCount,
 } from './tasksLifecycle'
 
@@ -170,6 +171,28 @@ describe('empty state messages', () => {
   test('combined filters fall back to the generic filtered message', () => {
     expect(emptyStateMessage({ filters: { status: 'in_progress', priority: 'high' }, attention: '', search: 'api' }))
       .toBe('No Tasks match the selected filters.')
+  })
+})
+
+describe('project empty state messages', () => {
+  test('zero-task project names the project context', () => {
+    expect(projectEmptyStateMessage({ filters: {}, attention: '', search: '' }))
+      .toBe('No Tasks have been created for this Project yet.')
+  })
+
+  test('status tab alone names the lifecycle status', () => {
+    expect(projectEmptyStateMessage({ filters: { status: 'revision_required' }, attention: '', search: '' }))
+      .toBe('No Tasks are currently in Revision Required.')
+  })
+
+  test('attention filter gets a project-flavored message', () => {
+    expect(projectEmptyStateMessage({ filters: {}, attention: 'blocked', search: '' }))
+      .toBe('No Project Tasks are currently blocked.')
+  })
+
+  test('combined filters fall back to the project filtered message', () => {
+    expect(projectEmptyStateMessage({ filters: { status: 'in_progress', priority: 'high' }, attention: '', search: 'api' }))
+      .toBe('No Tasks match the selected filters for this Project.')
   })
 })
 

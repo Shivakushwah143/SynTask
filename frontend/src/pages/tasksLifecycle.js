@@ -136,3 +136,20 @@ export function emptyStateMessage({ filters = {}, attention = '', search = '' })
   }
   return 'No Tasks match the selected filters.'
 }
+
+// Project-scoped empty-state copy for the Project Workspace Tasks view.
+// Same lifecycle/attention semantics as the global page, with project context.
+export function projectEmptyStateMessage({ filters = {}, attention = '', search = '' }) {
+  const hasFilters = activeFilterCount(filters, attention, search) > 0
+  if (!hasFilters) {
+    return 'No Tasks have been created for this Project yet.'
+  }
+  if (filters.status && !attention && activeFilterCount(filters, '', search) === 1) {
+    return `No Tasks are currently in ${STATUS_LABELS[filters.status] || filters.status}.`
+  }
+  if (attention) {
+    const label = ATTENTION_FILTERS.find((item) => item.id === attention)?.label || attention
+    return `No Project Tasks are currently ${label.toLowerCase()}.`
+  }
+  return 'No Tasks match the selected filters for this Project.'
+}

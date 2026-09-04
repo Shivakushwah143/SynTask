@@ -87,6 +87,16 @@ def _is_upcoming(task: Task, now: Optional[datetime] = None, timezone_name: Opti
                 and tomorrow_start <= task.due_date <= end)
 
 
+def _is_assigned_today(task: Task, now: Optional[datetime] = None, timezone_name: Optional[str] = None) -> bool:
+    """True when the task was assigned to the employee today."""
+    now = now or utc_now()
+    today_start, tomorrow_start = _today_range(now, timezone_name)
+    assigned_at = getattr(task, "assigned_at", None)
+    status = task.status.value if hasattr(task.status, "value") else str(task.status)
+    return bool(assigned_at and status not in {TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value}
+                and today_start <= assigned_at < tomorrow_start)
+
+
 def _is_critical(task: Task) -> bool:
     priority = task.priority.value if hasattr(task.priority, "value") else str(task.priority)
     return priority == TaskPriority.CRITICAL.value
@@ -498,6 +508,14 @@ async def build_employee_work_overview(current_user: User, now: Optional[datetim
         for task in dominant_buckets.get(cat, [])[:10]:
             today_work.append(_task_summary(task))
 
+    # Tasks assigned to the employee today (independent of due date)
+    assigned_today_count = sum(1 for task in tasks if _is_assigned_today(task, now, timezone_name))
+    assigned_today_work = []
+    for task in tasks:
+        if _is_assigned_today(task, now, timezone_name):
+            assigned_today_work.append(_task_summary(task))
+    assigned_today_work = assigned_today_work[:10]
+
     waiting_blocked = []
     # Waiting for review (assignee submitted, not yet reviewed)
     for task in tasks:
@@ -530,11 +548,13 @@ async def build_employee_work_overview(current_user: User, now: Optional[datetim
             "waiting_for_review": waiting_for_review,
             "blocked": blocked,
             "upcoming": upcoming,
+            "assigned_today": assigned_today_count,
             "reviews_for_me": len(reviewer_tasks),
         },
         "next_action": next_action,
         "needs_attention": needs_attention,
         "today": today_work,
+        "assigned_today": assigned_today_work,
         "waiting_for_review": waiting_blocked,
         "upcoming": upcoming_work,
         "reviews_for_me": reviews_for_me,

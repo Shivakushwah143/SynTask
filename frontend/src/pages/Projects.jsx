@@ -151,6 +151,11 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle, trend 
 const compactInputClassName =
   'min-h-9 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 dark:border-gray-700 dark:bg-gray-800/80 dark:text-white dark:placeholder:text-gray-400'
 
+// Project Owner / Manager fields only offer management-capable roles (admin,
+// sub-admin, manager, lead) - employees are assignable as task assignees but
+// not as project owners.
+const PROJECT_OWNER_ROLES = ['admin', 'sub_admin', 'manager', 'lead']
+
 export default function Projects() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -379,8 +384,10 @@ export default function Projects() {
     [assignableUsers],
   )
   const projectAssigneeOptions = useMemo(
-    () => uniqueAssignableUsers.filter((item) => item.status === 'active'),
-    [uniqueAssignableUsers, userRole],
+    () => uniqueAssignableUsers.filter(
+      (item) => item.status === 'active' && PROJECT_OWNER_ROLES.includes(normalizeRole(item.role)),
+    ),
+    [uniqueAssignableUsers],
   )
 
   const summary = useMemo(() => ({

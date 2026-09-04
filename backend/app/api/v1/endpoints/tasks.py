@@ -231,6 +231,33 @@ def _merge_query_parts(parts: list[Optional[dict]]) -> dict:
     return {"$and": clean}
 
 
+async def _project_link_condition(project_identifier: str, current_user: User) -> dict:
+    """Build the Task filter that links tasks to one Project.
+
+    Tasks may store the logical ``project_id`` (e.g. ``PROJ-001``), the Mongo
+    ``_id`` string, or the normalized ``project_object_id`` field, and project
+    URLs/deep links may carry either identifier form. Resolving the Project
+    first (mirroring project boards and completion readiness) and matching all
+    three conventions keeps the Project Task list/counts consistent with the
+    board regardless of which id the caller passed.
+
+    Unknown or cross-company identifiers resolve to a match-nothing condition
+    so no other company's rows can leak through a guessed project id.
+    """
+    from app.api.dependencies import get_project_by_id
+
+    project, _ = await get_project_by_id(
+        project_identifier,
+        None if current_user.role == UserRole.SUPER_ADMIN else current_user.company_id,
+    )
+    if not project or str(project.company_id) != str(current_user.company_id):
+        return {"$or": [{"project_object_id": {"$in": []}}, {"project_id": {"$in": []}}]}
+    keys = {str(project.id)}
+    if getattr(project, "project_id", None):
+        keys.add(str(project.project_id))
+    return {"$or": [{"project_object_id": str(project.id)}, {"project_id": {"$in": sorted(keys)}}]}
+
+
 def _task_overdue_query_condition() -> dict:
     """Mongo condition matching the OVERDUE health semantics (UTC day).
 
@@ -758,14 +785,14 @@ async def list_tasks(
     if awaiting_review:
         query_parts.append({"status": TaskStatus.IN_REVIEW.value})
     if project_id:
-        # Filter by project_id - only return tasks that have this specific project_id
-        # Simple equality check - MongoDB will only match documents where project_id equals this value
-        # Tasks with project_id=None or missing project_id field won't match
+        # Resolve to the real Project so every link convention matches (logical
+        # project_id, Mongo _id, or project_object_id), consistent with how the
+        # Project board and completion readiness resolve project tasks.
         if current_user.role == UserRole.EMPLOYEE:
             project = await load_project_for_permission(project_id, current_user)
             if has_project_permission(current_user, project, ProjectPermission.MANAGE_TASK):
                 query_parts[0].pop("assigned_to", None)
-        query_parts.append({"project_id": project_id})
+        query_parts.append(await _project_link_condition(project_id, current_user))
     if department_id:
         query_parts.append({"department_id": department_id})
     if exclude_follow_up:
@@ -1036,20 +1063,32 @@ async def get_production_dashboard(
 
 
 @router.get("/status-summary")
-async def task_status_summary(current_user: User = Depends(get_current_user)):
-    """Global Task lifecycle + attention counts for the Tasks workspace.
+async def task_status_summary(
+    current_user: User = Depends(get_current_user),
+    project_id: Optional[str] = None,
+):
+    """Task lifecycle + attention counts for the Tasks workspace.
 
-    Counts apply the SAME company isolation, RBAC, manager/team/project scope,
-    and employee visibility as the Task list (``build_task_list_query``), so
-    Company A counts never include Company B tasks and employees only see their
-    accessible tasks. Follow-up items (sales follow-ups) are excluded to match
-    the Tasks page view; Scheduled placeholders are not Task documents and are
-    naturally absent. ``blocked`` counts tasks with at least one incomplete
-    dependency and is independent of ``status``/``health_status``.
+    Global scope (no ``project_id``) or Project-scoped (``project_id`` resolves
+    the Project and uses the same link condition as the Task list endpoint, so
+    summary counts and list totals stay logically consistent for logical ids,
+    Mongo ids, and ``project_object_id`` links). Counts apply the SAME company
+    isolation, RBAC, manager/team/project scope, and employee visibility as the
+    Task list (``build_task_list_query``), so Company A counts never include
+    Company B tasks and employees only see their accessible tasks. Follow-up
+    items (sales follow-ups) are excluded to match the Tasks page view;
+    Scheduled placeholders are not Task documents and are naturally absent.
+    ``blocked`` counts tasks with at least one incomplete dependency and is
+    independent of ``status``/``health_status``.
     """
     scope_ids = await _get_user_scope_ids(current_user) if current_user.role == UserRole.LEAD else None
-    query = build_task_list_query(current_user, scope_ids=scope_ids)
-    query["source_type"] = {"$ne": "sales_follow_up"}
+    parts: list[Optional[dict]] = [
+        build_task_list_query(current_user, scope_ids=scope_ids),
+        {"source_type": {"$ne": "sales_follow_up"}},
+    ]
+    if project_id:
+        parts.append(await _project_link_condition(project_id, current_user))
+    query = _merge_query_parts(parts)
     tasks = await Task.find(query).to_list()
     for task in tasks:
         await sync_task_health(task)

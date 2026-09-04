@@ -562,3 +562,252 @@ async def test_employee_list_scope_and_status_counts_consistent(mongo_db):
 
     # Employee list total and summary "all" must agree for the Tasks page.
     assert page["total"] == summary["all"] == 2
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_project_scoped_summary_counts_only_that_project(mongo_db):
+    company = "project-scope-co"
+    admin = await _create_user("admin@projectscope.com", company, UserRole.ADMIN)
+    project_a = Project(
+        name="Alpha", key="ALPHA", project_id="PROJ-ALPHA", company_id=company,
+        lead_id=str(admin.id), priority="medium", created_by=str(admin.id),
+    )
+    await project_a.insert()
+    project_b = Project(
+        name="Beta", key="BETA", project_id="PROJ-BETA", company_id=company,
+        lead_id=str(admin.id), priority="medium", created_by=str(admin.id),
+    )
+    await project_b.insert()
+
+    def link(task, project):
+        task.project_id = project.project_id
+        return task
+
+    await (link(await _create_task(company, "A todo", str(admin.id), status=TaskStatus.TODO), project_a)).save()
+    await (link(await _create_task(company, "A in progress", str(admin.id), status=TaskStatus.IN_PROGRESS), project_a)).save()
+    await (link(await _create_task(company, "A completed", str(admin.id), status=TaskStatus.COMPLETED), project_a)).save()
+    await (link(await _create_task(company, "B todo", str(admin.id), status=TaskStatus.TODO), project_b)).save()
+
+    global_summary = await task_endpoints.task_status_summary(admin)
+    summary_a = await task_endpoints.task_status_summary(admin, project_id="PROJ-ALPHA")
+    summary_b = await task_endpoints.task_status_summary(admin, project_id="PROJ-BETA")
+
+    assert global_summary["all"] == 4
+    assert summary_a["all"] == 3
+    assert summary_a["todo"] == 1
+    assert summary_a["in_progress"] == 1
+    assert summary_a["completed"] == 1
+    assert summary_b["all"] == 1
+    assert summary_b["todo"] == 1
+
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_project_scoped_summary_matches_list_total(mongo_db):
+    company = "project-consistency-co"
+    admin = await _create_user("admin@projconsist.com", company, UserRole.ADMIN)
+    project = Project(
+        name="Gamma", key="GAMMA", project_id="PROJ-GAMMA", company_id=company,
+        lead_id=str(admin.id), priority="medium", created_by=str(admin.id),
+    )
+    await project.insert()
+
+    statuses = [
+        TaskStatus.TODO, TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS,
+        TaskStatus.IN_REVIEW, TaskStatus.REVISION_REQUIRED, TaskStatus.APPROVED,
+        TaskStatus.COMPLETED, TaskStatus.CANCELLED,
+    ]
+    for status in statuses:
+        task = await _create_task(company, f"Gamma {status.value}", str(admin.id), status=status)
+        task.project_id = project.project_id
+        await task.save()
+
+    summary = await task_endpoints.task_status_summary(admin, project_id="PROJ-GAMMA")
+    page = await task_endpoints.list_tasks(
+        project_id="PROJ-GAMMA", exclude_follow_up=True,
+        pagination=PaginationParams(skip=0, limit=50), current_user=admin,
+    )
+
+    assert page["total"] == summary["all"] == 8
+    for status in statuses:
+        assert summary[status.value] == 1
+    listed_ids = {task["id"] for task in page["tasks"]}
+    assert len(listed_ids) == 8
+
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_project_summary_company_isolation(mongo_db):
+    company_a = "proj-iso-a"
+    company_b = "proj-iso-b"
+    admin_a = await _create_user("admin@projisoa.com", company_a, UserRole.ADMIN)
+    admin_b = await _create_user("admin@projisob.com", company_b, UserRole.ADMIN)
+    project_a = Project(
+        name="Delta", key="DELTA", project_id="PROJ-DELTA", company_id=company_a,
+        lead_id=str(admin_a.id), priority="medium", created_by=str(admin_a.id),
+    )
+    await project_a.insert()
+    task = await _create_task(company_a, "Delta task", str(admin_a.id), status=TaskStatus.IN_PROGRESS)
+    task.project_id = "PROJ-DELTA"
+    await task.save()
+
+    # Company B admin querying Company A's project id must see zero tasks.
+    summary_b = await task_endpoints.task_status_summary(admin_b, project_id="PROJ-DELTA")
+    assert summary_b["all"] == 0
+    assert all(summary_b[key] == 0 for key in ["todo", "in_progress", "completed"])
+
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_project_summary_employee_sees_only_own_tasks(mongo_db):
+    company = "proj-emp-co"
+    admin = await _create_user("admin@projemp.com", company, UserRole.ADMIN)
+    employee = await _create_user("emp@projemp.com", company, UserRole.EMPLOYEE)
+    project = Project(
+        name="Epsilon", key="EPS", project_id="PROJ-EPS", company_id=company,
+        lead_id=str(admin.id), priority="medium", created_by=str(admin.id),
+    )
+    await project.insert()
+
+    mine = await _create_task(company, "Mine", str(admin.id), assigned_to=str(employee.id), status=TaskStatus.IN_PROGRESS)
+    mine.project_id = "PROJ-EPS"
+    await mine.save()
+    theirs = await _create_task(company, "Theirs", str(admin.id), status=TaskStatus.TODO)
+    theirs.project_id = "PROJ-EPS"
+    await theirs.save()
+
+    summary = await task_endpoints.task_status_summary(employee, project_id="PROJ-EPS")
+    page = await task_endpoints.list_tasks(
+        project_id="PROJ-EPS", exclude_follow_up=True,
+        pagination=PaginationParams(skip=0, limit=50), current_user=employee,
+    )
+    assert summary["all"] == 1
+    assert summary["in_progress"] == 1
+    assert page["total"] == 1
+    assert page["tasks"][0]["title"] == "Mine"
+
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_project_list_combines_status_attention_and_advanced_filters(mongo_db):
+    company = "proj-combo-co"
+    admin = await _create_user("admin@projcombo.com", company, UserRole.ADMIN)
+    project = Project(
+        name="Zeta", key="ZETA", project_id="PROJ-ZETA", company_id=company,
+        lead_id=str(admin.id), priority="medium", created_by=str(admin.id),
+    )
+    await project.insert()
+    now = datetime.utcnow()
+
+    def linked(title, status, priority="medium", due_date=None, dependencies=None):
+        task = Task(
+            title=title, company_id=company, created_by=str(admin.id),
+            status=status, priority=priority, due_date=due_date,
+            dependencies=dependencies or [], project_id="PROJ-ZETA",
+        )
+        return task
+
+    # Two in_progress tasks: one blocked (dependency incomplete), one not.
+    blocker = linked("Blocking dep", TaskStatus.IN_PROGRESS)
+    await blocker.insert()
+    blocked = linked("Blocked in progress", TaskStatus.IN_PROGRESS, dependencies=[str(blocker.id)])
+    await blocked.insert()
+    overdue = linked("Overdue in progress", TaskStatus.IN_PROGRESS, due_date=now - timedelta(days=3))
+    await overdue.insert()
+    other = linked("Other todo", TaskStatus.TODO)
+    await other.insert()
+
+    # in_progress only
+    page = await task_endpoints.list_tasks(
+        project_id="PROJ-ZETA", status_filter="in_progress", exclude_follow_up=True,
+        pagination=PaginationParams(skip=0, limit=50), current_user=admin,
+    )
+    assert page["total"] == 3
+
+    # in_progress + blocked
+    page = await task_endpoints.list_tasks(
+        project_id="PROJ-ZETA", status_filter="in_progress", blocked=True, exclude_follow_up=True,
+        pagination=PaginationParams(skip=0, limit=50), current_user=admin,
+    )
+    assert page["total"] == 1
+    assert page["tasks"][0]["title"] == "Blocked in progress"
+
+    # in_progress + overdue
+    page = await task_endpoints.list_tasks(
+        project_id="PROJ-ZETA", status_filter="in_progress", overdue=True, exclude_follow_up=True,
+        pagination=PaginationParams(skip=0, limit=50), current_user=admin,
+    )
+    assert page["total"] == 1
+    assert page["tasks"][0]["title"] == "Overdue in progress"
+
+    # search within project (avoid stopwords/stems that MongoDB's text search strips)
+    page = await task_endpoints.list_tasks(
+        project_id="PROJ-ZETA", search="todo", exclude_follow_up=True,
+        pagination=PaginationParams(skip=0, limit=50), current_user=admin,
+    )
+    assert page["total"] == 1
+    assert page["tasks"][0]["title"] == "Other todo"
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_project_summary_and_list_match_mongo_id_or_logical_id(mongo_db):
+    company = "proj-link-co"
+    admin = await _create_user("admin@projlink.com", company, UserRole.ADMIN)
+    project = Project(
+        name="Theta", key="THETA", project_id="PROJ-THETA", company_id=company,
+        lead_id=str(admin.id), priority="medium", created_by=str(admin.id),
+    )
+    await project.insert()
+
+    # One task stores the logical project_id (the common create path)...
+    logical_task = await _create_task(company, "Logical link", str(admin.id), status=TaskStatus.IN_PROGRESS)
+    logical_task.project_id = "PROJ-THETA"
+    await logical_task.save()
+    # ...and one stores only the normalized project_object_id (Mongo _id link).
+    oid_task = await _create_task(company, "ObjectId link", str(admin.id), status=TaskStatus.TODO)
+    oid_task.project_id = None
+    oid_task.project_object_id = str(project.id)
+    await oid_task.save()
+
+    # Querying by the Mongo _id (the Project Workspace URL form) must see both.
+    summary_by_mongo = await task_endpoints.task_status_summary(admin, project_id=str(project.id))
+    page_by_mongo = await task_endpoints.list_tasks(
+        project_id=str(project.id), exclude_follow_up=True,
+        pagination=PaginationParams(skip=0, limit=50), current_user=admin,
+    )
+    assert summary_by_mongo["all"] == 2
+    assert page_by_mongo["total"] == 2
+
+    # Querying by the logical id must also see both (same project).
+    summary_by_logical = await task_endpoints.task_status_summary(admin, project_id="PROJ-THETA")
+    page_by_logical = await task_endpoints.list_tasks(
+        project_id="PROJ-THETA", exclude_follow_up=True,
+        pagination=PaginationParams(skip=0, limit=50), current_user=admin,
+    )
+    assert summary_by_logical["all"] == 2
+    assert page_by_logical["total"] == 2
+    assert {task["title"] for task in page_by_logical["tasks"]} == {"Logical link", "ObjectId link"}
+
+
+@mongo_required
+@pytest.mark.asyncio
+async def test_project_list_unknown_project_id_matches_nothing(mongo_db):
+    company = "proj-unknown-co"
+    admin = await _create_user("admin@projunknown.com", company, UserRole.ADMIN)
+    project = Project(
+        name="Iota", key="IOTA", project_id="PROJ-IOTA", company_id=company,
+        lead_id=str(admin.id), priority="medium", created_by=str(admin.id),
+    )
+    await project.insert()
+    task = await _create_task(company, "Iota task", str(admin.id), status=TaskStatus.TODO)
+    task.project_id = "PROJ-IOTA"
+    await task.save()
+
+    # A guessed project id from another company/context returns zero rows.
+    summary = await task_endpoints.task_status_summary(admin, project_id="PROJ-NOPE")
+    page = await task_endpoints.list_tasks(
+        project_id="PROJ-NOPE", exclude_follow_up=True,
+        pagination=PaginationParams(skip=0, limit=50), current_user=admin,
+    )
+    assert summary["all"] == 0
+    assert page["total"] == 0

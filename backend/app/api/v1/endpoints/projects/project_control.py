@@ -13,9 +13,7 @@ async def get_completion_readiness(project_id: str, current_user: User = Depends
     project, _ = await get_project_by_id(project_id, current_user.company_id)
     if not project:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Project not found")
-    check_company_access(current_user, project.company_id)
-    if not has_project_access(project, current_user):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="You do not have permission to view this project")
+    await ensure_project_access_for_user(project, current_user)
     return await completion_readiness(project, current_user)
 
 

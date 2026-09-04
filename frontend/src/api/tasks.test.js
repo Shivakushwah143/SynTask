@@ -67,6 +67,15 @@ describe('tasksAPI contract', () => {
     expect(summary).toEqual({ all: 10, todo: 2, blocked: 1 })
   })
 
+  test('scopes the status summary to a project workspace', async () => {
+    apiMock.get.mockResolvedValueOnce({ data: { all: 28, todo: 3, blocked: 2 } })
+
+    const summary = await tasksAPI.getStatusSummary({ project_id: 'PROJ-123' })
+
+    expect(apiMock.get).toHaveBeenCalledWith('/tasks/status-summary?project_id=PROJ-123')
+    expect(summary.all).toBe(28)
+  })
+
   test('creates, updates, and transitions tasks through form encoded payloads', async () => {
     apiMock.post.mockResolvedValueOnce({ data: { id: 'task-1' } })
     apiMock.put.mockResolvedValueOnce({ data: { id: 'task-1' } })

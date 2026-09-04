@@ -280,6 +280,30 @@ function EmployeeWorkOverview({ data }) {
         <SummaryCard label="Upcoming" value={summary.upcoming || 0} icon={CalendarClock} color="text-emerald-600" />
       </section>
 
+      {/* Today's Tasks - assigned today */}
+      {(data.assigned_today || data.today)?.length > 0 && (
+        <section>
+          <SectionHeader title="Today's Tasks" count={(data.assigned_today || data.today).length} />
+          <div className="space-y-2">
+            {(data.assigned_today || data.today).map((task) => (
+              <TaskRow key={task.id} task={task} actionLabel="Open" actionHref={`/tasks/${task.id}`} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Upcoming deadlines - due in the next 7 days */}
+      {data.upcoming?.length > 0 && (
+        <section>
+          <SectionHeader title="Upcoming Deadlines" count={data.upcoming.length} />
+          <div className="space-y-2">
+            {data.upcoming.map((task) => (
+              <TaskRow key={task.id} task={task} actionLabel="Open" actionHref={`/tasks/${task.id}`} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Next Action */}
       <NextActionCard nextAction={data.next_action} />
 
@@ -289,18 +313,6 @@ function EmployeeWorkOverview({ data }) {
           <SectionHeader title="Needs Attention" count={data.needs_attention.length} />
           <div className="space-y-2">
             {data.needs_attention.map((task) => (
-              <TaskRow key={task.id} task={task} actionLabel="Open" actionHref={`/tasks/${task.id}`} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Today */}
-      {data.today?.length > 0 && (
-        <section>
-          <SectionHeader title="Today" count={data.today.length} />
-          <div className="space-y-2">
-            {data.today.map((task) => (
               <TaskRow key={task.id} task={task} actionLabel="Open" actionHref={`/tasks/${task.id}`} />
             ))}
           </div>
@@ -319,18 +331,6 @@ function EmployeeWorkOverview({ data }) {
         </section>
       )}
 
-      {/* Upcoming */}
-      {data.upcoming?.length > 0 && (
-        <section>
-          <SectionHeader title="Upcoming (Next 7 Days)" count={data.upcoming.length} />
-          <div className="space-y-2">
-            {data.upcoming.map((task) => (
-              <TaskRow key={task.id} task={task} actionLabel="Open" actionHref={`/tasks/${task.id}`} />
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* Reviews for You */}
       {data.reviews_for_me?.length > 0 && (
         <section>
@@ -344,7 +344,7 @@ function EmployeeWorkOverview({ data }) {
       )}
 
       {/* Empty State */}
-      {!data.next_action && (!data.needs_attention?.length) && (!data.today?.length) && (
+      {!data.next_action && (!data.needs_attention?.length) && (!(data.assigned_today || data.today)?.length) && (
         <EmptyState message="You&apos;re clear for now. Check upcoming work or take a break." />
       )}
     </div>
