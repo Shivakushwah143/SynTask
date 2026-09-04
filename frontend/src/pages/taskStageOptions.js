@@ -22,8 +22,6 @@ const CHECKLIST_REASON = 'Complete all required checklist items before submittin
 const APPROVE_WAIT_REASON = 'The assignee must submit the task for review before it can be approved.'
 const REVISION_WAIT_REASON = 'The assignee must submit the task for review before a revision can be requested.'
 const REVISION_RESUBMIT_REASON = 'Waiting for the assignee to finish revisions and resubmit.'
-const APPROVE_FIRST_REASON = 'The task must be approved before it can be completed.'
-const REVIEWER_ONLY_REASON = 'Only the assigned reviewer can approve this task.'
 
 // A checklist item that is marked required but not yet completed.
 export const requiredChecklistIncomplete = (task = {}) =>
@@ -181,22 +179,22 @@ export function computeTaskStageOptions({ task = {}, user = null, canManage = fa
   }
 
   // Manager (task-management power) for the remaining stage decisions. For an
-  // in_review task the modal always lists Approve next to Request revision;
-  // only the assigned reviewer can actually approve, everyone else sees it
-  // disabled with the reason why.
+  // in_review task any workflow manager (company admin, project task manager,
+  // or creator) can approve or request revision — the assignee is the only
+  // actor excluded from approving their own work. Rows added by the reviewer
+  // persona above carry identical values and are deduplicated below.
   if (canManage) {
-    if (reviewRequired && status === 'in_review' && !isReviewer && !isAssignee) {
+    if (reviewRequired && status === 'in_review' && !isAssignee) {
       push({
         action: 'approve',
         label: 'Approve',
         toStatus: 'approved',
         toStatusLabel: 'Approved',
-        enabled: false,
-        disabledReason: REVIEWER_ONLY_REASON,
+        enabled: true,
+        disabledReason: '',
         requirement: '',
-        description: '',
+        description: 'Accept the submitted work. The task moves to Approved.',
       })
-      // A manager who is not the named reviewer can still bounce the work back.
       push({
         action: 'request_revision',
         label: 'Request revision',
@@ -206,18 +204,6 @@ export function computeTaskStageOptions({ task = {}, user = null, canManage = fa
         disabledReason: '',
         requirement: 'reason',
         description: 'Send the work back with a required reason. The task moves to Revision Required.',
-      })
-      // The named reviewer still holds the decision; a non-reviewer manager
-      // sees completion greyed out until the task is approved.
-      push({
-        action: 'complete',
-        label: 'Complete task',
-        toStatus: 'completed',
-        toStatusLabel: 'Completed',
-        enabled: false,
-        disabledReason: APPROVE_FIRST_REASON,
-        requirement: '',
-        description: '',
       })
     }
     if (reviewRequired && status === 'approved') {

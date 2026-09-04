@@ -95,19 +95,21 @@ describe('TaskStageMenu', () => {
     await waitFor(() => expect(onUpdated).toHaveBeenCalled())
   })
 
-  test('in_review for a manager who is not the reviewer still lists Approve, disabled with the reviewer-only reason', () => {
+  test('an admin who is not the assigned reviewer can approve from the in_review next-stage modal', async () => {
+    const onUpdated = vi.fn()
     render(
       <TaskStageMenu
         task={makeTask({ status: 'in_review', reviewer_id: 'rev-1' })}
         user={user('mgr-1', 'manager')}
         canManage
+        onUpdated={onUpdated}
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: /next stage/i }))
-    expect(screen.getByText(/Only the assigned reviewer can approve this task\./)).toBeInTheDocument()
-    // Approve stays visible (muted) next to the available Request revision.
-    expect(screen.getByText('Approve')).toBeInTheDocument()
     expect(screen.getByText('Request revision')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Approve'))
+    await waitFor(() => expect(tasksAPI.approveTask).toHaveBeenCalledWith('task-1'))
+    await waitFor(() => expect(onUpdated).toHaveBeenCalled())
   })
 
   test('assign requires picking an assignee before it runs', async () => {

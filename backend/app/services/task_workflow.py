@@ -228,8 +228,15 @@ async def assert_actor_for_action(action: str, actor: User, task: Task, project:
         return
     if action == "request_revision" and (actor_id == str(task.reviewer_id or "") or manager):
         return
-    if action == "approve" and actor_id == str(task.reviewer_id or "") and actor_id != str(task.assigned_to or ""):
-        return
+    # Approval is open to the assigned reviewer AND to workflow managers
+    # (company admins, project task managers, task creators) so an admin can
+    # approve an in-review task even when they are not the stored reviewer.
+    # The assignee can never approve their own work.
+    if action == "approve":
+        is_assignee = actor_id == str(task.assigned_to or "")
+        is_reviewer = actor_id == str(task.reviewer_id or "")
+        if not is_assignee and (is_reviewer or manager):
+            return
     if action in {"complete", "cancel", "reopen", "assign"} and manager:
         return
     if action == "complete" and not effective_review_required(task, project) and actor_id == str(task.assigned_to or ""):

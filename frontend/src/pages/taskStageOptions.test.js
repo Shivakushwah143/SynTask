@@ -155,19 +155,27 @@ describe('manager-only stage decisions', () => {
     expect(options).toEqual([expect.objectContaining({ action: 'assign', requirement: 'assignee', enabled: true })])
   })
 
-  test('in_review always lists Approve next to Request revision; a non-reviewer manager sees Approve disabled with the reviewer-only reason', () => {
+  test('in_review: an admin who is not the assigned reviewer can still approve', () => {
     const options = computeTaskStageOptions({
       task: makeTask({ status: 'in_review', reviewer_id: 'rev-1' }),
       user: user('mgr-1', 'manager'),
       canManage: true,
     })
     const actions = options.map((item) => item.action)
-    expect(actions).toEqual(['approve', 'request_revision', 'complete'])
-    const approve = options.find((item) => item.action === 'approve')
-    expect(approve.enabled).toBe(false)
-    expect(approve.disabledReason).toBe('Only the assigned reviewer can approve this task.')
-    expect(options.find((item) => item.action === 'request_revision').enabled).toBe(true)
-    expect(options.find((item) => item.action === 'complete').enabled).toBe(false)
+    expect(actions).toEqual(['approve', 'request_revision'])
+    expect(options.find((item) => item.action === 'approve')).toMatchObject({ enabled: true, disabledReason: '' })
+    expect(options.find((item) => item.action === 'request_revision')).toMatchObject({ enabled: true, requirement: 'reason' })
+  })
+
+  test('in_review: an assignee (even a workflow manager) never gets the option to approve their own task', () => {
+    const options = computeTaskStageOptions({
+      task: makeTask({ status: 'in_review', assigned_to: 'mgr-1', reviewer_id: 'rev-1' }),
+      user: user('mgr-1', 'manager'),
+      canManage: true,
+    })
+    expect(options.some((item) => item.action === 'approve')).toBe(false)
+    // The assignee simply waits for the reviewer here.
+    expect(options.length).toBe(0)
   })
 
   test('approved task offers Complete to managers', () => {
@@ -177,15 +185,6 @@ describe('manager-only stage decisions', () => {
       canManage: true,
     })
     expect(options).toEqual([expect.objectContaining({ action: 'complete', label: 'Complete task', enabled: true })])
-  })
-
-  test('in_review task: Complete shows disabled until the task is approved', () => {
-    const options = computeTaskStageOptions({
-      task: makeTask({ status: 'in_review', reviewer_id: 'rev-1' }),
-      user: user('mgr-1', 'manager'),
-      canManage: true,
-    })
-    expect(options).toContainEqual(expect.objectContaining({ action: 'complete', enabled: false, disabledReason: 'The task must be approved before it can be completed.' }))
   })
 
   test('completed task offers Reopen to managers', () => {
