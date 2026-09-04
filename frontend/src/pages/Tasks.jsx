@@ -15,6 +15,7 @@ import { CreatableSelectField, EmptyState, SkeletonKanban } from '../components/
 import { QuickCreateDepartmentModal, QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import ViewToggle from '../components/layout/ViewToggle'
 import NaturalDateInput from '../components/tasks/NaturalDateInput'
+import TaskLifecyclePipeline from '../components/tasks/TaskLifecyclePipeline'
 import { useViewStore } from '../store/viewStore'
 import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary, isFollowUpTask } from './tasksData'
@@ -26,7 +27,6 @@ import {
   attentionCount,
   buildTaskQueryParams,
   emptyStateMessage,
-  tabCount,
 } from './tasksLifecycle'
 import { timeService } from '@/services/timeService';
 import { excludeCurrentUser } from '../utils/userFilters';
@@ -723,48 +723,16 @@ useEffect(() => {
 
   return (
     <div className="space-y-6 px-2 pt-1.5 pb-4 md:px-3 md:pt-2 md:pb-6">
-      {/* Lifecycle Stage Tabs - the page's primary tab bar, pinned above the
-          heading; each tab is a task stage and the content below shows only
-          that stage's tasks. Matches the app's canonical in-page tab bar. */}
-      <div
-        role="tablist"
-        aria-label="Task lifecycle stages"
-        className="flex items-center gap-0.5 rounded-xl border border-gray-200 bg-gray-100/80 px-1.5 py-1.5 shadow-sm dark:border-gray-700 dark:bg-gray-800/80"
-      >
-        {LIFECYCLE_TABS.map((tab) => {
-          const isActive = filters.status === tab.id && !attention
-          const count = tabCount(summary, tab.id)
-          return (
-            <button
-              key={tab.id || 'all'}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => handleLifecycleTabClick(tab.id)}
-              title={`Show ${tab.label}`}
-              className={`relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                isActive
-                  ? 'bg-white text-indigo-700 shadow-sm dark:bg-gray-900 dark:text-indigo-300'
-                  : 'text-gray-600 hover:bg-white/70 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/70 dark:hover:text-gray-200'
-              }`}
-            >
-              <span>{tab.label}</span>
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                  isActive
-                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300'
-                    : 'bg-gray-200/80 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                }`}
-              >
-                {count}
-              </span>
-              {isActive ? (
-                <span className="absolute inset-x-2 -bottom-1 h-0.5 rounded-full bg-indigo-500" />
-              ) : null}
-            </button>
-          )
-        })}
-      </div>
+      {/* Lifecycle Stage Pipeline - the page's primary stage bar, pinned above
+          the heading; each task stage renders as its own transparent node chip
+          with arrows between stages, and the content below shows only that
+          stage's tasks. */}
+      <TaskLifecyclePipeline
+        current={filters.status}
+        attentionActive={Boolean(attention)}
+        summary={summary}
+        onSelect={handleLifecycleTabClick}
+      />
 
       {/* Hero Section */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-600 via-rose-600 to-pink-600 p-3.5 text-white shadow-xl md:p-4">
