@@ -20,14 +20,28 @@ export const tasksAPI = {
     if (filters.reviewer_id) params.append('reviewer_id', filters.reviewer_id)
     if (filters.created_by) params.append('created_by', filters.created_by)
     if (filters.department_id) params.append('department_id', filters.department_id)
+    if (filters.project_id) params.append('project_id', filters.project_id)
     if (filters.review_required !== undefined) params.append('review_required', filters.review_required)
     if (filters.blocked !== undefined) params.append('blocked', filters.blocked)
+    if (filters.overdue !== undefined) params.append('overdue', filters.overdue)
+    if (filters.due_today !== undefined) params.append('due_today', filters.due_today)
+    if (filters.critical !== undefined) params.append('critical', filters.critical)
     if (filters.awaiting_review !== undefined) params.append('awaiting_review', filters.awaiting_review)
+    if (filters.exclude_follow_up !== undefined) params.append('exclude_follow_up', filters.exclude_follow_up)
+    if (filters.search) params.append('search', filters.search)
+    if (filters.due_from) params.append('due_from', filters.due_from)
+    if (filters.due_to) params.append('due_to', filters.due_to)
     if (filters.skip) params.append('skip', filters.skip)
     if (filters.limit) params.append('limit', filters.limit)
 
     const query = params.toString()
     const response = await api.get(query ? `/tasks/?${query}` : '/tasks/')
+    return response.data
+  },
+
+  // Global lifecycle + attention counts for the Tasks workspace (backend scoped)
+  getStatusSummary: async () => {
+    const response = await api.get('/tasks/status-summary')
     return response.data
   },
 

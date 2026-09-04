@@ -267,16 +267,16 @@ function EmployeeWorkOverview({ data }) {
 
       {/* Summary Cards */}
       <section className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <SummaryCard label="Overdue" value={summary.overdue || 0} icon={AlertTriangle} color="text-red-600" link="/tasks?status_filter=todo" />
-        <SummaryCard label="Critical" value={summary.critical || 0} icon={Flame} color="text-orange-600" link="/tasks?priority=critical" />
-        <SummaryCard label="Due Today" value={summary.due_today || 0} icon={Calendar} color="text-amber-600" />
-        <SummaryCard label="In Progress" value={summary.in_progress || 0} icon={Layers} color="text-blue-600" link="/tasks?status_filter=in_progress" />
+        <SummaryCard label="Overdue" value={summary.overdue || 0} icon={AlertTriangle} color="text-red-600" link="/tasks?attention=overdue" />
+        <SummaryCard label="Critical" value={summary.critical || 0} icon={Flame} color="text-orange-600" link="/tasks?attention=critical" />
+        <SummaryCard label="Due Today" value={summary.due_today || 0} icon={Calendar} color="text-amber-600" link="/tasks?attention=due_today" />
+        <SummaryCard label="In Progress" value={summary.in_progress || 0} icon={Layers} color="text-blue-600" link="/tasks?status=in_progress" />
       </section>
 
       <section className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <SummaryCard label="Revision Required" value={summary.revision_required || 0} icon={GitPullRequest} color="text-red-600" link="/tasks?status_filter=revision_required" />
-        <SummaryCard label="Waiting for Review" value={summary.waiting_for_review || 0} icon={Eye} color="text-yellow-600" link="/tasks?status_filter=in_review" />
-        <SummaryCard label="Blocked" value={summary.blocked || 0} icon={Lock} color="text-orange-600" />
+        <SummaryCard label="Revision Required" value={summary.revision_required || 0} icon={GitPullRequest} color="text-red-600" link="/tasks?status=revision_required" />
+        <SummaryCard label="Waiting for Review" value={summary.waiting_for_review || 0} icon={Eye} color="text-yellow-600" link="/tasks?status=in_review" />
+        <SummaryCard label="Blocked" value={summary.blocked || 0} icon={Lock} color="text-orange-600" link="/tasks?attention=blocked" />
         <SummaryCard label="Upcoming" value={summary.upcoming || 0} icon={CalendarClock} color="text-emerald-600" />
       </section>
 
@@ -334,7 +334,7 @@ function EmployeeWorkOverview({ data }) {
       {/* Reviews for You */}
       {data.reviews_for_me?.length > 0 && (
         <section>
-          <SectionHeader title="Reviews for You" count={data.reviews_for_me.length} viewAllLink="/tasks?status_filter=in_review" />
+          <SectionHeader title="Reviews for You" count={data.reviews_for_me.length} viewAllLink="/tasks?status=in_review" />
           <div className="space-y-2">
             {data.reviews_for_me.map((task) => (
               <TaskRow key={task.id} task={task} actionLabel="Review" actionHref={`/tasks/${task.id}`} />
@@ -367,14 +367,14 @@ function ManagerWorkOverview({ data }) {
       {/* Summary Cards */}
       <section className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <SummaryCard label="Active Work" value={summary.active || 0} icon={Layers} color="text-blue-600" link="/tasks" />
-        <SummaryCard label="Overdue" value={summary.overdue || 0} icon={AlertTriangle} color="text-red-600" link="/tasks?status_filter=todo" />
-        <SummaryCard label="Critical" value={summary.critical || 0} icon={Flame} color="text-orange-600" link="/tasks?priority=critical" />
-        <SummaryCard label="Due Today" value={summary.due_today || 0} icon={Calendar} color="text-amber-600" />
+        <SummaryCard label="Overdue" value={summary.overdue || 0} icon={AlertTriangle} color="text-red-600" link="/tasks?attention=overdue" />
+        <SummaryCard label="Critical" value={summary.critical || 0} icon={Flame} color="text-orange-600" link="/tasks?attention=critical" />
+        <SummaryCard label="Due Today" value={summary.due_today || 0} icon={Calendar} color="text-amber-600" link="/tasks?attention=due_today" />
       </section>
       <section className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <SummaryCard label="Blocked" value={summary.blocked || 0} icon={Lock} color="text-orange-600" />
+        <SummaryCard label="Blocked" value={summary.blocked || 0} icon={Lock} color="text-orange-600" link="/tasks?attention=blocked" />
         <SummaryCard label="Awaiting Review" value={summary.awaiting_review || 0} icon={Eye} color="text-yellow-600" />
-        <SummaryCard label="Revision Required" value={summary.revision_required || 0} icon={GitPullRequest} color="text-red-600" />
+        <SummaryCard label="Revision Required" value={summary.revision_required || 0} icon={GitPullRequest} color="text-red-600" link="/tasks?status=revision_required" />
         <SummaryCard label="At-Risk Projects" value={summary.at_risk_projects || 0} icon={TrendingUp} color="text-red-600" link="/projects" />
       </section>
 
@@ -393,7 +393,7 @@ function ManagerWorkOverview({ data }) {
       {/* My Review Queue */}
       {data.my_reviews?.length > 0 && (
         <section>
-          <SectionHeader title="My Review Queue" count={data.my_reviews.length} viewAllLink="/tasks?status_filter=in_review" />
+          <SectionHeader title="My Review Queue" count={data.my_reviews.length} viewAllLink="/tasks?status=in_review" />
           <div className="space-y-2">
             {data.my_reviews.map((task) => (
               <TaskRow key={task.id} task={task} actionLabel="Review" actionHref={`/tasks/${task.id}`} />
@@ -417,7 +417,7 @@ function ManagerWorkOverview({ data }) {
       {/* Overdue / Blocked */}
       {data.overdue_tasks?.length > 0 && (
         <section>
-          <SectionHeader title="Overdue Tasks" count={data.overdue_tasks.length} viewAllLink="/tasks?status_filter=todo" />
+          <SectionHeader title="Overdue Tasks" count={data.overdue_tasks.length} viewAllLink="/tasks?attention=overdue" />
           <div className="space-y-2">
             {data.overdue_tasks.map((task) => (
               <TaskRow key={task.id} task={task} actionLabel="Open" actionHref={`/tasks/${task.id}`} showAssignee />

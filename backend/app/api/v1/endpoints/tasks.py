@@ -4,10 +4,10 @@ Task Management Endpoints
 import inspect
 from fastapi import APIRouter, HTTPException, status, Depends, Form, BackgroundTasks
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 
-from app.models.task import Task, TaskExtensionRequest, TaskStatus, TaskPriority, TaskType
+from app.models.task import Task, TaskExtensionRequest, TaskHealthStatus, TaskStatus, TaskPriority, TaskType
 from app.models.scheduled_job import ScheduledJob, ScheduledJobActionType, ScheduledJobStatus
 from app.schemas.tasks import UpdateProductionProgressRequest, ProductionDashboardResponse, ProductionEmployeeMetric
 from app.models.department import Department
@@ -213,6 +213,140 @@ def build_task_list_query(
             {"created_by": str(current_user.id)},
         ]
     return query
+
+
+def _merge_query_parts(parts: list[Optional[dict]]) -> dict:
+    """Combine independent filter groups with implicit AND semantics.
+
+    A single part is returned as-is; multiple parts are wrapped in ``$and``
+    so lifecycle-status, attention, and advanced filters never overwrite one
+    another (e.g. ``status=in_progress`` combined with an overdue condition
+    that also references ``status``).
+    """
+    clean = [part for part in parts if part]
+    if not clean:
+        return {}
+    if len(clean) == 1:
+        return clean[0]
+    return {"$and": clean}
+
+
+def _task_overdue_query_condition() -> dict:
+    """Mongo condition matching the OVERDUE health semantics (UTC day).
+
+    Mirrors ``calculate_task_health``: not completed/cancelled, no approved
+    extension, and due before the current UTC day.
+    """
+    now = utc_now()
+    today = now.date()
+    start_of_today = datetime(today.year, today.month, today.day)
+    return {
+        "status": {"$nin": [TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value]},
+        "extension_count": {"$in": [None, 0]},
+        "due_date": {"$lt": start_of_today},
+    }
+
+
+def _task_due_today_query_condition() -> dict:
+    """Mongo condition matching the DUE_TODAY health semantics (UTC day)."""
+    now = utc_now()
+    today = now.date()
+    tomorrow = today + timedelta(days=1)
+    start_of_today = datetime(today.year, today.month, today.day)
+    start_of_tomorrow = datetime(tomorrow.year, tomorrow.month, tomorrow.day)
+    return {
+        "status": {"$nin": [TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value]},
+        "extension_count": {"$in": [None, 0]},
+        "due_date": {"$gte": start_of_today, "$lt": start_of_tomorrow},
+    }
+
+
+def _task_due_range_condition(due_from: Optional[str], due_to: Optional[str]) -> dict:
+    """Build a ``due_date`` range condition from inclusive date inputs.
+
+    Date-only values (``YYYY-MM-DD``) cover the whole local calendar day;
+    full ISO instants are used verbatim.
+    """
+    condition = {}
+    if due_from:
+        parsed_from = _parse_task_datetime(due_from, "due_from")
+        condition["$gte"] = parsed_from
+    if due_to:
+        parsed_to = _parse_task_datetime(due_to, "due_to")
+        if len(due_to) == 10:  # YYYY-MM-DD only -> include the whole day
+            parsed_to = parsed_to.replace(hour=23, minute=59, second=59, microsecond=999999)
+        condition["$lte"] = parsed_to
+    return {"due_date": condition}
+
+
+async def _collect_blocked_task_ids(tasks: list[Task]) -> set[str]:
+    """Return ids of tasks blocked by at least one incomplete dependency.
+
+    Dependency documents are fetched in a single query and matched with the
+    same company-guard semantics as ``task_workflow.blocking_dependencies``.
+    """
+    dependency_ids: set[str] = set()
+    for task in tasks:
+        for dependency_id in getattr(task, "dependencies", None) or []:
+            if dependency_id:
+                dependency_ids.add(str(dependency_id))
+    if not dependency_ids:
+        return set()
+    dependency_lookup_ids = []
+    for dependency_id in dependency_ids:
+        if ObjectId.is_valid(dependency_id):
+            dependency_lookup_ids.append(ObjectId(dependency_id))
+        else:
+            dependency_lookup_ids.append(dependency_id)
+    dependency_tasks = await Task.find({"_id": {"$in": dependency_lookup_ids}}).to_list()
+    dependency_status = {str(item.id): enum_or_string_value(item.status) for item in dependency_tasks}
+    dependency_company = {str(item.id): str(item.company_id) for item in dependency_tasks}
+    blocked_ids: set[str] = set()
+    for task in tasks:
+        for dependency_id in getattr(task, "dependencies", None) or []:
+            dep_status = dependency_status.get(str(dependency_id))
+            dep_company = dependency_company.get(str(dependency_id))
+            if dep_status is None or dep_company != str(task.company_id):
+                continue
+            if dep_status != TaskStatus.COMPLETED.value:
+                blocked_ids.add(str(task.id))
+                break
+    return blocked_ids
+
+
+def build_status_summary_counts(tasks, *, blocked_task_ids=frozenset()) -> dict:
+    """Compute global Task lifecycle + attention counts for a task collection.
+
+    ``tasks`` must already be scoped by company/RBAC (callers reuse
+    ``build_task_list_query``) and health-synced. ``blocked_task_ids`` is the
+    precomputed set of ids blocked by incomplete dependencies.
+    """
+    counts = {s.value: 0 for s in TaskStatus}
+    blocked = 0
+    overdue = 0
+    due_today = 0
+    critical = 0
+    for task in tasks:
+        status = enum_or_string_value(task.status)
+        if status in counts:
+            counts[status] += 1
+        if enum_or_string_value(task.priority) == TaskPriority.CRITICAL.value:
+            critical += 1
+        health = enum_or_string_value(getattr(task, "health_status", None))
+        if health == TaskHealthStatus.OVERDUE.value:
+            overdue += 1
+        elif health == TaskHealthStatus.DUE_TODAY.value:
+            due_today += 1
+        if str(task.id) in blocked_task_ids:
+            blocked += 1
+    return {
+        "all": len(tasks),
+        **counts,
+        "blocked": blocked,
+        "overdue": overdue,
+        "due_today": due_today,
+        "critical": critical,
+    }
 
 
 def can_update_task_field(current_user: User, task: Task, field_name: str) -> bool:
@@ -580,32 +714,49 @@ async def list_tasks(
     review_required: Optional[bool] = None,
     blocked: Optional[bool] = None,
     awaiting_review: Optional[bool] = None,
+    overdue: Optional[bool] = None,
+    due_today: Optional[bool] = None,
+    critical: Optional[bool] = None,
+    search: Optional[str] = None,
+    due_from: Optional[str] = None,
+    due_to: Optional[str] = None,
+    exclude_follow_up: Optional[bool] = None,
     pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user)
 ):
-    """List tasks with filters"""
+    """List tasks with filters.
+
+    Filtering order: company/RBAC scope -> lifecycle status -> attention
+    condition (blocked/overdue/due_today/critical) -> advanced filters ->
+    search -> sort -> pagination. Attention conditions stay separate from
+    TaskStatus: a task can be ``status=in_progress`` AND ``blocked=true`` AND
+    ``health=overdue`` at the same time.
+    """
     skip, limit = pagination.skip, pagination.limit
     scope_ids = await _get_user_scope_ids(current_user) if current_user.role == UserRole.LEAD else None
-    query = build_task_list_query(current_user, scope_ids=scope_ids)
+    query_parts: list[Optional[dict]] = [build_task_list_query(current_user, scope_ids=scope_ids)]
 
     if status_filter:
-        query["status"] = status_filter
+        query_parts.append({"status": status_filter})
+    # Attention conditions are not lifecycle statuses.
+    if critical:
+        query_parts.append({"priority": TaskPriority.CRITICAL.value})
+    if overdue:
+        query_parts.append(_task_overdue_query_condition())
+    if due_today:
+        query_parts.append(_task_due_today_query_condition())
     if priority:
-        query["priority"] = priority
+        query_parts.append({"priority": priority})
     if assigned_to and current_user.role != UserRole.EMPLOYEE:
-        if "$or" in query:
-            scoped_or = query.pop("$or")
-            query["$and"] = [{"$or": scoped_or}, {"assigned_to": assigned_to}]
-        else:
-            query["assigned_to"] = assigned_to
+        query_parts.append({"assigned_to": assigned_to})
     if created_by:
-        query["created_by"] = created_by
+        query_parts.append({"created_by": created_by})
     if reviewer_id:
-        query["reviewer_id"] = reviewer_id
+        query_parts.append({"reviewer_id": reviewer_id})
     if review_required is not None:
-        query["review_required"] = review_required
+        query_parts.append({"review_required": review_required})
     if awaiting_review:
-        query["status"] = TaskStatus.IN_REVIEW
+        query_parts.append({"status": TaskStatus.IN_REVIEW.value})
     if project_id:
         # Filter by project_id - only return tasks that have this specific project_id
         # Simple equality check - MongoDB will only match documents where project_id equals this value
@@ -613,22 +764,42 @@ async def list_tasks(
         if current_user.role == UserRole.EMPLOYEE:
             project = await load_project_for_permission(project_id, current_user)
             if has_project_permission(current_user, project, ProjectPermission.MANAGE_TASK):
-                query.pop("assigned_to", None)
-        query["project_id"] = project_id
+                query_parts[0].pop("assigned_to", None)
+        query_parts.append({"project_id": project_id})
     if department_id:
-        query["department_id"] = department_id
+        query_parts.append({"department_id": department_id})
+    if exclude_follow_up:
+        query_parts.append({"source_type": {"$ne": "sales_follow_up"}})
+    if due_from or due_to:
+        query_parts.append(_task_due_range_condition(due_from, due_to))
+    if search and search.strip():
+        query_parts.append({"$text": {"$search": search.strip()}})
 
-    tasks = await Task.find(query).skip(skip).limit(limit).sort("-created_at").to_list()
-    for task in tasks:
-        await sync_task_health(task)
+    query = _merge_query_parts(query_parts)
+
     if blocked is not None:
-        filtered = []
+        # Dependency-blocked tasks cannot be expressed as a plain field filter;
+        # resolve them against the full (unpaginated) candidate set so the
+        # ``total`` and pagination stay correct for the active filters.
+        # For ``blocked=True`` only tasks that declare dependencies can be
+        # blocked; for ``blocked=False`` every scoped task is a candidate.
+        candidate_query = query
+        if blocked:
+            candidate_query = {
+                **query,
+                "dependencies": {"$exists": True, "$ne": []},
+            }
+        blocked_candidates = await Task.find(candidate_query).sort("-created_at").to_list()
+        for task in blocked_candidates:
+            await sync_task_health(task)
+        matched = [task for task in blocked_candidates if bool(await blocking_dependencies(task)) == blocked]
+        total = len(matched)
+        tasks = matched[skip:skip + limit]
+    else:
+        tasks = await Task.find(query).skip(skip).limit(limit).sort("-created_at").to_list()
         for task in tasks:
-            is_blocked = bool(await blocking_dependencies(task))
-            if is_blocked == blocked:
-                filtered.append(task)
-        tasks = filtered
-    total = await Task.find(query).count()
+            await sync_task_health(task)
+        total = await Task.find(query).count()
     scheduled_task_placeholders = []
     if current_user.company_id and (not status_filter or status_filter == "scheduled") and not created_by:
         scheduled_query = {
@@ -862,6 +1033,28 @@ async def get_production_dashboard(
         team_total_remaining=team_remaining,
         team_completion_percentage=team_pct,
     )
+
+
+@router.get("/status-summary")
+async def task_status_summary(current_user: User = Depends(get_current_user)):
+    """Global Task lifecycle + attention counts for the Tasks workspace.
+
+    Counts apply the SAME company isolation, RBAC, manager/team/project scope,
+    and employee visibility as the Task list (``build_task_list_query``), so
+    Company A counts never include Company B tasks and employees only see their
+    accessible tasks. Follow-up items (sales follow-ups) are excluded to match
+    the Tasks page view; Scheduled placeholders are not Task documents and are
+    naturally absent. ``blocked`` counts tasks with at least one incomplete
+    dependency and is independent of ``status``/``health_status``.
+    """
+    scope_ids = await _get_user_scope_ids(current_user) if current_user.role == UserRole.LEAD else None
+    query = build_task_list_query(current_user, scope_ids=scope_ids)
+    query["source_type"] = {"$ne": "sales_follow_up"}
+    tasks = await Task.find(query).to_list()
+    for task in tasks:
+        await sync_task_health(task)
+    blocked_ids = await _collect_blocked_task_ids(tasks)
+    return build_status_summary_counts(tasks, blocked_task_ids=blocked_ids)
 
 
 @router.get("/{task_id}/health")
