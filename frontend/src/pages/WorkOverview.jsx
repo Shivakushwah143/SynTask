@@ -247,6 +247,7 @@ function WorkloadRow({ member }) {
 
 function EmployeeWorkOverview({ data }) {
   const summary = data.summary || {}
+  const needsAttentionTasks = data.needs_attention || []
   const greeting = useMemo(() => {
     const hour = new Date().getHours()
     if (hour < 12) return 'Good Morning'
@@ -280,73 +281,79 @@ function EmployeeWorkOverview({ data }) {
         <SummaryCard label="Upcoming" value={summary.upcoming || 0} icon={CalendarClock} color="text-emerald-600" />
       </section>
 
-      {/* Today's Tasks - assigned today */}
-      {(data.assigned_today || data.today)?.length > 0 && (
-        <section>
-          <SectionHeader title="Today's Tasks" count={(data.assigned_today || data.today).length} />
-          <div className="space-y-2">
-            {(data.assigned_today || data.today).map((task) => (
-              <TaskRow key={task.id} task={task} actionLabel="Open" actionHref={`/tasks/${task.id}`} />
-            ))}
-          </div>
-        </section>
-      )}
+      {/* Main column keeps the current top-to-bottom sequence: Today's Tasks,
+          Upcoming, Next Action, Waiting/Blocked, Reviews for You. */}
+      <div className={needsAttentionTasks.length > 0 ? 'grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]' : ''}>
+        <div className="min-w-0 space-y-5">
+          {/* Today's Tasks - assigned today */}
+          {(data.assigned_today || data.today)?.length > 0 && (
+            <section>
+              <SectionHeader title="Today's Tasks" count={(data.assigned_today || data.today).length} />
+              <div className="space-y-2">
+                {(data.assigned_today || data.today).map((task) => (
+                  <TaskRow key={task.id} task={task} actionLabel="Open" actionHref={`/tasks/${task.id}`} />
+                ))}
+              </div>
+            </section>
+          )}
 
-      {/* Upcoming deadlines - due in the next 7 days */}
-      {data.upcoming?.length > 0 && (
-        <section>
-          <SectionHeader title="Upcoming Deadlines" count={data.upcoming.length} />
-          <div className="space-y-2">
-            {data.upcoming.map((task) => (
-              <TaskRow key={task.id} task={task} actionLabel="Open" actionHref={`/tasks/${task.id}`} />
-            ))}
-          </div>
-        </section>
-      )}
+          {/* Upcoming deadlines - due in the next 7 days */}
+          {data.upcoming?.length > 0 && (
+            <section>
+              <SectionHeader title="Upcoming Deadlines" count={data.upcoming.length} />
+              <div className="space-y-2">
+                {data.upcoming.map((task) => (
+                  <TaskRow key={task.id} task={task} actionLabel="Open" actionHref={`/tasks/${task.id}`} />
+                ))}
+              </div>
+            </section>
+          )}
 
-      {/* Next Action */}
-      <NextActionCard nextAction={data.next_action} />
+          {/* Next Action */}
+          <NextActionCard nextAction={data.next_action} />
 
-      {/* Needs Attention */}
-      {data.needs_attention?.length > 0 && (
-        <section>
-          <SectionHeader title="Needs Attention" count={data.needs_attention.length} />
-          <div className="space-y-2">
-            {data.needs_attention.map((task) => (
-              <TaskRow key={task.id} task={task} actionLabel="Open" actionHref={`/tasks/${task.id}`} />
-            ))}
-          </div>
-        </section>
-      )}
+          {/* Waiting / Blocked */}
+          {data.waiting_for_review?.length > 0 && (
+            <section>
+              <SectionHeader title="Waiting / Blocked" count={data.waiting_for_review.length} />
+              <div className="space-y-2">
+                {data.waiting_for_review.map((task) => (
+                  <TaskRow key={task.id} task={task} actionLabel="View" actionHref={`/tasks/${task.id}`} />
+                ))}
+              </div>
+            </section>
+          )}
 
-      {/* Waiting / Blocked */}
-      {data.waiting_for_review?.length > 0 && (
-        <section>
-          <SectionHeader title="Waiting / Blocked" count={data.waiting_for_review.length} />
-          <div className="space-y-2">
-            {data.waiting_for_review.map((task) => (
-              <TaskRow key={task.id} task={task} actionLabel="View" actionHref={`/tasks/${task.id}`} />
-            ))}
-          </div>
-        </section>
-      )}
+          {/* Reviews for You */}
+          {data.reviews_for_me?.length > 0 && (
+            <section>
+              <SectionHeader title="Reviews for You" count={data.reviews_for_me.length} viewAllLink="/tasks?status=in_review" />
+              <div className="space-y-2">
+                {data.reviews_for_me.map((task) => (
+                  <TaskRow key={task.id} task={task} actionLabel="Review" actionHref={`/tasks/${task.id}`} />
+                ))}
+              </div>
+            </section>
+          )}
 
-      {/* Reviews for You */}
-      {data.reviews_for_me?.length > 0 && (
-        <section>
-          <SectionHeader title="Reviews for You" count={data.reviews_for_me.length} viewAllLink="/tasks?status=in_review" />
-          <div className="space-y-2">
-            {data.reviews_for_me.map((task) => (
-              <TaskRow key={task.id} task={task} actionLabel="Review" actionHref={`/tasks/${task.id}`} />
-            ))}
-          </div>
-        </section>
-      )}
+          {/* Empty State */}
+          {!data.next_action && (!(data.assigned_today || data.today)?.length) && (
+            <EmptyState message="You&apos;re clear for now. Check upcoming work or take a break." />
+          )}
+        </div>
 
-      {/* Empty State */}
-      {!data.next_action && (!data.needs_attention?.length) && (!(data.assigned_today || data.today)?.length) && (
-        <EmptyState message="You&apos;re clear for now. Check upcoming work or take a break." />
-      )}
+        {/* Needs Attention - compact right side panel */}
+        {needsAttentionTasks.length > 0 && (
+          <aside className="min-w-0 rounded-xl border border-red-200/70 bg-white/70 p-3 shadow-sm dark:border-red-900/40 dark:bg-gray-900/60 lg:sticky lg:top-4">
+            <SectionHeader title="Needs Attention" count={needsAttentionTasks.length} />
+            <div className="max-h-[440px] space-y-2 overflow-y-auto pr-1">
+              {needsAttentionTasks.map((task) => (
+                <TaskRow key={task.id} task={task} />
+              ))}
+            </div>
+          </aside>
+        )}
+      </div>
     </div>
   )
 }
