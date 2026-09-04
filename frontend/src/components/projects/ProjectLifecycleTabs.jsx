@@ -11,22 +11,18 @@ const PROJECT_HEALTH_STYLES = {
   healthy: {
     dotClass: 'bg-emerald-500',
     activeClass: 'border-emerald-600 bg-emerald-600 text-white shadow-sm dark:border-emerald-500 dark:bg-emerald-600',
-    idleClass: 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/70 dark:bg-emerald-950/40 dark:text-emerald-300',
   },
   needs_attention: {
     dotClass: 'bg-amber-500',
     activeClass: 'border-amber-500 bg-amber-500 text-white shadow-sm dark:border-amber-500 dark:bg-amber-500',
-    idleClass: 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-300',
   },
   at_risk: {
     dotClass: 'bg-red-500',
     activeClass: 'border-red-500 bg-red-600 text-white shadow-sm dark:border-red-500 dark:bg-red-600',
-    idleClass: 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-800/70 dark:bg-red-950/40 dark:text-red-300',
   },
   needs_setup: {
     dotClass: 'bg-slate-400',
     activeClass: 'border-slate-500 bg-slate-600 text-white shadow-sm dark:border-slate-500 dark:bg-slate-600',
-    idleClass: 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300',
   },
 }
 
@@ -121,7 +117,10 @@ export default function ProjectLifecycleTabs({
         ))}
       </div>
 
-      {/* Health / Needs Setup quick filters - independent from lifecycle. */}
+      {/* Health / Needs Setup quick filters - independent from lifecycle.
+          Styled as fully-rounded pill tags with a visible border so they read
+          as secondary quick filters, distinct from the squarer (rounded-lg)
+          lifecycle stage chips with arrows above. */}
       <div className="flex flex-wrap items-center gap-1.5">
         {PROJECT_HEALTH_FILTERS.map((filter) => {
           const isActive = filter.kind === 'health'
@@ -135,13 +134,17 @@ export default function ProjectLifecycleTabs({
               type="button"
               onClick={() => onSelectHealth?.(filter)}
               title={filter.kind === 'attention' ? 'Projects without an execution plan yet' : `Filter by ${filter.label} health`}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all ${
-                isActive ? styles.activeClass : styles.idleClass
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all ${
+                isActive
+                  ? styles.activeClass
+                  : 'border-gray-200/80 bg-white/40 text-gray-600 hover:border-gray-300 hover:bg-white/70 hover:text-gray-900 dark:border-gray-600/50 dark:bg-gray-900/30 dark:text-gray-300 dark:hover:border-gray-500 dark:hover:bg-gray-800/70 dark:hover:text-gray-100'
               }`}
             >
-              <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-white/90' : styles.dotClass}`} />
+              <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? 'bg-white/90' : styles.dotClass}`} />
               <span>{filter.label}</span>
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${isActive ? 'bg-white/25 text-white' : 'bg-white/70 text-gray-600 dark:bg-gray-800/70 dark:text-gray-300'}`}>
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                isActive ? 'bg-white/25 text-white' : 'bg-transparent text-gray-400 dark:text-gray-500'
+              }`}>
                 {count}
               </span>
             </button>
