@@ -71,6 +71,7 @@ docs/                    Testing guide and diagrams
 - Sales CRM for categories, products, contacts, prospects, stage-specific pipeline pages, masters, and reports
 - Super-admin tenant, usage, plans, and billing management
 - **HRMS (Human Resource Management System):** Employee profiles, HR documents, leave management (configurable types + balances), attendance with policy engine + corrections, versioned salary structures, payroll processing, payslip PDF generation, employee self-service (My HR), employee lifecycle management (confirmation/promotion/transfer/resignation/exit), HR dashboard with real metrics, and HR reports with role-based access control
+- **Executive Operations Agent (`/executive-assistant`):** a company-wide command-center chat backed by the Executive Agent. Streamed operational states, structured answer cards (KPIs, tables, risk items, summaries) instead of raw Markdown, capability chips, expandable "Sources checked" evidence, and contextual follow-up actions. See the [Executive Assistant user flow](docs/user-flows/executive-assistant.md).
 
 ## User Roles
 | Role | Scope | Can Create |
@@ -107,6 +108,7 @@ For detailed implementation status, see [docs/HRMS_FINAL_READINESS_REPORT.md](do
 - [Documentation Index](docs/DOCUMENTATION_INDEX.md)
 - [Product Requirements](docs/product/PRD.md)
 - [SOP Library User Flow](docs/user-flows/sop-library.md)
+- [Executive Assistant User Flow](docs/user-flows/executive-assistant.md)
 - [Global Time ADR](docs/architecture/decisions/2026-07-19-global-time-service.md)
 - [Detailed Architecture](docs/architecture/DETAILED_ARCHITECTURE.md)
 - [Non-Functional Requirements](docs/architecture/NON_FUNCTIONAL_REQUIREMENTS.md)

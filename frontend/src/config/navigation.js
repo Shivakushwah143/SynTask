@@ -49,6 +49,7 @@ import {
   UserRoundSearch,
   Users,
   Globe,
+  Command,
 } from "lucide-react";
 import { ROLE, isManagerRole, isSuperAdminRole, normalizeRole } from "../utils/roles";
 import { hasModuleAccess as hasModuleAccessFromRbac } from "../utils/rbac";
@@ -208,6 +209,7 @@ export const navigation = [
 
   // AI Workspace — /ai-hub and /marketing-support are gated by ai_agents on the backend.
   { name: "AI Assistant", href: "/ai-hub", icon: Bot, roles: STANDARD_ROLES, module: "ai_assistant" },
+  { name: "Executive Operations", href: "/executive-assistant", icon: Command, roles: STANDARD_ROLES },
   { name: "AI Content Assistant", href: "/marketing-support", icon: Headphones, roles: STANDARD_ROLES, module: "ai_content_assistant" },
 
   // People

@@ -63,6 +63,7 @@ const ContentCalendar = lazy(() => import('./pages/ContentCalendar'))
 const Timesheet = lazy(() => import('./pages/Timesheet'))
 const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
+const ExecutiveAssistant = lazy(() => import('./pages/ExecutiveAssistant'))
 const AIHub = lazy(() => import('./pages/AIHub'))
 const CreativeDirector = lazy(() => import('./pages/CreativeDirector'))
 const MarketingChat = lazy(() => import('./pages/MarketingChat'))
@@ -341,6 +342,7 @@ function App() {
         <Route path="notifications" element={withBoundary(<Notifications />)} />
         <Route path="scheduled-jobs" element={<ModuleGuard module="scheduled_work">{withBoundary(<ScheduledJobs />)}</ModuleGuard>} />
         <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
+        <Route path="executive-assistant" element={withBoundary(<ExecutiveAssistant />)} />
         <Route path="ai-hub" element={<ModuleGuard module="ai_assistant">{withBoundary(<AIHub />)}</ModuleGuard>} />
         <Route path="creative-director" element={<ModuleGuard module="ai_content_assistant">{withBoundary(<CreativeDirector />)}</ModuleGuard>} />
         <Route path="marketing-support" element={<ModuleGuard module="ai_content_assistant">{withBoundary(<MarketingChat />)}</ModuleGuard>} />

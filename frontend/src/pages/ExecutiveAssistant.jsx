@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
-  BarChart3,
   Bot,
   Building2,
   CalendarClock,
@@ -26,7 +25,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react'
-import { aiAPI, streamExecutiveChat } from '../api/ai'
+import { streamExecutiveChat } from '../api/ai'
 import AnswerBlocks, { friendlyToolLabel } from '../components/ai/AnswerBlocks'
 import MarkdownText from '../components/ai/MarkdownText'
 import { Badge, Button, PageHeader } from '../components/ui'
@@ -117,7 +116,6 @@ export default function ExecutiveAssistant() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
-  const [streamPhase, setStreamPhase] = useState('accepted')
   const [error, setError] = useState('')
   const [conversationId, setConversationId] = useState('')
   const [sessionId, setSessionId] = useState('')
@@ -153,7 +151,6 @@ export default function ExecutiveAssistant() {
     setError('')
     setInput('')
     setIsStreaming(true)
-    setStreamPhase('accepted')
 
     const assistantId = `assistant-${Date.now()}`
     setMessages((current) => [
@@ -174,9 +171,7 @@ export default function ExecutiveAssistant() {
       },
       {
         onStatus: (event) => {
-          const phase = event.phase || 'tools'
-          updateStreamingMessage((item) => ({ ...item, phase }))
-          setStreamPhase(phase)
+          updateStreamingMessage((item) => ({ ...item, phase: event.phase || 'tools' }))
         },
         onToken: (text) => {
           updateStreamingMessage((item) => ({ ...item, content: item.content + text }))
