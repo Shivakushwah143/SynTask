@@ -145,19 +145,24 @@ class AutomationEngine:
     
     @staticmethod
     async def _assign_task(action: Dict[str, Any], trigger_data: Dict[str, Any]):
-        """Assign task to a user"""
+        """Assign task to a user through the unified authoritative assign_task service."""
         task_id = trigger_data.get("entity_id")
         assignee_id = action.get("assignee_id")
-        
+
         if not task_id or not assignee_id:
             return
-        
-        task = await Task.get(task_id)
-        if task:
-            task.assigned_to = assignee_id
-            task.assigned_by = trigger_data.get("user_id")
-            task.updated_at = utc_now()
-            await task.save()
+
+        actor_id = trigger_data.get("user_id")
+        actor = await User.get(actor_id) if actor_id else None
+        if not actor:
+            raise ValueError("Automation assignment requires the triggering user")
+
+        from app.services.task_workflow import assign_task
+        await assign_task(
+            task_id=task_id,
+            assignee_id=assignee_id,
+            actor=actor,
+        )
     
     @staticmethod
     async def _change_status(action: Dict[str, Any], trigger_data: Dict[str, Any]):

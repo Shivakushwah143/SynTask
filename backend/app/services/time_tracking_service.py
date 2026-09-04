@@ -68,7 +68,7 @@ async def _load_task_for_time(task_id: str, actor: User) -> tuple[Task, Optional
     task = await Task.get(task_id)
     if not task or str(task.company_id) != str(actor.company_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-    project = await load_task_project(task)
+    project = await load_task_project(task, actor)
     if project and str(project.company_id) != str(actor.company_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     return task, project
@@ -161,20 +161,48 @@ async def resume_timer(actor: User) -> ActiveTimeSession:
 
 async def stop_timer(actor: User, description: Optional[str] = None) -> TimeLog:
     now = utc_now()
-    session = await ActiveTimeSession.find_one(
+
+    # Atomically claim the session via motor's find_one_and_update.
+    # Concurrent stop_timer calls race here; only one wins.
+    from pymongo import ReturnDocument
+    raw = await ActiveTimeSession.get_pymongo_collection().find_one_and_update(
         {
             "company_id": actor.company_id,
             "user_id": str(actor.id),
             "status": {"$in": [ActiveTimeSessionStatus.RUNNING.value, ActiveTimeSessionStatus.PAUSED.value]},
-        }
-    ).find_one_and_update(
-        {"$set": {"status": "stopping", "updated_at": now}}
+        },
+        {
+            "$set": {
+                "status": ActiveTimeSessionStatus.STOPPING.value,
+                "updated_at": now.isoformat(),
+                "finalized": False,
+            }
+        },
+        return_document=ReturnDocument.AFTER,
     )
-    if not session:
+    if not raw:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active timer found.")
-    seconds = elapsed_seconds(session)
+    session = ActiveTimeSession.model_validate(raw)
+
+    # Compute elapsed from last_resumed_at regardless of status, since find_one_and_update
+    # already atomically set status to STOPPING.
+    seconds = int(session.accumulated_seconds or 0)
+    if session.last_resumed_at:
+        seconds += max(0, int((now - parse_to_utc(session.last_resumed_at)).total_seconds()))
     if seconds <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Timer duration must be positive.")
+
+    # Idempotency: if a TimeLog already exists for this session, return it.
+    session_id = str(session.id)
+    existing_log = await TimeLog.find_one({
+        "timer_session_id": session_id,
+        "company_id": session.company_id,
+    })
+    if existing_log:
+        session.finalized = True
+        await session.save()
+        await session.delete()
+        return existing_log
 
     hours = round(seconds / 3600.0, 4)
     time_log = TimeLog(
@@ -188,6 +216,7 @@ async def stop_timer(actor: User, description: Optional[str] = None) -> TimeLog:
         started_at=session.started_at,
         ended_at=now,
         source=TimeLogSource.TIMER,
+        timer_session_id=str(session.id),
         project_id=session.project_id,
         client_id=session.client_id,
         description=description,
@@ -196,8 +225,90 @@ async def stop_timer(actor: User, description: Optional[str] = None) -> TimeLog:
     )
     await time_log.insert()
     await _update_summary_and_task(time_log, hours)
+    session.finalized = True
+    await session.save()
     await session.delete()
     return time_log
+
+
+async def recover_stopped_timer(session: ActiveTimeSession, description: Optional[str] = None) -> TimeLog:
+    """Recover a timer stuck in STOPPING state by creating its TimeLog.
+
+    Called when a previous ``stop_timer`` failed after setting the session to
+    STOPPING but before completing the TimeLog creation.  Uses an idempotent
+    check so repeated recovery calls never create duplicate TimeLogs.
+    """
+    now = utc_now()
+
+    # Idempotency: if a TimeLog already exists for this session, do not duplicate.
+    session_id = str(session.id)
+    existing_log = await TimeLog.find_one({
+        "timer_session_id": session_id,
+        "company_id": session.company_id,
+    })
+    if not existing_log:
+        # Fallback: check by task + started_at + source for crash-recovery where session ID may differ.
+        existing_log = await TimeLog.find_one({
+            "task_id": session.task_id,
+            "company_id": session.company_id,
+            "started_at": session.started_at,
+            "source": TimeLogSource.TIMER,
+        })
+    if existing_log:
+        await session.delete()
+        return existing_log
+
+    seconds = elapsed_seconds(session)
+    if seconds <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Timer duration must be positive.")
+
+    hours = round(seconds / 3600.0, 4)
+    time_log = TimeLog(
+        task_id=session.task_id,
+        company_id=session.company_id,
+        user_id=session.user_id,
+        user_name=session.user_id,  # actor name unavailable during recovery
+        hours=hours,
+        minutes=round((seconds % 3600) / 60),
+        date=now,
+        started_at=session.started_at,
+        ended_at=now,
+        source=TimeLogSource.TIMER,
+        timer_session_id=session_id,
+        project_id=session.project_id,
+        client_id=session.client_id,
+        description=description,
+        created_by=session.user_id,
+        updated_by=session.user_id,
+    )
+    await time_log.insert()
+    await _update_summary_and_task(time_log, hours)
+    session.finalized = True
+    await session.save()
+    await session.delete()
+    return time_log
+
+
+async def recover_stale_stopping_timers() -> None:
+    """Recover timer sessions stuck in STOPPING state.
+
+    Runs once at startup. Finds any sessions left in STOPPING that were not
+    finalized within a reasonable grace period and calls ``recover_stopped_timer``
+    to create the missing TimeLog and clean up the session.
+    """
+    from datetime import timedelta
+    grace = utc_now() - timedelta(minutes=5)
+    stuck = await ActiveTimeSession.find({
+        "status": ActiveTimeSessionStatus.STOPPING.value,
+        "finalized": False,
+        "updated_at": {"$lt": grace},
+    }).to_list()
+    for session in stuck:
+        try:
+            await recover_stopped_timer(session)
+            logger.info(f"Recovered stuck timer session {session.id} for user {session.user_id}")
+        except Exception as exc:
+            logger.error(f"Failed to recover timer session {session.id}: {exc}")
 
 
 async def create_manual_time_log(

@@ -1,63 +1,36 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from 'react-query'
-import { AlertTriangle, Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo, RefreshCcw, LayoutGrid, Clock, Zap, Target, Award, TrendingUp, Activity, BarChart3, X, Pencil, Trash2, Timer, ChevronRight } from 'lucide-react'
+import { AlertTriangle, Plus, Calendar, User, Search, Filter, CheckCircle2, ListTodo, RefreshCcw, LayoutGrid, Clock, Lock, Eye, Activity, X, Pencil, Trash2, Timer } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { scheduledJobsAPI } from '../api/scheduledJobs'
 import { invalidateWorkspaceCalendar } from '../api/calendar'
 import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
+import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
-import { format } from 'date-fns'
+
 import { CreatableSelectField, EmptyState, SkeletonKanban } from '../components/ui'
 import { QuickCreateDepartmentModal, QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import ViewToggle from '../components/layout/ViewToggle'
 import NaturalDateInput from '../components/tasks/NaturalDateInput'
-import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
+import TaskLifecyclePipeline from '../components/tasks/TaskLifecyclePipeline'
 import { useViewStore } from '../store/viewStore'
 import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
-import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary, buildTaskStatusBreakdown, isFollowUpTask } from './tasksData'
+import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary, isFollowUpTask } from './tasksData'
 import { readTaskRouteState, writeTaskRouteState } from './tasksRouteState'
+import {
+  ATTENTION_FILTERS,
+  BOARD_STATUSES,
+  LIFECYCLE_TABS,
+  attentionCount,
+  buildTaskQueryParams,
+  emptyStateMessage,
+} from './tasksLifecycle'
 import { timeService } from '@/services/timeService';
 import { excludeCurrentUser } from '../utils/userFilters';
 import { estimateWorkingHoursUntil } from '../utils/workingHours';
-
-// Stat Card Component
-const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
-  const colors = {
-    indigo: 'from-indigo-500 to-purple-500',
-    emerald: 'from-emerald-500 to-teal-500',
-    amber: 'from-amber-500 to-orange-500',
-    rose: 'from-rose-500 to-pink-500',
-    blue: 'from-blue-500 to-cyan-500',
-    teal: 'from-teal-500 to-cyan-500',
-  }
-
-  return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-center gap-3">
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
-          <Icon className="h-4 w-4" />
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
-          <p className="truncate text-lg font-bold text-gray-900 dark:text-white">{value}</p>
-          {subtitle && <p className="truncate text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Visual styles for each workflow stage in the Tasks by Stage overview card.
-const TASK_STAGE_STYLES = {
-  scheduled: { bar: 'bg-amber-500', text: 'text-amber-700 dark:text-amber-300' },
-  todo: { bar: 'bg-gray-500', text: 'text-gray-700 dark:text-gray-300' },
-  in_progress: { bar: 'bg-blue-500', text: 'text-blue-700 dark:text-blue-300' },
-  in_review: { bar: 'bg-yellow-500', text: 'text-yellow-700 dark:text-yellow-300' },
-  completed: { bar: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300' },
-}
 
 const isScheduledTask = (task) => Boolean(task?.is_scheduled_placeholder)
 
@@ -169,13 +142,22 @@ const Tasks = () => {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const routeState = useMemo(() => readTaskRouteState(searchParams), [searchParams])
+  // Holds the URL whose query state has already been applied to component
+  // state. Write effects skip while an external navigation (Back/Forward/deep
+  // link) is in flight so they never rewrite the incoming URL with stale state
+  // and the address bar flickers. Synced by an effect declared after the write
+  // effects, so an in-flight URL change is visible to them.
+  const appliedUrlRef = useRef(searchParams.toString())
   const [searchQuery, setSearchQuery] = useState(routeState.searchQuery)
+  const [attention, setAttention] = useState(routeState.attention)
+  const [summary, setSummary] = useState(null)
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState({
     status: routeState.filters.status || '',
-    priority: '',
-    assigned_to: '',
-    department_id: '',
+    priority: routeState.filters.priority || '',
+    assigned_to: routeState.filters.assigned_to || '',
+    department_id: routeState.filters.department_id || '',
+    project_id: routeState.filters.project_id || '',
     due_from: routeState.filters.due_from || '',
     due_to: routeState.filters.due_to || '',
   })
@@ -183,6 +165,8 @@ const Tasks = () => {
   const [loadingUsers, setLoadingUsers] = useState(false)
   const [departments, setDepartments] = useState([])
   const [loadingDepartments, setLoadingDepartments] = useState(false)
+  const [projects, setProjects] = useState([])
+  const [loadingProjects, setLoadingProjects] = useState(false)
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
   const [selectedAssigneeId, setSelectedAssigneeId] = useState('')
   const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
@@ -230,14 +214,6 @@ useEffect(() => {
   }
 }, [dueDateValue]);
 
-  const statuses = [
-    { id: 'scheduled', label: 'Scheduled', color: 'bg-amber-100' },
-    { id: 'todo', label: 'To Do', color: 'bg-gray-100' },
-    { id: 'in_progress', label: 'In Progress', color: 'bg-blue-100' },
-    { id: 'in_review', label: 'Review', color: 'bg-yellow-100' },
-    { id: 'completed', label: 'Completed', color: 'bg-green-100' },
-  ]
-
   const priorities = {
     low: { label: 'Low', color: 'badge-secondary' },
     medium: { label: 'Medium', color: 'badge-primary' },
@@ -249,33 +225,45 @@ useEffect(() => {
 
   useEffect(() => {
     setSearchQuery(routeState.searchQuery)
+    setAttention(routeState.attention)
     setFilters((current) => ({
       ...current,
       status: routeState.filters.status || '',
       priority: routeState.filters.priority || '',
       assigned_to: routeState.filters.assigned_to || '',
       department_id: routeState.filters.department_id || '',
+      project_id: routeState.filters.project_id || '',
       due_from: routeState.filters.due_from || '',
       due_to: routeState.filters.due_to || '',
     }))
     if (routeState.view !== view) {
       setView(routeState.view)
     }
-  }, [routeState.filters.assigned_to, routeState.filters.department_id, routeState.filters.due_from, routeState.filters.due_to, routeState.filters.priority, routeState.filters.status, routeState.searchQuery, routeState.view, setView, view])
+  }, [routeState.attention, routeState.filters.assigned_to, routeState.filters.department_id, routeState.filters.due_from, routeState.filters.due_to, routeState.filters.priority, routeState.filters.project_id, routeState.filters.status, routeState.searchQuery, routeState.view, setView, view])
 
   useEffect(() => {
-    const nextParams = writeTaskRouteState(searchParams, { view, searchQuery, filters })
+    // Skip while an external URL change is still being applied to state (see
+    // appliedUrlRef) so Back/Forward never re-writes the old query back.
+    if (appliedUrlRef.current !== searchParams.toString()) return
+    const nextParams = writeTaskRouteState(searchParams, { view, searchQuery, attention, filters })
     if (nextParams.toString() !== searchParams.toString()) {
       setSearchParams(nextParams, { replace: true })
     }
-  }, [filters, searchParams, searchQuery, setSearchParams, view])
+  }, [attention, filters, searchParams, searchQuery, setSearchParams, view])
 
   useEffect(() => {
-    const nextParams = writeTaskRouteState(searchParams, { view, searchQuery, filters, page })
+    if (appliedUrlRef.current !== searchParams.toString()) return
+    const nextParams = writeTaskRouteState(searchParams, { view, searchQuery, attention, filters, page })
     if (nextParams.toString() !== searchParams.toString()) {
       setSearchParams(nextParams, { replace: true })
     }
-  }, [filters, page, searchQuery, searchParams, setSearchParams, view])
+  }, [attention, filters, page, searchQuery, searchParams, setSearchParams, view])
+
+  // Mark the URL as applied AFTER the write effects have run for this commit,
+  // so a URL change that arrived in this commit is still visible to them.
+  useEffect(() => {
+    appliedUrlRef.current = searchParams.toString()
+  }, [searchParams])
 
   const loadAssignableUsers = useCallback(async () => {
     try {
@@ -290,7 +278,7 @@ useEffect(() => {
     } finally {
       setLoadingUsers(false)
     }
-  }, [])
+  }, [user])
 
   const loadDepartments = useCallback(async () => {
     if (!isCompanyAdmin) return
@@ -306,55 +294,34 @@ useEffect(() => {
     }
   }, [isCompanyAdmin])
 
+  const loadProjects = useCallback(async () => {
+    try {
+      setLoadingProjects(true)
+      const data = await projectsApi.getProjects({ limit: 200 })
+      const items = Array.isArray(data) ? data : data?.projects || data?.items || []
+      setProjects(items)
+    } catch (error) {
+      console.error('Error loading projects:', error)
+      setProjects([])
+    } finally {
+      setLoadingProjects(false)
+    }
+  }, [])
+
   const fetchTasks = useCallback(async ({ isRefresh = false } = {}) => {
     try {
       if (!isRefresh) setLoading(true)
       setRefreshing(isRefresh)
       setLoadError('')
-      const data = await tasksAPI.listTasks({
-        status: filters.status,
-        priority: filters.priority,
-        assigned_to: filters.assigned_to,
-        department_id: filters.department_id,
-        skip: (page - 1) * pageSize,
-        limit: pageSize,
-      })
-      let filteredTasks = Array.isArray(data.tasks) ? data.tasks : []
-      // Follow-up items (e.g. scheduled from a Sales lead) are not standalone
-      // tasks and must not appear on the Tasks page.
-      filteredTasks = filteredTasks.filter((task) => !isFollowUpTask(task))
-
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase()
-        filteredTasks = filteredTasks.filter(task =>
-          task.title?.toLowerCase().includes(query) ||
-          task.description?.toLowerCase().includes(query)
-        )
-      }
-
-      const dueFrom = filters.due_from ? timeService.instant(filters.due_from) : null
-      const dueTo = filters.due_to ? timeService.instant(filters.due_to) : null
-      if (dueFrom || dueTo) {
-        filteredTasks = filteredTasks.filter((task) => {
-          if (!task.due_date) return false
-          const dueDate = timeService.instant(task.due_date)
-          if (Number.isNaN(dueDate.getTime())) return false
-          if (dueFrom) {
-            const fromStart = timeService.instant(dueFrom)
-            fromStart.setHours(0, 0, 0, 0)
-            if (dueDate < fromStart) return false
-          }
-          if (dueTo) {
-            const toEnd = timeService.instant(dueTo)
-            toEnd.setHours(23, 59, 59, 999)
-            if (dueDate > toEnd) return false
-          }
-          return true
-        })
-      }
-      
+      const queryParams = buildTaskQueryParams({ filters, attention, search: searchQuery, page, pageSize })
+      const data = await tasksAPI.listTasks(queryParams)
+      const rawTasks = Array.isArray(data.tasks) ? data.tasks : []
+      // Scheduled placeholders belong to Work -> Scheduled Work, not the Task
+      // lifecycle, so they are excluded from the list and the displayed total.
+      const placeholderCount = rawTasks.filter((task) => isScheduledTask(task)).length
+      const filteredTasks = rawTasks.filter((task) => !isScheduledTask(task) && !isFollowUpTask(task))
       setTasks(filteredTasks)
-      setTotalCount(Number(data.total || filteredTasks.length || 0))
+      setTotalCount(Math.max(0, Number(data.total || filteredTasks.length || 0) - placeholderCount))
     } catch (error) {
       console.error('Error loading tasks:', error)
       setLoadError(error.response?.data?.detail || error.message || 'Failed to load tasks')
@@ -364,7 +331,17 @@ useEffect(() => {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [filters, page, searchQuery])
+  }, [attention, filters, page, searchQuery])
+
+  const fetchSummary = useCallback(async () => {
+    try {
+      const data = await tasksAPI.getStatusSummary()
+      setSummary(data || {})
+    } catch (error) {
+      console.error('Error loading task summary:', error)
+      setSummary({})
+    }
+  }, [])
 
   useEffect(() => {
     loadAssignableUsers()
@@ -373,6 +350,10 @@ useEffect(() => {
   useEffect(() => {
     loadDepartments()
   }, [loadDepartments])
+
+  useEffect(() => {
+    loadProjects()
+  }, [loadProjects])
 
   useEffect(() => {
     const taskId = sessionStorage.getItem('open_task_id')
@@ -395,13 +376,16 @@ useEffect(() => {
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchTasks()
+      fetchSummary()
     }, 300)
     return () => clearTimeout(timer)
-  }, [fetchTasks])
+  }, [fetchSummary, fetchTasks])
 
   useEffect(() => {
     const handleTasksUpdated = () => {
       fetchTasks({ isRefresh: true })
+      fetchSummary()
+      queryClient.invalidateQueries(['workOverview'])
     }
     window.addEventListener('syntask:tasks-updated', handleTasksUpdated)
     window.addEventListener('syntask:data-updated', handleTasksUpdated)
@@ -409,11 +393,16 @@ useEffect(() => {
       window.removeEventListener('syntask:tasks-updated', handleTasksUpdated)
       window.removeEventListener('syntask:data-updated', handleTasksUpdated)
     }
-  }, [fetchTasks])
+  }, [fetchSummary, fetchTasks, queryClient])
 
   const getTasksByStatus = (status) => {
     return tasks.filter(task => task.status === status)
   }
+
+  // Heading follows the active lifecycle tab ("To Do Tasks", "In Progress Tasks", ...)
+  const activeStageTab =
+    LIFECYCLE_TABS.find((tab) => (filters.status ? tab.id === filters.status : tab.id === '')) || LIFECYCLE_TABS[0]
+  const pageTitle = activeStageTab.id ? `${activeStageTab.label} Tasks` : activeStageTab.label
 
   const visibleAssignableUsers = selectedDepartmentId
     ? assignableUsers.filter((item) => item.department_id === selectedDepartmentId)
@@ -430,17 +419,6 @@ useEffect(() => {
   const taskGraphUsers = useMemo(() => [user, ...assignableUsers].filter(Boolean), [assignableUsers, user])
   const taskGraphRows = useMemo(() => buildTaskGraphRows(tasks, taskGraphUsers), [taskGraphUsers, tasks])
   const taskGraphSummary = useMemo(() => buildTaskGraphSummary(tasks), [tasks])
-  const taskStatusBreakdown = useMemo(() => buildTaskStatusBreakdown(tasks), [tasks])
-  // Sum only the rendered stage tiles so the badge and percentages stay
-  // consistent with what is shown, even if an unexpected status appears.
-  const stageTotal = statuses.reduce((sum, status) => sum + (taskStatusBreakdown.counts[status.id] || 0), 0)
-
-  // Calculate stats
-  const totalTasks = tasks.length
-  const activeTasks = tasks.filter(t => t.status !== 'completed').length
-  const completedTasks = tasks.filter(t => t.status === 'completed').length
-  const criticalTasks = tasks.filter(t => t.priority === 'critical').length
-  const highPriorityTasks = tasks.filter(t => t.priority === 'high' || t.priority === 'critical').length
 
   const closeCreateModal = () => {
     setShowCreateModal(false)
@@ -457,24 +435,30 @@ useEffect(() => {
     setTargetUnit('')
   }
 
-  const handleStageClick = (statusId) => {
-    // Toggle: clicking the active stage clears the filter, clicking another applies it.
-    setFilters((current) => ({ ...current, status: current.status === statusId ? '' : statusId }))
+  const handleLifecycleTabClick = (tabId) => {
+    setFilters((current) => ({ ...current, status: tabId }))
+    setPage(1)
+  }
+
+  const handleAttentionClick = (attentionId) => {
+    setAttention((current) => (current === attentionId ? '' : attentionId))
     setPage(1)
   }
 
   const resetFilters = () => {
     setSearchQuery('')
+    setAttention('')
     setPage(1)
     setFilters({
       status: '',
       priority: '',
       assigned_to: '',
       department_id: '',
+      project_id: '',
       due_from: '',
       due_to: '',
     })
-    setSearchParams(writeTaskRouteState(searchParams, { view, searchQuery: '', filters: {}, page: 1 }), { replace: true })
+    setSearchParams(writeTaskRouteState(searchParams, { view, searchQuery: '', attention: '', filters: {}, page: 1 }), { replace: true })
   }
 
   const handleViewChange = (nextView) => {
@@ -538,10 +522,12 @@ useEffect(() => {
           payload: taskData,
           run_at: runAt.toISOString(),
         })
-        toast.success('Task scheduled successfully')
+        toast.success('Task scheduled. Track it under Work → Scheduled Work.')
         invalidateWorkspaceCalendar(queryClient)
         closeCreateModal()
         fetchTasks({ isRefresh: true })
+      fetchSummary()
+      queryClient.invalidateQueries(['workOverview'])
         return
       }
 
@@ -609,6 +595,8 @@ useEffect(() => {
       setTargetQuantity('')
       setTargetUnit('')
       fetchTasks({ isRefresh: true })
+      fetchSummary()
+      queryClient.invalidateQueries(['workOverview'])
       e.target.reset()
     } catch (error) {
       console.error('Error creating task:', error)
@@ -668,6 +656,8 @@ useEffect(() => {
       setShowEditModal(false)
       setEditingTask(null)
       fetchTasks({ isRefresh: true })
+      fetchSummary()
+      queryClient.invalidateQueries(['workOverview'])
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to update task')
     } finally {
@@ -691,6 +681,8 @@ useEffect(() => {
       setShowDeleteConfirm(false)
       setDeletingTask(null)
       fetchTasks({ isRefresh: true })
+      fetchSummary()
+      queryClient.invalidateQueries(['workOverview'])
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to delete task')
     } finally {
@@ -730,7 +722,18 @@ useEffect(() => {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-6 px-2 pt-1.5 pb-4 md:px-3 md:pt-2 md:pb-6">
+      {/* Lifecycle Stage Pipeline - the page's primary stage bar, pinned above
+          the heading; each task stage renders as its own transparent node chip
+          with arrows between stages, and the content below shows only that
+          stage's tasks. */}
+      <TaskLifecyclePipeline
+        current={filters.status}
+        attentionActive={Boolean(attention)}
+        summary={summary}
+        onSelect={handleLifecycleTabClick}
+      />
+
       {/* Hero Section */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-600 via-rose-600 to-pink-600 p-3.5 text-white shadow-xl md:p-4">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
@@ -741,8 +744,8 @@ useEffect(() => {
               <ListTodo className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold md:text-2xl">Tasks</h1>
-              <p className="mt-0.5 text-xs text-indigo-100">Track work and priorities across your team</p>
+              <h1 className="text-xl font-bold md:text-2xl">{pageTitle}</h1>
+              <p className="mt-0.5 text-xs text-indigo-100">Manage and track execution across projects and teams</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 md:self-center">
@@ -771,62 +774,46 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* Tasks by Stage - pipeline flow of stage cards */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div className="mb-2.5 flex items-center gap-1.5">
-          <BarChart3 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-          <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Tasks by Stage</span>
-          <span className="ml-auto text-xs font-semibold text-gray-500 dark:text-gray-400">{stageTotal} total</span>
-        </div>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
-          <div className="flex flex-wrap items-stretch gap-1.5 lg:flex-1">
-            {statuses.map((status, index) => {
-              const count = taskStatusBreakdown.counts[status.id] || 0
-              const isActive = filters.status === status.id
-              return (
-                <div key={status.id} className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleStageClick(status.id)}
-                    title={isActive ? `Clear "${status.label}" filter` : `Show ${status.label} tasks`}
-                    className={`flex min-w-[92px] flex-col items-center rounded-xl border px-3 py-2 text-center transition ${
-                      isActive
-                        ? 'border-indigo-500 bg-indigo-600 text-white shadow-md'
-                        : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-indigo-900/30'
-                    }`}
-                  >
-                    <span className="text-[11px] font-medium leading-tight">{status.label}</span>
-                    <span className={`mt-0.5 text-lg font-bold tabular-nums leading-none ${
-                      isActive ? 'text-white' : 'text-gray-900 dark:text-white'
-                    }`}>
-                      {count}
-                    </span>
-                  </button>
-                  {index < statuses.length - 1 && (
-                    <ChevronRight className={`h-4 w-4 shrink-0 ${isActive ? 'text-indigo-500' : 'text-gray-300 dark:text-gray-600'}`} />
-                  )}
-                </div>
-              )
-            })}
-          </div>
-          <button
-            type="button"
-            onClick={() => handleStageClick('')}
-            title="Show high priority tasks"
-            className={`flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 transition ${
-              filters.priority === 'high' || filters.priority === 'critical'
-                ? 'border-rose-500 bg-rose-600 text-white shadow-md'
-                : 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/40'
-            }`}
-          >
-            <Zap className="h-4 w-4" />
-            <span className="text-left">
-              <span className="block text-[11px] font-medium leading-tight">High Priority</span>
-              <span className={`block text-lg font-bold tabular-nums leading-none ${filters.priority === 'high' || filters.priority === 'critical' ? 'text-white' : 'text-rose-600 dark:text-rose-300'}`}>
-                {highPriorityTasks}
-              </span>
-            </span>
-          </button>
+      {/* Needs Attention - one compact row; quick views with their own accent
+          colors, NOT lifecycle statuses */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-amber-200/70 bg-amber-50/60 px-2.5 py-1.5 shadow-sm dark:border-amber-800/60 dark:bg-amber-950/30">
+        <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-gray-700 dark:text-gray-300">
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+          Needs Attention
+        </span>
+        <span className="hidden h-4 w-px bg-amber-300/70 sm:block dark:bg-amber-800" />
+        <div
+          role="tablist"
+          aria-label="Needs attention views"
+          className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {ATTENTION_FILTERS.map((item) => {
+            const isActive = attention === item.id
+            const count = attentionCount(summary, item.id)
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => handleAttentionClick(item.id)}
+                title={`Show ${item.label} tasks`}
+                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border px-2 py-1 text-xs font-medium transition ${
+                  isActive ? item.activeClass : item.idleClass
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${item.dotClass} ${isActive ? 'bg-white' : ''}`} />
+                <span>{item.label}</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                    isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -876,7 +863,7 @@ useEffect(() => {
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
                 <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Statuses</option>
-                {statuses.map((status) => (
+                {LIFECYCLE_TABS.slice(1).map((status) => (
                   <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status.id} value={status.id}>{status.label}</option>
                 ))}
               </select>
@@ -929,6 +916,22 @@ useEffect(() => {
               </div>
             )}
             <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Project</label>
+              <select
+                value={filters.project_id}
+                onChange={(e) => setFilters({ ...filters, project_id: e.target.value })}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                disabled={loadingProjects}
+              >
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Projects</option>
+                {projects.map((project) => (
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={project.id || project._id} value={project.project_id || project.id}>
+                    {project.name || project.project_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Due From</label>
               <input
                 type="date"
@@ -972,12 +975,6 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* Quick Assign Panel */}
-      <QuickAssignPanel
-        users={uniqueAssignableUsers}
-        onTaskCreated={() => fetchTasks({ isRefresh: true })}
-      />
-
       {/* Task Graph Panel */}
       <TaskGraphPanel
         rows={taskGraphRows}
@@ -1006,7 +1003,7 @@ useEffect(() => {
                 {tasks.length === 0 ? (
                   <tr>
                     <td colSpan="6" className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                      No tasks match the current filters.
+                      {emptyStateMessage({ filters, attention, search: searchQuery })}
                     </td>
                   </tr>
                 ) : (
@@ -1019,10 +1016,13 @@ useEffect(() => {
                     }
                     const statusColors = {
                       todo: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+                      assigned: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
                       in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
                       in_review: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+                      revision_required: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+                      approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
                       completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-                      scheduled: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200',
+                      cancelled: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
                     }
                     const assignedUser = assignableUsers.find(u => u.id === task.assigned_to)
                     const scheduled = isScheduledTask(task)
@@ -1044,7 +1044,26 @@ useEffect(() => {
                                   : task.measurement_type || 'Quant'}
                               </span>
                             )}
+                            {task.is_blocked && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+                                <Lock className="h-3 w-3" />
+                                Blocked
+                              </span>
+                            )}
+                            {task.status === 'in_review' && task.reviewer_id && String(task.reviewer_id) === String(user?.id) && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                                <Eye className="h-3 w-3" />
+                                Needs Your Review
+                              </span>
+                            )}
                           </div>
+                          {(task.status === 'revision_required' && task.latest_revision_reason) || (task.status === 'in_review' && task.review_round > 0) ? (
+                            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
+                              {task.status === 'revision_required' && task.latest_revision_reason
+                                ? `Revision: ${task.latest_revision_reason}`
+                                : `Review round ${task.review_round}`}
+                            </p>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[task.status] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
@@ -1057,10 +1076,18 @@ useEffect(() => {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                          {task.due_date ? timeService.formatDate(task.due_date) : '—'}
+                          <div className="flex items-center gap-2">
+                            {task.due_date ? timeService.formatDate(task.due_date) : '—'}
+                            {task.health_status === 'overdue' && (
+                              <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">Overdue</span>
+                            )}
+                            {task.health_status === 'due_today' && (
+                              <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Due Today</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                          {assignedUser ? `${assignedUser.first_name} ${assignedUser.last_name}` : 'Unassigned'}
+                          {task.assigned_to_name || (assignedUser ? `${assignedUser.first_name} ${assignedUser.last_name}` : 'Unassigned')}
                         </td>
                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                           {scheduled ? (
@@ -1098,8 +1125,14 @@ useEffect(() => {
           </div>
         </div>
       ) : (
+        <>
+        {filters.status === 'cancelled' && (
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+            Board view shows active lifecycle states. Switch to List to browse cancelled tasks.
+          </div>
+        )}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {statuses.map((status) => {
+          {BOARD_STATUSES.map((status) => {
             const statusTasks = getTasksByStatus(status.id)
             return (
               <div key={status.id} className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -1146,6 +1179,14 @@ useEffect(() => {
                             {task.description && (
                               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{task.description}</p>
                             )}
+                            {task.health_status === 'overdue' && (
+                              <span className="mt-1.5 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">Overdue</span>
+                            )}
+                            {task.is_blocked && (
+                              <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+                                <Lock className="h-3 w-3" />Blocked
+                              </span>
+                            )}
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               {task.task_type === 'quantitative' && (
                                 <span className="inline-flex items-center gap-1 rounded-md bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
@@ -1164,12 +1205,12 @@ useEffect(() => {
                                   {timeService.formatMonthDay(task.due_date)}
                                 </span>
                               )}
-                              {assignedUser && (
+                              {assignedUser || task.assigned_to_name ? (
                                 <span className="text-xs text-gray-500 dark:text-gray-400">
                                   <User className="inline h-3 w-3 mr-1" />
-                                  {assignedUser.first_name}
+                                  {assignedUser ? assignedUser.first_name : String(task.assigned_to_name).split(' ')[0]}
                                 </span>
-                              )}
+                              ) : null}
                             </div>
                           </button>
                           <div className="mt-2 flex items-center gap-1 border-t border-gray-100 pt-2 dark:border-gray-700">
@@ -1205,6 +1246,7 @@ useEffect(() => {
             )
           })}
         </div>
+        </>
       )}
 
       {/* Edit Task Modal */}
@@ -1829,12 +1871,6 @@ function TaskGraphPanel({ rows, summary, onOpenTask }) {
 function TaskCard({ task, onOpen }) {
   const progress = task.progress || 0
   const scheduled = isScheduledTask(task)
-  const priorityColors = {
-    low: 'from-emerald-400 to-emerald-500',
-    medium: 'from-amber-400 to-amber-500',
-    high: 'from-orange-400 to-orange-500',
-    critical: 'from-rose-400 to-rose-500',
-  }
 
   // Format creation time: show relative time for < 2 days, otherwise show date
   const formatCreatedTime = (createdAt) => {
@@ -1930,30 +1966,5 @@ function TaskCard({ task, onOpen }) {
     </button>
   )
 }
-
-function TaskGraphStat({ icon: Icon, label, value, muted = false }) {
-  return (
-    <div className={`flex items-center gap-2 px-4 py-3 ${muted ? 'border-t border-gray-200 bg-gray-50 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-muted)] sm:border-l sm:border-t-0' : ''}`}>
-      <Icon className={`h-5 w-5 ${muted ? 'text-gray-500 dark:text-[var(--color-app-text-muted)]' : 'text-gray-900 dark:text-[var(--color-app-text)]'}`} />
-      <div>
-        <p className={`text-lg font-semibold tabular-nums ${muted ? 'text-gray-600 dark:text-[var(--color-app-text-secondary)]' : 'text-gray-900 dark:text-[var(--color-app-text)]'}`}>{value}</p>
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-[var(--color-app-text-muted)]">{label}</p>
-      </div>
-    </div>
-  )
-}
-
-function TaskProgressRing({ value, color }) {
-  const bounded = Math.max(0, Math.min(100, value || 0))
-  return (
-    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full [--task-ring-rest:#eeeeee] dark:[--task-ring-rest:#44382c]" style={{ background: `conic-gradient(${color} ${bounded * 3.6}deg, var(--task-ring-rest) 0deg)` }}>
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-xs font-semibold text-gray-900 dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text)]">
-        {bounded}%
-      </div>
-    </div>
-  )
-}
-
-
 
 export default Tasks

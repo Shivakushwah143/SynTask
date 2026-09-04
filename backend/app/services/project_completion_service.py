@@ -14,6 +14,27 @@ from app.services.project_permissions import ProjectPermission, has_project_perm
 from app.services.task_workflow import blocking_dependencies, normalize_status
 
 
+async def _record_project_audit(project: Project, actor: User, action: str, old_status: str, new_status: str, reason: str = None) -> None:
+    """Record a ChangeLog entry for project state transitions."""
+    from app.models.changelog import ChangeLog
+    metadata = {"action": action, "old_status": old_status, "new_status": new_status}
+    if reason:
+        metadata["reason"] = reason
+    await ChangeLog(
+        task_id=str(project.id),
+        company_id=str(project.company_id),
+        user_id=str(actor.id),
+        user_name=actor.full_name(),
+        field="project_status",
+        field_type="workflow",
+        old_value=old_status,
+        new_value=new_status,
+        old_string=old_status,
+        new_string=new_status,
+        metadata=metadata,
+    ).insert()
+
+
 def project_status_value(project: Project) -> str:
     return getattr(project.status, "value", project.status)
 
@@ -47,14 +68,36 @@ async def completion_readiness(project: Project, actor: User) -> dict[str, Any]:
     required_tasks = [task for task in tasks if getattr(task, "required_for_project_completion", True) is not False]
     incomplete = []
     pending_review = []
-    blockers = []
+
+    # Batch dependency lookups: collect all dependency IDs, fetch in one query.
+    dep_id_set: set[str] = set()
+    task_dep_map: dict[str, list[str]] = {}  # task_id -> [dep_ids]
     for task in required_tasks:
         task_status = normalize_status(task.status)
         if task_status in {TaskStatus.IN_REVIEW, TaskStatus.REVISION_REQUIRED, TaskStatus.APPROVED}:
             pending_review.append(task)
         if task_status != TaskStatus.COMPLETED:
             incomplete.append(task)
-        deps = await blocking_dependencies(task)
+        dep_ids = [str(d) for d in (task.dependencies or []) if d]
+        if dep_ids:
+            task_dep_map[str(task.id)] = dep_ids
+            dep_id_set.update(dep_ids)
+
+    dep_tasks: dict[str, Task] = {}
+    if dep_id_set:
+        all_deps = await Task.find({"_id": {"$in": list(dep_id_set)}}).to_list()
+        dep_tasks = {str(dt.id): dt for dt in all_deps}
+
+    blockers = []
+    for task in required_tasks:
+        dep_ids = task_dep_map.get(str(task.id), [])
+        if not dep_ids:
+            continue
+        deps = []
+        for dep_id in dep_ids:
+            dep_task = dep_tasks.get(dep_id)
+            if dep_task and normalize_status(dep_task.status) != TaskStatus.COMPLETED:
+                deps.append({"task_id": dep_id, "title": dep_task.title})
         if deps:
             blockers.append({"task_id": str(task.id), "title": task.title, "dependencies": deps})
 
@@ -112,11 +155,13 @@ async def assert_ready_for_completion(project: Project, actor: User) -> dict[str
 
 async def mark_project_completed(project: Project, actor: User) -> Project:
     await assert_ready_for_completion(project, actor)
+    old_status = project_status_value(project)
     project.status = ProjectStatus.COMPLETED
     project.completed_at = utc_now()
     project.completed_by = str(actor.id)
     project.updated_at = utc_now()
     await project.save()
+    await _record_project_audit(project, actor, "complete", old_status, ProjectStatus.COMPLETED.value)
     return project
 
 
@@ -125,7 +170,9 @@ async def archive_project(project: Project, actor: User) -> Project:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to archive this project")
     if project_status_value(project) != ProjectStatus.REPORTING.value:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only reporting projects can be archived")
+    old_status = project_status_value(project)
     project.status = ProjectStatus.ARCHIVED
     project.updated_at = utc_now()
     await project.save()
+    await _record_project_audit(project, actor, "archive", old_status, ProjectStatus.ARCHIVED.value)
     return project

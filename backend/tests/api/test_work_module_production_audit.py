@@ -369,6 +369,25 @@ class TestRealPermissions:
             await assert_actor_for_action("approve", actor, task, None)
 
     @pytest.mark.asyncio
+    async def test_admin_can_approve_even_when_not_the_reviewer(self):
+        from app.services.task_workflow import assert_actor_for_action
+        task = _make_task(assigned_to="user-1", reviewer_id="user-2")
+        actor = _make_user(id="admin-1", role=UserRole.ADMIN)
+        with patch("app.services.task_workflow.load_task_project", new_callable=AsyncMock, return_value=None):
+            await assert_actor_for_action("approve", actor, task, None)
+
+    @pytest.mark.asyncio
+    async def test_admin_assignee_cannot_approve_own_task(self):
+        from app.services.task_workflow import assert_actor_for_action
+        from fastapi import HTTPException
+        task = _make_task(assigned_to="admin-1", reviewer_id="user-2")
+        actor = _make_user(id="admin-1", role=UserRole.ADMIN)
+        with patch("app.services.task_workflow.load_task_project", new_callable=AsyncMock, return_value=None):
+            with pytest.raises(HTTPException) as exc_info:
+                await assert_actor_for_action("approve", actor, task, None)
+            assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
     async def test_reviewer_can_request_revision(self):
         from app.services.task_workflow import assert_actor_for_action
         task = _make_task(assigned_to="user-1", reviewer_id="user-2")

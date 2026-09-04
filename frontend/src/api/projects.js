@@ -6,6 +6,10 @@ export const projectsApi = {
     return api.get('/projects/', { params })
   },
 
+  getProjectStatusSummary: () => {
+    return api.get('/projects/status-summary')
+  },
+
   getProjectTypes: () => {
     return api.get('/projects/types')
   },
@@ -211,5 +215,22 @@ export const projectsApi = {
   
   deleteBoardColumn: (projectId, columnId) => {
     return api.delete(`/projects/${projectId}/board-columns/${columnId}`)
+  },
+
+  // Template integration
+  applyTemplate: (projectId, data) => {
+    const formData = new FormData()
+    Object.keys(data).forEach(key => {
+      if (data[key] !== null && data[key] !== undefined) {
+        if (typeof data[key] === 'object' && !(data[key] instanceof File)) {
+          formData.append(key, JSON.stringify(data[key]))
+        } else {
+          formData.append(key, data[key])
+        }
+      }
+    })
+    return api.post(`/project-templates/apply/${projectId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
   },
 }

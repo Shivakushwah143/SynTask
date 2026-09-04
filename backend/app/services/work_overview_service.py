@@ -21,7 +21,7 @@ from app.models.task import TaskExtensionRequest, TaskExtensionStatus
 from app.models.user import User, UserRole, UserStatus
 from app.services.project_health_service import calculate_project_health
 from app.services.task_health_service import sync_task_health, visible_employees
-from app.services.task_workflow import blocking_dependencies, effective_review_required, normalize_status
+from app.services.task_workflow import effective_review_required, normalize_status, status_value
 
 
 # ── Workload Pressure Thresholds ────────────────────────────────────────────
@@ -85,6 +85,16 @@ def _is_upcoming(task: Task, now: Optional[datetime] = None, timezone_name: Opti
     status = task.status.value if hasattr(task.status, "value") else str(task.status)
     return bool(task.due_date and status not in {TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value}
                 and tomorrow_start <= task.due_date <= end)
+
+
+def _is_assigned_today(task: Task, now: Optional[datetime] = None, timezone_name: Optional[str] = None) -> bool:
+    """True when the task was assigned to the employee today."""
+    now = now or utc_now()
+    today_start, tomorrow_start = _today_range(now, timezone_name)
+    assigned_at = getattr(task, "assigned_at", None)
+    status = task.status.value if hasattr(task.status, "value") else str(task.status)
+    return bool(assigned_at and status not in {TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value}
+                and today_start <= assigned_at < tomorrow_start)
 
 
 def _is_critical(task: Task) -> bool:
@@ -170,11 +180,44 @@ async def _batch_resolve_projects(company_id: str, project_ids: List[str]) -> Di
 # ── Blocker Resolution ──────────────────────────────────────────────────────
 
 async def _resolve_blockers(tasks: List[Task]) -> Dict[str, List[Dict[str, Any]]]:
-    """Compute blocking_dependencies for each task. Returns {task_id: [blockers]}."""
+    """Compute blocking_dependencies for all tasks in batch.
+
+    Instead of one Task.get() per dependency (N+1), collect all unique dependency
+    IDs, fetch them in a single query, then resolve blockers from the in-memory map.
+    """
     result: Dict[str, List[Dict[str, Any]]] = {}
+    if not tasks:
+        return result
+
+    # Collect all unique dependency IDs across all tasks
+    all_dep_ids: set[str] = set()
     for task in tasks:
-        blockers = await blocking_dependencies(task)
-        result[str(task.id)] = blockers
+        for dep_id in getattr(task, "dependencies", None) or []:
+            dep_str = str(dep_id)
+            if dep_str:
+                all_dep_ids.add(dep_str)
+
+    if not all_dep_ids:
+        for task in tasks:
+            result[str(task.id)] = []
+        return result
+
+    # Batch-fetch all dependency tasks in a single query
+    dep_tasks = await Task.find({"_id": {"$in": list(all_dep_ids)}}).to_list()
+    dep_map: Dict[str, Task] = {str(t.id): t for t in dep_tasks}
+
+    for task in tasks:
+        task_id = str(task.id)
+        blockers: List[Dict[str, Any]] = []
+        for dep_id in getattr(task, "dependencies", None) or []:
+            dep_str = str(dep_id)
+            dep = dep_map.get(dep_str)
+            if not dep or str(dep.company_id) != str(task.company_id):
+                continue
+            if normalize_status(dep.status) != TaskStatus.COMPLETED:
+                blockers.append({"id": str(dep.id), "title": dep.title, "status": status_value(dep.status)})
+        result[task_id] = blockers
+
     return result
 
 
@@ -465,6 +508,14 @@ async def build_employee_work_overview(current_user: User, now: Optional[datetim
         for task in dominant_buckets.get(cat, [])[:10]:
             today_work.append(_task_summary(task))
 
+    # Tasks assigned to the employee today (independent of due date)
+    assigned_today_count = sum(1 for task in tasks if _is_assigned_today(task, now, timezone_name))
+    assigned_today_work = []
+    for task in tasks:
+        if _is_assigned_today(task, now, timezone_name):
+            assigned_today_work.append(_task_summary(task))
+    assigned_today_work = assigned_today_work[:10]
+
     waiting_blocked = []
     # Waiting for review (assignee submitted, not yet reviewed)
     for task in tasks:
@@ -497,11 +548,13 @@ async def build_employee_work_overview(current_user: User, now: Optional[datetim
             "waiting_for_review": waiting_for_review,
             "blocked": blocked,
             "upcoming": upcoming,
+            "assigned_today": assigned_today_count,
             "reviews_for_me": len(reviewer_tasks),
         },
         "next_action": next_action,
         "needs_attention": needs_attention,
         "today": today_work,
+        "assigned_today": assigned_today_work,
         "waiting_for_review": waiting_blocked,
         "upcoming": upcoming_work,
         "reviews_for_me": reviews_for_me,

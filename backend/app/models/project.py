@@ -79,6 +79,14 @@ class Project(Document):
     client_delivery_completed: bool = False
     client_delivery_completed_at: Optional[datetime] = None
     client_delivery_completed_by: Optional[str] = None
+
+    # Template integration — records which template was used to generate tasks
+    source_template_id: Optional[str] = None
+    source_template_name: Optional[str] = None
+    source_template_version: Optional[int] = None
+    template_applied_at: Optional[datetime] = None
+    template_applied_by: Optional[str] = None
+    template_application_id: Optional[str] = None  # idempotency key for the application
     
     # Metadata
     avatar: Optional[str] = None

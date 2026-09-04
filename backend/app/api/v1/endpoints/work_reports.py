@@ -14,7 +14,7 @@ from app.core.clock import ClockService, utc_now
 from app.models.project import Project, ProjectStatus
 from app.models.task import Task, TaskStatus
 from app.models.user import User, UserRole
-from app.services.project_health_service import ProjectHealthService
+from app.services.project_health_service import ProjectHealthService, calculate_project_health
 from app.services.project_permissions import ProjectPermission, has_project_permission
 from app.services.task_health_service import assert_task_view_access, calculate_task_health
 from app.services.task_workflow import blocking_dependencies
@@ -124,6 +124,30 @@ async def project_report(
     projects = await Project.find(query).to_list()
     start_at, end_at = _date_bounds(start_date, end_date, current_user)
 
+    # Pre-fetch ALL tasks for matching projects in one query (batch N+1).
+    project_identifiers: list[str] = []
+    project_oid_map: dict[str, str] = {}  # project_oid -> project_id_str
+    for project in projects:
+        pid = str(project.project_id or project.id)
+        project_identifiers.append(pid)
+        project_oid_map[str(project.id)] = pid
+    all_project_tasks = await Task.find({
+        "company_id": current_user.company_id,
+        "$or": [
+            {"project_id": {"$in": project_identifiers}},
+            {"project_object_id": {"$in": [str(p.id) for p in projects]}},
+        ],
+    }).to_list()
+    # Index tasks by project ID (supports both project_id and project_object_id links)
+    tasks_by_project: Dict[str, list] = {}
+    for t in all_project_tasks:
+        t_pid = t.project_id or ""
+        t_poid = getattr(t, "project_object_id", None) or ""
+        for key in {t_pid, t_poid}:
+            if key:
+                tasks_by_project.setdefault(key, []).append(t)
+
+    now_utc = utc_now()
     results = []
     for project in projects:
         if not await _project_visible(project, current_user, visible_ids):
@@ -132,27 +156,21 @@ async def project_report(
             continue
         if end_at and project.start_date and project.start_date > end_at:
             continue
-        # Health
-        health_data = await ProjectHealthService.calculate_project_health(project)
-        project_health = health_data.get("level", health_data.get("health", "healthy")) if health_data else "healthy"
+
+        proj_key = str(project.project_id or project.id)
+        proj_tasks = tasks_by_project.get(proj_key, []) or tasks_by_project.get(str(project.id), [])
+
+        # Health (computed from pre-fetched tasks)
+        from app.services.project_health_service import calculate_project_health, calculate_project_progress
+        health_data = calculate_project_health(project, proj_tasks, now_utc)
+        project_health = health_data.level
         if health and project_health != health:
             continue
 
-        # Progress
-        progress = await ProjectHealthService.calculate_project_progress(project)
-
-        # Task counts
-        task_filter: Dict[str, Any] = {
-            "company_id": current_user.company_id,
-            "$or": [
-                {"project_id": str(project.project_id or project.id)},
-                {"project_id": str(project.id)},
-            ],
-        }
-        all_tasks = await Task.find(task_filter).to_list()
-        completed = sum(1 for t in all_tasks if t.status == TaskStatus.COMPLETED)
-        open_tasks = sum(1 for t in all_tasks if t.status not in (TaskStatus.COMPLETED, TaskStatus.CANCELLED))
-        overdue = sum(1 for t in all_tasks if t.status not in (TaskStatus.COMPLETED, TaskStatus.CANCELLED) and t.due_date and t.due_date < utc_now())
+        progress = health_data.completion_percentage
+        completed = health_data.completed_task_count
+        open_tasks = health_data.total_open_tasks
+        overdue = health_data.overdue_task_count
 
         # Time
         time_data = await aggregate_time_by_project(current_user.company_id, str(project.id))
@@ -264,6 +282,7 @@ async def task_report(
 
     results = []
     for task in tasks:
+        task_health = calculate_task_health(task, now)
         results.append({
             "task_id": str(task.id),
             "title": task.title,
@@ -274,6 +293,7 @@ async def task_report(
             "priority": task.priority.value if hasattr(task.priority, "value") else str(task.priority),
             "due_date": task.due_date.isoformat() if task.due_date else None,
             "review_round": getattr(task, "review_round", 0),
+            "health": getattr(task_health, "value", str(task_health)),
         })
 
     return {
@@ -370,11 +390,39 @@ async def client_report(
     clients = await Client.find(query).to_list()
     results = []
 
+    # Pre-fetch all projects for all clients in one batch to avoid N+1.
+    all_client_ids = [str(c.id) for c in clients]
+    all_projects = await Project.find(
+        {"company_id": current_user.company_id, "client_id": {"$in": all_client_ids}}
+    ).to_list() if all_client_ids else []
+    projects_by_client: Dict[str, list] = {}
+    for p in all_projects:
+        projects_by_client.setdefault(str(p.client_id), []).append(p)
+
+    # Pre-fetch ALL tasks for these projects in one query.
+    all_project_ids: list[str] = []
+    all_project_oids: list[str] = []
+    for p in all_projects:
+        pid = str(p.project_id or p.id)
+        all_project_ids.append(pid)
+        all_project_oids.append(str(p.id))
+    all_client_tasks = await Task.find({
+        "company_id": current_user.company_id,
+        "$or": [
+            {"project_id": {"$in": all_project_ids}},
+            {"project_object_id": {"$in": all_project_oids}},
+        ],
+    }).to_list() if all_project_ids else []
+    tasks_by_project: Dict[str, list] = {}
+    for t in all_client_tasks:
+        for key in {t.project_id or "", getattr(t, 'project_object_id', None) or ""}:
+            if key:
+                tasks_by_project.setdefault(key, []).append(t)
+
+    now_utc = utc_now()
     for client in clients:
         client_id_str = str(client.id)
-        projects = await Project.find(
-            {"company_id": current_user.company_id, "client_id": client_id_str}
-        ).to_list()
+        projects = projects_by_client.get(client_id_str, [])
         projects = [project for project in projects if await _project_visible(project, current_user, visible_ids)]
         if client_id and not projects and visible_ids is not None:
             raise HTTPException(status_code=404, detail="Client not found")
@@ -386,21 +434,31 @@ async def client_report(
 
         for p in projects:
             project_ids.append(str(p.id))
+            if getattr(p, 'project_id', None):
+                project_ids.append(str(p.project_id))
             status_val = p.status.value if hasattr(p.status, "value") else str(p.status)
             if status_val == ProjectStatus.COMPLETED.value:
                 completed += 1
             elif status_val not in (ProjectStatus.ARCHIVED.value, ProjectStatus.CANCELLED.value):
                 active += 1
-                health = await ProjectHealthService.calculate_project_health(p)
-                if health and health.get("health") == "at_risk":
+                proj_tasks = tasks_by_project.get(str(p.project_id or p.id), []) or tasks_by_project.get(str(p.id), [])
+                health_data = calculate_project_health(p, proj_tasks, now_utc)
+                if health_data.level == "at_risk":
                     at_risk_count += 1
 
-        # Task counts
-        task_query: Dict[str, Any] = {
-            "company_id": current_user.company_id,
-            "project_id": {"$in": project_ids},
-        } if project_ids else {"company_id": current_user.company_id, "project_id": "__none__"}
-        client_tasks = await Task.find(task_query).to_list() if project_ids else []
+        # Use pre-fetched tasks for counting.
+        client_tasks = []
+        for pid in project_ids:
+            client_tasks.extend(tasks_by_project.get(pid, []))
+        # Deduplicate
+        seen = set()
+        unique_tasks = []
+        for t in client_tasks:
+            tid = str(t.id)
+            if tid not in seen:
+                seen.add(tid)
+                unique_tasks.append(t)
+        client_tasks = unique_tasks
         open_tasks = sum(1 for t in client_tasks if t.status not in (TaskStatus.COMPLETED, TaskStatus.CANCELLED))
         overdue_tasks = sum(1 for t in client_tasks if t.status not in (TaskStatus.COMPLETED, TaskStatus.CANCELLED) and t.due_date and t.due_date < utc_now())
 

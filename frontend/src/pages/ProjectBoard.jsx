@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from 'react-query'
-import { ArrowLeft, ArrowRight, Filter, GripVertical, Plus, Search, Sparkles, UserPlus } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, GripVertical, LayoutGrid, List, Plus, Search, Sparkles, UserPlus } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
@@ -35,9 +35,24 @@ import { useProjectPermissions } from '../hooks/useProjectPermissions'
 import { Badge, Button, ConfirmDialog, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
-import { DEFAULT_STATUSES, getProjectRoleAssignmentIds, getProjectRoleNames, getTaskAssigneeUsers, getUserDisplayName, normalizeBoardPayload, normalizeEstimatedHours, normalizeStatusId } from './ProjectBoard.helpers'
+import TaskStageMenu from '../components/tasks/TaskStageMenu'
+import TaskLifecyclePipeline from '../components/tasks/TaskLifecyclePipeline'
+import { DEFAULT_STATUSES, buildProjectTaskQuery, getProjectRoleAssignmentIds, getProjectRoleNames, getTaskAssigneeUsers, getUserDisplayName, groupTasksByStatus, normalizeBoardPayload, normalizeEstimatedHours, normalizeStatusId, resolveWorkspaceTab, workspaceTabParam } from './ProjectBoard.helpers'
+import {
+  ATTENTION_FILTERS,
+  BOARD_STATUSES,
+  attentionCount,
+  projectEmptyStateMessage,
+} from './tasksLifecycle'
+import { readTaskRouteState, writeTaskRouteState } from './tasksRouteState'
+import { isFollowUpTask } from './tasksData'
+
+// Scheduled placeholders belong to Work -> Scheduled Work, not the Task
+// lifecycle; they never surface in the Project Task workspace.
+const isScheduledTask = (task) => Boolean(task?.is_scheduled_placeholder)
 import { timeService } from '../services/timeService'
 import { excludeCurrentUser } from '../utils/userFilters'
+import TemplateApplyModal from '../components/templates/TemplateApplyModal'
 
 const STATUS_COLORS = {
   todo: '#7C6FE0',
@@ -90,8 +105,27 @@ export default function ProjectBoard() {
   const isMobile = useMediaQuery('(max-width: 767px)')
   const userRole = normalizeRole(user?.role)
   const isManager = userRole === 'manager'
-  const [activeTab, setActiveTab] = useState('board')
-  const [loading, setLoading] = useState(true)
+  // The URL is the single source of truth for the task workspace. State is
+  // initialized from the URL (and re-synced by the read effect below), so a
+  // remount after Back/Forward never rewrites the query string using stale
+  // empty state - which previously flickered the URL between two forms.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const routeState = readTaskRouteState(searchParams)
+  const initialActiveTab = resolveWorkspaceTab(searchParams.get('tab'))
+  const initialFilters = {
+    priority: routeState.filters.priority || '',
+    assignee: routeState.filters.assigned_to || '',
+    due_from: routeState.filters.due_from || '',
+    due_to: routeState.filters.due_to || '',
+  }
+  // Holds the URL whose query state has already been applied to component
+  // state. Write effects skip while an external navigation (Back/Forward/
+  // deep link) is in flight - otherwise they would rewrite the incoming URL
+  // with the still-stale pre-navigation state and the address bar flickers
+  // between two forms. Synced below in an effect that runs AFTER the write
+  // effects, so in-flight external changes are always detected.
+  const appliedUrlRef = useRef(searchParams.toString())
+  const [activeTab, setActiveTab] = useState(initialActiveTab)
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [loadingPages, setLoadingPages] = useState(false)
   const [projectInfo, setProjectInfo] = useState(null)
@@ -103,9 +137,17 @@ export default function ProjectBoard() {
   const [versions, setVersions] = useState([])
   const [assignableUsers, setAssignableUsers] = useState([])
   const [projectAssignableUsers, setProjectAssignableUsers] = useState([])
-  const [searchQuery, setSearchQuery] = useState('')
-  const [filters, setFilters] = useState({ priority: '', assignee: '', label: '' })
-  const [showFilters, setShowFilters] = useState(false)
+  const [searchQuery, setSearchQuery] = useState(routeState.searchQuery)
+  const [filters, setFilters] = useState(initialFilters)
+  const [taskView, setTaskView] = useState(routeState.view)
+  const [taskStatus, setTaskStatus] = useState(routeState.filters.status || '')
+  const [taskAttention, setTaskAttention] = useState(routeState.attention)
+  const [taskPage, setTaskPage] = useState(1)
+  const [projectTasks, setProjectTasks] = useState([])
+  const [projectTasksTotal, setProjectTasksTotal] = useState(0)
+  const [taskSummary, setTaskSummary] = useState(null)
+  const [taskLoading, setTaskLoading] = useState(false)
+  const [taskLoadError, setTaskLoadError] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [showProjectAgentModal, setShowProjectAgentModal] = useState(false)
@@ -134,6 +176,11 @@ export default function ProjectBoard() {
   const [editFormErrors, setEditFormErrors] = useState({})
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [completionReadiness, setCompletionReadiness] = useState(null)
+  const [showReopenModal, setShowReopenModal] = useState(false)
+  const [reopenReason, setReopenReason] = useState('')
+  const [completionAction, setCompletionAction] = useState(null)
+  const [showTemplateApplyModal, setShowTemplateApplyModal] = useState(false)
 
   const projectAssigneeOptions = useMemo(
     () => projectAssignableUsers.filter((item) => item.status === 'active'),
@@ -201,6 +248,50 @@ export default function ProjectBoard() {
     }
   }
 
+  const handleCompleteProject = async () => {
+    if (completionAction) return
+    try {
+      setCompletionAction('complete')
+      await projectsApi.completeProject(projectId)
+      toast.success('Project completed')
+      await loadProjectInfo()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to complete project')
+    } finally {
+      setCompletionAction(null)
+    }
+  }
+
+  const handleArchiveProject = async () => {
+    if (completionAction) return
+    try {
+      setCompletionAction('archive')
+      await projectsApi.archiveProject(projectId)
+      toast.success('Project archived')
+      await loadProjectInfo()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to archive project')
+    } finally {
+      setCompletionAction(null)
+    }
+  }
+
+  const handleReopenProject = async () => {
+    if (completionAction || !reopenReason.trim()) return
+    try {
+      setCompletionAction('reopen')
+      await projectsApi.reopenProject(projectId, reopenReason.trim())
+      toast.success('Project reopened')
+      setShowReopenModal(false)
+      setReopenReason('')
+      await loadProjectInfo()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to reopen project')
+    } finally {
+      setCompletionAction(null)
+    }
+  }
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -226,6 +317,10 @@ export default function ProjectBoard() {
       ])
       setPages(pagesResponse.data.pages || [])
       setProjectFiles(filesResponse.data.files || [])
+      // Load completion readiness (non-blocking)
+      projectsApi.getCompletionReadiness(projectId)
+        .then((res) => setCompletionReadiness(res.data))
+        .catch(() => setCompletionReadiness(null))
     } catch (error) {
       console.error(error)
     }
@@ -244,15 +339,12 @@ export default function ProjectBoard() {
 
   const loadBoardData = useCallback(async () => {
     try {
-      setLoading(true)
       const response = await projectsApi.getProjectBoard(projectId)
       const normalizedBoard = normalizeBoardPayload(response)
       setBoardData(normalizedBoard)
       setStatuses(normalizedBoard.board_columns)
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to load project board')
-    } finally {
-      setLoading(false)
     }
   }, [projectId])
 
@@ -282,6 +374,57 @@ export default function ProjectBoard() {
     }
   }, [projectId])
 
+  const fetchProjectTasks = useCallback(async () => {
+    if (activeTab !== 'board') return
+    try {
+      setTaskLoading(true)
+      setTaskLoadError('')
+      // Project is fixed in this workspace: never user-changeable from the page.
+      const params = buildProjectTaskQuery({
+        filters,
+        taskStatus,
+        attention: taskAttention,
+        search: searchQuery,
+        page: taskPage,
+        pageSize: 20,
+        projectId,
+      })
+      const data = await tasksAPI.listTasks(params)
+      const rawTasks = Array.isArray(data.tasks) ? data.tasks : []
+      // Scheduled placeholders belong to Work -> Scheduled Work, not the Task
+      // lifecycle, so they stay out of the Project Task workspace.
+      const placeholderCount = rawTasks.filter((task) => isScheduledTask(task)).length
+      const filteredTasks = rawTasks.filter((task) => !isScheduledTask(task) && !isFollowUpTask(task))
+      setProjectTasks(filteredTasks)
+      setProjectTasksTotal(Math.max(0, Number(data.total || filteredTasks.length) - placeholderCount))
+    } catch (error) {
+      console.error('Error loading project tasks:', error)
+      setTaskLoadError(error.response?.data?.detail || error.message || 'Failed to load tasks')
+      setProjectTasks([])
+    } finally {
+      setTaskLoading(false)
+    }
+  }, [activeTab, filters, projectId, searchQuery, taskAttention, taskPage, taskStatus])
+
+  const fetchProjectSummary = useCallback(async () => {
+    if (activeTab !== 'board') return
+    try {
+      const data = await tasksAPI.getStatusSummary({ project_id: projectId })
+      setTaskSummary(data || {})
+    } catch (error) {
+      console.error('Error loading project task summary:', error)
+      setTaskSummary(null)
+    }
+  }, [activeTab, projectId])
+
+  // One refresh path for every mutation: filtered list + project-scoped counts
+  // + board/overview data + Work Overview, so both views stay consistent.
+  const refreshProjectTasks = useCallback(async () => {
+    await Promise.all([fetchProjectTasks(), fetchProjectSummary(), loadBoardData(), loadProjectInfo()])
+    queryClient.invalidateQueries(['workOverview'])
+    invalidateWorkspaceCalendar(queryClient)
+  }, [fetchProjectSummary, fetchProjectTasks, loadBoardData, loadProjectInfo, queryClient])
+
   useEffect(() => {
     loadProjectInfo()
     loadAssignableUsers()
@@ -293,30 +436,84 @@ export default function ProjectBoard() {
     if (activeTab === 'pages') loadPages()
   }, [activeTab, loadBoardData, loadPages, loadSummaryData])
 
+  // URL state: workspace tab (tab=) + task filters (status/attention/q/view).
+  // Same read-then-write convergence pattern as the global Tasks page, so
+  // refresh and browser Back/Forward preserve the active view.
+  useEffect(() => {
+    const mapped = resolveWorkspaceTab(searchParams.get('tab'))
+    if (mapped !== activeTab) setActiveTab(mapped)
+  }, [activeTab, searchParams])
+
+  useEffect(() => {
+    setSearchQuery(routeState.searchQuery)
+    setTaskAttention(routeState.attention)
+    setTaskView(routeState.view === 'board' ? 'board' : 'list')
+    setTaskStatus(routeState.filters.status || '')
+    setFilters((current) => ({
+      ...current,
+      priority: routeState.filters.priority || '',
+      assignee: routeState.filters.assigned_to || '',
+      due_from: routeState.filters.due_from || '',
+      due_to: routeState.filters.due_to || '',
+    }))
+    // Read effect intentionally re-runs only when the URL-derived values change.
+  }, [routeState.attention, routeState.filters.assigned_to, routeState.filters.due_from, routeState.filters.due_to, routeState.filters.priority, routeState.filters.status, routeState.searchQuery, routeState.view])
+
+  useEffect(() => {
+    // Skip while an external URL change is still being applied to state (see
+    // appliedUrlRef) so Back/Forward never re-writes the old query back.
+    if (appliedUrlRef.current !== searchParams.toString()) return
+    const nextParams = new URLSearchParams(searchParams)
+    const tabParam = workspaceTabParam(activeTab)
+    if (nextParams.get('tab') !== tabParam) {
+      nextParams.set('tab', tabParam)
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [activeTab, searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (appliedUrlRef.current !== searchParams.toString()) return
+    if (activeTab !== 'board') return
+    const nextParams = writeTaskRouteState(searchParams, {
+      view: taskView,
+      searchQuery,
+      attention: taskAttention,
+      filters: { ...filters, status: taskStatus },
+    })
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [activeTab, filters, searchParams, searchQuery, setSearchParams, taskAttention, taskStatus, taskView])
+
+  // Mark the URL as applied AFTER the write effects have run for this commit,
+  // so a URL change that arrived in this commit is still visible to them.
+  useEffect(() => {
+    appliedUrlRef.current = searchParams.toString()
+  }, [searchParams])
+
+  useEffect(() => {
+    if (activeTab !== 'board') return
+    const timer = setTimeout(() => {
+      fetchProjectTasks()
+      fetchProjectSummary()
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [activeTab, fetchProjectSummary, fetchProjectTasks])
+
   useEffect(() => {
     const refreshBoard = () => {
       if (activeTab === 'board') {
-        loadBoardData()
+        refreshProjectTasks()
       }
     }
     window.addEventListener('syntask:tasks-updated', refreshBoard)
     return () => window.removeEventListener('syntask:tasks-updated', refreshBoard)
-  }, [activeTab, loadBoardData])
+  }, [activeTab, refreshProjectTasks])
 
-  const filteredBoard = useMemo(() => {
-    if (!boardData?.tasks_by_status) return {}
-    const query = searchQuery.trim().toLowerCase()
-    return Object.entries(boardData.tasks_by_status).reduce((acc, [status, tasks]) => {
-      acc[normalizeStatusId(status)] = (tasks || []).filter((task) => {
-        const matchesQuery = !query || [task.title, task.description, task.id].filter(Boolean).some((value) => String(value).toLowerCase().includes(query))
-        const matchesPriority = !filters.priority || (task.priority || '').toLowerCase() === filters.priority
-        const matchesAssignee = !filters.assignee || task.assigned_to === filters.assignee
-        const matchesLabel = !filters.label || (task.tags || []).includes(filters.label)
-        return matchesQuery && matchesPriority && matchesAssignee && matchesLabel
-      })
-      return acc
-    }, {})
-  }, [boardData, filters.assignee, filters.label, filters.priority, searchQuery])
+  // Board columns are built from the SAME backend-filtered dataset as the list
+  // (one source of truth); active lifecycle tab / attention / filters apply to
+  // both views. Cancelled stays reachable through its own lifecycle tab.
+  const groupedProjectTasks = useMemo(() => groupTasksByStatus(projectTasks), [projectTasks])
 
   const availableLabels = useMemo(() => {
     const labels = new Set()
@@ -330,11 +527,13 @@ export default function ProjectBoard() {
     if (updatingTaskId) return
     try {
       setUpdatingTaskId(taskId)
+      // TaskWorkflow remains authoritative for status changes.
       await tasksAPI.updateTaskStatus(taskId, newStatus)
       toast.success('Task updated')
-      await loadBoardData()
+      await refreshProjectTasks()
     } catch (error) {
-      toast.error('Failed to update task')
+      toast.error(error.response?.data?.detail || 'Failed to update task')
+      await refreshProjectTasks()
     } finally {
       setUpdatingTaskId(null)
     }
@@ -385,6 +584,7 @@ export default function ProjectBoard() {
         setCreateTaskPriority('medium')
         setCreateMode('now')
         setScheduleRunAt('')
+        await refreshProjectTasks()
         return
       }
       await tasksAPI.createTask(taskPayload)
@@ -395,7 +595,7 @@ export default function ProjectBoard() {
       setCreateTaskPriority('medium')
       setCreateMode('now')
       setScheduleRunAt('')
-      await loadBoardData()
+      await refreshProjectTasks()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create task')
     } finally {
@@ -493,7 +693,6 @@ export default function ProjectBoard() {
     }
   }
 
-  const currentTasks = Object.values(filteredBoard).flat()
   const allProjectTasks = Object.values(boardData?.tasks_by_status || {}).flat()
   const completedTasks = allProjectTasks.filter((task) => ['completed', 'done'].includes((task.status || '').toLowerCase())).length
   const fallbackCompletionPercentage = allProjectTasks.length ? Math.round((completedTasks / allProjectTasks.length) * 100) : 0
@@ -529,6 +728,9 @@ export default function ProjectBoard() {
   const canManageColumns = projectPermissions.hasProjectPermission('manage_board')
   const canAssignProject = hasCompanyAdminAccess(user?.role) || (userRole === 'manager' && canManageCurrentProject)
   const canCreateProjectTask = projectPermissions.hasProjectPermission('create_task')
+  // Task workflow power for the row-level stage-advance menus: project task
+  // managers and company admins always, plus per-row task creators below.
+  const canManageProjectTasks = projectPermissions.hasProjectPermission('manage_task') || hasCompanyAdminAccess(user?.role)
   const activeProject = projectInfo?.name || boardData?.project?.name || 'Project'
   const projectDescription = projectRecord.description || 'No project description available.'
   const projectStatus = projectRecord.status || 'active'
@@ -545,30 +747,6 @@ export default function ProjectBoard() {
     }
   }
 
-  const updateTaskInBoard = useCallback((taskId, nextStatus) => {
-    setBoardData((current) => {
-      if (!current?.tasks_by_status) return current
-      let movedTask = null
-      const tasksByStatus = Object.fromEntries(
-        Object.entries(current.tasks_by_status).map(([status, tasks]) => [
-          status,
-          (tasks || []).filter((task) => {
-            if (String(task.id) === String(taskId)) {
-              movedTask = { ...task, status: nextStatus }
-              return false
-            }
-            return true
-          }),
-        ])
-      )
-
-      if (!movedTask) return current
-      if (!tasksByStatus[nextStatus]) tasksByStatus[nextStatus] = []
-      tasksByStatus[nextStatus] = [movedTask, ...tasksByStatus[nextStatus]]
-      return { ...current, tasks_by_status: tasksByStatus }
-    })
-  }, [])
-
   const handleDragStart = (event) => {
     setActiveTaskId(event.active.id)
   }
@@ -579,23 +757,25 @@ export default function ProjectBoard() {
 
     if (!over || updatingTaskId) return
 
-    const activeTask = allProjectTasks.find((task) => String(task.id) === String(active.id))
+    const activeTask = projectTasks.find((task) => String(task.id) === String(active.id))
     if (!activeTask) return
 
     const destinationStatus = normalizeStatusId(over.data?.current?.sortable?.containerId || over.id)
     const currentStatus = normalizeStatusId(activeTask.status)
     if (!destinationStatus || destinationStatus === currentStatus) return
-    if (!statuses.some((status) => status.id === destinationStatus)) return
+    if (!BOARD_STATUSES.some((status) => status.id === destinationStatus)) return
 
     try {
       setUpdatingTaskId(active.id)
-      updateTaskInBoard(active.id, destinationStatus)
+      // TaskWorkflow remains authoritative: the PATCH route runs the existing
+      // transition validation (e.g. review-required tasks cannot be dragged to
+      // completed) and surfaces backend errors to the UI.
       await tasksAPI.updateTaskStatus(active.id, destinationStatus)
       toast.success('Task status updated')
-      await loadBoardData()
+      await refreshProjectTasks()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to update task status')
-      await loadBoardData()
+      await refreshProjectTasks()
     } finally {
       setUpdatingTaskId(null)
     }
@@ -631,6 +811,67 @@ export default function ProjectBoard() {
     { title: 'Completion', value: `${completionPercentage}%`, color: '#7C6FE0', helper: 'Derived from live tasks' },
   ]
 
+  const handleTaskTabClick = (statusId) => {
+    setTaskStatus(statusId)
+    setTaskPage(1)
+  }
+
+  const handleAttentionClick = (attentionId) => {
+    setTaskAttention((current) => (current === attentionId ? '' : attentionId))
+    setTaskPage(1)
+  }
+
+  const handleTaskViewChange = (nextView) => {
+    setTaskView(nextView)
+    setTaskPage(1)
+  }
+
+  // Prefer the name the backend serialized on the Task (resolved against the
+  // full user collection) so leads/managers and any assignee outside the
+  // assignable-employees subset still show. The local lookup is only a
+  // fallback for payloads that predate the serialized name.
+  const taskAssigneeName = (task) => {
+    if (!task) return 'Unassigned'
+    if (task.assigned_to_name) return task.assigned_to_name
+    if (!task.assigned_to) return 'Unassigned'
+    const match = assignableUsers.find((item) => String(item.id || item._id) === String(task.assigned_to))
+    return match ? `${match.first_name || ''} ${match.last_name || ''}`.trim() || 'Unassigned' : 'Unassigned'
+  }
+
+  const taskReviewerName = (task) => {
+    if (!task) return null
+    if (task.reviewer_name) return task.reviewer_name
+    if (!task.reviewer_id) return null
+    const match = assignableUsers.find((item) => String(item.id || item._id) === String(task.reviewer_id))
+    return match ? `${match.first_name || ''} ${match.last_name || ''}`.trim() : null
+  }
+
+  const hasTaskFilters = Boolean(
+    taskStatus || taskAttention || searchQuery.trim() || filters.priority || filters.assignee || filters.due_from || filters.due_to
+  )
+  const taskEmptyMessage = projectEmptyStateMessage({
+    filters: { ...filters, status: taskStatus },
+    attention: taskAttention,
+    search: searchQuery,
+  })
+
+  const PRIORITY_PILL_COLORS = {
+    low: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    high: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+    critical: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+  }
+  const STATUS_PILL_COLORS = {
+    todo: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+    assigned: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+    in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+    in_review: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+    revision_required: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+    approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    cancelled: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -647,15 +888,27 @@ export default function ProjectBoard() {
                 <Button variant="secondary" size="sm" onClick={openEditModal}>
                   Edit project
                 </Button>
+                {completionReadiness?.ready && projectStatus === 'review' && (
+                  <Button size="sm" onClick={handleCompleteProject} loading={completionAction === 'complete'} loadingText="Completing" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Complete
+                  </Button>
+                )}
+                {projectStatus === 'completed' && (
+                  <Button size="sm" onClick={() => setShowReopenModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white">
+                    Reopen
+                  </Button>
+                )}
+                {projectStatus === 'reporting' && (
+                  <Button size="sm" onClick={handleArchiveProject} loading={completionAction === 'archive'} loadingText="Archiving" className="bg-gray-600 hover:bg-gray-700 text-white">
+                    Archive
+                  </Button>
+                )}
                 <Button variant="secondary" size="sm" onClick={() => setShowDeleteConfirm(true)} className="hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-950/20 dark:hover:text-red-400 dark:hover:border-red-900/50">
                   Delete project
                 </Button>
               </>
             )}
-            <Button variant="secondary" size="sm" onClick={() => setShowFilters((value) => !value)}>
-              <Filter className="h-4 w-4" />
-              Filters
-            </Button>
             <Button variant="secondary" size="sm" onClick={() => setShowProjectAgentModal(true)}>
               <Sparkles className="h-4 w-4" />
               Project Agent
@@ -666,8 +919,23 @@ export default function ProjectBoard() {
                 Create task
               </Button>
             ) : null}
+            {canManageCurrentProject && (
+              <Button variant="secondary" size="sm" onClick={() => setShowTemplateApplyModal(true)}>
+                <Sparkles className="h-4 w-4" />
+                Apply Template
+              </Button>
+            )}
           </div>
         )}
+      />
+
+      <TemplateApplyModal
+        isOpen={showTemplateApplyModal}
+        onClose={() => setShowTemplateApplyModal(false)}
+        projectId={projectRecord?.project_id || projectId}
+        projectName={activeProject}
+        projectStartDate={projectRecord?.start_date}
+        onApplied={() => { setShowTemplateApplyModal(false); refreshProjectTasks() }}
       />
 
       <section className="overflow-hidden rounded-2xl border border-primary-200/60 bg-[linear-gradient(135deg,rgba(255,250,244,0.98),rgba(248,242,232,0.92))] shadow-[0_18px_45px_rgba(63,49,37,0.08)] dark:border-[#5a4635] dark:bg-[linear-gradient(135deg,rgba(36,28,20,0.98),rgba(20,16,12,0.96))] dark:shadow-[0_20px_50px_rgba(0,0,0,0.28)]">
@@ -742,6 +1010,7 @@ export default function ProjectBoard() {
               <ProjectOverviewLine label="Type" value={(projectRecord.type || 'software').replace(/_/g, ' ')} />
               <ProjectOverviewLine label="Priority" value={projectRecord.priority || 'medium'} />
               <ProjectOverviewLine label="Health" value={(projectHealth.level || projectRecord.health || 'healthy').replace(/_/g, ' ')} />
+              <CompletionReadinessLine readiness={completionReadiness} />
               <ProjectOverviewLine label="Open tasks" value={projectHealth.total_open_tasks ?? allProjectTasks.length} />
               <ProjectOverviewLine label="Overdue" value={projectHealth.overdue_task_count ?? overdueTasks} />
               <ProjectOverviewLine label="Assets" value={`${projectFiles.length} files / ${pages.length} pages`} />
@@ -752,7 +1021,7 @@ export default function ProjectBoard() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-4">
-        <BoardMetric title="Open tasks" value={currentTasks.length} />
+        <BoardMetric title="Open tasks" value={allProjectTasks.length} />
         <BoardMetric title="Statuses" value={statuses.length} />
         <BoardMetric title="Labels" value={availableLabels.length} />
         <BoardMetric title="Team" value={assignableUsers.length} />
@@ -762,36 +1031,8 @@ export default function ProjectBoard() {
       <QuickAssignPanel
         users={projectAssignableUsers}
         projectId={projectId}
-        onTaskCreated={() => { loadBoardData(); loadProjectInfo(); }}
+        onTaskCreated={refreshProjectTasks}
       />
-
-      <section className="card p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className={`${inputClassName} pl-10`} placeholder="Search by title, description, or ID" />
-          </div>
-          {showFilters ? (
-            <div className="grid gap-3 md:grid-cols-3 lg:flex-1">
-              <select className={inputClassName} value={filters.priority} onChange={(event) => setFilters((state) => ({ ...state, priority: event.target.value }))}>
-                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All priorities</option>
-                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="critical">Critical</option>
-                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="high">High</option>
-                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="medium">Medium</option>
-                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="low">Low</option>
-              </select>
-              <select className={inputClassName} value={filters.assignee} onChange={(event) => setFilters((state) => ({ ...state, assignee: event.target.value }))}>
-                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All assignees</option>
-                {assignableUsers.map((userItem) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={userItem.id} value={userItem.id}>{userItem.first_name} {userItem.last_name}</option>)}
-              </select>
-              <select className={inputClassName} value={filters.label} onChange={(event) => setFilters((state) => ({ ...state, label: event.target.value }))}>
-                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All labels</option>
-                {availableLabels.map((label) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={label} value={label}>{label}</option>)}
-              </select>
-            </div>
-          ) : null}
-        </div>
-      </section>
 
       <section className="border-b border-gray-200 dark:border-gray-800">
         <nav className="flex gap-2 overflow-x-auto pb-2">
@@ -845,41 +1086,312 @@ export default function ProjectBoard() {
           </div>
         ) : <EmptyState title="No summary data" description="Summary data will appear once project activity is available." />
       ) : activeTab === 'board' ? (
-        loading ? <SkeletonKanban cols={Math.max(3, statuses.length)} /> : (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-          >
-            <div
-              className="grid gap-4"
-              style={{ gridTemplateColumns: isMobile ? '1fr' : `repeat(${Math.min(statuses.length, 4)}, minmax(0, 1fr))` }}
-            >
-              {statuses.map((status) => (
-                <ProjectBoardColumn
-                  key={status.id}
-                  status={status}
-                  tasks={filteredBoard[status.id] || []}
-                  statuses={statuses}
-                  updatingTaskId={updatingTaskId}
-                  canManageColumns={canCreateProjectTask}
-                  onAddTask={() => { setSelectedStatus(status.id); setShowCreateModal(true) }}
-                  onOpenTask={(taskId) => navigate(`/tasks/${taskId}`)}
-                  onOpenProjectTask={(taskId) => navigate(`/projects/${projectId}/tasks/${taskId}`)}
-                  onStatusChange={handleTaskStatusChange}
-                />
-              ))}
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Project Tasks</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{activeProject} execution tasks</p>
             </div>
-            <DragOverlay>
-              {activeTaskId ? (
-                <div className="rounded-xl border border-primary-200 bg-white px-4 py-3 text-sm font-semibold text-text-primary shadow-xl dark:border-primary-800 dark:bg-gray-950 dark:text-gray-100">
-                  Moving task
+            <div className="flex flex-wrap items-center gap-2">
+              {canCreateProjectTask ? (
+                <Button size="sm" onClick={() => { setSelectedStatus(taskStatus || 'todo'); setShowCreateModal(true) }}>
+                  <Plus className="h-4 w-4" />
+                  New Task
+                </Button>
+              ) : null}
+              {canManageCurrentProject ? (
+                <Button variant="secondary" size="sm" onClick={() => setShowTemplateApplyModal(true)}>
+                  <Sparkles className="h-4 w-4" />
+                  Apply Template
+                </Button>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Lifecycle Stage Pipeline - project-scoped counts; Scheduled is not a lifecycle stage */}
+          <TaskLifecyclePipeline
+            current={taskStatus}
+            attentionActive={Boolean(taskAttention)}
+            summary={taskSummary}
+            onSelect={handleTaskTabClick}
+            tooltipSuffix=" for this project"
+          />
+
+          {/* Needs Attention - project-scoped conditions; NOT lifecycle statuses */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-amber-200/70 bg-amber-50/60 px-2.5 py-1.5 shadow-sm dark:border-amber-800/60 dark:bg-amber-950/30">
+            <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-gray-700 dark:text-gray-300">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+              Needs Attention
+            </span>
+            <span className="hidden h-4 w-px bg-amber-300/70 sm:block dark:bg-amber-800" />
+            <div
+              role="tablist"
+              aria-label="Needs attention views"
+              className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              {ATTENTION_FILTERS.map((item) => {
+                const isActive = taskAttention === item.id
+                const count = attentionCount(taskSummary, item.id)
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => handleAttentionClick(item.id)}
+                    title={`Show ${item.label} tasks for this project`}
+                    className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border px-2 py-1 text-xs font-medium transition ${
+                      isActive ? item.activeClass : item.idleClass
+                    }`}
+                  >
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${item.dotClass} ${isActive ? 'bg-white' : ''}`} />
+                    <span>{item.label}</span>
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Advanced filters - project is fixed in this workspace, so no project filter */}
+          <section className="card p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={searchQuery}
+                  onChange={(event) => { setSearchQuery(event.target.value); setTaskPage(1) }}
+                  className={`${inputClassName} pl-10`}
+                  placeholder="Search tasks by title, description, or ID"
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 lg:flex-1">
+                <select className={inputClassName} value={filters.assignee} onChange={(event) => { setFilters((state) => ({ ...state, assignee: event.target.value })); setTaskPage(1) }}>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All assignees</option>
+                  {assignableUsers.map((userItem) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={userItem.id || userItem._id} value={userItem.id || userItem._id}>{userItem.first_name} {userItem.last_name}</option>)}
+                </select>
+                <select className={inputClassName} value={filters.priority} onChange={(event) => { setFilters((state) => ({ ...state, priority: event.target.value })); setTaskPage(1) }}>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All priorities</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="critical">Critical</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="high">High</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="medium">Medium</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="low">Low</option>
+                </select>
+                <input type="date" className={inputClassName} value={filters.due_from} onChange={(event) => { setFilters((state) => ({ ...state, due_from: event.target.value })); setTaskPage(1) }} title="Due from" aria-label="Due from" />
+                <input type="date" className={inputClassName} value={filters.due_to} onChange={(event) => { setFilters((state) => ({ ...state, due_to: event.target.value })); setTaskPage(1) }} title="Due to" aria-label="Due to" />
+              </div>
+            </div>
+          </section>
+
+          {/* Results toolbar: List | Board + totals + pagination */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-800">
+              <button
+                type="button"
+                onClick={() => handleTaskViewChange('list')}
+                aria-pressed={taskView === 'list'}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${taskView === 'list' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'}`}
+              >
+                <List className="h-3.5 w-3.5" />
+                List
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTaskViewChange('board')}
+                aria-pressed={taskView === 'board'}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${taskView === 'board' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'}`}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                Board
+              </button>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+              <span>Showing {projectTasks.length} of {projectTasksTotal}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                  disabled={taskPage <= 1 || taskLoading}
+                  onClick={() => setTaskPage((value) => Math.max(1, value - 1))}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                  disabled={taskPage * 20 >= projectTasksTotal || taskLoading}
+                  onClick={() => setTaskPage((value) => value + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Content: loading / error / empty / list / board - all from one backend-filtered dataset */}
+          {taskLoading && projectTasks.length === 0 ? (
+            taskView === 'list' ? <SkeletonTable rows={6} cols={6} /> : <SkeletonKanban cols={Math.min(BOARD_STATUSES.length, 4)} />
+          ) : taskLoadError ? (
+            <EmptyState
+              title="Could not load project tasks"
+              description={taskLoadError}
+              action={<Button variant="secondary" size="sm" onClick={() => fetchProjectTasks()}>Retry</Button>}
+            />
+          ) : projectTasks.length === 0 ? (
+            <EmptyState
+              title={hasTaskFilters ? 'No matching tasks' : 'No tasks yet'}
+              description={taskEmptyMessage}
+              action={!hasTaskFilters && canCreateProjectTask ? (
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <Button size="sm" onClick={() => { setSelectedStatus('todo'); setShowCreateModal(true) }}>
+                    <Plus className="h-4 w-4" />
+                    New Task
+                  </Button>
+                  {canManageCurrentProject ? (
+                    <Button variant="secondary" size="sm" onClick={() => setShowTemplateApplyModal(true)}>
+                      <Sparkles className="h-4 w-4" />
+                      Apply Template
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
-            </DragOverlay>
-          </DndContext>
-        )
+            />
+          ) : taskView === 'list' ? (
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                  <thead className="bg-gray-50 dark:bg-gray-900/50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Title</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Priority</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Due</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Assignee</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Reviewer</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {projectTasks.map((task) => {
+                      const reviewerName = taskReviewerName(task)
+                      const needsYourReview = task.status === 'in_review' && task.reviewer_id && String(task.reviewer_id) === String(user?.id)
+                      const canManageTaskStage = canManageProjectTasks || Boolean(user && task.created_by && String(task.created_by) === String(user?.id || user?._id || ''))
+                      return (
+                        <tr
+                          key={task.id}
+                          onClick={() => navigate(`/projects/${projectId}/tasks/${task.id}`)}
+                          className="cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                        >
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span>{task.title}</span>
+                              {task.is_blocked ? (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+                                  Blocked
+                                </span>
+                              ) : null}
+                              {needsYourReview ? (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                                  Needs Your Review
+                                </span>
+                              ) : null}
+                            </div>
+                            {(task.status === 'revision_required' && task.latest_revision_reason) || (task.status === 'in_review' && task.review_round > 0) ? (
+                              <p className="mt-0.5 line-clamp-1 text-xs text-gray-500 dark:text-gray-400">
+                                {task.status === 'revision_required' && task.latest_revision_reason
+                                  ? `Revision: ${task.latest_revision_reason}`
+                                  : `Review round ${task.review_round}`}
+                              </p>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${STATUS_PILL_COLORS[task.status] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
+                              {(task.status || '').replace(/_/g, ' ')}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${PRIORITY_PILL_COLORS[task.priority] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
+                              {task.priority || 'medium'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {task.due_date ? timeService.format(task.due_date, { month: 'short', day: 'numeric' }) : '\u2014'}
+                              {task.health_status === 'overdue' ? (
+                                <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">Overdue</span>
+                              ) : null}
+                              {task.health_status === 'due_today' ? (
+                                <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Due Today</span>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{taskAssigneeName(task)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{reviewerName || '\u2014'}</td>
+                          <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="inline-flex items-center justify-end gap-1">
+                              <TaskStageMenu
+                                task={task}
+                                user={user}
+                                canManage={canManageTaskStage}
+                                assignableUsers={assignableUsers}
+                                updating={updatingTaskId === task.id}
+                                onUpdated={refreshProjectTasks}
+                              />
+                              <Button variant="ghost" size="sm" onClick={() => navigate(`/projects/${projectId}/tasks/${task.id}`)}>
+                                Open
+                                <ArrowRight className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <div
+                className="grid gap-4"
+                style={{ gridTemplateColumns: isMobile ? '1fr' : `repeat(${Math.min(BOARD_STATUSES.length, 4)}, minmax(0, 1fr))` }}
+              >
+                {BOARD_STATUSES.map((status) => (
+                  <ProjectBoardColumn
+                    key={status.id}
+                    status={status}
+                    tasks={groupedProjectTasks[status.id] || []}
+                    statuses={BOARD_STATUSES}
+                    updatingTaskId={updatingTaskId}
+                    canManageColumns={canCreateProjectTask}
+                    onAddTask={() => { setSelectedStatus(status.id); setShowCreateModal(true) }}
+                    onOpenTask={(taskId) => navigate(`/tasks/${taskId}`)}
+                    onOpenProjectTask={(taskId) => navigate(`/projects/${projectId}/tasks/${taskId}`)}
+                    onStatusChange={handleTaskStatusChange}
+                  />
+                ))}
+              </div>
+              <DragOverlay>
+                {activeTaskId ? (
+                  <div className="rounded-xl border border-primary-200 bg-white px-4 py-3 text-sm font-semibold text-text-primary shadow-xl dark:border-primary-800 dark:bg-gray-950 dark:text-gray-100">
+                    Moving task
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          )}
+        </div>
       ) : (
         loadingPages ? <SkeletonTable rows={4} cols={3} /> : (
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
@@ -1228,6 +1740,26 @@ export default function ProjectBoard() {
         onConfirm={handleDeleteProject}
         onClose={() => setShowDeleteConfirm(false)}
       />
+
+      {/* Reopen Project Modal */}
+      <Modal isOpen={showReopenModal} onClose={() => setShowReopenModal(false)} title="Reopen project">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">Provide a reason for reopening this project. It will be moved back to Review status.</p>
+          <FormField label="Reason" required>
+            <textarea
+              rows={3}
+              className={inputClassName}
+              value={reopenReason}
+              onChange={(event) => setReopenReason(event.target.value)}
+              placeholder="Why does this project need to be reopened?"
+            />
+          </FormField>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" type="button" onClick={() => { setShowReopenModal(false); setReopenReason('') }}>Cancel</Button>
+            <Button onClick={handleReopenProject} loading={completionAction === 'reopen'} loadingText="Reopening" disabled={!reopenReason.trim()}>Reopen project</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
@@ -1348,6 +1880,34 @@ function ProjectOverviewLine({ label, value, action = null }) {
       <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">{label}</span>
       <span className="ml-auto min-w-0 truncate text-right font-medium text-text-primary dark:text-text-primary">{value}</span>
       {action ? <span className="flex-none">{action}</span> : null}
+    </div>
+  )
+}
+
+function CompletionReadinessLine({ readiness }) {
+  if (!readiness) return <ProjectOverviewLine label="Completion" value="Loading..." />
+  const ready = readiness.ready
+  const completed = readiness.completed_required_tasks || 0
+  const total = readiness.required_tasks || 0
+  const label = ready ? 'Ready to complete' : `${completed}/${total} required tasks done`
+  return (
+    <div className={`rounded-lg border px-3 py-2 dark:bg-black/35 ${ready ? 'border-emerald-200/70 bg-emerald-50/70 dark:border-emerald-800/50' : 'border-amber-200/70 bg-amber-50/70 dark:border-amber-800/50'}`}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Completion</span>
+        <span className={`ml-auto text-xs font-semibold ${ready ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
+          {ready ? 'READY' : 'NOT READY'}
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-text-secondary dark:text-text-secondary">{label}</p>
+      {!ready && readiness.blocking_reasons?.length > 0 && (
+        <ul className="mt-1.5 space-y-0.5">
+          {readiness.blocking_reasons.map((reason, index) => (
+            <li key={index} className="text-[10px] text-amber-700 dark:text-amber-300">
+              • {reason.type?.replace(/_/g, ' ')} ({reason.count})
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

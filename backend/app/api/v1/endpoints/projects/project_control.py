@@ -13,9 +13,7 @@ async def get_completion_readiness(project_id: str, current_user: User = Depends
     project, _ = await get_project_by_id(project_id, current_user.company_id)
     if not project:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Project not found")
-    check_company_access(current_user, project.company_id)
-    if not has_project_access(project, current_user):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="You do not have permission to view this project")
+    await ensure_project_access_for_user(project, current_user)
     return await completion_readiness(project, current_user)
 
 
@@ -55,9 +53,12 @@ async def reopen_project(
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Reopen reason is required")
     if enum_or_string_value(project.status) != ProjectStatus.COMPLETED.value:
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Only completed projects can be reopened")
+    old_status = enum_or_string_value(project.status)
     project.status = ProjectStatus.REVIEW
     project.completed_at = None
     project.completed_by = None
     project.updated_at = utc_now()
     await project.save()
+    from app.services.project_completion_service import _record_project_audit
+    await _record_project_audit(project, current_user, "reopen", old_status, ProjectStatus.REVIEW.value, reason=reason)
     return {"message": "Project reopened", "project_id": str(project.id), "status": project.status.value}

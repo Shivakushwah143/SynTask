@@ -120,6 +120,12 @@ async def _startup_tasks() -> None:
             logger.info("HR document expiry background task started")
         except Exception as hr_doc_err:
             logger.warning(f"HR document expiry startup skipped: {hr_doc_err}")
+        try:
+            from app.services.time_tracking_service import recover_stale_stopping_timers
+            asyncio.create_task(recover_stale_stopping_timers())
+            logger.info("Timer recovery background task started")
+        except Exception as timer_err:
+            logger.warning(f"Timer recovery startup skipped: {timer_err}")
     else:
         logger.warning("Database background workers skipped because MongoDB/Beanie is not ready.")
 
@@ -277,9 +283,15 @@ async def require_database_ready(request: Request, call_next):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin and origin in cors_origins:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
     return JSONResponse(
         status_code=500,
-        content={"success": False, "message": "Internal server error"}
+        content={"success": False, "message": "Internal server error"},
+        headers=headers,
     )
 
 

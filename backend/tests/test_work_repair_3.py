@@ -137,7 +137,11 @@ async def test_dashboard_and_work_overview_share_authoritative_task_metrics(monk
     blocked = task("blocked", dependencies=["dependency"], due_date=datetime(2026, 9, 1, 10))
     review = task("review", status=TaskStatus.IN_REVIEW)
     monkeypatch.setattr(work_reports, "blocking_dependencies", lambda item: _blocking(item, dependency))
-    monkeypatch.setattr("app.services.work_overview_service.blocking_dependencies", lambda item: _blocking(item, dependency))
+    # work_overview_service now uses batched _resolve_blockers (Task.find)
+    # instead of per-task blocking_dependencies, so FakeTask.records must include
+    # the dependency for batch resolution to work.
+    FakeTask.records = [dependency, blocked, review]
+    monkeypatch.setattr("app.services.work_overview_service.Task", FakeTask)
 
     overview_metrics = await shared_work_metrics([blocked, review], datetime(2026, 9, 2, 12), "UTC")
     dashboard_metrics = await shared_work_metrics([blocked, review], datetime(2026, 9, 2, 12), "UTC")

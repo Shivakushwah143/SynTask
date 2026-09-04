@@ -7,6 +7,32 @@ export const getUserDisplayName = (user) => {
   return user.name || [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email || 'Team member'
 }
 
+// Context for the color-coded "Revision reason" panel on the task detail page:
+// the latest written reason the reviewer gave, whether the task currently waits
+// in Revision Required, who requested the revision, and the review round.
+export const getRevisionReasonContext = (task = {}, { status = '', users = [] } = {}) => {
+  const reason = String(task?.latest_revision_reason || '').trim()
+  const isRevisionRequired = String(status || task?.status || '').toLowerCase() === 'revision_required'
+  const requesterId = task?.revision_requested_by ? String(task.revision_requested_by) : ''
+  let requesterName = ''
+  if (requesterId) {
+    const requester = users.find((item) => getUserId(item) === requesterId)
+    if (requester) {
+      requesterName = getUserDisplayName(requester)
+    } else if (requesterId === String(task?.reviewer_id || '')) {
+      requesterName = task?.reviewer_name || ''
+    }
+  }
+  return {
+    reason,
+    isRevisionRequired,
+    requesterName,
+    reviewRound: Number(task?.review_round) || 0,
+    revisionRequestedAt: task?.revision_requested_at || null,
+    show: isRevisionRequired || Boolean(reason),
+  }
+}
+
 export const buildTaskAssignmentOptions = (users = [], currentUser = null) => {
   const byId = new Map()
   users.forEach((item) => {
