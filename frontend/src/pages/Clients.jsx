@@ -1,76 +1,113 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, Briefcase, Plus, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2 } from 'lucide-react'
-import { clientsAPI } from '../api/clients'
-import { useConfirmation } from '../hooks/useConfirmation'
-import { Button, CreatableSelectField, EmptyState, FormField, LoadingSpinner, Modal, PhoneInput, SkeletonTable, inputClassName } from '../components/ui'
-import { QuickCreateEmployeeModal, QuickCreateProjectModal } from '../components/relatedRecords/QuickCreateModals'
-import { projectsApi } from '../api/projects'
-import { meetingsApi } from '../api/meetings'
-import { usersAPI } from '../api/users'
-import { PRODUCT_PREVIEW } from '../config/visualAssets'
-import { useAuthStore } from '../store/authStore'
-import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
-import toast from 'react-hot-toast'
-import { format } from 'date-fns'
-import { timeService } from '@/services/timeService'
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  AlertTriangle,
+  Briefcase,
+  Plus,
+  Trash2,
+  X,
+  Mail,
+  Phone,
+  Calendar,
+  FileText,
+  Upload,
+  Download,
+  Search,
+  Eye,
+  FolderKanban,
+  ExternalLink,
+  Filter,
+  Building2,
+  MapPin,
+  User,
+  Users,
+  DollarSign,
+  Clock,
+  CheckCircle2,
+} from "lucide-react";
+import { clientsAPI } from "../api/clients";
+import { useConfirmation } from "../hooks/useConfirmation";
+import {
+  Button,
+  CreatableSelectField,
+  EmptyState,
+  FormField,
+  LoadingSpinner,
+  Modal,
+  PhoneInput,
+  SkeletonTable,
+  inputClassName,
+} from "../components/ui";
+import {
+  QuickCreateEmployeeModal,
+  QuickCreateProjectModal,
+} from "../components/relatedRecords/QuickCreateModals";
+import { projectsApi } from "../api/projects";
+import { meetingsApi } from "../api/meetings";
+import { usersAPI } from "../api/users";
+import { PRODUCT_PREVIEW } from "../config/visualAssets";
+import { useAuthStore } from "../store/authStore";
+import { hasCompanyAdminAccess, isLeadRole } from "../utils/roles";
+import toast from "react-hot-toast";
+import { format } from "date-fns";
+import { timeService } from "@/services/timeService";
 
 // Draft persistence: keep partially-filled client form values when the modal
 // closes (cross button, Escape, backdrop, or cancel) so the user does not have
 // to re-enter them when reopening. Cleared only after a successful create.
-const CLIENT_FORM_DRAFT_KEY = 'syntask_client_form_draft'
+const CLIENT_FORM_DRAFT_KEY = "syntask_client_form_draft";
 
 const EMPTY_CLIENT_FORM = {
-  name: '',
-  email: '',
-  contact: '',
-  alternate_contact: '',
-  address: '',
-  city: '',
-  state: '',
-  country: '',
-  zip_code: '',
-  company_name: '',
-  industry: '',
-  assigned_to: '',
-  notes: '',
-  tags: '',
-  client_type: '',
-  budget: '',
-  start_date: '',
-  delivery_date: '',
-}
+  name: "",
+  email: "",
+  contact: "",
+  alternate_contact: "",
+  address: "",
+  city: "",
+  state: "",
+  country: "",
+  zip_code: "",
+  company_name: "",
+  industry: "",
+  assigned_to: "",
+  notes: "",
+  tags: "",
+  client_type: "",
+  budget: "",
+  start_date: "",
+  delivery_date: "",
+};
 
 const loadClientFormDraft = () => {
   try {
-    const raw = sessionStorage.getItem(CLIENT_FORM_DRAFT_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    const raw = sessionStorage.getItem(CLIENT_FORM_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? { ...EMPTY_CLIENT_FORM, ...parsed }
-      : null
+      : null;
   } catch {
-    return null
+    return null;
   }
-}
+};
 
 const saveClientFormDraft = (data) => {
   try {
-    sessionStorage.setItem(CLIENT_FORM_DRAFT_KEY, JSON.stringify(data))
+    sessionStorage.setItem(CLIENT_FORM_DRAFT_KEY, JSON.stringify(data));
   } catch {
     // Ignore storage failures; the form still works without persistence.
   }
-}
+};
 
 const clearClientFormDraft = () => {
   try {
-    sessionStorage.removeItem(CLIENT_FORM_DRAFT_KEY)
+    sessionStorage.removeItem(CLIENT_FORM_DRAFT_KEY);
   } catch {
     // Ignore storage failures.
   }
-}
+};
 
-const CLIENT_PAGE_SIZE = 20
+const CLIENT_PAGE_SIZE = 20;
 
 /* Company monogram helpers — deterministic colors from the client name so the
    same company always renders the same avatar tone. */
@@ -97,533 +134,636 @@ const getMonogramColor = (name) => {
 };
 
 const getTomorrowDateValue = () => {
-  const date = timeService.now()
-  date.setDate(date.getDate() + 1)
-  return format(date, 'yyyy-MM-dd')
-}
+  const date = timeService.now();
+  date.setDate(date.getDate() + 1);
+  return format(date, "yyyy-MM-dd");
+};
 
 const CLIENT_STAGE_ROUTES = {
-  new: 'new',
-  onboarding: 'onboarding',
-  active: 'active',
-  'at-risk': 'at_risk',
-  'on-hold': 'on_hold',
-  'renewal-due': 'renewal_due',
-  churned: 'churned',
-  archived: 'archived',
-}
+  new: "new",
+  onboarding: "onboarding",
+  active: "active",
+  "at-risk": "at_risk",
+  "on-hold": "on_hold",
+  "renewal-due": "renewal_due",
+  churned: "churned",
+  archived: "archived",
+};
 
-const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
+const StatCard = ({ label, value, icon: Icon, color = "indigo", subtitle }) => {
   const colors = {
-    indigo: 'from-indigo-500 to-purple-500',
-    emerald: 'from-emerald-500 to-teal-500',
-    amber: 'from-amber-500 to-orange-500',
-    rose: 'from-rose-500 to-pink-500',
-    purple: 'from-purple-500 to-pink-500',
-  }
+    indigo: "from-indigo-500 to-purple-500",
+    emerald: "from-emerald-500 to-teal-500",
+    amber: "from-amber-500 to-orange-500",
+    rose: "from-rose-500 to-pink-500",
+    purple: "from-purple-500 to-pink-500",
+  };
 
   return (
     <div className="group rounded-xl border border-gray-200/80 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-md bg-gradient-to-r ${colors[color]} p-1.5 text-white shadow transition-transform group-hover:scale-110`}>
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+          {label}
+        </span>
+        <div
+          className={`rounded-md bg-gradient-to-r ${colors[color]} p-1.5 text-white shadow transition-transform group-hover:scale-110`}
+        >
           <Icon className="h-3.5 w-3.5" />
         </div>
       </div>
-      <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">
+        {value}
+      </p>
+      {subtitle && (
+        <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-gray-400">
+          {subtitle}
+        </p>
+      )}
     </div>
-  )
-}
+  );
+};
 
 const Clients = () => {
-  const { user } = useAuthStore()
-  const { stageKey } = useParams()
-  const navigate = useNavigate()
-  const { confirm, showUndoNotification } = useConfirmation()
-  const [clients, setClients] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(null)
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [clientFormStep, setClientFormStep] = useState(1)
-  const [showDetailModal, setShowDetailModal] = useState(false)
-  const [selectedClient, setSelectedClient] = useState(null)
-  const [leads, setLeads] = useState([])
-  const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
+  const { user } = useAuthStore();
+  const { stageKey } = useParams();
+  const navigate = useNavigate();
+  const { confirm, showUndoNotification } = useConfirmation();
+  const [clients, setClients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [clientFormStep, setClientFormStep] = useState(1);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [leads, setLeads] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
   const [columnFilters, setColumnFilters] = useState({
-    type: '',
-    projects: '',
-    budget: '',
-    start_date: '',
-    delivery_date: '',
-  })
-  const [formData, setFormData] = useState({ ...EMPTY_CLIENT_FORM })
-  const [formErrors, setFormErrors] = useState({})
-  const [editingClient, setEditingClient] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [showCreateProjectModal, setShowCreateProjectModal] = useState(false)
-  const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
-  const [showQuickProjectModal, setShowQuickProjectModal] = useState(false)
-  const [assignableUsers, setAssignableUsers] = useState([])
+    type: "",
+    projects: "",
+    budget: "",
+    start_date: "",
+    delivery_date: "",
+  });
+  const [formData, setFormData] = useState({ ...EMPTY_CLIENT_FORM });
+  const [formErrors, setFormErrors] = useState({});
+  const [editingClient, setEditingClient] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [showCreateProjectModal, setShowCreateProjectModal] = useState(false);
+  const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false);
+  const [showQuickProjectModal, setShowQuickProjectModal] = useState(false);
+  const [assignableUsers, setAssignableUsers] = useState([]);
   const [projectForm, setProjectForm] = useState({
-    project_id: '',
-    name: '',
-    key: '',
-    description: '',
-    type: 'software',
-    assigned_to: '',
-    budget: '',
-    start_date: '',
-    delivery_date: '',
-  })
-  const [creatingProject, setCreatingProject] = useState(false)
-  const [showAddProjectModal, setShowAddProjectModal] = useState(false)
-  const [availableProjects, setAvailableProjects] = useState([])
-  const [loadingProjects, setLoadingProjects] = useState(false)
-  const [selectedProjectId, setSelectedProjectId] = useState('')
-  const [projectSearch, setProjectSearch] = useState('')
-  const [assigningProject, setAssigningProject] = useState(false)
-  const [showDocumentModal, setShowDocumentModal] = useState(false)
-  const [documentFile, setDocumentFile] = useState(null)
-  const [documentName, setDocumentName] = useState('')
-  const [updatingStatusId, setUpdatingStatusId] = useState(null)
-  const [stageSelectionClient, setStageSelectionClient] = useState(null)
-  const [transitionBlocker, setTransitionBlocker] = useState(null)
-  const [pendingLifecycleRetry, setPendingLifecycleRetry] = useState(null)
-  const [lifecycleRules, setLifecycleRules] = useState({})
-  const [reasonRequest, setReasonRequest] = useState(null)
-  const [transitionReason, setTransitionReason] = useState('')
+    project_id: "",
+    name: "",
+    key: "",
+    description: "",
+    type: "software",
+    assigned_to: "",
+    budget: "",
+    start_date: "",
+    delivery_date: "",
+  });
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [showAddProjectModal, setShowAddProjectModal] = useState(false);
+  const [availableProjects, setAvailableProjects] = useState([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [projectSearch, setProjectSearch] = useState("");
+  const [assigningProject, setAssigningProject] = useState(false);
+  const [showDocumentModal, setShowDocumentModal] = useState(false);
+  const [documentFile, setDocumentFile] = useState(null);
+  const [documentName, setDocumentName] = useState("");
+  const [updatingStatusId, setUpdatingStatusId] = useState(null);
+  const [stageSelectionClient, setStageSelectionClient] = useState(null);
+  const [transitionBlocker, setTransitionBlocker] = useState(null);
+  const [pendingLifecycleRetry, setPendingLifecycleRetry] = useState(null);
+  const [lifecycleRules, setLifecycleRules] = useState({});
+  const [reasonRequest, setReasonRequest] = useState(null);
+  const [transitionReason, setTransitionReason] = useState("");
   const [kickoffMeetingForm, setKickoffMeetingForm] = useState({
     meeting_date: getTomorrowDateValue(),
-    meeting_time: '10:00',
+    meeting_time: "10:00",
     duration: 30,
-  })
-  const [creatingKickoffMeeting, setCreatingKickoffMeeting] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [portfolioOverview, setPortfolioOverview] = useState(null)
-  const [savedViews, setSavedViews] = useState({ defaults: [], views: [] })
+  });
+  const [creatingKickoffMeeting, setCreatingKickoffMeeting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [portfolioOverview, setPortfolioOverview] = useState(null);
+  const [savedViews, setSavedViews] = useState({ defaults: [], views: [] });
 
   const statusMeta = {
     new: {
-      label: 'New',
-      chipClass: 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300',
-      optionClass: 'text-sky-700 dark:text-sky-300',
-      dotClass: 'bg-sky-500',
+      label: "New",
+      chipClass: "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300",
+      optionClass: "text-sky-700 dark:text-sky-300",
+      dotClass: "bg-sky-500",
     },
     onboarding: {
-      label: 'Onboarding',
-      chipClass: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300',
-      optionClass: 'text-indigo-700 dark:text-indigo-300',
-      dotClass: 'bg-indigo-500',
+      label: "Onboarding",
+      chipClass:
+        "bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300",
+      optionClass: "text-indigo-700 dark:text-indigo-300",
+      dotClass: "bg-indigo-500",
     },
     active: {
-      label: 'Active',
-      chipClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
-      optionClass: 'text-emerald-700 dark:text-emerald-300',
-      dotClass: 'bg-emerald-500',
+      label: "Active",
+      chipClass:
+        "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
+      optionClass: "text-emerald-700 dark:text-emerald-300",
+      dotClass: "bg-emerald-500",
     },
     at_risk: {
-      label: 'At Risk',
-      chipClass: 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300',
-      optionClass: 'text-orange-700 dark:text-orange-300',
-      dotClass: 'bg-orange-500',
+      label: "At Risk",
+      chipClass:
+        "bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300",
+      optionClass: "text-orange-700 dark:text-orange-300",
+      dotClass: "bg-orange-500",
     },
     on_hold: {
-      label: 'On Hold',
-      chipClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
-      optionClass: 'text-amber-700 dark:text-amber-300',
-      dotClass: 'bg-amber-500',
+      label: "On Hold",
+      chipClass:
+        "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300",
+      optionClass: "text-amber-700 dark:text-amber-300",
+      dotClass: "bg-amber-500",
     },
     renewal_due: {
-      label: 'Renewal Due',
-      chipClass: 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300',
-      optionClass: 'text-violet-700 dark:text-violet-300',
-      dotClass: 'bg-violet-500',
+      label: "Renewal Due",
+      chipClass:
+        "bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300",
+      optionClass: "text-violet-700 dark:text-violet-300",
+      dotClass: "bg-violet-500",
     },
     churned: {
-      label: 'Churned',
-      chipClass: 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-300',
-      optionClass: 'text-slate-700 dark:text-slate-300',
-      dotClass: 'bg-slate-500',
+      label: "Churned",
+      chipClass:
+        "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-300",
+      optionClass: "text-slate-700 dark:text-slate-300",
+      dotClass: "bg-slate-500",
     },
     archived: {
-      label: 'Archived',
-      chipClass: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-      optionClass: 'text-gray-700 dark:text-gray-300',
-      dotClass: 'bg-gray-500',
+      label: "Archived",
+      chipClass:
+        "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+      optionClass: "text-gray-700 dark:text-gray-300",
+      dotClass: "bg-gray-500",
     },
     inactive: {
-      label: 'Inactive',
-      chipClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
-      optionClass: 'text-amber-700 dark:text-amber-300',
-      dotClass: 'bg-amber-500',
+      label: "Inactive",
+      chipClass:
+        "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300",
+      optionClass: "text-amber-700 dark:text-amber-300",
+      dotClass: "bg-amber-500",
     },
-  }
+  };
 
-  const getStatusMeta = (status) => statusMeta[status] || statusMeta.active
-  const routeStatus = CLIENT_STAGE_ROUTES[stageKey] || ''
-  const effectiveStatusFilter = routeStatus || statusFilter
-  const pageTitle = routeStatus ? `${getStatusMeta(routeStatus).label} Clients` : 'Clients Directory'
+  const getStatusMeta = (status) => statusMeta[status] || statusMeta.active;
+  const routeStatus = CLIENT_STAGE_ROUTES[stageKey] || "";
+  const effectiveStatusFilter = routeStatus || statusFilter;
+  const showOverviewSections = !routeStatus;
+  const pageTitle = routeStatus
+    ? `${getStatusMeta(routeStatus).label} Clients`
+    : "Clients Directory";
   const pageDescription = routeStatus
     ? `Only ${getStatusMeta(routeStatus).label.toLowerCase()} client accounts are shown here.`
-    : 'Manage enterprise client accounts, linked projects, contract budgets & files'
+    : "Manage enterprise client accounts, linked projects, contract budgets & files";
 
-  const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
-  const isLead = isLeadRole(user?.role)
+  const isCompanyAdmin = hasCompanyAdminAccess(user?.role);
+  const isLead = isLeadRole(user?.role);
 
   const loadClients = useCallback(async () => {
     try {
-      setLoading(true)
-      setLoadError(null)
-      const params = { limit: 500 }
-      if (effectiveStatusFilter) params.status_filter = effectiveStatusFilter
-      if (searchQuery.trim()) params.search = searchQuery.trim()
-      if (columnFilters.type) params.client_type = columnFilters.type
-      const data = await clientsAPI.listClients(params)
-      setClients(data.clients || [])
+      setLoading(true);
+      setLoadError(null);
+      const params = { limit: 500 };
+      if (effectiveStatusFilter) params.status_filter = effectiveStatusFilter;
+      if (searchQuery.trim()) params.search = searchQuery.trim();
+      if (columnFilters.type) params.client_type = columnFilters.type;
+      const data = await clientsAPI.listClients(params);
+      setClients(data.clients || []);
     } catch (error) {
-      console.error('Error loading clients:', error)
-      const message = error.response?.status === 403
-        ? 'You do not have permission to view clients. Please contact your administrator.'
-        : error.response?.status === 401
-          ? 'Please login to view clients'
-          : 'Failed to load clients'
-      setLoadError(message)
+      console.error("Error loading clients:", error);
+      const message =
+        error.response?.status === 403
+          ? "You do not have permission to view clients. Please contact your administrator."
+          : error.response?.status === 401
+            ? "Please login to view clients"
+            : "Failed to load clients";
+      setLoadError(message);
       if (error.response?.status === 403) {
-        toast.error(message)
+        toast.error(message);
       } else if (error.response?.status === 401) {
-        toast.error(message)
+        toast.error(message);
       } else {
-        toast.error(message)
+        toast.error(message);
       }
-      setClients([])
+      setClients([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [columnFilters.type, effectiveStatusFilter, searchQuery])
+  }, [columnFilters.type, effectiveStatusFilter, searchQuery]);
 
   const loadClientManagement = useCallback(async () => {
     try {
       const [overview, views] = await Promise.all([
         clientsAPI.getOverviewDashboard({ limit: 8 }),
         clientsAPI.listSavedViews(),
-      ])
-      setPortfolioOverview(overview)
-      setSavedViews(views)
+      ]);
+      setPortfolioOverview(overview);
+      setSavedViews(views);
     } catch (error) {
-      console.error('Error loading client overview:', error)
-      setPortfolioOverview(null)
-      setSavedViews({ defaults: [], views: [] })
+      console.error("Error loading client overview:", error);
+      setPortfolioOverview(null);
+      setSavedViews({ defaults: [], views: [] });
     }
-  }, [])
+  }, []);
 
   const loadLeads = useCallback(async () => {
     try {
-      const data = await usersAPI.listUsers(null, 'lead')
-      setLeads(data.users || [])
+      const data = await usersAPI.listUsers(null, "lead");
+      setLeads(data.users || []);
     } catch (error) {
-      console.error('Error loading leads:', error)
+      console.error("Error loading leads:", error);
     }
-  }, [])
+  }, []);
 
   const loadLifecycleRules = useCallback(async () => {
     try {
-      const data = await clientsAPI.getLifecycleRules()
-      setLifecycleRules(Object.fromEntries((data.rules || []).map((rule) => [rule.status, rule])))
+      const data = await clientsAPI.getLifecycleRules();
+      setLifecycleRules(
+        Object.fromEntries(
+          (data.rules || []).map((rule) => [rule.status, rule]),
+        ),
+      );
     } catch (error) {
-      console.error('Error loading client lifecycle rules:', error)
-      setLifecycleRules({})
+      console.error("Error loading client lifecycle rules:", error);
+      setLifecycleRules({});
     }
-  }, [])
+  }, []);
 
   const loadAssignableUsers = useCallback(async () => {
     try {
-      const data = await usersAPI.getAssignableUsersWithJuniors()
-      const users = data.users || []
-      setAssignableUsers(users.filter((u) => String(u.id || u._id) !== String(user.id || user._id)))
+      const data = await usersAPI.getAssignableUsersWithJuniors();
+      const users = data.users || [];
+      setAssignableUsers(
+        users.filter(
+          (u) => String(u.id || u._id) !== String(user.id || user._id),
+        ),
+      );
     } catch (error) {
-      console.error('Error loading assignable users:', error)
-      setAssignableUsers([])
+      console.error("Error loading assignable users:", error);
+      setAssignableUsers([]);
     }
-  }, [user])
+  }, [user]);
 
-  const { isAuthenticated } = useAuthStore()
-
-  useEffect(() => {
-    if (!isAuthenticated) return
-    loadClients()
-    loadClientManagement()
-    loadLeads()
-    loadAssignableUsers()
-    loadLifecycleRules()
-  }, [isAuthenticated, loadClients, loadClientManagement, loadLeads, loadAssignableUsers, loadLifecycleRules])
+  const { isAuthenticated } = useAuthStore();
 
   useEffect(() => {
-    setCurrentPage(1)
-  }, [effectiveStatusFilter, searchQuery, columnFilters.projects, columnFilters.budget, columnFilters.start_date, columnFilters.delivery_date])
+    if (!isAuthenticated) return;
+    loadClients();
+    loadClientManagement();
+    loadLeads();
+    loadAssignableUsers();
+    loadLifecycleRules();
+  }, [
+    isAuthenticated,
+    loadClients,
+    loadClientManagement,
+    loadLeads,
+    loadAssignableUsers,
+    loadLifecycleRules,
+  ]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    effectiveStatusFilter,
+    searchQuery,
+    columnFilters.projects,
+    columnFilters.budget,
+    columnFilters.start_date,
+    columnFilters.delivery_date,
+  ]);
 
   const handleCreateClient = async (e) => {
-    e.preventDefault()
-    if (submitting) return
-    if (!validateClientForm()) return
+    e.preventDefault();
+    if (submitting) return;
+    if (!validateClientForm()) return;
 
     try {
-      setSubmitting(true)
-      const formDataObj = new FormData()
-      Object.keys(formData).forEach(key => {
+      setSubmitting(true);
+      const formDataObj = new FormData();
+      Object.keys(formData).forEach((key) => {
         if (formData[key]) {
-          formDataObj.append(key, formData[key])
+          formDataObj.append(key, formData[key]);
         }
-      })
+      });
       // Handle client_type field name mapping (if needed)
       if (formData.client_type) {
-        formDataObj.set('client_type', formData.client_type)
+        formDataObj.set("client_type", formData.client_type);
       }
 
-      await clientsAPI.createClient(formDataObj)
-      toast.success('Client created successfully')
-      clearClientFormDraft()
-      setShowCreateModal(false)
-      resetForm()
-      loadClients()
+      await clientsAPI.createClient(formDataObj);
+      toast.success("Client created successfully");
+      clearClientFormDraft();
+      setShowCreateModal(false);
+      resetForm();
+      loadClients();
     } catch (error) {
-      console.error('Error creating client:', error)
-      const errorMsg = error.response?.data?.detail || 'Failed to create client'
-      toast.error(typeof errorMsg === 'string' ? errorMsg : 'Failed to create client')
+      console.error("Error creating client:", error);
+      const errorMsg =
+        error.response?.data?.detail || "Failed to create client";
+      toast.error(
+        typeof errorMsg === "string" ? errorMsg : "Failed to create client",
+      );
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
-  }
+  };
 
   const handleUpdateClient = async (e, options = {}) => {
-    e.preventDefault()
-    if (submitting || !editingClient) return
-    if (!validateClientForm()) return
-    const shouldRetryLifecycle = options.retryLifecycle !== false
+    e.preventDefault();
+    if (submitting || !editingClient) return;
+    if (!validateClientForm()) return;
+    const shouldRetryLifecycle = options.retryLifecycle !== false;
 
     try {
-      setSubmitting(true)
-      const formDataObj = new FormData()
-      Object.keys(formData).forEach(key => {
-        formDataObj.append(key, formData[key] || '')
-      })
+      setSubmitting(true);
+      const formDataObj = new FormData();
+      Object.keys(formData).forEach((key) => {
+        formDataObj.append(key, formData[key] || "");
+      });
       // Handle client_type field name mapping (if needed)
       if (formData.client_type) {
-        formDataObj.set('client_type', formData.client_type)
+        formDataObj.set("client_type", formData.client_type);
       }
 
-      const updatedClient = await clientsAPI.updateClient(editingClient.id, formDataObj)
-      toast.success('Client updated successfully')
-      setShowCreateModal(false)
-      setEditingClient(null)
-      resetForm()
-      loadClients()
-      const retry = shouldRetryLifecycle ? pendingLifecycleRetry : null
-      setPendingLifecycleRetry(null)
+      const updatedClient = await clientsAPI.updateClient(
+        editingClient.id,
+        formDataObj,
+      );
+      toast.success("Client updated successfully");
+      setShowCreateModal(false);
+      setEditingClient(null);
+      resetForm();
+      loadClients();
+      const retry = shouldRetryLifecycle ? pendingLifecycleRetry : null;
+      setPendingLifecycleRetry(null);
       if (retry?.clientId === editingClient.id && retry.newStatus) {
-        await handleStatusChange(retry.clientId, retry.newStatus, { ...(retry.client || {}), ...updatedClient }, retry.reason || '')
+        await handleStatusChange(
+          retry.clientId,
+          retry.newStatus,
+          { ...(retry.client || {}), ...updatedClient },
+          retry.reason || "",
+        );
       }
     } catch (error) {
-      console.error('Error updating client:', error)
-      toast.error('Failed to update client')
+      console.error("Error updating client:", error);
+      toast.error("Failed to update client");
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
-  }
+  };
 
   const handleDeleteClient = async (clientId) => {
     const confirmed = await confirm({
-      title: 'Delete Client',
-      message: 'Are you sure you want to delete this client?',
-      confirmText: 'Delete',
-      cancelText: 'Cancel',
+      title: "Delete Client",
+      message: "Are you sure you want to delete this client?",
+      confirmText: "Delete",
+      cancelText: "Cancel",
       isDangerous: true,
-    })
-    if (!confirmed) return
+    });
+    if (!confirmed) return;
 
     try {
-      await clientsAPI.deleteClient(clientId)
-      toast.success('Client deleted successfully')
+      await clientsAPI.deleteClient(clientId);
+      toast.success("Client deleted successfully");
       showUndoNotification({
-        message: 'Client deleted',
+        message: "Client deleted",
         onUndo: async () => {
-          await loadClients()
+          await loadClients();
         },
         duration: 3000,
-      })
-      loadClients()
+      });
+      loadClients();
     } catch (error) {
-      console.error('Error deleting client:', error)
-      toast.error('Failed to delete client')
+      console.error("Error deleting client:", error);
+      toast.error("Failed to delete client");
     }
-  }
+  };
 
   const handleViewClient = async (client) => {
     try {
-      const clientData = await clientsAPI.getClient(client.id)
-      setSelectedClient(clientData)
-      setShowDetailModal(true)
+      const clientData = await clientsAPI.getClient(client.id);
+      setSelectedClient(clientData);
+      setShowDetailModal(true);
     } catch (error) {
-      console.error('Error loading client details:', error)
-      toast.error('Failed to load client details')
+      console.error("Error loading client details:", error);
+      toast.error("Failed to load client details");
     }
-  }
+  };
 
   const openClientWorkspace = (clientId) => {
-    navigate(`/clients/${clientId}/workspace`)
-  }
+    navigate(`/clients/${clientId}/workspace`);
+  };
 
   const handleEditClient = (client) => {
-    setFormErrors({})
-    setEditingClient(client)
-    setClientFormStep(1)
+    setFormErrors({});
+    setEditingClient(client);
+    setClientFormStep(1);
     setFormData({
-      name: client.name || '',
-      email: client.email || '',
-      contact: client.contact || '',
-      alternate_contact: client.alternate_contact || '',
-      address: client.address || '',
-      city: client.city || '',
-      state: client.state || '',
-      country: client.country || '',
-      zip_code: client.zip_code || '',
-      company_name: client.company_name || '',
-      industry: client.industry || '',
-      assigned_to: client.assigned_to || '',
-      notes: client.notes || '',
-      tags: Array.isArray(client.tags) ? client.tags.join(', ') : '',
-      client_type: client.client_type || '',
-      budget: client.budget || '',
-      start_date: client.start_date ? client.start_date.substring(0, 10) : '',
-      delivery_date: client.delivery_date ? client.delivery_date.substring(0, 10) : '',
-    })
-    setShowCreateModal(true)
-  }
+      name: client.name || "",
+      email: client.email || "",
+      contact: client.contact || "",
+      alternate_contact: client.alternate_contact || "",
+      address: client.address || "",
+      city: client.city || "",
+      state: client.state || "",
+      country: client.country || "",
+      zip_code: client.zip_code || "",
+      company_name: client.company_name || "",
+      industry: client.industry || "",
+      assigned_to: client.assigned_to || "",
+      notes: client.notes || "",
+      tags: Array.isArray(client.tags) ? client.tags.join(", ") : "",
+      client_type: client.client_type || "",
+      budget: client.budget || "",
+      start_date: client.start_date ? client.start_date.substring(0, 10) : "",
+      delivery_date: client.delivery_date
+        ? client.delivery_date.substring(0, 10)
+        : "",
+    });
+    setShowCreateModal(true);
+  };
 
-  const handleStatusChange = async (clientId, newStatus, client = null, reason = '') => {
-    const rule = lifecycleRules[client?.status || '']
-    const destinationRequirement = rule?.destination_requirements?.[newStatus]
+  const handleStatusChange = async (
+    clientId,
+    newStatus,
+    client = null,
+    reason = "",
+  ) => {
+    const rule = lifecycleRules[client?.status || ""];
+    const destinationRequirement = rule?.destination_requirements?.[newStatus];
     if (destinationRequirement?.required_reason && !reason) {
-      setTransitionReason('')
-      setReasonRequest({ clientId, newStatus, client })
-      return
+      setTransitionReason("");
+      setReasonRequest({ clientId, newStatus, client });
+      return;
     }
-    if (updatingStatusId) return
+    if (updatingStatusId) return;
     try {
-      setUpdatingStatusId(clientId)
-      await clientsAPI.updateClientStatus(clientId, newStatus, reason)
-      toast.success(`Client status updated to ${getStatusMeta(newStatus).label}`)
+      setUpdatingStatusId(clientId);
+      await clientsAPI.updateClientStatus(clientId, newStatus, reason);
+      toast.success(
+        `Client status updated to ${getStatusMeta(newStatus).label}`,
+      );
       if (routeStatus && routeStatus !== newStatus) {
-        setClients((prev) => prev.filter((c) => c.id !== clientId))
+        setClients((prev) => prev.filter((c) => c.id !== clientId));
       } else {
         setClients((prev) =>
-          prev.map((c) => (c.id === clientId ? { ...c, status: newStatus } : c))
-        )
+          prev.map((c) =>
+            c.id === clientId ? { ...c, status: newStatus } : c,
+          ),
+        );
       }
     } catch (error) {
-      const detail = error.response?.data?.detail
-      if (detail && typeof detail === 'object' && detail.code === 'CLIENT_TRANSITION_BLOCKED') {
-        if (detail.missing_fields?.some((item) => item.field === 'lifecycle_reason')) {
-          setTransitionReason('')
-          setReasonRequest({ clientId, newStatus, client })
+      const detail = error.response?.data?.detail;
+      if (
+        detail &&
+        typeof detail === "object" &&
+        detail.code === "CLIENT_TRANSITION_BLOCKED"
+      ) {
+        if (
+          detail.missing_fields?.some(
+            (item) => item.field === "lifecycle_reason",
+          )
+        ) {
+          setTransitionReason("");
+          setReasonRequest({ clientId, newStatus, client });
         } else {
-          setTransitionBlocker({ detail, client })
+          setTransitionBlocker({ detail, client });
         }
       } else {
-        toast.error(typeof detail === 'string' ? detail : 'Failed to update status')
+        toast.error(
+          typeof detail === "string" ? detail : "Failed to update status",
+        );
       }
     } finally {
-      setUpdatingStatusId(null)
+      setUpdatingStatusId(null);
     }
-  }
+  };
 
   const handleCreateKickoffMeetingAndRetry = async () => {
-    const client = transitionBlocker?.client
-    const targetStatus = transitionBlocker?.detail?.target_status || 'active'
-    if (!client?.id || creatingKickoffMeeting) return
+    const client = transitionBlocker?.client;
+    const targetStatus = transitionBlocker?.detail?.target_status || "active";
+    if (!client?.id || creatingKickoffMeeting) return;
     if (!kickoffMeetingForm.meeting_date || !kickoffMeetingForm.meeting_time) {
-      toast.error('Meeting date and time are required')
-      return
+      toast.error("Meeting date and time are required");
+      return;
     }
 
     try {
-      setCreatingKickoffMeeting(true)
-      const meetingData = new FormData()
-      meetingData.append('title', `Kickoff - ${client.name || client.company_name || 'Client'}`)
-      meetingData.append('description', `Kickoff meeting for client ${client.id}`)
-      meetingData.append('meeting_date', kickoffMeetingForm.meeting_date)
-      meetingData.append('meeting_time', kickoffMeetingForm.meeting_time)
-      meetingData.append('duration', String(kickoffMeetingForm.duration || 30))
-      await meetingsApi.create(meetingData)
-      toast.success('Kickoff meeting scheduled')
-      setTransitionBlocker(null)
+      setCreatingKickoffMeeting(true);
+      const meetingData = new FormData();
+      meetingData.append(
+        "title",
+        `Kickoff - ${client.name || client.company_name || "Client"}`,
+      );
+      meetingData.append(
+        "description",
+        `Kickoff meeting for client ${client.id}`,
+      );
+      meetingData.append("meeting_date", kickoffMeetingForm.meeting_date);
+      meetingData.append("meeting_time", kickoffMeetingForm.meeting_time);
+      meetingData.append("duration", String(kickoffMeetingForm.duration || 30));
+      await meetingsApi.create(meetingData);
+      toast.success("Kickoff meeting scheduled");
+      setTransitionBlocker(null);
       setKickoffMeetingForm({
         meeting_date: getTomorrowDateValue(),
-        meeting_time: '10:00',
+        meeting_time: "10:00",
         duration: 30,
-      })
-      loadClients()
-      await handleStatusChange(client.id, targetStatus, client)
+      });
+      loadClients();
+      await handleStatusChange(client.id, targetStatus, client);
     } catch (error) {
-      const detail = error.response?.data?.detail
-      toast.error(typeof detail === 'string' ? detail : 'Failed to schedule kickoff meeting')
+      const detail = error.response?.data?.detail;
+      toast.error(
+        typeof detail === "string"
+          ? detail
+          : "Failed to schedule kickoff meeting",
+      );
     } finally {
-      setCreatingKickoffMeeting(false)
+      setCreatingKickoffMeeting(false);
     }
-  }
+  };
 
   const openLifecycleAction = (client) => {
-    const rule = lifecycleRules[client.status || '']
-    if (!rule?.allowed_destinations?.length) return
-    if (rule.transition_type === 'sequential' && rule.allowed_destinations.length === 1) {
-      handleStatusChange(client.id, rule.allowed_destinations[0], client)
-      return
+    const rule = lifecycleRules[client.status || ""];
+    if (!rule?.allowed_destinations?.length) return;
+    if (
+      rule.transition_type === "sequential" &&
+      rule.allowed_destinations.length === 1
+    ) {
+      handleStatusChange(client.id, rule.allowed_destinations[0], client);
+      return;
     }
-    setStageSelectionClient(client)
-  }
+    setStageSelectionClient(client);
+  };
 
   const getLifecycleActionLabel = (client) => {
-    const status = client.status || 'active'
-    if (status === 'new') return 'Start Onboarding'
-    if (status === 'onboarding') return 'Activate Client'
-    if (lifecycleRules[status]?.transition_type === 'conditional') return 'Update Client Stage'
-    return lifecycleRules[status]?.action_label || 'Next Stage'
-  }
+    const status = client.status || "active";
+    if (status === "new") return "Start Onboarding";
+    if (status === "onboarding") return "Activate Client";
+    if (lifecycleRules[status]?.transition_type === "conditional")
+      return "Update Client Stage";
+    return lifecycleRules[status]?.action_label || "Next Stage";
+  };
 
   const handleCreateProject = async (e) => {
-    e.preventDefault()
-    if (!selectedClient || creatingProject) return
+    e.preventDefault();
+    if (!selectedClient || creatingProject) return;
 
     try {
-      setCreatingProject(true)
+      setCreatingProject(true);
 
-      const keyVal = (projectForm.key || (projectForm.name || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 16)).trim()
+      const keyVal = (
+        projectForm.key ||
+        (projectForm.name || "")
+          .trim()
+          .toUpperCase()
+          .replace(/[^A-Z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "")
+          .slice(0, 16)
+      ).trim();
       // Create project first
       const projectData = {
         project_id: keyVal,
         name: projectForm.name,
         key: keyVal,
-        description: projectForm.description || '',
-        type: projectForm.type || 'software',
-        assigned_to: projectForm.assigned_to || '',
+        description: projectForm.description || "",
+        type: projectForm.type || "software",
+        assigned_to: projectForm.assigned_to || "",
         client_id: selectedClient.id,
-      }
+      };
 
       // Convert dates to ISO format
       if (projectForm.start_date) {
-        projectData.start_date = timeService.toUtcISOString(projectForm.start_date)
+        projectData.start_date = timeService.toUtcISOString(
+          projectForm.start_date,
+        );
       }
       if (projectForm.delivery_date) {
-        projectData.delivery_date = timeService.toUtcISOString(projectForm.delivery_date)
+        projectData.delivery_date = timeService.toUtcISOString(
+          projectForm.delivery_date,
+        );
       }
 
-      const projectResponse = await projectsApi.createProject(projectData)
-      const projectId = projectResponse.data.project_id || projectResponse.data.id
+      const projectResponse = await projectsApi.createProject(projectData);
+      const projectId =
+        projectResponse.data.project_id || projectResponse.data.id;
 
       if (!projectId) {
-        throw new Error('Failed to get project ID from response')
+        throw new Error("Failed to get project ID from response");
       }
 
       // Now link project to client with budget and dates
@@ -631,372 +771,461 @@ const Clients = () => {
         selectedClient.id,
         projectId,
         projectForm.budget ? parseFloat(projectForm.budget) : null,
-        projectForm.start_date ? timeService.toUtcISOString(projectForm.start_date) : null,
-        projectForm.delivery_date ? timeService.toUtcISOString(projectForm.delivery_date) : null
-      )
+        projectForm.start_date
+          ? timeService.toUtcISOString(projectForm.start_date)
+          : null,
+        projectForm.delivery_date
+          ? timeService.toUtcISOString(projectForm.delivery_date)
+          : null,
+      );
 
-      toast.success('Project created and linked to client successfully')
-      setShowCreateProjectModal(false)
+      toast.success("Project created and linked to client successfully");
+      setShowCreateProjectModal(false);
       setProjectForm({
-        project_id: '',
-        name: '',
-        key: '',
-        description: '',
-        type: 'software',
-        assigned_to: '',
-        budget: '',
-        start_date: '',
-        delivery_date: '',
-      })
-      await loadClients()
-      await handleViewClient(selectedClient)
+        project_id: "",
+        name: "",
+        key: "",
+        description: "",
+        type: "software",
+        assigned_to: "",
+        budget: "",
+        start_date: "",
+        delivery_date: "",
+      });
+      await loadClients();
+      await handleViewClient(selectedClient);
     } catch (error) {
-      console.error('Error creating project:', error)
-      const errorMsg = error.response?.data?.detail || 'Failed to create project'
-      toast.error(typeof errorMsg === 'string' ? errorMsg : 'Failed to create project')
+      console.error("Error creating project:", error);
+      const errorMsg =
+        error.response?.data?.detail || "Failed to create project";
+      toast.error(
+        typeof errorMsg === "string" ? errorMsg : "Failed to create project",
+      );
     } finally {
-      setCreatingProject(false)
+      setCreatingProject(false);
     }
-  }
+  };
 
   const closeAddProjectModal = () => {
-    if (assigningProject) return
-    setShowAddProjectModal(false)
-    setSelectedProjectId('')
-    setProjectSearch('')
-    setAvailableProjects([])
-  }
+    if (assigningProject) return;
+    setShowAddProjectModal(false);
+    setSelectedProjectId("");
+    setProjectSearch("");
+    setAvailableProjects([]);
+  };
 
   const loadAvailableProjects = useCallback(async () => {
-    if (!selectedClient) return
+    if (!selectedClient) return;
 
     try {
-      setLoadingProjects(true)
-      const response = await projectsApi.getProjects({ limit: 100 })
-      const projects = response.data?.projects || response.projects || []
-      const linkedProjectIds = new Set([
-        ...(selectedClient.project_ids || []),
-        ...(selectedClient.projects || []).map((project) => project.id),
-      ].map(String))
+      setLoadingProjects(true);
+      const response = await projectsApi.getProjects({ limit: 100 });
+      const projects = response.data?.projects || response.projects || [];
+      const linkedProjectIds = new Set(
+        [
+          ...(selectedClient.project_ids || []),
+          ...(selectedClient.projects || []).map((project) => project.id),
+        ].map(String),
+      );
 
       setAvailableProjects(
-        projects.filter((project) => project?.id && !linkedProjectIds.has(String(project.id)))
-      )
+        projects.filter(
+          (project) => project?.id && !linkedProjectIds.has(String(project.id)),
+        ),
+      );
     } catch (error) {
-      console.error('Error loading available projects:', error)
-      setAvailableProjects([])
-      toast.error('Failed to load available projects')
+      console.error("Error loading available projects:", error);
+      setAvailableProjects([]);
+      toast.error("Failed to load available projects");
     } finally {
-      setLoadingProjects(false)
+      setLoadingProjects(false);
     }
-  }, [selectedClient])
+  }, [selectedClient]);
 
   useEffect(() => {
     if (showAddProjectModal) {
-      loadAvailableProjects()
+      loadAvailableProjects();
     }
-  }, [loadAvailableProjects, showAddProjectModal])
+  }, [loadAvailableProjects, showAddProjectModal]);
 
   const handleAddExistingProject = async (event) => {
-    event.preventDefault()
-    if (!selectedClient || !selectedProjectId || assigningProject) return
+    event.preventDefault();
+    if (!selectedClient || !selectedProjectId || assigningProject) return;
 
     const alreadyLinked = (selectedClient.project_ids || []).some(
-      (projectId) => String(projectId) === String(selectedProjectId)
-    )
+      (projectId) => String(projectId) === String(selectedProjectId),
+    );
     if (alreadyLinked) {
-      toast.error('This project is already assigned to the client')
-      return
+      toast.error("This project is already assigned to the client");
+      return;
     }
 
     try {
-      setAssigningProject(true)
-      await clientsAPI.addProjectToClient(selectedClient.id, selectedProjectId)
-      const refreshedClient = await clientsAPI.getClient(selectedClient.id)
-      setSelectedClient(refreshedClient)
-      await loadClients()
-      toast.success('Project added to client successfully')
-      setShowAddProjectModal(false)
-      setSelectedProjectId('')
-      setProjectSearch('')
-      setAvailableProjects([])
+      setAssigningProject(true);
+      await clientsAPI.addProjectToClient(selectedClient.id, selectedProjectId);
+      const refreshedClient = await clientsAPI.getClient(selectedClient.id);
+      setSelectedClient(refreshedClient);
+      await loadClients();
+      toast.success("Project added to client successfully");
+      setShowAddProjectModal(false);
+      setSelectedProjectId("");
+      setProjectSearch("");
+      setAvailableProjects([]);
     } catch (error) {
-      console.error('Error adding project to client:', error)
-      const detail = error.response?.data?.detail
-      const errorMessage = typeof detail === 'string'
-        ? detail
-        : detail?.msg || 'Failed to add project to client'
-      toast.error(errorMessage)
+      console.error("Error adding project to client:", error);
+      const detail = error.response?.data?.detail;
+      const errorMessage =
+        typeof detail === "string"
+          ? detail
+          : detail?.msg || "Failed to add project to client";
+      toast.error(errorMessage);
     } finally {
-      setAssigningProject(false)
+      setAssigningProject(false);
     }
-  }
+  };
 
   const filteredAvailableProjects = availableProjects.filter((project) => {
-    const query = projectSearch.trim().toLowerCase()
-    if (!query) return true
+    const query = projectSearch.trim().toLowerCase();
+    if (!query) return true;
     return [project.name, project.key, project.project_id]
       .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(query))
-  })
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
 
   // Load assignable users when create project modal opens
   useEffect(() => {
     if (showCreateProjectModal) {
-      loadAssignableUsers()
+      loadAssignableUsers();
     }
-  }, [loadAssignableUsers, showCreateProjectModal])
+  }, [loadAssignableUsers, showCreateProjectModal]);
 
   const handleUploadDocument = async () => {
-    if (!selectedClient || !documentFile) return
+    if (!selectedClient || !documentFile) return;
 
     try {
-      await clientsAPI.uploadDocument(selectedClient.id, documentFile, documentName)
-      toast.success('Document uploaded successfully')
-      setShowDocumentModal(false)
-      setDocumentFile(null)
-      setDocumentName('')
-      await loadClients()
-      await handleViewClient(selectedClient)
+      await clientsAPI.uploadDocument(
+        selectedClient.id,
+        documentFile,
+        documentName,
+      );
+      toast.success("Document uploaded successfully");
+      setShowDocumentModal(false);
+      setDocumentFile(null);
+      setDocumentName("");
+      await loadClients();
+      await handleViewClient(selectedClient);
     } catch (error) {
-      console.error('Error uploading document:', error)
-      toast.error('Failed to upload document')
+      console.error("Error uploading document:", error);
+      toast.error("Failed to upload document");
     }
-  }
+  };
 
   const resetForm = () => {
-    setFormData({ ...EMPTY_CLIENT_FORM })
-    setEditingClient(null)
-    setFormErrors({})
-    setClientFormStep(1)
-  }
+    setFormData({ ...EMPTY_CLIENT_FORM });
+    setEditingClient(null);
+    setFormErrors({});
+    setClientFormStep(1);
+  };
 
   // Opening the create modal restores any previously entered (unsaved) draft.
   const openCreateModal = () => {
-    setEditingClient(null)
-    setClientFormStep(1)
-    setFormErrors({})
-    setFormData(loadClientFormDraft() || { ...EMPTY_CLIENT_FORM })
-    setShowCreateModal(true)
-  }
+    setEditingClient(null);
+    setClientFormStep(1);
+    setFormErrors({});
+    setFormData(loadClientFormDraft() || { ...EMPTY_CLIENT_FORM });
+    setShowCreateModal(true);
+  };
 
   // Closing the modal (cross button, Escape, backdrop, or cancel) keeps the
   // partially filled values as a draft so they survive reopening. Only a
   // successful create clears the draft; edit-mode closes do not touch it.
   const closeCreateModal = () => {
     if (!editingClient) {
-      saveClientFormDraft(formData)
+      saveClientFormDraft(formData);
     }
-    setShowCreateModal(false)
-    setPendingLifecycleRetry(null)
-  }
+    setShowCreateModal(false);
+    setPendingLifecycleRetry(null);
+  };
 
   const updateClientField = (field, value) => {
-    setFormData((current) => ({ ...current, [field]: value }))
-    setFormErrors((current) => ({ ...current, [field]: '' }))
-  }
+    setFormData((current) => ({ ...current, [field]: value }));
+    setFormErrors((current) => ({ ...current, [field]: "" }));
+  };
 
   const validateClientForm = () => {
-    const nextErrors = {}
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const nextErrors = {};
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!formData.name.trim()) nextErrors.name = 'Client name is required.'
+    if (!formData.name.trim()) nextErrors.name = "Client name is required.";
     if (formData.email.trim() && !emailPattern.test(formData.email.trim())) {
-      nextErrors.email = 'Enter a valid email address.'
+      nextErrors.email = "Enter a valid email address.";
     }
 
-    setFormErrors(nextErrors)
-    return Object.keys(nextErrors).length === 0
-  }
+    setFormErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
 
   const getTotalBudget = (client) => {
     if (client.projects && client.projects.length > 0) {
-      return client.projects.reduce((sum, proj) => sum + (proj.budget || 0), 0)
+      return client.projects.reduce((sum, proj) => sum + (proj.budget || 0), 0);
     }
-    return 0
-  }
+    return 0;
+  };
 
   const getEarliestStartDate = (client) => {
     if (client.projects && client.projects.length > 0) {
       const dates = client.projects
-        .map(proj => proj.start_date)
-        .filter(date => date != null && date !== undefined)
-        .map(date => {
+        .map((proj) => proj.start_date)
+        .filter((date) => date != null && date !== undefined)
+        .map((date) => {
           try {
-            const d = timeService.instant(date)
-            return isNaN(d.getTime()) ? null : d
+            const d = timeService.instant(date);
+            return isNaN(d.getTime()) ? null : d;
           } catch (e) {
-            return null
+            return null;
           }
         })
-        .filter(date => date !== null)
+        .filter((date) => date !== null);
 
       if (dates.length > 0) {
-        return timeService.instant(Math.min(...dates.map(d => d.getTime())))
+        return timeService.instant(Math.min(...dates.map((d) => d.getTime())));
       }
     }
-    return null
-  }
+    return null;
+  };
 
   const getLatestDeliveryDate = (client) => {
     if (client.projects && client.projects.length > 0) {
       const dates = client.projects
-        .map(proj => proj.delivery_date)
-        .filter(date => date != null && date !== undefined)
-        .map(date => {
+        .map((proj) => proj.delivery_date)
+        .filter((date) => date != null && date !== undefined)
+        .map((date) => {
           try {
-            const d = timeService.instant(date)
-            return isNaN(d.getTime()) ? null : d
+            const d = timeService.instant(date);
+            return isNaN(d.getTime()) ? null : d;
           } catch (e) {
-            return null
+            return null;
           }
         })
-        .filter(date => date !== null)
+        .filter((date) => date !== null);
 
       if (dates.length > 0) {
-        return timeService.instant(Math.max(...dates.map(d => d.getTime())))
+        return timeService.instant(Math.max(...dates.map((d) => d.getTime())));
       }
     }
-    return null
-  }
+    return null;
+  };
 
   const getStartDateText = (client) => {
-    if (client.start_date) return timeService.formatDateOnly(client.start_date)
-    const startDate = getEarliestStartDate(client)
-    return startDate ? format(startDate, 'MMM d, yyyy') : '-'
-  }
+    if (client.start_date) return timeService.formatDateOnly(client.start_date);
+    const startDate = getEarliestStartDate(client);
+    return startDate ? format(startDate, "MMM d, yyyy") : "-";
+  };
 
   const getDeliveryDateText = (client) => {
-    if (client.delivery_date) return timeService.formatDateOnly(client.delivery_date)
-    const deliveryDate = getLatestDeliveryDate(client)
-    return deliveryDate ? format(deliveryDate, 'MMM d, yyyy') : '-'
-  }
+    if (client.delivery_date)
+      return timeService.formatDateOnly(client.delivery_date);
+    const deliveryDate = getLatestDeliveryDate(client);
+    return deliveryDate ? format(deliveryDate, "MMM d, yyyy") : "-";
+  };
 
   const getStartDateValue = (client) => {
     if (client.start_date) {
-      const match = String(client.start_date).match(/^(\d{4}-\d{2}-\d{2})/)
-      if (match) return match[1]
+      const match = String(client.start_date).match(/^(\d{4}-\d{2}-\d{2})/);
+      if (match) return match[1];
     }
-    const startDate = getEarliestStartDate(client)
-    return startDate ? format(startDate, 'yyyy-MM-dd') : ''
-  }
+    const startDate = getEarliestStartDate(client);
+    return startDate ? format(startDate, "yyyy-MM-dd") : "";
+  };
 
   const getDeliveryDateValue = (client) => {
     if (client.delivery_date) {
-      const match = String(client.delivery_date).match(/^(\d{4}-\d{2}-\d{2})/)
-      if (match) return match[1]
+      const match = String(client.delivery_date).match(/^(\d{4}-\d{2}-\d{2})/);
+      if (match) return match[1];
     }
-    const deliveryDate = getLatestDeliveryDate(client)
-    return deliveryDate ? format(deliveryDate, 'yyyy-MM-dd') : ''
-  }
+    const deliveryDate = getLatestDeliveryDate(client);
+    return deliveryDate ? format(deliveryDate, "yyyy-MM-dd") : "";
+  };
 
   const updateColumnFilter = (key, value) => {
-    setColumnFilters((prev) => ({ ...prev, [key]: value }))
-  }
+    setColumnFilters((prev) => ({ ...prev, [key]: value }));
+  };
 
-  const activeColumnFilterCount = Object.values(columnFilters).filter(Boolean).length + (!routeStatus && statusFilter ? 1 : 0)
+  const activeColumnFilterCount =
+    Object.values(columnFilters).filter(Boolean).length +
+    (!routeStatus && statusFilter ? 1 : 0);
   const applySavedView = (filters = {}) => {
-    if (!routeStatus) setStatusFilter(filters.status || '')
-    setColumnFilters((prev) => ({ ...prev, type: filters.client_type || '', projects: prev.projects, budget: prev.budget, start_date: '', delivery_date: '' }))
-    if (filters.mine && user?.id) setSearchQuery('')
-    if (filters.health_level || filters.attention_type || filters.renewal_window) {
-      toast.success('Saved view applied to dashboard signals')
+    if (!routeStatus) setStatusFilter(filters.status || "");
+    setColumnFilters((prev) => ({
+      ...prev,
+      type: filters.client_type || "",
+      projects: prev.projects,
+      budget: prev.budget,
+      start_date: "",
+      delivery_date: "",
+    }));
+    if (filters.mine && user?.id) setSearchQuery("");
+    if (
+      filters.health_level ||
+      filters.attention_type ||
+      filters.renewal_window
+    ) {
+      toast.success("Saved view applied to dashboard signals");
     }
-  }
+  };
 
   const saveCurrentView = async () => {
-    const name = window.prompt('Saved view name')
-    if (!name) return
+    const name = window.prompt("Saved view name");
+    if (!name) return;
     try {
-      await clientsAPI.createSavedView({ name, filters: { status: effectiveStatusFilter, client_type: columnFilters.type, search: searchQuery } })
-      toast.success('Client view saved')
-      await loadClientManagement()
+      await clientsAPI.createSavedView({
+        name,
+        filters: {
+          status: effectiveStatusFilter,
+          client_type: columnFilters.type,
+          search: searchQuery,
+        },
+      });
+      toast.success("Client view saved");
+      await loadClientManagement();
     } catch (error) {
-      toast.error('Failed to save view')
+      toast.error("Failed to save view");
     }
-  }
+  };
 
   const runClientAutomation = async () => {
     try {
-      const result = await clientsAPI.runAutomation({ limit: 50 })
-      toast.success(`${result.created_count || 0} client automation action(s) created`)
-      await loadClientManagement()
+      const result = await clientsAPI.runAutomation({ limit: 50 });
+      toast.success(
+        `${result.created_count || 0} client automation action(s) created`,
+      );
+      await loadClientManagement();
     } catch (error) {
-      toast.error('Failed to run client automation')
+      toast.error("Failed to run client automation");
     }
-  }
+  };
 
   const clearColumnFilters = () => {
     setColumnFilters({
-      type: '',
-      projects: '',
-      budget: '',
-      start_date: '',
-      delivery_date: '',
-    })
-    if (!routeStatus) setStatusFilter('')
-  }
+      type: "",
+      projects: "",
+      budget: "",
+      start_date: "",
+      delivery_date: "",
+    });
+    if (!routeStatus) setStatusFilter("");
+  };
 
-  const filteredClients = clients.filter(client => {
-    const q = (value) => (value ?? '').toString().toLowerCase()
-    const matchesSearch = !searchQuery ||
+  const filteredClients = clients.filter((client) => {
+    const q = (value) => (value ?? "").toString().toLowerCase();
+    const matchesSearch =
+      !searchQuery ||
       q(client.name).includes(searchQuery.toLowerCase()) ||
       q(client.email).includes(searchQuery.toLowerCase()) ||
       q(client.company_name).includes(searchQuery.toLowerCase()) ||
-      q(client.contact).includes(searchQuery.toLowerCase())
+      q(client.contact).includes(searchQuery.toLowerCase());
 
-    const matchesStatus = !effectiveStatusFilter || (client.status || 'active') === effectiveStatusFilter
+    const matchesStatus =
+      !effectiveStatusFilter ||
+      (client.status || "active") === effectiveStatusFilter;
 
-    const cf = columnFilters
-    const matchesType = !cf.type || (client.client_type || '') === cf.type
+    const cf = columnFilters;
+    const matchesType = !cf.type || (client.client_type || "") === cf.type;
 
-    const totalProjects = client.total_projects ?? client.project_ids?.length ?? 0
+    const totalProjects =
+      client.total_projects ?? client.project_ids?.length ?? 0;
     const matchesProjects = (() => {
-      if (!cf.projects) return true
-      if (cf.projects === '0') return totalProjects === 0
-      if (cf.projects === '1-5') return totalProjects >= 1 && totalProjects <= 5
-      if (cf.projects === '6-10') return totalProjects >= 6 && totalProjects <= 10
-      if (cf.projects === '10+') return totalProjects > 10
-      return true
-    })()
+      if (!cf.projects) return true;
+      if (cf.projects === "0") return totalProjects === 0;
+      if (cf.projects === "1-5")
+        return totalProjects >= 1 && totalProjects <= 5;
+      if (cf.projects === "6-10")
+        return totalProjects >= 6 && totalProjects <= 10;
+      if (cf.projects === "10+") return totalProjects > 10;
+      return true;
+    })();
 
-    const budgetValue = client.budget > 0 ? Number(client.budget) : getTotalBudget(client)
+    const budgetValue =
+      client.budget > 0 ? Number(client.budget) : getTotalBudget(client);
     const matchesBudget = (() => {
-      if (!cf.budget) return true
-      if (budgetValue <= 0) return false
-      if (cf.budget === 'lt-50000') return budgetValue < 50000
-      if (cf.budget === '50000-100000') return budgetValue >= 50000 && budgetValue < 100000
-      if (cf.budget === '100000-500000') return budgetValue >= 100000 && budgetValue < 500000
-      if (cf.budget === '500000-1000000') return budgetValue >= 500000 && budgetValue < 1000000
-      if (cf.budget === 'gt-1000000') return budgetValue >= 1000000
-      return true
-    })()
+      if (!cf.budget) return true;
+      if (budgetValue <= 0) return false;
+      if (cf.budget === "lt-50000") return budgetValue < 50000;
+      if (cf.budget === "50000-100000")
+        return budgetValue >= 50000 && budgetValue < 100000;
+      if (cf.budget === "100000-500000")
+        return budgetValue >= 100000 && budgetValue < 500000;
+      if (cf.budget === "500000-1000000")
+        return budgetValue >= 500000 && budgetValue < 1000000;
+      if (cf.budget === "gt-1000000") return budgetValue >= 1000000;
+      return true;
+    })();
 
-    const matchesStartDate = !cf.start_date || getStartDateValue(client) === cf.start_date
-    const matchesDeliveryDate = !cf.delivery_date || getDeliveryDateValue(client) === cf.delivery_date
+    const matchesStartDate =
+      !cf.start_date || getStartDateValue(client) === cf.start_date;
+    const matchesDeliveryDate =
+      !cf.delivery_date || getDeliveryDateValue(client) === cf.delivery_date;
 
-    return matchesSearch && matchesStatus && matchesType &&
-      matchesProjects && matchesBudget && matchesStartDate && matchesDeliveryDate
-  })
+    return (
+      matchesSearch &&
+      matchesStatus &&
+      matchesType &&
+      matchesProjects &&
+      matchesBudget &&
+      matchesStartDate &&
+      matchesDeliveryDate
+    );
+  });
 
-  const totalPages = Math.max(1, Math.ceil(filteredClients.length / CLIENT_PAGE_SIZE))
-  const safePage = Math.min(currentPage, totalPages)
-  const paginatedClients = filteredClients.slice((safePage - 1) * CLIENT_PAGE_SIZE, safePage * CLIENT_PAGE_SIZE)
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredClients.length / CLIENT_PAGE_SIZE),
+  );
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedClients = filteredClients.slice(
+    (safePage - 1) * CLIENT_PAGE_SIZE,
+    safePage * CLIENT_PAGE_SIZE,
+  );
 
-  const kpis = portfolioOverview?.kpis || {}
-  const insights = portfolioOverview?.insights || {}
-  const attentionItems = portfolioOverview?.needs_attention || []
-  const dailyActions = portfolioOverview?.daily_actions || []
-  const activeCount = useMemo(() => clients.filter(c => (c.status || 'active') === 'active').length, [clients])
-  const totalPortfolioBudget = useMemo(() => clients.reduce((sum, c) => sum + getTotalBudget(c), 0), [clients])
-  const totalProjectsCount = useMemo(() => clients.reduce((sum, c) => sum + (c.projects?.length || c.project_ids?.length || 0), 0), [clients])
+  const kpis = portfolioOverview?.kpis || {};
+  const insights = portfolioOverview?.insights || {};
+  const attentionItems = portfolioOverview?.needs_attention || [];
+  const dailyActions = portfolioOverview?.daily_actions || [];
+  const activeCount = useMemo(
+    () => clients.filter((c) => (c.status || "active") === "active").length,
+    [clients],
+  );
+  const totalPortfolioBudget = useMemo(
+    () => clients.reduce((sum, c) => sum + getTotalBudget(c), 0),
+    [clients],
+  );
+  const totalProjectsCount = useMemo(
+    () =>
+      clients.reduce(
+        (sum, c) => sum + (c.projects?.length || c.project_ids?.length || 0),
+        0,
+      ),
+    [clients],
+  );
+  const lifecycleStageCards = useMemo(
+    () =>
+      Object.entries(CLIENT_STAGE_ROUTES).map(([pathKey, status]) => ({
+        pathKey,
+        status,
+        count: clients.filter(
+          (client) => (client.status || "active") === status,
+        ).length,
+        ...getStatusMeta(status),
+      })),
+    [clients],
+  );
 
   if (loading) {
     return (
       <div className="p-4 md:p-6 space-y-6">
         <SkeletonTable rows={8} cols={5} />
       </div>
-    )
+    );
   }
 
   return (
@@ -1011,7 +1240,9 @@ const Clients = () => {
               <Briefcase className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold leading-tight text-white tracking-tight md:text-xl">{pageTitle}</h1>
+              <h1 className="text-lg font-bold leading-tight text-white tracking-tight md:text-xl">
+                {pageTitle}
+              </h1>
               <p className="text-xs text-indigo-100">{pageDescription}</p>
             </div>
           </div>
@@ -1027,6 +1258,143 @@ const Clients = () => {
           )}
         </div>
       </div>
+
+      {showOverviewSections ? (
+        <section className="rounded-lg border border-gray-200/80 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+              Client Stages
+            </h2>
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+              {clients.length} total
+            </span>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+            {lifecycleStageCards.map((stage) => (
+              <button
+                key={stage.status}
+                type="button"
+                onClick={() => navigate(`/clients/${stage.pathKey}`)}
+                className={`min-h-24 rounded-lg border border-current/20 p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500/30 ${stage.chipClass}`}
+                aria-label={`${stage.label} clients: ${stage.count}`}
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase">
+                    {stage.label}
+                  </span>
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${stage.dotClass}`}
+                    aria-hidden="true"
+                  ></span>
+                </span>
+                <span className="mt-3 block text-2xl font-black leading-none tabular-nums">
+                  {stage.count}
+                </span>
+                <span className="mt-1 block text-[11px] font-semibold opacity-80">
+                  Clients
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <>
+        {/* Metrics Stats Row */}
+
+        {!showOverviewSections ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              label="Total Clients"
+              value={clients.length}
+              icon={Users}
+              color="indigo"
+              subtitle="Registered Accounts"
+            />
+            <StatCard
+              label="Active Accounts"
+              value={activeCount}
+              icon={CheckCircle2}
+              color="emerald"
+              subtitle="In Operations"
+            />
+            <StatCard
+              label="Portfolio Budget"
+              value={`₹${totalPortfolioBudget > 0 ? totalPortfolioBudget.toLocaleString() : "0"}`}
+              icon={DollarSign}
+              color="amber"
+              subtitle="Total Contract Value"
+            />
+            <StatCard
+              label="Linked Projects"
+              value={totalProjectsCount}
+              icon={FolderKanban}
+              color="purple"
+              subtitle="Active Deliverables"
+            />
+          </div>
+        ) : null}
+        {showOverviewSections ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+            <StatCard
+              label="Tenant Clients"
+              value={kpis.total_clients ?? clients.length}
+              icon={Users}
+              color="indigo"
+              subtitle="Server KPI"
+            />
+            <StatCard
+              label="Active"
+              value={kpis.active_clients ?? 0}
+              icon={CheckCircle2}
+              color="emerald"
+              subtitle="Operational"
+            />
+            <StatCard
+              label="At Risk"
+              value={kpis.at_risk ?? 0}
+              icon={AlertTriangle}
+              color="rose"
+              subtitle="Lifecycle"
+            />
+            <StatCard
+              label="Renewal Due"
+              value={kpis.renewal_due ?? 0}
+              icon={Calendar}
+              color="purple"
+              subtitle="Commercial"
+            />
+            <StatCard
+              label="Outstanding"
+              value={`₹${Number(kpis.outstanding_revenue || 0).toLocaleString()}`}
+              icon={DollarSign}
+              color="amber"
+              subtitle="Invoices"
+            />
+            <StatCard
+              label="MRR"
+              value={`₹${Number(kpis.mrr || 0).toLocaleString()}`}
+              icon={DollarSign}
+              color="emerald"
+              subtitle="Recurring"
+            />
+            <StatCard
+              label="Active Projects"
+              value={kpis.active_projects ?? 0}
+              icon={FolderKanban}
+              color="purple"
+              subtitle="Delivery"
+            />
+            <StatCard
+              label="Health"
+              value={kpis.overall_health ?? 100}
+              icon={CheckCircle2}
+              color="indigo"
+              subtitle="Average"
+            />
+          </div>
+        ) : null}
+      </>
 
       {/* Search & Filter Controls Surface */}
       <div className="rounded-2xl border border-gray-200/80 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -1047,8 +1415,8 @@ const Clients = () => {
               onClick={() => setShowFilters((prev) => !prev)}
               className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
                 showFilters || activeColumnFilterCount > 0
-                  ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300'
-                  : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-600'
+                  ? "border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300"
+                  : "border-gray-200 bg-white text-gray-700 hover:border-indigo-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-600"
               }`}
             >
               <Filter className="h-4 w-4" />
@@ -1076,14 +1444,24 @@ const Clients = () => {
           <div className="mt-3 border-t border-gray-200/80 pt-3 dark:border-gray-800">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <FormField label="Type">
-                <select value={columnFilters.type} onChange={(e) => updateColumnFilter('type', e.target.value)} className={inputClassName}>
+                <select
+                  value={columnFilters.type}
+                  onChange={(e) => updateColumnFilter("type", e.target.value)}
+                  className={inputClassName}
+                >
                   <option value="">All types</option>
                   <option value="monthly">Monthly</option>
                   <option value="one_time">One Time</option>
                 </select>
               </FormField>
               <FormField label="Projects">
-                <select value={columnFilters.projects} onChange={(e) => updateColumnFilter('projects', e.target.value)} className={inputClassName}>
+                <select
+                  value={columnFilters.projects}
+                  onChange={(e) =>
+                    updateColumnFilter("projects", e.target.value)
+                  }
+                  className={inputClassName}
+                >
                   <option value="">Any count</option>
                   <option value="0">0</option>
                   <option value="1-5">1 – 5</option>
@@ -1092,7 +1470,11 @@ const Clients = () => {
                 </select>
               </FormField>
               <FormField label="Budget">
-                <select value={columnFilters.budget} onChange={(e) => updateColumnFilter('budget', e.target.value)} className={inputClassName}>
+                <select
+                  value={columnFilters.budget}
+                  onChange={(e) => updateColumnFilter("budget", e.target.value)}
+                  className={inputClassName}
+                >
                   <option value="">Any amount</option>
                   <option value="lt-50000">Under ₹50,000</option>
                   <option value="50000-100000">₹50,000 – ₹1,00,000</option>
@@ -1102,14 +1484,32 @@ const Clients = () => {
                 </select>
               </FormField>
               <FormField label="Start date">
-                <input type="date" value={columnFilters.start_date} onChange={(e) => updateColumnFilter('start_date', e.target.value)} className={inputClassName} />
+                <input
+                  type="date"
+                  value={columnFilters.start_date}
+                  onChange={(e) =>
+                    updateColumnFilter("start_date", e.target.value)
+                  }
+                  className={inputClassName}
+                />
               </FormField>
               <FormField label="Delivery date">
-                <input type="date" value={columnFilters.delivery_date} onChange={(e) => updateColumnFilter('delivery_date', e.target.value)} className={inputClassName} />
+                <input
+                  type="date"
+                  value={columnFilters.delivery_date}
+                  onChange={(e) =>
+                    updateColumnFilter("delivery_date", e.target.value)
+                  }
+                  className={inputClassName}
+                />
               </FormField>
               {!routeStatus && (
                 <FormField label="Status">
-                  <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClassName}>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className={inputClassName}
+                  >
                     <option value="">All statuses</option>
                     <option value="new">New</option>
                     <option value="onboarding">Onboarding</option>
@@ -1126,8 +1526,8 @@ const Clients = () => {
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {activeColumnFilterCount > 0
-                  ? `${activeColumnFilterCount} filter${activeColumnFilterCount > 1 ? 's' : ''} active`
-                  : 'No filters applied'}
+                  ? `${activeColumnFilterCount} filter${activeColumnFilterCount > 1 ? "s" : ""} active`
+                  : "No filters applied"}
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -1149,26 +1549,6 @@ const Clients = () => {
           </div>
         )}
       </div>
-
-      {/* Metrics Stats Row */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total Clients" value={clients.length} icon={Users} color="indigo" subtitle="Registered Accounts" />
-        <StatCard label="Active Accounts" value={activeCount} icon={CheckCircle2} color="emerald" subtitle="In Operations" />
-        <StatCard label="Portfolio Budget" value={`₹${totalPortfolioBudget > 0 ? totalPortfolioBudget.toLocaleString() : '0'}`} icon={DollarSign} color="amber" subtitle="Total Contract Value" />
-        <StatCard label="Linked Projects" value={totalProjectsCount} icon={FolderKanban} color="purple" subtitle="Active Deliverables" />
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-        <StatCard label="Tenant Clients" value={kpis.total_clients ?? clients.length} icon={Users} color="indigo" subtitle="Server KPI" />
-        <StatCard label="Active" value={kpis.active_clients ?? 0} icon={CheckCircle2} color="emerald" subtitle="Operational" />
-        <StatCard label="At Risk" value={kpis.at_risk ?? 0} icon={AlertTriangle} color="rose" subtitle="Lifecycle" />
-        <StatCard label="Renewal Due" value={kpis.renewal_due ?? 0} icon={Calendar} color="purple" subtitle="Commercial" />
-        <StatCard label="Outstanding" value={`₹${Number(kpis.outstanding_revenue || 0).toLocaleString()}`} icon={DollarSign} color="amber" subtitle="Invoices" />
-        <StatCard label="MRR" value={`₹${Number(kpis.mrr || 0).toLocaleString()}`} icon={DollarSign} color="emerald" subtitle="Recurring" />
-        <StatCard label="Active Projects" value={kpis.active_projects ?? 0} icon={FolderKanban} color="purple" subtitle="Delivery" />
-        <StatCard label="Health" value={kpis.overall_health ?? 100} icon={CheckCircle2} color="indigo" subtitle="Average" />
-      </div>
-
       {/* Clients Table / Cards Container */}
 
       {/* Clients Table */}
@@ -1177,11 +1557,15 @@ const Clients = () => {
           icon={Briefcase}
           title="Clients unavailable"
           description={loadError}
-          action={(
-            <button type="button" onClick={loadClients} className="btn btn-primary">
+          action={
+            <button
+              type="button"
+              onClick={loadClients}
+              className="btn btn-primary"
+            >
               Retry
             </button>
-          )}
+          }
         />
       ) : filteredClients.length === 0 ? (
         <EmptyState
@@ -1190,15 +1574,17 @@ const Clients = () => {
           imageAlt="SynTask client workspace preview"
           title="No clients found"
           description="Create a client to link projects, budgets, and documents."
-          action={(isCompanyAdmin || isLead) ? (
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="btn btn-primary"
-            >
-              Add Your First Client
-            </button>
-          ) : null}
+          action={
+            isCompanyAdmin || isLead ? (
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="btn btn-primary"
+              >
+                Add Your First Client
+              </button>
+            ) : null
+          }
         />
       ) : (
         <div className="rounded-2xl border border-gray-200/80 bg-white shadow-sm overflow-hidden dark:border-gray-800 dark:bg-gray-900">
@@ -1220,112 +1606,147 @@ const Clients = () => {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {paginatedClients.map((client) => {
-                  const lifecycleRule = lifecycleRules[client.status || 'active']
-                  const displayName = client.company_name?.trim() || client.name || 'Client'
+                  const lifecycleRule =
+                    lifecycleRules[client.status || "active"];
+                  const displayName =
+                    client.company_name?.trim() || client.name || "Client";
                   return (
                     <tr
-                    key={client.id}
-                    className="group cursor-pointer transition hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20"
-                    onClick={() => openClientWorkspace(client.id)}
-                  >
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-[11px] font-bold text-white shadow-sm ${getMonogramColor(displayName)}`}>
-                          {getMonogram(displayName)}
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold text-gray-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400 transition">{displayName}</div>
-                          {client.status === 'onboarding' && client.onboarding ? (
-                            <div className="mt-1 max-w-[190px] text-[11px] text-indigo-600 dark:text-indigo-300">
-                              <span className="font-semibold">{client.onboarding.progress_percent || 0}% ready</span>
-                              {client.onboarding.next_action ? ` · ${client.onboarding.next_action}` : ''}
+                      key={client.id}
+                      className="group cursor-pointer transition hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20"
+                      onClick={() => openClientWorkspace(client.id)}
+                    >
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-[11px] font-bold text-white shadow-sm ${getMonogramColor(displayName)}`}>
+                            {getMonogram(displayName)}
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-gray-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400 transition">
+                              {displayName}
                             </div>
-                          ) : null}
+                            {client.status === "onboarding" &&
+                            client.onboarding ? (
+                              <div className="mt-1 max-w-[190px] text-[11px] text-indigo-600 dark:text-indigo-300">
+                                <span className="font-semibold">
+                                  {client.onboarding.progress_percent || 0}%
+                                  ready
+                                </span>
+                                {client.onboarding.next_action
+                                  ? ` · ${client.onboarding.next_action}`
+                                  : ""}
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300 font-medium">
-                      {client.contact || '-'}
-                    </td>
-                    <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
-                      {client.email || '-'}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      {client.client_type === 'monthly' ? (
-                        <span className="inline-flex items-center rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">Monthly</span>
-                      ) : client.client_type === 'one_time' ? (
-                        <span className="inline-flex items-center rounded-lg bg-purple-50 px-2.5 py-1 text-[11px] font-semibold text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/60">One Time</span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-gray-900 dark:text-white font-bold">
-                      {client.total_projects ?? client.project_ids?.length ?? 0}
-                    </td>
-                    <td className="py-3.5 px-4 text-gray-900 dark:text-white font-bold">
-                      {client.budget > 0 ? `₹${Number(client.budget).toLocaleString()}` : getTotalBudget(client) > 0 ? `₹${getTotalBudget(client).toLocaleString()}` : '-'}
-                    </td>
-                    <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
-                      {getStartDateText(client)}
-                    </td>
-                    <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
-                      {getDeliveryDateText(client)}
-                    </td>
-                    <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
-                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusMeta(client.status || 'active').chipClass}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${getStatusMeta(client.status || 'active').dotClass}`}></span>
-                        {getStatusMeta(client.status || 'active').label}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {(isCompanyAdmin || isLead) && lifecycleRule?.allowed_destinations?.length ? (
-                          <button
-                            type="button"
-                            disabled={updatingStatusId === client.id}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              openLifecycleAction(client)
-                            }}
-                            className="inline-flex items-center gap-1.5 rounded-full bg-orange-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm ring-1 ring-orange-300/50 transition hover:bg-orange-600 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-orange-300 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <span aria-hidden="true" className="text-sm leading-none">→</span>
-                            <span>{getLifecycleActionLabel(client)}</span>
-                          </button>
-                        ) : null}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleViewClient(client)
-                          }}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-indigo-600 dark:hover:bg-gray-800 dark:hover:text-indigo-400 transition"
-                          title="View Client Details"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
-                        {isCompanyAdmin && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDeleteClient(client.id)
-                            }}
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400 transition"
-                            title="Delete Client"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300 font-medium">
+                        {client.contact || "-"}
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
+                        {client.email || "-"}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {client.client_type === "monthly" ? (
+                          <span className="inline-flex items-center rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                            Monthly
+                          </span>
+                        ) : client.client_type === "one_time" ? (
+                          <span className="inline-flex items-center rounded-lg bg-purple-50 px-2.5 py-1 text-[11px] font-semibold text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/60">
+                            One Time
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
                         )}
-                      </div>
-                    </td>
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-900 dark:text-white font-bold">
+                        {client.total_projects ??
+                          client.project_ids?.length ??
+                          0}
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-900 dark:text-white font-bold">
+                        {client.budget > 0
+                          ? `₹${Number(client.budget).toLocaleString()}`
+                          : getTotalBudget(client) > 0
+                            ? `₹${getTotalBudget(client).toLocaleString()}`
+                            : "-"}
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
+                        {getStartDateText(client)}
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
+                        {getDeliveryDateText(client)}
+                      </td>
+                      <td
+                        className="py-3.5 px-4"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusMeta(client.status || "active").chipClass}`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${getStatusMeta(client.status || "active").dotClass}`}
+                          ></span>
+                          {getStatusMeta(client.status || "active").label}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {(isCompanyAdmin || isLead) &&
+                          lifecycleRule?.allowed_destinations?.length ? (
+                            <button
+                              type="button"
+                              disabled={updatingStatusId === client.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openLifecycleAction(client);
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-full bg-orange-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm ring-1 ring-orange-300/50 transition hover:bg-orange-600 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-orange-300 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <span
+                                aria-hidden="true"
+                                className="text-sm leading-none"
+                              >
+                                →
+                              </span>
+                              <span>{getLifecycleActionLabel(client)}</span>
+                            </button>
+                          ) : null}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewClient(client);
+                            }}
+                            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-indigo-600 dark:hover:bg-gray-800 dark:hover:text-indigo-400 transition"
+                            title="View Client Details"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          {isCompanyAdmin && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteClient(client.id);
+                              }}
+                              className="rounded-lg p-1.5 text-gray-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400 transition"
+                              title="Delete Client"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
-                  )
+                  );
                 })}
               </tbody>
             </table>
           </div>
           <div className="flex flex-col gap-2 border-t border-gray-200/80 px-4 py-3 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between">
             <span>
-              Showing {(safePage - 1) * CLIENT_PAGE_SIZE + 1}-{Math.min(safePage * CLIENT_PAGE_SIZE, filteredClients.length)} of {filteredClients.length}
+              Showing {(safePage - 1) * CLIENT_PAGE_SIZE + 1}-
+              {Math.min(safePage * CLIENT_PAGE_SIZE, filteredClients.length)} of{" "}
+              {filteredClients.length}
             </span>
             <div className="flex items-center gap-2">
               <button
@@ -1336,10 +1757,14 @@ const Clients = () => {
               >
                 Previous
               </button>
-              <span className="font-semibold text-gray-700 dark:text-gray-200">Page {safePage} of {totalPages}</span>
+              <span className="font-semibold text-gray-700 dark:text-gray-200">
+                Page {safePage} of {totalPages}
+              </span>
               <button
                 type="button"
-                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                onClick={() =>
+                  setCurrentPage((page) => Math.min(totalPages, page + 1))
+                }
                 disabled={safePage >= totalPages}
                 className="rounded-lg border border-gray-200 px-3 py-1.5 font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
               >
@@ -1350,87 +1775,201 @@ const Clients = () => {
         </div>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Needs Attention</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Source-linked risks from client health, finance, delivery, approvals, and renewal.</p>
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" size="sm" variant="secondary" onClick={saveCurrentView}>Save View</Button>
-              {(isCompanyAdmin || isLead) && <Button type="button" size="sm" onClick={runClientAutomation}>Run Automation</Button>}
-            </div>
+      {showOverviewSections ? (
+        <>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                    Needs Attention
+                  </h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Source-linked risks from client health, finance, delivery,
+                    approvals, and renewal.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={saveCurrentView}
+                  >
+                    Save View
+                  </Button>
+                  {(isCompanyAdmin || isLead) && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={runClientAutomation}
+                    >
+                      Run Automation
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                {attentionItems.length ? (
+                  attentionItems.map((item) => (
+                    <button
+                      key={`${item.client?.id}-${item.type}-${item.message}`}
+                      type="button"
+                      onClick={() =>
+                        navigate(
+                          item.url || `/clients/${item.client?.id}/workspace`,
+                        )
+                      }
+                      className="rounded-lg border border-gray-200 p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 dark:border-gray-800 dark:hover:bg-gray-800"
+                    >
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {item.client?.name || "Client"} - {item.message}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {item.type?.replace(/_/g, " ")} | severity{" "}
+                        {item.severity}
+                      </p>
+                    </button>
+                  ))
+                ) : (
+                  <p className="rounded-lg border border-dashed border-gray-200 p-4 text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">
+                    No current client attention items.
+                  </p>
+                )}
+              </div>
+            </section>
+            <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                Your Client Actions Today
+              </h2>
+              <div className="mt-3 space-y-2">
+                {dailyActions.length ? (
+                  dailyActions.map((action) => (
+                    <button
+                      key={`${action.client?.id}-${action.action}`}
+                      type="button"
+                      onClick={() =>
+                        navigate(
+                          action.url ||
+                            `/clients/${action.client?.id}/workspace`,
+                        )
+                      }
+                      className="block w-full rounded-lg border border-gray-200 p-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800"
+                    >
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {action.client?.name} - {action.action}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {action.priority || "medium"} | due{" "}
+                        {action.due_date
+                          ? timeService.formatDateOnly(action.due_date)
+                          : "soon"}
+                      </p>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    No open client actions.
+                  </p>
+                )}
+              </div>
+            </section>
           </div>
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            {attentionItems.length ? attentionItems.map((item) => (
-              <button key={`${item.client?.id}-${item.type}-${item.message}`} type="button" onClick={() => navigate(item.url || `/clients/${item.client?.id}/workspace`)} className="rounded-lg border border-gray-200 p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 dark:border-gray-800 dark:hover:bg-gray-800">
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{item.client?.name || 'Client'} - {item.message}</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.type?.replace(/_/g, ' ')} | severity {item.severity}</p>
-              </button>
-            )) : <p className="rounded-lg border border-dashed border-gray-200 p-4 text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">No current client attention items.</p>}
-          </div>
-        </section>
-        <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <h2 className="text-sm font-bold text-gray-900 dark:text-white">Your Client Actions Today</h2>
-          <div className="mt-3 space-y-2">
-            {dailyActions.length ? dailyActions.map((action) => (
-              <button key={`${action.client?.id}-${action.action}`} type="button" onClick={() => navigate(action.url || `/clients/${action.client?.id}/workspace`)} className="block w-full rounded-lg border border-gray-200 p-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800">
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{action.client?.name} - {action.action}</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{action.priority || 'medium'} | due {action.due_date ? timeService.formatDateOnly(action.due_date) : 'soon'}</p>
-              </button>
-            )) : <p className="text-sm text-gray-500 dark:text-gray-400">No open client actions.</p>}
-          </div>
-        </section>
-      </div>
 
-      <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <h2 className="text-sm font-bold text-gray-900 dark:text-white">Saved Views</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {[...(savedViews.defaults || []), ...(savedViews.views || [])].map((view) => (
-              <button key={`${view.id || 'default'}-${view.name}`} type="button" onClick={() => applySavedView(view.filters)} className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-indigo-300 hover:text-indigo-700 dark:border-gray-800 dark:text-gray-300">
-                {view.name}
-              </button>
-            ))}
+          <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+            <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                Saved Views
+              </h2>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {[
+                  ...(savedViews.defaults || []),
+                  ...(savedViews.views || []),
+                ].map((view) => (
+                  <button
+                    key={`${view.id || "default"}-${view.name}`}
+                    type="button"
+                    onClick={() => applySavedView(view.filters)}
+                    className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-indigo-300 hover:text-indigo-700 dark:border-gray-800 dark:text-gray-300"
+                  >
+                    {view.name}
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                Client Insights
+              </h2>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard
+                  label="New"
+                  value={insights.new_clients ?? 0}
+                  icon={Plus}
+                  color="indigo"
+                  subtitle="Client stage"
+                />
+                <StatCard
+                  label="Churned"
+                  value={insights.churned ?? 0}
+                  icon={X}
+                  color="rose"
+                  subtitle={`${insights.churn_rate ?? 0}% churn rate`}
+                />
+                <StatCard
+                  label="Risk/Critical"
+                  value={insights.at_risk_or_critical ?? 0}
+                  icon={AlertTriangle}
+                  color="amber"
+                  subtitle="Health"
+                />
+                <StatCard
+                  label="Delayed Work"
+                  value={insights.delayed_delivery ?? 0}
+                  icon={Clock}
+                  color="purple"
+                  subtitle="Tasks/deliverables"
+                />
+              </div>
+            </section>
           </div>
-        </section>
-        <section className="rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <h2 className="text-sm font-bold text-gray-900 dark:text-white">Client Insights</h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="New" value={insights.new_clients ?? 0} icon={Plus} color="indigo" subtitle="Client stage" />
-            <StatCard label="Churned" value={insights.churned ?? 0} icon={X} color="rose" subtitle={`${insights.churn_rate ?? 0}% churn rate`} />
-            <StatCard label="Risk/Critical" value={insights.at_risk_or_critical ?? 0} icon={AlertTriangle} color="amber" subtitle="Health" />
-            <StatCard label="Delayed Work" value={insights.delayed_delivery ?? 0} icon={Clock} color="purple" subtitle="Tasks/deliverables" />
-          </div>
-        </section>
-      </div>
+        </>
+      ) : null}
 
       <Modal
         isOpen={Boolean(stageSelectionClient)}
         onClose={() => setStageSelectionClient(null)}
         title="Update Client Stage"
-        description={stageSelectionClient ? `Choose the next business state for ${stageSelectionClient.name}.` : ''}
+        description={
+          stageSelectionClient
+            ? `Choose the next business state for ${stageSelectionClient.name}.`
+            : ""
+        }
         size="md"
       >
         <div className="space-y-2">
-          {(lifecycleRules[stageSelectionClient?.status || '']?.allowed_destinations || []).map((stage) => {
-            const meta = getStatusMeta(stage)
+          {(
+            lifecycleRules[stageSelectionClient?.status || ""]
+              ?.allowed_destinations || []
+          ).map((stage) => {
+            const meta = getStatusMeta(stage);
             return (
               <button
                 key={stage}
                 type="button"
                 onClick={() => {
-                  const client = stageSelectionClient
-                  setStageSelectionClient(null)
-                  handleStatusChange(client.id, stage, client)
+                  const client = stageSelectionClient;
+                  setStageSelectionClient(null);
+                  handleStatusChange(client.id, stage, client);
                 }}
                 className="flex w-full items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm font-semibold transition hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
               >
-                <span className={`h-2 w-2 rounded-full ${meta.dotClass}`}></span>
+                <span
+                  className={`h-2 w-2 rounded-full ${meta.dotClass}`}
+                ></span>
                 <span>{meta.label}</span>
               </button>
-            )
+            );
           })}
         </div>
       </Modal>
@@ -1441,75 +1980,99 @@ const Clients = () => {
         title="Cannot Update Client Stage"
         description="Complete the missing information, then retry the stage movement."
         size="md"
-        footer={(
+        footer={
           <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setTransitionBlocker(null)}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setTransitionBlocker(null)}
+            >
               Cancel
             </Button>
-            {(transitionBlocker?.detail?.missing_fields || []).some((item) => item.field !== 'kickoff_meeting') ? (
+            {(transitionBlocker?.detail?.missing_fields || []).some(
+              (item) => item.field !== "kickoff_meeting",
+            ) ? (
               <Button
                 type="button"
                 onClick={() => {
-                  const client = transitionBlocker?.client
-                  const targetStatus = transitionBlocker?.detail?.target_status
-                  setTransitionBlocker(null)
+                  const client = transitionBlocker?.client;
+                  const targetStatus = transitionBlocker?.detail?.target_status;
+                  setTransitionBlocker(null);
                   if (client) {
                     setPendingLifecycleRetry({
                       clientId: client.id,
                       newStatus: targetStatus,
                       client,
-                    })
-                    handleEditClient(client)
+                    });
+                    handleEditClient(client);
                   }
                 }}
               >
                 Update Details and Retry
               </Button>
             ) : null}
-            {transitionBlocker?.detail?.missing_fields?.some((item) => item.field === 'kickoff_meeting') ? (
+            {transitionBlocker?.detail?.missing_fields?.some(
+              (item) => item.field === "kickoff_meeting",
+            ) ? (
               <Button
                 type="button"
                 variant="secondary"
                 onClick={() => {
-                  const client = transitionBlocker?.client
-                  const item = transitionBlocker?.detail?.missing_fields?.find((field) => field.field === 'kickoff_meeting')
-                  setTransitionBlocker(null)
-                  if (client?.id) navigate(`/clients/${client.id}/workspace?tab=onboarding&onboardingTab=${item?.tab || 'kickoff'}`)
+                  const client = transitionBlocker?.client;
+                  const item = transitionBlocker?.detail?.missing_fields?.find(
+                    (field) => field.field === "kickoff_meeting",
+                  );
+                  setTransitionBlocker(null);
+                  if (client?.id)
+                    navigate(
+                      `/clients/${client.id}/workspace?tab=onboarding&onboardingTab=${item?.tab || "kickoff"}`,
+                    );
                 }}
               >
                 Open Workspace
               </Button>
             ) : null}
           </div>
-        )}
+        }
       >
         <div className="space-y-4">
           <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
             <div>
               <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-                {transitionBlocker?.detail?.message || 'This client cannot move stages yet.'}
+                {transitionBlocker?.detail?.message ||
+                  "This client cannot move stages yet."}
               </p>
               <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-amber-700 dark:text-amber-300">
-                {(transitionBlocker?.detail?.missing_fields || []).map((item) => (
-                  <li key={item.field}>{item.label || String(item.field).replace(/_/g, ' ')}</li>
-                ))}
+                {(transitionBlocker?.detail?.missing_fields || []).map(
+                  (item) => (
+                    <li key={item.field}>
+                      {item.label || String(item.field).replace(/_/g, " ")}
+                    </li>
+                  ),
+                )}
               </ul>
             </div>
           </div>
           <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
-            Client stays in current stage until backend lifecycle validation accepts the transition.
+            Client stays in current stage until backend lifecycle validation
+            accepts the transition.
           </p>
-          {transitionBlocker?.detail?.missing_fields?.some((item) => item.field === 'kickoff_meeting') ? (
+          {transitionBlocker?.detail?.missing_fields?.some(
+            (item) => item.field === "kickoff_meeting",
+          ) ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
               <div className="flex items-start gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
                   <Calendar className="h-4 w-4" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Schedule kickoff meeting</h4>
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                    Schedule kickoff meeting
+                  </h4>
                   <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                    Create the required kickoff meeting here, then activation will retry automatically.
+                    Create the required kickoff meeting here, then activation
+                    will retry automatically.
                   </p>
                 </div>
               </div>
@@ -1518,7 +2081,12 @@ const Clients = () => {
                   <input
                     type="date"
                     value={kickoffMeetingForm.meeting_date}
-                    onChange={(event) => setKickoffMeetingForm((current) => ({ ...current, meeting_date: event.target.value }))}
+                    onChange={(event) =>
+                      setKickoffMeetingForm((current) => ({
+                        ...current,
+                        meeting_date: event.target.value,
+                      }))
+                    }
                     className={inputClassName}
                   />
                 </FormField>
@@ -1526,7 +2094,12 @@ const Clients = () => {
                   <input
                     type="time"
                     value={kickoffMeetingForm.meeting_time}
-                    onChange={(event) => setKickoffMeetingForm((current) => ({ ...current, meeting_time: event.target.value }))}
+                    onChange={(event) =>
+                      setKickoffMeetingForm((current) => ({
+                        ...current,
+                        meeting_time: event.target.value,
+                      }))
+                    }
                     className={inputClassName}
                   />
                 </FormField>
@@ -1536,7 +2109,12 @@ const Clients = () => {
                     min="1"
                     max="60"
                     value={kickoffMeetingForm.duration}
-                    onChange={(event) => setKickoffMeetingForm((current) => ({ ...current, duration: event.target.value }))}
+                    onChange={(event) =>
+                      setKickoffMeetingForm((current) => ({
+                        ...current,
+                        duration: event.target.value,
+                      }))
+                    }
                     className={inputClassName}
                   />
                 </FormField>
@@ -1547,7 +2125,9 @@ const Clients = () => {
                   onClick={handleCreateKickoffMeetingAndRetry}
                   disabled={creatingKickoffMeeting}
                 >
-                  {creatingKickoffMeeting ? 'Scheduling...' : 'Schedule and Activate'}
+                  {creatingKickoffMeeting
+                    ? "Scheduling..."
+                    : "Schedule and Activate"}
                 </Button>
               </div>
             </div>
@@ -1559,29 +2139,48 @@ const Clients = () => {
         isOpen={Boolean(reasonRequest)}
         onClose={() => setReasonRequest(null)}
         title="Update Client Stage"
-        description={reasonRequest?.newStatus ? `Why is this client moving to ${getStatusMeta(reasonRequest.newStatus).label}?` : ''}
+        description={
+          reasonRequest?.newStatus
+            ? `Why is this client moving to ${getStatusMeta(reasonRequest.newStatus).label}?`
+            : ""
+        }
         size="md"
-        footer={(
+        footer={
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setReasonRequest(null)}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setReasonRequest(null)}
+            >
               Cancel
             </Button>
             <Button
               type="button"
-              disabled={!transitionReason.trim() || updatingStatusId === reasonRequest?.clientId}
+              disabled={
+                !transitionReason.trim() ||
+                updatingStatusId === reasonRequest?.clientId
+              }
               onClick={async () => {
-                const request = reasonRequest
-                setReasonRequest(null)
-                await handleStatusChange(request.clientId, request.newStatus, request.client, transitionReason)
+                const request = reasonRequest;
+                setReasonRequest(null);
+                await handleStatusChange(
+                  request.clientId,
+                  request.newStatus,
+                  request.client,
+                  transitionReason,
+                );
               }}
             >
               Update Stage
             </Button>
           </div>
-        )}
+        }
       >
         <div className="space-y-2">
-          <label htmlFor="client-lifecycle-reason" className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+          <label
+            htmlFor="client-lifecycle-reason"
+            className="text-sm font-semibold text-gray-700 dark:text-gray-200"
+          >
             Reason
           </label>
           <textarea
@@ -1600,17 +2199,37 @@ const Clients = () => {
         <Modal
           isOpen={showCreateModal}
           onClose={closeCreateModal}
-          title={editingClient ? 'Edit client' : 'Create client'}
-          description={clientFormStep === 1 ? 'Step 1 of 2: identify the client and how to contact them.' : 'Step 2 of 2: add ownership, billing, address, and handoff details.'}
+          title={editingClient ? "Edit client" : "Create client"}
+          description={
+            clientFormStep === 1
+              ? "Step 1 of 2: identify the client and how to contact them."
+              : "Step 2 of 2: add ownership, billing, address, and handoff details."
+          }
           size="lg"
           closeOnBackdrop={false}
           bodyClassName="bg-gray-50/60 dark:bg-gray-950/30"
-          footer={(
+          footer={
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                <span className={clientFormStep === 1 ? 'text-indigo-600 dark:text-indigo-300' : ''}>Step 1: Contact</span>
+                <span
+                  className={
+                    clientFormStep === 1
+                      ? "text-indigo-600 dark:text-indigo-300"
+                      : ""
+                  }
+                >
+                  Step 1: Contact
+                </span>
                 <span className="h-px w-8 bg-gray-300 dark:bg-gray-700" />
-                <span className={clientFormStep === 2 ? 'text-indigo-600 dark:text-indigo-300' : ''}>Step 2: Details</span>
+                <span
+                  className={
+                    clientFormStep === 2
+                      ? "text-indigo-600 dark:text-indigo-300"
+                      : ""
+                  }
+                >
+                  Step 2: Details
+                </span>
               </div>
               <div className="flex justify-end gap-2">
                 <Button
@@ -1618,20 +2237,20 @@ const Clients = () => {
                   variant="secondary"
                   onClick={() => {
                     if (clientFormStep === 2) {
-                      setClientFormStep(1)
-                      return
+                      setClientFormStep(1);
+                      return;
                     }
-                    closeCreateModal()
+                    closeCreateModal();
                   }}
                 >
-                  {clientFormStep === 2 ? 'Back' : 'Cancel'}
+                  {clientFormStep === 2 ? "Back" : "Cancel"}
                 </Button>
                 {clientFormStep === 1 ? (
                   <Button
                     type="button"
                     onClick={(event) => {
-                      event.preventDefault()
-                      if (validateClientForm()) setClientFormStep(2)
+                      event.preventDefault();
+                      if (validateClientForm()) setClientFormStep(2);
                     }}
                   >
                     Next
@@ -1644,40 +2263,73 @@ const Clients = () => {
                         variant="secondary"
                         loading={submitting}
                         loadingText="Saving"
-                        onClick={(event) => handleUpdateClient(event, { retryLifecycle: false })}
+                        onClick={(event) =>
+                          handleUpdateClient(event, { retryLifecycle: false })
+                        }
                       >
                         Save Details
                       </Button>
                     ) : null}
-                    <Button type="submit" form="client-create-form" loading={submitting} loadingText="Saving">
-                      {editingClient ? 'Update client' : 'Create client'}
+                    <Button
+                      type="submit"
+                      form="client-create-form"
+                      loading={submitting}
+                      loadingText="Saving"
+                    >
+                      {editingClient ? "Update client" : "Create client"}
                     </Button>
                   </>
                 )}
               </div>
             </div>
-          )}
+          }
         >
-          <form id="client-create-form" onSubmit={editingClient ? handleUpdateClient : handleCreateClient} className="space-y-5">
+          <form
+            id="client-create-form"
+            onSubmit={editingClient ? handleUpdateClient : handleCreateClient}
+            className="space-y-5"
+          >
             <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
               <div className="grid gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-start">
                 <div className="flex gap-3">
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${clientFormStep === 1 ? 'bg-indigo-600 text-white shadow-sm' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'}`}>
-                    {clientFormStep === 1 ? '1' : <CheckCircle2 className="h-4 w-4" />}
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${clientFormStep === 1 ? "bg-indigo-600 text-white shadow-sm" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"}`}
+                  >
+                    {clientFormStep === 1 ? (
+                      "1"
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4" />
+                    )}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Contact setup</p>
-                    <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">Capture the required client identity, company, email, phone, and industry.</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                      Contact setup
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                      Capture the required client identity, company, email,
+                      phone, and industry.
+                    </p>
                   </div>
                 </div>
-                <div className={`hidden h-px w-16 translate-y-4 sm:block ${clientFormStep === 2 ? 'bg-emerald-300 dark:bg-emerald-800' : 'bg-gray-200 dark:bg-gray-800'}`} />
+                <div
+                  className={`hidden h-px w-16 translate-y-4 sm:block ${clientFormStep === 2 ? "bg-emerald-300 dark:bg-emerald-800" : "bg-gray-200 dark:bg-gray-800"}`}
+                />
                 <div className="flex gap-3">
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${clientFormStep === 2 ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${clientFormStep === 2 ? "bg-indigo-600 text-white shadow-sm" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}
+                  >
                     2
                   </div>
                   <div className="min-w-0">
-                    <p className={`text-sm font-semibold ${clientFormStep === 2 ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>Client details</p>
-                    <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">Add owner, billing type, budget, timeline, location, tags, and notes.</p>
+                    <p
+                      className={`text-sm font-semibold ${clientFormStep === 2 ? "text-gray-900 dark:text-white" : "text-gray-500 dark:text-gray-400"}`}
+                    >
+                      Client details
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                      Add owner, billing type, budget, timeline, location, tags,
+                      and notes.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1686,81 +2338,226 @@ const Clients = () => {
             {clientFormStep === 1 ? (
               <div className="grid gap-4 md:grid-cols-2">
                 <FormField label="Client name" required>
-                  <input type="text" value={formData.name} onChange={(e) => updateClientField('name', e.target.value)} className="input min-h-11" required aria-invalid={Boolean(formErrors.name)} placeholder="Primary contact or account name" />
-                  {formErrors.name ? <p className="mt-1 text-xs text-red-600" role="alert">{formErrors.name}</p> : null}
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => updateClientField("name", e.target.value)}
+                    className="input min-h-11"
+                    required
+                    aria-invalid={Boolean(formErrors.name)}
+                    placeholder="Primary contact or account name"
+                  />
+                  {formErrors.name ? (
+                    <p className="mt-1 text-xs text-red-600" role="alert">
+                      {formErrors.name}
+                    </p>
+                  ) : null}
                 </FormField>
                 <FormField label="Company name">
-                  <input type="text" value={formData.company_name} onChange={(e) => updateClientField('company_name', e.target.value)} className="input min-h-11" placeholder="Organization name" />
+                  <input
+                    type="text"
+                    value={formData.company_name}
+                    onChange={(e) =>
+                      updateClientField("company_name", e.target.value)
+                    }
+                    className="input min-h-11"
+                    placeholder="Organization name"
+                  />
                 </FormField>
                 <FormField label="Email">
-                  <input type="email" value={formData.email} onChange={(e) => updateClientField('email', e.target.value)} className="input min-h-11" aria-invalid={Boolean(formErrors.email)} placeholder="client@example.com" />
-                  {formErrors.email ? <p className="mt-1 text-xs text-red-600" role="alert">{formErrors.email}</p> : null}
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => updateClientField("email", e.target.value)}
+                    className="input min-h-11"
+                    aria-invalid={Boolean(formErrors.email)}
+                    placeholder="client@example.com"
+                  />
+                  {formErrors.email ? (
+                    <p className="mt-1 text-xs text-red-600" role="alert">
+                      {formErrors.email}
+                    </p>
+                  ) : null}
                 </FormField>
                 <FormField label="Primary phone">
-                  <PhoneInput value={formData.contact} onChange={(e) => updateClientField('contact', e.target.value)} className="input min-h-11" placeholder="Enter number" />
+                  <PhoneInput
+                    value={formData.contact}
+                    onChange={(e) =>
+                      updateClientField("contact", e.target.value)
+                    }
+                    className="input min-h-11"
+                    placeholder="Enter number"
+                  />
                 </FormField>
                 <FormField label="Alternate phone">
-                  <PhoneInput value={formData.alternate_contact} onChange={(e) => updateClientField('alternate_contact', e.target.value)} className="input min-h-11" placeholder="Enter number" />
+                  <PhoneInput
+                    value={formData.alternate_contact}
+                    onChange={(e) =>
+                      updateClientField("alternate_contact", e.target.value)
+                    }
+                    className="input min-h-11"
+                    placeholder="Enter number"
+                  />
                 </FormField>
                 <FormField label="Industry">
-                  <input type="text" value={formData.industry} onChange={(e) => updateClientField('industry', e.target.value)} className="input min-h-11" placeholder="SaaS, Retail, Healthcare" />
+                  <input
+                    type="text"
+                    value={formData.industry}
+                    onChange={(e) =>
+                      updateClientField("industry", e.target.value)
+                    }
+                    className="input min-h-11"
+                    placeholder="SaaS, Retail, Healthcare"
+                  />
                 </FormField>
               </div>
             ) : (
               <div className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-2">
                   <FormField label="Assigned to">
-                    <CreatableSelectField value={formData.assigned_to} onChange={(value) => updateClientField('assigned_to', value)} className="input min-h-11" createLabel="Create user" onCreate={() => setShowQuickEmployeeModal(true)} canCreate={isCompanyAdmin || isLead}>
+                    <CreatableSelectField
+                      value={formData.assigned_to}
+                      onChange={(value) =>
+                        updateClientField("assigned_to", value)
+                      }
+                      className="input min-h-11"
+                      createLabel="Create user"
+                      onCreate={() => setShowQuickEmployeeModal(true)}
+                      canCreate={isCompanyAdmin || isLead}
+                    >
                       <option value="">Select owner</option>
-                      {leads.map(lead => (
-                        <option key={lead.id} value={lead.id}>{lead.first_name} {lead.last_name}</option>
+                      {leads.map((lead) => (
+                        <option key={lead.id} value={lead.id}>
+                          {lead.first_name} {lead.last_name}
+                        </option>
                       ))}
                       {assignableUsers
-                        .filter(u => u.role === 'manager')
-                        .map(manager => (
-                          <option key={manager.id} value={manager.id}>{manager.first_name} {manager.last_name}</option>
+                        .filter((u) => u.role === "manager")
+                        .map((manager) => (
+                          <option key={manager.id} value={manager.id}>
+                            {manager.first_name} {manager.last_name}
+                          </option>
                         ))}
                     </CreatableSelectField>
                   </FormField>
                   <FormField label="Client type">
-                    <select value={formData.client_type} onChange={(e) => updateClientField('client_type', e.target.value)} className="input min-h-11">
+                    <select
+                      value={formData.client_type}
+                      onChange={(e) =>
+                        updateClientField("client_type", e.target.value)
+                      }
+                      className="input min-h-11"
+                    >
                       <option value="">Select type</option>
                       <option value="monthly">Monthly Client</option>
                       <option value="one_time">One Time Client</option>
                     </select>
                   </FormField>
                   <FormField label="Budget">
-                    <input type="number" value={formData.budget} onChange={(e) => updateClientField('budget', e.target.value)} className="input min-h-11" step="0.01" placeholder="Total client budget" />
+                    <input
+                      type="number"
+                      value={formData.budget}
+                      onChange={(e) =>
+                        updateClientField("budget", e.target.value)
+                      }
+                      className="input min-h-11"
+                      step="0.01"
+                      placeholder="Total client budget"
+                    />
                   </FormField>
                   <FormField label="Start date">
-                    <input type="date" value={formData.start_date} onChange={(e) => updateClientField('start_date', e.target.value)} className="input min-h-11" />
+                    <input
+                      type="date"
+                      value={formData.start_date}
+                      onChange={(e) =>
+                        updateClientField("start_date", e.target.value)
+                      }
+                      className="input min-h-11"
+                    />
                   </FormField>
                   <FormField label="Delivery date">
-                    <input type="date" value={formData.delivery_date} onChange={(e) => updateClientField('delivery_date', e.target.value)} className="input min-h-11" />
+                    <input
+                      type="date"
+                      value={formData.delivery_date}
+                      onChange={(e) =>
+                        updateClientField("delivery_date", e.target.value)
+                      }
+                      className="input min-h-11"
+                    />
                   </FormField>
                   <FormField label="Tags">
-                    <input type="text" value={formData.tags} onChange={(e) => updateClientField('tags', e.target.value)} className="input min-h-11" placeholder="important, vip, recurring" />
+                    <input
+                      type="text"
+                      value={formData.tags}
+                      onChange={(e) =>
+                        updateClientField("tags", e.target.value)
+                      }
+                      className="input min-h-11"
+                      placeholder="important, vip, recurring"
+                    />
                   </FormField>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <FormField label="Address">
-                    <input type="text" value={formData.address} onChange={(e) => updateClientField('address', e.target.value)} className="input min-h-11" placeholder="Street address" />
+                    <input
+                      type="text"
+                      value={formData.address}
+                      onChange={(e) =>
+                        updateClientField("address", e.target.value)
+                      }
+                      className="input min-h-11"
+                      placeholder="Street address"
+                    />
                   </FormField>
                   <FormField label="City">
-                    <input type="text" value={formData.city} onChange={(e) => updateClientField('city', e.target.value)} className="input min-h-11" />
+                    <input
+                      type="text"
+                      value={formData.city}
+                      onChange={(e) =>
+                        updateClientField("city", e.target.value)
+                      }
+                      className="input min-h-11"
+                    />
                   </FormField>
                   <FormField label="State">
-                    <input type="text" value={formData.state} onChange={(e) => updateClientField('state', e.target.value)} className="input min-h-11" />
+                    <input
+                      type="text"
+                      value={formData.state}
+                      onChange={(e) =>
+                        updateClientField("state", e.target.value)
+                      }
+                      className="input min-h-11"
+                    />
                   </FormField>
                   <FormField label="Country">
-                    <input type="text" value={formData.country} onChange={(e) => updateClientField('country', e.target.value)} className="input min-h-11" />
+                    <input
+                      type="text"
+                      value={formData.country}
+                      onChange={(e) =>
+                        updateClientField("country", e.target.value)
+                      }
+                      className="input min-h-11"
+                    />
                   </FormField>
                   <FormField label="ZIP code">
-                    <input type="text" value={formData.zip_code} onChange={(e) => updateClientField('zip_code', e.target.value)} className="input min-h-11" />
+                    <input
+                      type="text"
+                      value={formData.zip_code}
+                      onChange={(e) =>
+                        updateClientField("zip_code", e.target.value)
+                      }
+                      className="input min-h-11"
+                    />
                   </FormField>
                 </div>
                 <FormField label="Notes">
-                  <textarea value={formData.notes} onChange={(e) => updateClientField('notes', e.target.value)} className="input min-h-24" rows="3" placeholder="Contract context, preferred communication, or handoff notes" />
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) => updateClientField("notes", e.target.value)}
+                    className="input min-h-24"
+                    rows="3"
+                    placeholder="Contract context, preferred communication, or handoff notes"
+                  />
                 </FormField>
               </div>
             )}
@@ -1772,21 +2569,24 @@ const Clients = () => {
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              setShowCreateModal(false)
-              resetForm()
+              setShowCreateModal(false);
+              resetForm();
             }
           }}
         >
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold text-gray-900">
-                  {editingClient ? 'Edit Client' : 'Add New Client'}
+                  {editingClient ? "Edit Client" : "Add New Client"}
                 </h2>
                 <button
                   onClick={() => {
-                    setShowCreateModal(false)
-                    resetForm()
+                    setShowCreateModal(false);
+                    resetForm();
                   }}
                   className="text-gray-400 hover:text-gray-600"
                 >
@@ -1794,77 +2594,124 @@ const Clients = () => {
                 </button>
               </div>
 
-              <form onSubmit={editingClient ? handleUpdateClient : handleCreateClient} className="space-y-4">
+              <form
+                onSubmit={
+                  editingClient ? handleUpdateClient : handleCreateClient
+                }
+                className="space-y-4"
+              >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Name *</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">
+                      Name *
+                    </label>
                     <input
                       type="text"
                       value={formData.name}
-                      onChange={(e) => updateClientField('name', e.target.value)}
+                      onChange={(e) =>
+                        updateClientField("name", e.target.value)
+                      }
                       className="input"
                       required
                       aria-invalid={Boolean(formErrors.name)}
                     />
-                    {formErrors.name ? <p className="mt-1 text-xs text-red-600" role="alert">{formErrors.name}</p> : null}
+                    {formErrors.name ? (
+                      <p className="mt-1 text-xs text-red-600" role="alert">
+                        {formErrors.name}
+                      </p>
+                    ) : null}
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Email</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">
+                      Email
+                    </label>
                     <input
                       type="email"
                       value={formData.email}
-                      onChange={(e) => updateClientField('email', e.target.value)}
+                      onChange={(e) =>
+                        updateClientField("email", e.target.value)
+                      }
                       className="input"
                       aria-invalid={Boolean(formErrors.email)}
                     />
-                    {formErrors.email ? <p className="mt-1 text-xs text-red-600" role="alert">{formErrors.email}</p> : null}
+                    {formErrors.email ? (
+                      <p className="mt-1 text-xs text-red-600" role="alert">
+                        {formErrors.email}
+                      </p>
+                    ) : null}
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Contact</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Contact
+                    </label>
                     <PhoneInput
                       value={formData.contact}
-                      onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, contact: e.target.value })
+                      }
                       className="input"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Alternate Contact</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Alternate Contact
+                    </label>
                     <PhoneInput
                       value={formData.alternate_contact}
-                      onChange={(e) => setFormData({ ...formData, alternate_contact: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          alternate_contact: e.target.value,
+                        })
+                      }
                       className="input"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Company Name</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Company Name
+                    </label>
                     <input
                       type="text"
                       value={formData.company_name}
-                      onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          company_name: e.target.value,
+                        })
+                      }
                       className="input"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Industry</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Industry
+                    </label>
                     <input
                       type="text"
                       value={formData.industry}
-                      onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, industry: e.target.value })
+                      }
                       className="input"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Assigned To</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Assigned To
+                    </label>
                     <CreatableSelectField
                       value={formData.assigned_to}
-                      onChange={(value) => setFormData({ ...formData, assigned_to: value })}
+                      onChange={(value) =>
+                        setFormData({ ...formData, assigned_to: value })
+                      }
                       className="input"
                       createLabel="Create user"
                       onCreate={() => setShowQuickEmployeeModal(true)}
                       canCreate={isCompanyAdmin || isLead}
                     >
                       <option value="">Select Lead/Admin</option>
-                      {leads.map(lead => (
+                      {leads.map((lead) => (
                         <option key={lead.id} value={lead.id}>
                           {lead.first_name} {lead.last_name}
                         </option>
@@ -1872,60 +2719,86 @@ const Clients = () => {
                     </CreatableSelectField>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Address</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Address
+                    </label>
                     <input
                       type="text"
                       value={formData.address}
-                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, address: e.target.value })
+                      }
                       className="input"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">City</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      City
+                    </label>
                     <input
                       type="text"
                       value={formData.city}
-                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, city: e.target.value })
+                      }
                       className="input"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">State</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      State
+                    </label>
                     <input
                       type="text"
                       value={formData.state}
-                      onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, state: e.target.value })
+                      }
                       className="input"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Country</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Country
+                    </label>
                     <input
                       type="text"
                       value={formData.country}
-                      onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, country: e.target.value })
+                      }
                       className="input"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">ZIP Code</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      ZIP Code
+                    </label>
                     <input
                       type="text"
                       value={formData.zip_code}
-                      onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, zip_code: e.target.value })
+                      }
                       className="input"
                     />
                   </div>
                 </div>
                 {/* Client Type & Financial Info */}
                 <div className="md:col-span-2">
-                  <h3 className="text-xs font-semibold text-gray-700 mb-2 border-b pb-1 dark:text-gray-300">Financial & Scheduling</h3>
+                  <h3 className="text-xs font-semibold text-gray-700 mb-2 border-b pb-1 dark:text-gray-300">
+                    Financial & Scheduling
+                  </h3>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Client Type</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">
+                    Client Type
+                  </label>
                   <select
                     value={formData.client_type}
-                    onChange={(e) => setFormData({ ...formData, client_type: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, client_type: e.target.value })
+                    }
                     className="input"
                   >
                     <option value="">Select type...</option>
@@ -1934,49 +2807,72 @@ const Clients = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Budget (₹)</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">
+                    Budget (₹)
+                  </label>
                   <input
                     type="number"
                     value={formData.budget}
-                    onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, budget: e.target.value })
+                    }
                     className="input"
                     step="0.01"
                     placeholder="Total client budget"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Start Date</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">
+                    Start Date
+                  </label>
                   <input
                     type="date"
                     value={formData.start_date}
-                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, start_date: e.target.value })
+                    }
                     className="input"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Delivery Date</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">
+                    Delivery Date
+                  </label>
                   <input
                     type="date"
                     value={formData.delivery_date}
-                    onChange={(e) => setFormData({ ...formData, delivery_date: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        delivery_date: e.target.value,
+                      })
+                    }
                     className="input"
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Tags (comma separated)</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Tags (comma separated)
+                  </label>
                   <input
                     type="text"
                     value={formData.tags}
-                    onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, tags: e.target.value })
+                    }
                     className="input"
                     placeholder="e.g., important, vip, recurring"
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Notes
+                  </label>
                   <textarea
                     value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, notes: e.target.value })
+                    }
                     className="input"
                     rows="3"
                   />
@@ -1986,8 +2882,8 @@ const Clients = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowCreateModal(false)
-                      resetForm()
+                      setShowCreateModal(false);
+                      resetForm();
                     }}
                     className="btn btn-secondary"
                   >
@@ -1998,7 +2894,11 @@ const Clients = () => {
                     disabled={submitting}
                     className="btn btn-primary"
                   >
-                    {submitting ? 'Saving...' : editingClient ? 'Update' : 'Create'}
+                    {submitting
+                      ? "Saving..."
+                      : editingClient
+                        ? "Update"
+                        : "Create"}
                   </button>
                 </div>
               </form>
@@ -2012,7 +2912,7 @@ const Clients = () => {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-md"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setShowDetailModal(false)
+            if (e.target === e.currentTarget) setShowDetailModal(false);
           }}
         >
           <div
@@ -2027,16 +2927,23 @@ const Clients = () => {
               <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-4">
                   <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/30 bg-white/20 text-2xl font-bold text-white shadow-lg backdrop-blur-md">
-                    {selectedClient.name?.[0]?.toUpperCase() || 'C'}
+                    {selectedClient.name?.[0]?.toUpperCase() || "C"}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-2xl font-bold tracking-tight text-white">{selectedClient.name}</h2>
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider ${selectedClient.status === 'active' ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30' :
-                        selectedClient.status === 'archived' ? 'bg-rose-500/20 text-rose-200 border border-rose-400/30' :
-                          'bg-white/20 text-gray-200 border border-white/30'
-                        }`}>
-                        {selectedClient.status || 'Active'}
+                      <h2 className="text-2xl font-bold tracking-tight text-white">
+                        {selectedClient.name}
+                      </h2>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider ${
+                          selectedClient.status === "active"
+                            ? "bg-emerald-500/20 text-emerald-200 border border-emerald-400/30"
+                            : selectedClient.status === "archived"
+                              ? "bg-rose-500/20 text-rose-200 border border-rose-400/30"
+                              : "bg-white/20 text-gray-200 border border-white/30"
+                        }`}
+                      >
+                        {selectedClient.status || "Active"}
                       </span>
                     </div>
                     {selectedClient.company_name && (
@@ -2060,8 +2967,8 @@ const Clients = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowDetailModal(false)
-                      setSelectedClient(null)
+                      setShowDetailModal(false);
+                      setSelectedClient(null);
                     }}
                     className="rounded-xl bg-black/20 p-2.5 text-white/80 backdrop-blur-md transition hover:bg-black/30 hover:text-white"
                   >
@@ -2074,27 +2981,41 @@ const Clients = () => {
             {/* Quick Metrics Bar */}
             <div className="grid grid-cols-2 gap-3 border-b border-gray-100 bg-gray-50/50 p-4 sm:grid-cols-4 dark:border-gray-800 dark:bg-gray-900/50">
               <div className="rounded-2xl border border-gray-200/60 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-800/80">
-                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Total Budget</span>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Total Budget
+                </span>
                 <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">
-                  ₹{getTotalBudget(selectedClient) > 0 ? getTotalBudget(selectedClient).toLocaleString() : '0'}
+                  ₹
+                  {getTotalBudget(selectedClient) > 0
+                    ? getTotalBudget(selectedClient).toLocaleString()
+                    : "0"}
                 </p>
               </div>
               <div className="rounded-2xl border border-gray-200/60 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-800/80">
-                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Projects</span>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Projects
+                </span>
                 <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">
-                  {selectedClient.projects?.length || selectedClient.project_ids?.length || 0} Linked
+                  {selectedClient.projects?.length ||
+                    selectedClient.project_ids?.length ||
+                    0}{" "}
+                  Linked
                 </p>
               </div>
               <div className="rounded-2xl border border-gray-200/60 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-800/80">
-                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Documents</span>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Documents
+                </span>
                 <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">
                   {selectedClient.documents?.length || 0} Files
                 </p>
               </div>
               <div className="rounded-2xl border border-gray-200/60 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-800/80">
-                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Assigned Lead</span>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Assigned Lead
+                </span>
                 <p className="mt-1 text-sm font-semibold truncate text-gray-900 dark:text-white">
-                  {selectedClient.assigned_to_name || 'Unassigned'}
+                  {selectedClient.assigned_to_name || "Unassigned"}
                 </p>
               </div>
             </div>
@@ -2110,11 +3031,16 @@ const Clients = () => {
                   </h3>
                   <div className="space-y-3 text-xs">
                     {selectedClient.email ? (
-                      <a href={`mailto:${selectedClient.email}`} className="flex items-center gap-2.5 text-gray-700 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400 transition">
+                      <a
+                        href={`mailto:${selectedClient.email}`}
+                        className="flex items-center gap-2.5 text-gray-700 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400 transition"
+                      >
                         <div className="rounded-lg bg-indigo-50 p-1.5 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400">
                           <Mail className="h-3.5 w-3.5" />
                         </div>
-                        <span className="font-medium">{selectedClient.email}</span>
+                        <span className="font-medium">
+                          {selectedClient.email}
+                        </span>
                       </a>
                     ) : null}
                     {selectedClient.contact ? (
@@ -2132,9 +3058,18 @@ const Clients = () => {
                         </div>
                         <div>
                           <p>{selectedClient.address}</p>
-                          {(selectedClient.city || selectedClient.state || selectedClient.country) && (
+                          {(selectedClient.city ||
+                            selectedClient.state ||
+                            selectedClient.country) && (
                             <p className="text-gray-500 dark:text-gray-400 text-[11px] mt-0.5">
-                              {[selectedClient.city, selectedClient.state, selectedClient.country, selectedClient.zip_code].filter(Boolean).join(', ')}
+                              {[
+                                selectedClient.city,
+                                selectedClient.state,
+                                selectedClient.country,
+                                selectedClient.zip_code,
+                              ]
+                                .filter(Boolean)
+                                .join(", ")}
                             </p>
                           )}
                         </div>
@@ -2152,22 +3087,35 @@ const Clients = () => {
                   <div className="space-y-3 text-xs">
                     {selectedClient.industry && (
                       <div className="flex items-center justify-between border-b border-gray-100 pb-2 dark:border-gray-800">
-                        <span className="text-gray-500 dark:text-gray-400">Industry</span>
-                        <span className="font-semibold text-gray-900 dark:text-white">{selectedClient.industry}</span>
+                        <span className="text-gray-500 dark:text-gray-400">
+                          Industry
+                        </span>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          {selectedClient.industry}
+                        </span>
                       </div>
                     )}
                     {selectedClient.client_type && (
                       <div className="flex items-center justify-between border-b border-gray-100 pb-2 dark:border-gray-800">
-                        <span className="text-gray-500 dark:text-gray-400">Billing Type</span>
-                        <span className="font-semibold capitalize text-indigo-600 dark:text-indigo-400">{selectedClient.client_type}</span>
+                        <span className="text-gray-500 dark:text-gray-400">
+                          Billing Type
+                        </span>
+                        <span className="font-semibold capitalize text-indigo-600 dark:text-indigo-400">
+                          {selectedClient.client_type}
+                        </span>
                       </div>
                     )}
                     {selectedClient.tags?.length ? (
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-500 dark:text-gray-400">Tags</span>
+                        <span className="text-gray-500 dark:text-gray-400">
+                          Tags
+                        </span>
                         <div className="flex flex-wrap gap-1">
                           {selectedClient.tags.map((tag, i) => (
-                            <span key={i} className="rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                            <span
+                              key={i}
+                              className="rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                            >
                               {tag}
                             </span>
                           ))}
@@ -2183,16 +3131,18 @@ const Clients = () => {
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <FolderKanban className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">Linked Projects</h3>
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                      Linked Projects
+                    </h3>
                   </div>
                   {(isCompanyAdmin || isLead) && (
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => {
-                          setSelectedProjectId('')
-                          setProjectSearch('')
-                          setShowAddProjectModal(true)
+                          setSelectedProjectId("");
+                          setProjectSearch("");
+                          setShowAddProjectModal(true);
                         }}
                         className="inline-flex items-center gap-1 rounded-xl border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
                       >
@@ -2203,17 +3153,17 @@ const Clients = () => {
                         type="button"
                         onClick={() => {
                           setProjectForm({
-                            project_id: '',
-                            name: '',
-                            key: '',
-                            description: '',
-                            type: 'software',
-                            assigned_to: '',
-                            budget: '',
-                            start_date: '',
-                            delivery_date: '',
-                          })
-                          setShowCreateProjectModal(true)
+                            project_id: "",
+                            name: "",
+                            key: "",
+                            description: "",
+                            type: "software",
+                            assigned_to: "",
+                            budget: "",
+                            start_date: "",
+                            delivery_date: "",
+                          });
+                          setShowCreateProjectModal(true);
                         }}
                         className="inline-flex items-center gap-1 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-indigo-700"
                       >
@@ -2224,13 +3174,19 @@ const Clients = () => {
                   )}
                 </div>
 
-                {selectedClient.projects && selectedClient.projects.length > 0 ? (
+                {selectedClient.projects &&
+                selectedClient.projects.length > 0 ? (
                   <div className="grid gap-3 sm:grid-cols-2">
                     {selectedClient.projects.map((project) => (
-                      <div key={project.id} className="group rounded-xl border border-gray-200/70 bg-gray-50/50 p-4 transition hover:border-indigo-300 hover:bg-white hover:shadow-md dark:border-gray-800 dark:bg-gray-800/60 dark:hover:border-indigo-700">
+                      <div
+                        key={project.id}
+                        className="group rounded-xl border border-gray-200/70 bg-gray-50/50 p-4 transition hover:border-indigo-300 hover:bg-white hover:shadow-md dark:border-gray-800 dark:bg-gray-800/60 dark:hover:border-indigo-700"
+                      >
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <h4 className="text-sm font-bold text-gray-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400 transition">{project.name}</h4>
+                            <h4 className="text-sm font-bold text-gray-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400 transition">
+                              {project.name}
+                            </h4>
                             <span className="mt-1 inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
                               {project.key}
                             </span>
@@ -2253,7 +3209,9 @@ const Clients = () => {
                             {project.delivery_date && (
                               <span className="flex items-center gap-1">
                                 <Clock className="h-3 w-3 text-amber-500" />
-                                {timeService.formatDateOnly(project.delivery_date)}
+                                {timeService.formatDateOnly(
+                                  project.delivery_date,
+                                )}
                               </span>
                             )}
                           </div>
@@ -2261,8 +3219,8 @@ const Clients = () => {
                           <button
                             type="button"
                             onClick={() => {
-                              setShowDetailModal(false)
-                              navigate(`/projects/${project.id}/board`)
+                              setShowDetailModal(false);
+                              navigate(`/projects/${project.id}/board`);
                             }}
                             className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 transition hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
                           >
@@ -2274,7 +3232,9 @@ const Clients = () => {
                   </div>
                 ) : (
                   <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center dark:border-gray-800">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">No projects linked to this client yet.</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      No projects linked to this client yet.
+                    </p>
                   </div>
                 )}
               </div>
@@ -2284,7 +3244,9 @@ const Clients = () => {
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">Uploaded Documents</h3>
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                      Uploaded Documents
+                    </h3>
                   </div>
                   {(isCompanyAdmin || isLead) && (
                     <button
@@ -2298,23 +3260,29 @@ const Clients = () => {
                   )}
                 </div>
 
-                {selectedClient.documents && selectedClient.documents.length > 0 ? (
+                {selectedClient.documents &&
+                selectedClient.documents.length > 0 ? (
                   <div className="grid gap-3 sm:grid-cols-2">
                     {selectedClient.documents.map((doc, index) => (
-                      <div key={index} className="flex items-center justify-between rounded-xl border border-gray-200/70 bg-gray-50/50 p-3 dark:border-gray-800 dark:bg-gray-800/60">
+                      <div
+                        key={index}
+                        className="flex items-center justify-between rounded-xl border border-gray-200/70 bg-gray-50/50 p-3 dark:border-gray-800 dark:bg-gray-800/60"
+                      >
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
                             <FileText className="h-4 w-4" />
                           </div>
                           <div className="min-w-0">
-                            <p className="truncate text-xs font-bold text-gray-900 dark:text-white">{doc.name}</p>
+                            <p className="truncate text-xs font-bold text-gray-900 dark:text-white">
+                              {doc.name}
+                            </p>
                             <p className="text-[10px] text-gray-500 dark:text-gray-400">
                               {(doc.size / 1024).toFixed(1)} KB
                             </p>
                           </div>
                         </div>
                         <a
-                          href={`${import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'}${doc.url}`}
+                          href={`${import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}${doc.url}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="rounded-lg p-2 text-indigo-600 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/50"
@@ -2327,7 +3295,9 @@ const Clients = () => {
                   </div>
                 ) : (
                   <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center dark:border-gray-800">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">No documents uploaded yet.</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      No documents uploaded yet.
+                    </p>
                   </div>
                 )}
               </div>
@@ -2335,8 +3305,12 @@ const Clients = () => {
               {/* Notes Card */}
               {selectedClient.notes && (
                 <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-800/40">
-                  <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Internal Notes</h3>
-                  <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{selectedClient.notes}</p>
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">
+                    Internal Notes
+                  </h3>
+                  <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
+                    {selectedClient.notes}
+                  </p>
                 </div>
               )}
             </div>
@@ -2347,12 +3321,15 @@ const Clients = () => {
       <Modal
         isOpen={showAddProjectModal && Boolean(selectedClient)}
         onClose={closeAddProjectModal}
-        title={`Add Project to ${selectedClient?.name || 'Client'}`}
+        title={`Add Project to ${selectedClient?.name || "Client"}`}
         size="md"
       >
         <form onSubmit={handleAddExistingProject} className="space-y-5">
           {loadingProjects ? (
-            <div className="flex min-h-40 items-center justify-center" role="status">
+            <div
+              className="flex min-h-40 items-center justify-center"
+              role="status"
+            >
               <LoadingSpinner label="Loading projects" />
             </div>
           ) : availableProjects.length === 0 ? (
@@ -2363,7 +3340,10 @@ const Clients = () => {
             />
           ) : (
             <>
-              <FormField label="Search projects" htmlFor="client-project-search">
+              <FormField
+                label="Search projects"
+                htmlFor="client-project-search"
+              >
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input
@@ -2371,8 +3351,8 @@ const Clients = () => {
                     type="search"
                     value={projectSearch}
                     onChange={(event) => {
-                      setProjectSearch(event.target.value)
-                      setSelectedProjectId('')
+                      setProjectSearch(event.target.value);
+                      setSelectedProjectId("");
                     }}
                     className={`${inputClassName} pl-10`}
                     placeholder="Search by project name, key, or ID"
@@ -2381,7 +3361,11 @@ const Clients = () => {
                 </div>
               </FormField>
 
-              <FormField label="Project" htmlFor="client-project-select" required>
+              <FormField
+                label="Project"
+                htmlFor="client-project-select"
+                required
+              >
                 <CreatableSelectField
                   id="client-project-select"
                   value={selectedProjectId}
@@ -2394,11 +3378,14 @@ const Clients = () => {
                   canCreate={isCompanyAdmin}
                 >
                   <option value="">
-                    {filteredAvailableProjects.length ? 'Select a project' : 'No matching projects'}
+                    {filteredAvailableProjects.length
+                      ? "Select a project"
+                      : "No matching projects"}
                   </option>
                   {filteredAvailableProjects.map((project) => (
                     <option key={project.id} value={project.id}>
-                      {project.name} ({project.key}){project.project_id ? ` - ${project.project_id}` : ''}
+                      {project.name} ({project.key})
+                      {project.project_id ? ` - ${project.project_id}` : ""}
                     </option>
                   ))}
                 </CreatableSelectField>
@@ -2413,14 +3400,23 @@ const Clients = () => {
           )}
 
           <div className="flex justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-800">
-            <Button type="button" variant="secondary" onClick={closeAddProjectModal} disabled={assigningProject}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={closeAddProjectModal}
+              disabled={assigningProject}
+            >
               Cancel
             </Button>
             <Button
               type="submit"
               loading={assigningProject}
               loadingText="Adding"
-              disabled={loadingProjects || !selectedProjectId || availableProjects.length === 0}
+              disabled={
+                loadingProjects ||
+                !selectedProjectId ||
+                availableProjects.length === 0
+              }
             >
               Add Project
             </Button>
@@ -2435,9 +3431,9 @@ const Clients = () => {
         leads={leads}
         canCreateLead={false}
         onCreated={async (created) => {
-          await Promise.all([loadLeads(), loadAssignableUsers()])
-          setFormData((state) => ({ ...state, assigned_to: created.id }))
-          setProjectForm((state) => ({ ...state, assigned_to: created.id }))
+          await Promise.all([loadLeads(), loadAssignableUsers()]);
+          setFormData((state) => ({ ...state, assigned_to: created.id }));
+          setProjectForm((state) => ({ ...state, assigned_to: created.id }));
         }}
       />
 
@@ -2448,8 +3444,8 @@ const Clients = () => {
         assignedTo={projectForm.assigned_to}
         clientId={selectedClient?.id}
         onCreated={async (created) => {
-          await loadAvailableProjects()
-          setSelectedProjectId(created.id)
+          await loadAvailableProjects();
+          setSelectedProjectId(created.id);
         }}
       />
 
@@ -2458,27 +3454,32 @@ const Clients = () => {
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setShowCreateProjectModal(false)
+            if (e.target === e.currentTarget) setShowCreateProjectModal(false);
           }}
         >
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-gray-900">Create New Project for {selectedClient.name}</h2>
+                <h2 className="text-lg font-bold text-gray-900">
+                  Create New Project for {selectedClient.name}
+                </h2>
                 <button
                   onClick={() => {
-                    setShowCreateProjectModal(false)
+                    setShowCreateProjectModal(false);
                     setProjectForm({
-                      project_id: '',
-                      name: '',
-                      key: '',
-                      description: '',
-                      type: 'software',
-                      assigned_to: '',
-                      budget: '',
-                      start_date: '',
-                      delivery_date: '',
-                    })
+                      project_id: "",
+                      name: "",
+                      key: "",
+                      description: "",
+                      type: "software",
+                      assigned_to: "",
+                      budget: "",
+                      start_date: "",
+                      delivery_date: "",
+                    });
                   }}
                   className="text-gray-400 hover:text-gray-600"
                 >
@@ -2489,14 +3490,26 @@ const Clients = () => {
               <form onSubmit={handleCreateProject} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Project Name *</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Project Name *
+                    </label>
                     <input
                       type="text"
                       value={projectForm.name}
                       onChange={(e) => {
-                        const val = e.target.value
-                        const autoKey = val.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 16)
-                        setProjectForm({ ...projectForm, name: val, key: autoKey, project_id: autoKey })
+                        const val = e.target.value;
+                        const autoKey = val
+                          .trim()
+                          .toUpperCase()
+                          .replace(/[^A-Z0-9]+/g, "_")
+                          .replace(/^_+|_+$/g, "")
+                          .slice(0, 16);
+                        setProjectForm({
+                          ...projectForm,
+                          name: val,
+                          key: autoKey,
+                          project_id: autoKey,
+                        });
                       }}
                       className="input"
                       required
@@ -2504,7 +3517,9 @@ const Clients = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Project Key *</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Project Key *
+                    </label>
                     <input
                       type="text"
                       readOnly
@@ -2515,19 +3530,30 @@ const Clients = () => {
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Description
+                    </label>
                     <textarea
                       value={projectForm.description}
-                      onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })}
+                      onChange={(e) =>
+                        setProjectForm({
+                          ...projectForm,
+                          description: e.target.value,
+                        })
+                      }
                       className="input"
                       rows="3"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Project Type</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Project Type
+                    </label>
                     <select
                       value={projectForm.type}
-                      onChange={(e) => setProjectForm({ ...projectForm, type: e.target.value })}
+                      onChange={(e) =>
+                        setProjectForm({ ...projectForm, type: e.target.value })
+                      }
                       className="input"
                     >
                       <option value="software">Software</option>
@@ -2538,14 +3564,21 @@ const Clients = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Assign To (Lead/Employee)</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Assign To (Lead/Employee)
+                    </label>
                     <select
                       value={projectForm.assigned_to}
-                      onChange={(e) => setProjectForm({ ...projectForm, assigned_to: e.target.value })}
+                      onChange={(e) =>
+                        setProjectForm({
+                          ...projectForm,
+                          assigned_to: e.target.value,
+                        })
+                      }
                       className="input"
                     >
                       <option value="">Not Assigned</option>
-                      {assignableUsers.map(user => (
+                      {assignableUsers.map((user) => (
                         <option key={user.id} value={user.id}>
                           {user.first_name} {user.last_name} ({user.role})
                         </option>
@@ -2553,31 +3586,52 @@ const Clients = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Budget (₹)</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Budget (₹)
+                    </label>
                     <input
                       type="number"
                       value={projectForm.budget}
-                      onChange={(e) => setProjectForm({ ...projectForm, budget: e.target.value })}
+                      onChange={(e) =>
+                        setProjectForm({
+                          ...projectForm,
+                          budget: e.target.value,
+                        })
+                      }
                       className="input"
                       step="0.01"
                       placeholder="Enter project budget"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Start Date
+                    </label>
                     <input
                       type="date"
                       value={projectForm.start_date}
-                      onChange={(e) => setProjectForm({ ...projectForm, start_date: e.target.value })}
+                      onChange={(e) =>
+                        setProjectForm({
+                          ...projectForm,
+                          start_date: e.target.value,
+                        })
+                      }
                       className="input"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Delivery Date</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Delivery Date
+                    </label>
                     <input
                       type="date"
                       value={projectForm.delivery_date}
-                      onChange={(e) => setProjectForm({ ...projectForm, delivery_date: e.target.value })}
+                      onChange={(e) =>
+                        setProjectForm({
+                          ...projectForm,
+                          delivery_date: e.target.value,
+                        })
+                      }
                       className="input"
                     />
                   </div>
@@ -2587,18 +3641,18 @@ const Clients = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowCreateProjectModal(false)
+                      setShowCreateProjectModal(false);
                       setProjectForm({
-                        project_id: '',
-                        name: '',
-                        key: '',
-                        description: '',
-                        type: 'software',
-                        assigned_to: '',
-                        budget: '',
-                        start_date: '',
-                        delivery_date: '',
-                      })
+                        project_id: "",
+                        name: "",
+                        key: "",
+                        description: "",
+                        type: "software",
+                        assigned_to: "",
+                        budget: "",
+                        start_date: "",
+                        delivery_date: "",
+                      });
                     }}
                     className="btn btn-secondary"
                   >
@@ -2609,7 +3663,7 @@ const Clients = () => {
                     disabled={creatingProject}
                     className="btn btn-primary"
                   >
-                    {creatingProject ? 'Creating...' : 'Create Project'}
+                    {creatingProject ? "Creating..." : "Create Project"}
                   </button>
                 </div>
               </form>
@@ -2623,15 +3677,22 @@ const Clients = () => {
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setShowDocumentModal(false)
+            if (e.target === e.currentTarget) setShowDocumentModal(false);
           }}
         >
-          <div className="bg-white rounded-lg max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="bg-white rounded-lg max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Upload Document</h2>
+              <h2 className="text-lg font-bold text-gray-900 mb-4">
+                Upload Document
+              </h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Document Name</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Document Name
+                  </label>
                   <input
                     type="text"
                     value={documentName}
@@ -2641,7 +3702,9 @@ const Clients = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">File *</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    File *
+                  </label>
                   <input
                     type="file"
                     onChange={(e) => setDocumentFile(e.target.files[0])}
@@ -2654,9 +3717,9 @@ const Clients = () => {
               <div className="flex items-center justify-end space-x-3 mt-6">
                 <button
                   onClick={() => {
-                    setShowDocumentModal(false)
-                    setDocumentFile(null)
-                    setDocumentName('')
+                    setShowDocumentModal(false);
+                    setDocumentFile(null);
+                    setDocumentName("");
                   }}
                   className="btn btn-secondary"
                 >
@@ -2675,7 +3738,7 @@ const Clients = () => {
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default Clients
+export default Clients;

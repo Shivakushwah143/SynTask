@@ -4,10 +4,10 @@ Task Management Endpoints
 import inspect
 from fastapi import APIRouter, HTTPException, status, Depends, Form, BackgroundTasks
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 
-from app.models.task import Task, TaskExtensionRequest, TaskStatus, TaskPriority, TaskType
+from app.models.task import Task, TaskExtensionRequest, TaskHealthStatus, TaskStatus, TaskPriority, TaskType
 from app.models.scheduled_job import ScheduledJob, ScheduledJobActionType, ScheduledJobStatus
 from app.schemas.tasks import UpdateProductionProgressRequest, ProductionDashboardResponse, ProductionEmployeeMetric
 from app.models.department import Department
@@ -45,6 +45,16 @@ from app.services.project_permissions import (
     has_project_permission,
     load_project_for_permission,
     load_task_project,
+)
+from app.services.task_workflow import (
+    allowed_actions,
+    blocking_dependencies,
+    effective_review_required,
+    normalize_checklist,
+    normalize_checklist_item,
+    transition_task,
+    validate_dependency,
+    validate_reviewer,
 )
 
 router = APIRouter()
@@ -206,6 +216,167 @@ def build_task_list_query(
     return query
 
 
+def _merge_query_parts(parts: list[Optional[dict]]) -> dict:
+    """Combine independent filter groups with implicit AND semantics.
+
+    A single part is returned as-is; multiple parts are wrapped in ``$and``
+    so lifecycle-status, attention, and advanced filters never overwrite one
+    another (e.g. ``status=in_progress`` combined with an overdue condition
+    that also references ``status``).
+    """
+    clean = [part for part in parts if part]
+    if not clean:
+        return {}
+    if len(clean) == 1:
+        return clean[0]
+    return {"$and": clean}
+
+
+async def _project_link_condition(project_identifier: str, current_user: User) -> dict:
+    """Build the Task filter that links tasks to one Project.
+
+    Tasks may store the logical ``project_id`` (e.g. ``PROJ-001``), the Mongo
+    ``_id`` string, or the normalized ``project_object_id`` field, and project
+    URLs/deep links may carry either identifier form. Resolving the Project
+    first (mirroring project boards and completion readiness) and matching all
+    three conventions keeps the Project Task list/counts consistent with the
+    board regardless of which id the caller passed.
+
+    Unknown or cross-company identifiers resolve to a match-nothing condition
+    so no other company's rows can leak through a guessed project id.
+    """
+    from app.api.dependencies import get_project_by_id
+
+    project, _ = await get_project_by_id(
+        project_identifier,
+        None if current_user.role == UserRole.SUPER_ADMIN else current_user.company_id,
+    )
+    if not project or str(project.company_id) != str(current_user.company_id):
+        return {"$or": [{"project_object_id": {"$in": []}}, {"project_id": {"$in": []}}]}
+    keys = {str(project.id)}
+    if getattr(project, "project_id", None):
+        keys.add(str(project.project_id))
+    return {"$or": [{"project_object_id": str(project.id)}, {"project_id": {"$in": sorted(keys)}}]}
+
+
+def _task_overdue_query_condition() -> dict:
+    """Mongo condition matching the OVERDUE health semantics (UTC day).
+
+    Mirrors ``calculate_task_health``: not completed/cancelled, no approved
+    extension, and due before the current UTC day.
+    """
+    now = utc_now()
+    today = now.date()
+    start_of_today = datetime(today.year, today.month, today.day)
+    return {
+        "status": {"$nin": [TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value]},
+        "extension_count": {"$in": [None, 0]},
+        "due_date": {"$lt": start_of_today},
+    }
+
+
+def _task_due_today_query_condition() -> dict:
+    """Mongo condition matching the DUE_TODAY health semantics (UTC day)."""
+    now = utc_now()
+    today = now.date()
+    tomorrow = today + timedelta(days=1)
+    start_of_today = datetime(today.year, today.month, today.day)
+    start_of_tomorrow = datetime(tomorrow.year, tomorrow.month, tomorrow.day)
+    return {
+        "status": {"$nin": [TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value]},
+        "extension_count": {"$in": [None, 0]},
+        "due_date": {"$gte": start_of_today, "$lt": start_of_tomorrow},
+    }
+
+
+def _task_due_range_condition(due_from: Optional[str], due_to: Optional[str]) -> dict:
+    """Build a ``due_date`` range condition from inclusive date inputs.
+
+    Date-only values (``YYYY-MM-DD``) cover the whole local calendar day;
+    full ISO instants are used verbatim.
+    """
+    condition = {}
+    if due_from:
+        parsed_from = _parse_task_datetime(due_from, "due_from")
+        condition["$gte"] = parsed_from
+    if due_to:
+        parsed_to = _parse_task_datetime(due_to, "due_to")
+        if len(due_to) == 10:  # YYYY-MM-DD only -> include the whole day
+            parsed_to = parsed_to.replace(hour=23, minute=59, second=59, microsecond=999999)
+        condition["$lte"] = parsed_to
+    return {"due_date": condition}
+
+
+async def _collect_blocked_task_ids(tasks: list[Task]) -> set[str]:
+    """Return ids of tasks blocked by at least one incomplete dependency.
+
+    Dependency documents are fetched in a single query and matched with the
+    same company-guard semantics as ``task_workflow.blocking_dependencies``.
+    """
+    dependency_ids: set[str] = set()
+    for task in tasks:
+        for dependency_id in getattr(task, "dependencies", None) or []:
+            if dependency_id:
+                dependency_ids.add(str(dependency_id))
+    if not dependency_ids:
+        return set()
+    dependency_lookup_ids = []
+    for dependency_id in dependency_ids:
+        if ObjectId.is_valid(dependency_id):
+            dependency_lookup_ids.append(ObjectId(dependency_id))
+        else:
+            dependency_lookup_ids.append(dependency_id)
+    dependency_tasks = await Task.find({"_id": {"$in": dependency_lookup_ids}}).to_list()
+    dependency_status = {str(item.id): enum_or_string_value(item.status) for item in dependency_tasks}
+    dependency_company = {str(item.id): str(item.company_id) for item in dependency_tasks}
+    blocked_ids: set[str] = set()
+    for task in tasks:
+        for dependency_id in getattr(task, "dependencies", None) or []:
+            dep_status = dependency_status.get(str(dependency_id))
+            dep_company = dependency_company.get(str(dependency_id))
+            if dep_status is None or dep_company != str(task.company_id):
+                continue
+            if dep_status != TaskStatus.COMPLETED.value:
+                blocked_ids.add(str(task.id))
+                break
+    return blocked_ids
+
+
+def build_status_summary_counts(tasks, *, blocked_task_ids=frozenset()) -> dict:
+    """Compute global Task lifecycle + attention counts for a task collection.
+
+    ``tasks`` must already be scoped by company/RBAC (callers reuse
+    ``build_task_list_query``) and health-synced. ``blocked_task_ids`` is the
+    precomputed set of ids blocked by incomplete dependencies.
+    """
+    counts = {s.value: 0 for s in TaskStatus}
+    blocked = 0
+    overdue = 0
+    due_today = 0
+    critical = 0
+    for task in tasks:
+        status = enum_or_string_value(task.status)
+        if status in counts:
+            counts[status] += 1
+        if enum_or_string_value(task.priority) == TaskPriority.CRITICAL.value:
+            critical += 1
+        health = enum_or_string_value(getattr(task, "health_status", None))
+        if health == TaskHealthStatus.OVERDUE.value:
+            overdue += 1
+        elif health == TaskHealthStatus.DUE_TODAY.value:
+            due_today += 1
+        if str(task.id) in blocked_task_ids:
+            blocked += 1
+    return {
+        "all": len(tasks),
+        **counts,
+        "blocked": blocked,
+        "overdue": overdue,
+        "due_today": due_today,
+        "critical": critical,
+    }
+
+
 def can_update_task_field(current_user: User, task: Task, field_name: str) -> bool:
     if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}:
         return True
@@ -218,6 +389,98 @@ def can_update_task_field(current_user: User, task: Task, field_name: str) -> bo
     if current_user.role == UserRole.LEAD:
         return True
     return False
+
+
+async def serialize_task_response(
+    task: Task,
+    current_user: User,
+    *,
+    include_detail: bool = False,
+    users_by_id: Optional[dict] = None,
+) -> dict:
+    async def resolve_user(user_id):
+        if not user_id:
+            return None
+        if users_by_id is not None:
+            return users_by_id.get(str(user_id))
+        return await User.get(user_id)
+
+    assigned_user = await resolve_user(task.assigned_to)
+    reviewer = await resolve_user(getattr(task, "reviewer_id", None))
+    created_by_user = await resolve_user(getattr(task, "created_by", None))
+    blockers = await blocking_dependencies(task)
+    payload = {
+        "id": str(task.id),
+        "title": task.title,
+        "description": task.description if include_detail else getattr(task, "description", None),
+        "status": enum_or_string_value(task.status),
+        "priority": enum_or_string_value(task.priority),
+        "assigned_to": task.assigned_to,
+        "assigned_to_name": f"{assigned_user.first_name} {assigned_user.last_name}".strip() if assigned_user else None,
+        "reviewer_id": getattr(task, "reviewer_id", None),
+        "reviewer_name": f"{reviewer.first_name} {reviewer.last_name}".strip() if reviewer else None,
+        "review_required": effective_review_required(task),
+        "review_round": getattr(task, "review_round", 0),
+        "created_by": task.created_by,
+        "created_by_name": f"{created_by_user.first_name} {created_by_user.last_name}".strip() if created_by_user else None,
+        "project_id": str(task.project_id) if task.project_id else None,
+        "project_object_id": str(task.project_object_id) if getattr(task, "project_object_id", None) else None,
+        "department_id": getattr(task, "department_id", None),
+        "department": getattr(task, "department", None),
+        "due_date": task.due_date,
+        "start_date": task.start_date,
+        "completed_at": task.completed_at,
+        "health_status": getattr(task.health_status, "value", task.health_status),
+        "extension_count": getattr(task, "extension_count", 0),
+        "estimated_hours": getattr(task, "estimated_hours", None),
+        "actual_hours": getattr(task, "actual_hours", None),
+        "progress_percentage": getattr(task, "progress_percentage", 0.0),
+        "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
+        "measurement_type": getattr(task, "measurement_type", None),
+        "custom_measurement_label": getattr(task, "custom_measurement_label", None),
+        "target_quantity": getattr(task, "target_quantity", None),
+        "target_unit": getattr(task, "target_unit", None),
+        "completed_quantity": getattr(task, "completed_quantity", 0),
+        "source_type": getattr(task, "source_type", None),
+        "tags": task.tags,
+        "checklist": normalize_checklist(getattr(task, "checklist", [])),
+        "dependencies": getattr(task, "dependencies", []) or [],
+        "is_blocked": bool(blockers),
+        "blocking_dependencies": blockers,
+        "allowed_actions": await allowed_actions(task, current_user),
+        "submitted_for_review_at": getattr(task, "submitted_for_review_at", None),
+        "submitted_for_review_by": getattr(task, "submitted_for_review_by", None),
+        "revision_requested_at": getattr(task, "revision_requested_at", None),
+        "revision_requested_by": getattr(task, "revision_requested_by", None),
+        "latest_revision_reason": getattr(task, "latest_revision_reason", None),
+        "approved_at": getattr(task, "approved_at", None),
+        "approved_by": getattr(task, "approved_by", None),
+        "completed_by": getattr(task, "completed_by", None),
+        "status_changed_at": getattr(task, "status_changed_at", None),
+        "assigned_at": getattr(task, "assigned_at", None),
+        "created_at": task.created_at,
+        "updated_at": task.updated_at,
+        "is_scheduled_placeholder": False,
+    }
+    if include_detail:
+        payload.update({
+            "attachments": task.attachments if hasattr(task, "attachments") and task.attachments else [],
+            "expected_completion_time": getattr(task, "expected_completion_time", None),
+            "parent_task_id": getattr(task, "parent_task_id", None),
+            "epic_id": getattr(task, "epic_id", None),
+            "sprint_id": getattr(task, "sprint_id", None),
+            "story_points": getattr(task, "story_points", None),
+            "workflow_id": getattr(task, "workflow_id", None),
+            "issue_type_id": getattr(task, "issue_type_id", None),
+            "component_id": getattr(task, "component_id", None),
+            "fix_version_id": getattr(task, "fix_version_id", None),
+            "affects_version_ids": getattr(task, "affects_version_ids", []),
+            "resolution": getattr(task, "resolution", None),
+            "resolved_at": getattr(task, "resolved_at", None),
+            "resolved_by": getattr(task, "resolved_by", None),
+            "time_logs": getattr(task, "time_logs", []),
+        })
+    return payload
 
 
 def build_employee_project_visibility_query(current_user: User, project_ids: list[str]) -> dict:
@@ -485,45 +748,99 @@ async def list_tasks(
     status_filter: Optional[str] = None,
     priority: Optional[str] = None,
     assigned_to: Optional[str] = None,
+    reviewer_id: Optional[str] = None,
     created_by: Optional[str] = None,
     project_id: Optional[str] = None,
     department_id: Optional[str] = None,
+    review_required: Optional[bool] = None,
+    blocked: Optional[bool] = None,
+    awaiting_review: Optional[bool] = None,
+    overdue: Optional[bool] = None,
+    due_today: Optional[bool] = None,
+    critical: Optional[bool] = None,
+    search: Optional[str] = None,
+    due_from: Optional[str] = None,
+    due_to: Optional[str] = None,
+    exclude_follow_up: Optional[bool] = None,
     pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user)
 ):
-    """List tasks with filters"""
+    """List tasks with filters.
+
+    Filtering order: company/RBAC scope -> lifecycle status -> attention
+    condition (blocked/overdue/due_today/critical) -> advanced filters ->
+    search -> sort -> pagination. Attention conditions stay separate from
+    TaskStatus: a task can be ``status=in_progress`` AND ``blocked=true`` AND
+    ``health=overdue`` at the same time.
+    """
     skip, limit = pagination.skip, pagination.limit
     scope_ids = await _get_user_scope_ids(current_user) if current_user.role == UserRole.LEAD else None
-    query = build_task_list_query(current_user, scope_ids=scope_ids)
+    query_parts: list[Optional[dict]] = [build_task_list_query(current_user, scope_ids=scope_ids)]
 
     if status_filter:
-        query["status"] = status_filter
+        query_parts.append({"status": status_filter})
+    # Attention conditions are not lifecycle statuses.
+    if critical:
+        query_parts.append({"priority": TaskPriority.CRITICAL.value})
+    if overdue:
+        query_parts.append(_task_overdue_query_condition())
+    if due_today:
+        query_parts.append(_task_due_today_query_condition())
     if priority:
-        query["priority"] = priority
+        query_parts.append({"priority": priority})
     if assigned_to and current_user.role != UserRole.EMPLOYEE:
-        if "$or" in query:
-            scoped_or = query.pop("$or")
-            query["$and"] = [{"$or": scoped_or}, {"assigned_to": assigned_to}]
-        else:
-            query["assigned_to"] = assigned_to
+        query_parts.append({"assigned_to": assigned_to})
     if created_by:
-        query["created_by"] = created_by
+        query_parts.append({"created_by": created_by})
+    if reviewer_id:
+        query_parts.append({"reviewer_id": reviewer_id})
+    if review_required is not None:
+        query_parts.append({"review_required": review_required})
+    if awaiting_review:
+        query_parts.append({"status": TaskStatus.IN_REVIEW.value})
     if project_id:
-        # Filter by project_id - only return tasks that have this specific project_id
-        # Simple equality check - MongoDB will only match documents where project_id equals this value
-        # Tasks with project_id=None or missing project_id field won't match
+        # Resolve to the real Project so every link convention matches (logical
+        # project_id, Mongo _id, or project_object_id), consistent with how the
+        # Project board and completion readiness resolve project tasks.
         if current_user.role == UserRole.EMPLOYEE:
             project = await load_project_for_permission(project_id, current_user)
             if has_project_permission(current_user, project, ProjectPermission.MANAGE_TASK):
-                query.pop("assigned_to", None)
-        query["project_id"] = project_id
+                query_parts[0].pop("assigned_to", None)
+        query_parts.append(await _project_link_condition(project_id, current_user))
     if department_id:
-        query["department_id"] = department_id
+        query_parts.append({"department_id": department_id})
+    if exclude_follow_up:
+        query_parts.append({"source_type": {"$ne": "sales_follow_up"}})
+    if due_from or due_to:
+        query_parts.append(_task_due_range_condition(due_from, due_to))
+    if search and search.strip():
+        query_parts.append({"$text": {"$search": search.strip()}})
 
-    tasks = await Task.find(query).skip(skip).limit(limit).sort("-created_at").to_list()
-    for task in tasks:
-        await sync_task_health(task)
-    total = await Task.find(query).count()
+    query = _merge_query_parts(query_parts)
+
+    if blocked is not None:
+        # Dependency-blocked tasks cannot be expressed as a plain field filter;
+        # resolve them against the full (unpaginated) candidate set so the
+        # ``total`` and pagination stay correct for the active filters.
+        # For ``blocked=True`` only tasks that declare dependencies can be
+        # blocked; for ``blocked=False`` every scoped task is a candidate.
+        candidate_query = query
+        if blocked:
+            candidate_query = {
+                **query,
+                "dependencies": {"$exists": True, "$ne": []},
+            }
+        blocked_candidates = await Task.find(candidate_query).sort("-created_at").to_list()
+        for task in blocked_candidates:
+            await sync_task_health(task)
+        matched = [task for task in blocked_candidates if bool(await blocking_dependencies(task)) == blocked]
+        total = len(matched)
+        tasks = matched[skip:skip + limit]
+    else:
+        tasks = await Task.find(query).skip(skip).limit(limit).sort("-created_at").to_list()
+        for task in tasks:
+            await sync_task_health(task)
+        total = await Task.find(query).count()
     scheduled_task_placeholders = []
     if current_user.company_id and (not status_filter or status_filter == "scheduled") and not created_by:
         scheduled_query = {
@@ -543,46 +860,31 @@ async def list_tasks(
         scheduled_jobs = await ScheduledJob.find(scheduled_query).sort("run_at").to_list()
         scheduled_task_placeholders = [serialize_scheduled_task_placeholder(job) for job in scheduled_jobs]
         total += len(scheduled_task_placeholders)
-    # Batch-resolve assignee names in ONE query instead of one User.get per
-    # distinct assignee on the page.
-    assignee_names = {}
-    assignee_ids = {task.assigned_to for task in tasks if task.assigned_to}
-    if assignee_ids:
-        from bson import ObjectId
-        valid_ids = [ObjectId(aid) for aid in assignee_ids if ObjectId.is_valid(aid)]
+    # Batch-resolve all users needed by the richer task serializer instead of
+    # issuing up to three User.get calls per task.
+    related_user_ids = {
+        str(user_id)
+        for task in tasks
+        for user_id in (
+            getattr(task, "assigned_to", None),
+            getattr(task, "reviewer_id", None),
+            getattr(task, "created_by", None),
+        )
+        if user_id
+    }
+    users_by_id = {}
+    if related_user_ids:
+        valid_ids = [ObjectId(user_id) for user_id in related_user_ids if ObjectId.is_valid(user_id)]
         if valid_ids:
-            assignees = await User.find({"_id": {"$in": valid_ids}}).to_list()
-            assignee_names = {
-                str(assignee.id): f"{assignee.first_name} {assignee.last_name}".strip() or assignee.email
-                for assignee in assignees
-            }
+            related_users = await User.find({"_id": {"$in": valid_ids}}).to_list()
+            users_by_id = {str(user.id): user for user in related_users}
+    task_payloads = [
+        await serialize_task_response(task, current_user, users_by_id=users_by_id)
+        for task in tasks
+    ]
 
     return {
-        "tasks": scheduled_task_placeholders + [
-            {
-                "id": str(task.id),
-                "title": task.title,
-                "status": enum_or_string_value(task.status),
-                "priority": enum_or_string_value(task.priority),
-                "assigned_to": task.assigned_to,
-                "assigned_to_name": assignee_names.get(str(task.assigned_to or "")),
-                "created_by": task.created_by,
-                "project_id": str(task.project_id) if task.project_id else None,
-                "department_id": getattr(task, "department_id", None),
-                "department": getattr(task, "department", None),
-                "due_date": task.due_date,
-                "start_date": task.start_date,
-                "health_status": getattr(task.health_status, "value", task.health_status),
-                "extension_count": getattr(task, "extension_count", 0),
-                "estimated_hours": getattr(task, "estimated_hours", None),
-                "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
-                "source_type": getattr(task, "source_type", None),
-                "tags": task.tags,
-                "created_at": task.created_at,
-                "is_scheduled_placeholder": False,
-            }
-            for task in tasks
-        ],
+        "tasks": scheduled_task_placeholders + task_payloads,
         "total": total,
         "skip": skip,
         "limit": limit
@@ -610,6 +912,8 @@ async def create_task(
     custom_measurement_label: Optional[str] = Form(None),
     target_quantity: Optional[int] = Form(None),
     target_unit: Optional[str] = Form(None),
+    reviewer_id: Optional[str] = Form(None),
+    review_required: Optional[bool] = Form(None),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -645,6 +949,8 @@ async def create_task(
         custom_measurement_label=custom_measurement_label,
         target_quantity=target_quantity,
         target_unit=target_unit,
+        reviewer_id=reviewer_id,
+        review_required=review_required,
         current_user=current_user,
         background_tasks=background_tasks
     )
@@ -805,6 +1111,40 @@ async def get_production_dashboard(
     )
 
 
+@router.get("/status-summary")
+async def task_status_summary(
+    current_user: User = Depends(get_current_user),
+    project_id: Optional[str] = None,
+):
+    """Task lifecycle + attention counts for the Tasks workspace.
+
+    Global scope (no ``project_id``) or Project-scoped (``project_id`` resolves
+    the Project and uses the same link condition as the Task list endpoint, so
+    summary counts and list totals stay logically consistent for logical ids,
+    Mongo ids, and ``project_object_id`` links). Counts apply the SAME company
+    isolation, RBAC, manager/team/project scope, and employee visibility as the
+    Task list (``build_task_list_query``), so Company A counts never include
+    Company B tasks and employees only see their accessible tasks. Follow-up
+    items (sales follow-ups) are excluded to match the Tasks page view;
+    Scheduled placeholders are not Task documents and are naturally absent.
+    ``blocked`` counts tasks with at least one incomplete dependency and is
+    independent of ``status``/``health_status``.
+    """
+    scope_ids = await _get_user_scope_ids(current_user) if current_user.role == UserRole.LEAD else None
+    parts: list[Optional[dict]] = [
+        build_task_list_query(current_user, scope_ids=scope_ids),
+        {"source_type": {"$ne": "sales_follow_up"}},
+    ]
+    if project_id:
+        parts.append(await _project_link_condition(project_id, current_user))
+    query = _merge_query_parts(parts)
+    tasks = await Task.find(query).to_list()
+    for task in tasks:
+        await sync_task_health(task)
+    blocked_ids = await _collect_blocked_task_ids(tasks)
+    return build_status_summary_counts(tasks, blocked_task_ids=blocked_ids)
+
+
 @router.get("/{task_id}/health")
 async def get_task_health(task_id: str, current_user: User = Depends(get_current_user)):
     task = await Task.get(task_id)
@@ -887,73 +1227,7 @@ async def get_task(
     await _assert_task_view(current_user, task)
     await sync_task_health(task)
 
-    # Get assigned user details
-    assigned_user = None
-    if task.assigned_to:
-        assigned_user = await User.get(task.assigned_to)
-
-    # Get created by user details
-    created_by_user = None
-    if task.created_by:
-        created_by_user = await User.get(task.created_by)
-
-    return {
-        "id": str(task.id),
-        "title": task.title,
-        "description": task.description,
-        "status": task.status.value,
-        "priority": task.priority.value,
-        "assigned_to": task.assigned_to,
-        "assigned_to_name": f"{assigned_user.first_name} {assigned_user.last_name}" if assigned_user else None,
-        "created_by": task.created_by,
-        "created_by_name": f"{created_by_user.first_name} {created_by_user.last_name}" if created_by_user else None,
-        "project_id": str(task.project_id) if task.project_id else None,
-        "project_object_id": str(task.project_object_id) if task.project_object_id else None,
-        "department_id": getattr(task, "department_id", None),
-        "department": getattr(task, "department", None),
-        "due_date": task.due_date,
-        "start_date": task.start_date,
-        "completed_at": task.completed_at,
-        "health_status": getattr(task.health_status, "value", task.health_status),
-        "extension_count": getattr(task, "extension_count", 0),
-        "tags": task.tags,
-        "attachments": task.attachments if hasattr(task, 'attachments') and task.attachments else [],
-        "created_at": task.created_at,
-        "updated_at": task.updated_at,
-        # Task type
-        "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
-        # Quantitative fields
-        "measurement_type": getattr(task, "measurement_type", None),
-        "custom_measurement_label": getattr(task, "custom_measurement_label", None),
-        "target_quantity": getattr(task, "target_quantity", None),
-        "target_unit": getattr(task, "target_unit", None),
-        "completed_quantity": getattr(task, "completed_quantity", 0),
-        "expected_completion_time": getattr(task, "expected_completion_time", None),
-        # Estimates & progress
-        "estimated_hours": getattr(task, "estimated_hours", None),
-        "actual_hours": getattr(task, "actual_hours", None),
-        "progress_percentage": getattr(task, "progress_percentage", 0.0),
-        # Parent & hierarchy
-        "parent_task_id": getattr(task, "parent_task_id", None),
-        "epic_id": getattr(task, "epic_id", None),
-        "sprint_id": getattr(task, "sprint_id", None),
-        # Agile
-        "story_points": getattr(task, "story_points", None),
-        # Workflow
-        "workflow_id": getattr(task, "workflow_id", None),
-        "issue_type_id": getattr(task, "issue_type_id", None),
-        "component_id": getattr(task, "component_id", None),
-        "fix_version_id": getattr(task, "fix_version_id", None),
-        "affects_version_ids": getattr(task, "affects_version_ids", []),
-        # Resolution
-        "resolution": getattr(task, "resolution", None),
-        "resolved_at": getattr(task, "resolved_at", None),
-        "resolved_by": getattr(task, "resolved_by", None),
-        # Tracking
-        "time_logs": getattr(task, "time_logs", []),
-        "checklist": getattr(task, "checklist", []),
-        "dependencies": getattr(task, "dependencies", []),
-    }
+    return await serialize_task_response(task, current_user, include_detail=True)
 
 
 @router.delete("/{task_id}")
@@ -1053,71 +1327,65 @@ async def update_task_status(
             detail=f"Invalid status. Must be one of: {[s.value for s in TaskStatus]}"
         )
 
-    previous_status = task.status
-
-    # Update status and trigger automation asynchronously when changed.
-    task = await TaskService.update_status(task, task_status, str(current_user.id))
-
-    if previous_status != task.status:
-        if task.status == TaskStatus.IN_PROGRESS:
-            timeline_type = TimelineEventType.TASK_STARTED
-            title = "Task Started"
-        elif task.status == TaskStatus.COMPLETED:
-            timeline_type = TimelineEventType.TASK_COMPLETED
-            title = "Task Completed"
-        elif previous_status == TaskStatus.COMPLETED:
-            timeline_type = TimelineEventType.TASK_REOPENED
-            title = "Task Reopened"
-        else:
-            timeline_type = TimelineEventType.TASK_UPDATED
-            title = "Task Updated"
-
-        await create_timeline_event(
-            user_id=task.assigned_to or str(current_user.id),
-            company_id=task.company_id,
-            event_type=timeline_type,
-            title=title,
-            description=task.title,
-            related_module=TimelineModule.TASK,
-            related_record_id=str(task.id),
-            actor_id=str(current_user.id),
-            metadata={
-                "task_title": task.title,
-                "from_status": previous_status.value,
-                "to_status": task.status.value,
-                "project_id": task.project_id,
-            },
-            idempotency_key=f"task:{task.id}:status:{previous_status.value}:{task.status.value}:{int(task.updated_at.timestamp())}",
-        )
-
-    await publish_event(
-        build_domain_event(
-            event_name="TaskCompleted" if task.status == TaskStatus.COMPLETED else "TaskUpdated",
-            aggregate_type="task",
-            aggregate_id=str(task.id),
-            company_id=str(task.company_id),
-            actor_id=str(current_user.id),
-            payload={
-                "title": task.title,
-                "description": task.description,
-                "status": task.status.value,
-                "priority": task.priority.value,
-                "project_id": task.project_id,
-                "department_id": task.department_id,
-                "tags": task.tags,
-                "updated_at": task.updated_at.isoformat() if getattr(task, "updated_at", None) else None,
-            },
-            project_id=str(task.project_id) if task.project_id else None,
-            metadata={"source": "task_status_update"},
-        )
-    )
+    task = await TaskService.update_status(task, task_status, str(current_user.id), current_user=current_user)
 
     return {
-        "id": str(task.id),
-        "status": task.status.value,
-        "completed_at": task.completed_at,
-        "message": "Task status updated successfully"
+        "message": "Task status updated successfully",
+        "task": await serialize_task_response(task, current_user),
     }
+
+
+async def _run_task_action(task_id: str, current_user: User, action: str, **kwargs) -> dict:
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    task = await transition_task(task=task, actor=current_user, action=action, **kwargs)
+    return {"message": "Task workflow updated", "task": await serialize_task_response(task, current_user)}
+
+
+@router.post("/{task_id}/start")
+async def start_task(task_id: str, current_user: User = Depends(get_current_user)):
+    return await _run_task_action(task_id, current_user, "start_work")
+
+
+@router.post("/{task_id}/submit-review")
+async def submit_task_for_review(
+    task_id: str,
+    reviewer_id: Optional[str] = Form(None),
+    comment: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    return await _run_task_action(task_id, current_user, "submit_review", reviewer_id=reviewer_id, comment=comment)
+
+
+@router.post("/{task_id}/request-revision")
+async def request_task_revision(
+    task_id: str,
+    reason: str = Form(...),
+    current_user: User = Depends(get_current_user),
+):
+    return await _run_task_action(task_id, current_user, "request_revision", reason=reason)
+
+
+@router.post("/{task_id}/approve")
+async def approve_task(task_id: str, current_user: User = Depends(get_current_user)):
+    return await _run_task_action(task_id, current_user, "approve")
+
+
+@router.post("/{task_id}/complete")
+async def complete_task(task_id: str, current_user: User = Depends(get_current_user)):
+    return await _run_task_action(task_id, current_user, "complete")
+
+
+@router.post("/{task_id}/reopen")
+async def reopen_task(task_id: str, current_user: User = Depends(get_current_user)):
+    return await _run_task_action(task_id, current_user, "reopen")
+
+
+@router.post("/{task_id}/cancel")
+async def cancel_task(task_id: str, current_user: User = Depends(get_current_user)):
+    return await _run_task_action(task_id, current_user, "cancel")
 
 
 @router.patch("/{task_id}/execution")
@@ -1158,16 +1426,126 @@ async def update_task_execution(
     task = await TaskService.update_execution(task, payload)
     return {
         "message": "Task execution updated successfully",
-        "task": {
-            "id": str(task.id),
-            "title": task.title,
-            "progress_percentage": task.progress_percentage,
-            "expected_completion_time": task.expected_completion_time,
-            "checklist": task.checklist or [],
-            "dependencies": task.dependencies or [],
-            "actual_hours": task.actual_hours,
-        },
+        "task": await serialize_task_response(task, current_user, include_detail=True),
     }
+
+
+@router.post("/{task_id}/checklist")
+async def add_task_checklist_item(
+    task_id: str,
+    text: str = Form(...),
+    required: bool = Form(False),
+    current_user: User = Depends(get_current_user),
+):
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_manage(current_user, task)
+    items = normalize_checklist(getattr(task, "checklist", []))
+    items.append(normalize_checklist_item({"text": text, "required": required}))
+    task.checklist = items
+    task.updated_at = utc_now()
+    await task.save()
+    return {"message": "Checklist item added", "task": await serialize_task_response(task, current_user, include_detail=True)}
+
+
+@router.patch("/{task_id}/checklist/{item_id}")
+async def update_task_checklist_item(
+    task_id: str,
+    item_id: str,
+    text: Optional[str] = Form(None),
+    completed: Optional[bool] = Form(None),
+    required: Optional[bool] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    if (text is not None or required is not None) and task.assigned_to == str(current_user.id) and current_user.role == UserRole.EMPLOYEE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Assignees can only complete checklist items")
+    if text is not None or required is not None:
+        await _assert_task_manage(current_user, task)
+
+    found = False
+    items = normalize_checklist(getattr(task, "checklist", []))
+    for item in items:
+        if item["id"] != item_id:
+            continue
+        found = True
+        if text is not None:
+            item["text"] = text
+        if required is not None:
+            item["required"] = required
+        if completed is not None:
+            item["completed"] = completed
+            item["completed_at"] = utc_now().isoformat() if completed else None
+            item["completed_by"] = str(current_user.id) if completed else None
+        break
+    if not found:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Checklist item not found")
+    task.checklist = items
+    task.updated_at = utc_now()
+    await task.save()
+    return {"message": "Checklist item updated", "task": await serialize_task_response(task, current_user, include_detail=True)}
+
+
+@router.delete("/{task_id}/checklist/{item_id}")
+async def delete_task_checklist_item(
+    task_id: str,
+    item_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_manage(current_user, task)
+    items = [item for item in normalize_checklist(getattr(task, "checklist", [])) if item["id"] != item_id]
+    if len(items) == len(normalize_checklist(getattr(task, "checklist", []))):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Checklist item not found")
+    task.checklist = items
+    task.updated_at = utc_now()
+    await task.save()
+    return {"message": "Checklist item deleted", "task": await serialize_task_response(task, current_user, include_detail=True)}
+
+
+@router.post("/{task_id}/dependencies")
+async def add_task_dependency(
+    task_id: str,
+    dependency_id: str = Form(...),
+    current_user: User = Depends(get_current_user),
+):
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_manage(current_user, task)
+    dependency = await validate_dependency(task, dependency_id)
+    dependencies = [str(item) for item in (task.dependencies or []) if str(item)]
+    if str(dependency.id) not in dependencies:
+        dependencies.append(str(dependency.id))
+    task.dependencies = dependencies
+    task.updated_at = utc_now()
+    await task.save()
+    return {"message": "Dependency added", "task": await serialize_task_response(task, current_user, include_detail=True)}
+
+
+@router.delete("/{task_id}/dependencies/{dependency_id}")
+async def delete_task_dependency(
+    task_id: str,
+    dependency_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_manage(current_user, task)
+    dependencies = [str(item) for item in (task.dependencies or []) if str(item) != str(dependency_id)]
+    if len(dependencies) == len(task.dependencies or []):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dependency not found")
+    task.dependencies = dependencies
+    task.updated_at = utc_now()
+    await task.save()
+    return {"message": "Dependency deleted", "task": await serialize_task_response(task, current_user, include_detail=True)}
 
 
 @router.get("/{task_id}/comments")
@@ -1329,6 +1707,8 @@ async def update_task(
     target_quantity: Optional[int] = Form(None),
     target_unit: Optional[str] = Form(None),
     completed_quantity: Optional[int] = Form(None),
+    reviewer_id: Optional[str] = Form(None),
+    review_required: Optional[bool] = Form(None),
     current_user: User = Depends(get_current_user)
 ):
     """Update task details"""
@@ -1342,6 +1722,7 @@ async def update_task(
 
     await _assert_task_manage(current_user, task)
 
+    task_project = await load_task_project(task, current_user)
     previous_assigned_to = task.assigned_to
 
     # Update fields if provided
@@ -1360,25 +1741,37 @@ async def update_task(
     if assigned_to is not None:
         # Allow empty string to unassign
         if assigned_to == '':
+            if enum_or_string_value(task.status) not in {TaskStatus.TODO.value, TaskStatus.ASSIGNED.value}:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Started tasks cannot be unassigned")
             task.assigned_to = None
             task.assigned_by = None
+            task.assigned_at = None
+            if enum_or_string_value(task.status) == TaskStatus.ASSIGNED.value:
+                await transition_task(task=task, actor=current_user, action="assign", target_status=TaskStatus.TODO.value)
         else:
-            # Validate assigned user exists and is in same company
-            assigned_user = await User.get(assigned_to)
-            if not assigned_user:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Assigned user not found"
-                )
-            if assigned_user.company_id != task.company_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Assigned user must be from the same company"
-                )
             if assigned_to != previous_assigned_to:
-                await _assert_can_assign_task(current_user, assigned_user, task_project)
-            task.assigned_to = assigned_to
-            task.assigned_by = str(current_user.id)
+                # Use the unified authoritative assign_service for reassignment
+                from app.services.task_workflow import assign_task
+                await assign_task(
+                    task_id=str(task.id),
+                    assignee_id=assigned_to,
+                    actor=current_user,
+                )
+                # Refresh task from DB after assign_task
+                task = await Task.get(str(task.id))
+            else:
+                # Same assignee — no-op for assignment, just ensure fields are set
+                task.assigned_at = task.assigned_at or utc_now()
+    if review_required is not None:
+        if getattr(task, "source_type", None) == "sales_follow_up" and review_required:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sales follow-up tasks do not require review")
+        task.review_required = review_required
+    if reviewer_id is not None:
+        if reviewer_id == "":
+            task.reviewer_id = None
+        else:
+            await validate_reviewer(task, reviewer_id, task_project)
+            task.reviewer_id = reviewer_id
     if due_date is not None:
         if due_date == '':
             task.due_date = None
@@ -1508,36 +1901,9 @@ async def update_task(
         )
     )
 
-    # Get assigned user details for response
-    assigned_user = None
-    if task.assigned_to:
-        assigned_user = await User.get(task.assigned_to)
-
-    return {
-        "id": str(task.id),
-        "title": task.title,
-        "description": task.description,
-        "status": task.status.value,
-        "priority": task.priority.value,
-        "assigned_to": task.assigned_to,
-        "assigned_to_name": f"{assigned_user.first_name} {assigned_user.last_name}" if assigned_user else None,
-        "due_date": task.due_date,
-        "start_date": task.start_date,
-        "completed_at": task.completed_at,
-        "health_status": getattr(task.health_status, "value", task.health_status),
-        "extension_count": getattr(task, "extension_count", 0),
-        "tags": task.tags,
-        "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
-        "measurement_type": getattr(task, "measurement_type", None),
-        "custom_measurement_label": getattr(task, "custom_measurement_label", None),
-        "target_quantity": getattr(task, "target_quantity", None),
-        "target_unit": getattr(task, "target_unit", None),
-        "completed_quantity": getattr(task, "completed_quantity", 0),
-        "estimated_hours": getattr(task, "estimated_hours", None),
-        "story_points": getattr(task, "story_points", None),
-        "updated_at": task.updated_at,
-        "message": "Task updated successfully"
-    }
+    response = await serialize_task_response(task, current_user, include_detail=True)
+    response["message"] = "Task updated successfully"
+    return response
 
 
 @router.post("/{task_id}/attachments")
@@ -1646,4 +2012,293 @@ async def update_task_production_progress(
         "completed_quantity": task.completed_quantity,
         "remaining_quantity": remaining,
         "completion_percentage": completion_pct,
+    }
+
+
+# ── Phase 2: Semantic Workflow Action Endpoints ─────────────────────────────
+# These provide clear, intent-driven endpoints that route through the
+# centralized TaskWorkflowService.  PATCH /status remains for backward
+# compatibility but is intentionally not the recommended path.
+
+
+@router.post("/{task_id}/start")
+async def start_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Start work on an assigned task (ASSIGNED → IN_PROGRESS)."""
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    task = await transition_task(task=task, actor=current_user, action="start_work")
+    return {
+        "id": str(task.id),
+        "status": task.status.value,
+        "message": "Task started successfully",
+    }
+
+
+@router.post("/{task_id}/submit-review")
+async def submit_task_for_review(
+    task_id: str,
+    reviewer_id: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    """Submit task for review (IN_PROGRESS → IN_REVIEW)."""
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    task = await transition_task(
+        task=task, actor=current_user, action="submit_review", reviewer_id=reviewer_id,
+    )
+    return {
+        "id": str(task.id),
+        "status": task.status.value,
+        "reviewer_id": task.reviewer_id,
+        "review_round": task.review_round,
+        "message": "Task submitted for review",
+    }
+
+
+@router.post("/{task_id}/request-revision")
+async def request_task_revision(
+    task_id: str,
+    reason: str = Form(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Request revision from assignee (IN_REVIEW → REVISION_REQUIRED)."""
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    task = await transition_task(
+        task=task, actor=current_user, action="request_revision", reason=reason,
+    )
+    return {
+        "id": str(task.id),
+        "status": task.status.value,
+        "latest_revision_reason": task.latest_revision_reason,
+        "message": "Revision requested",
+    }
+
+
+@router.post("/{task_id}/approve")
+async def approve_task(
+    task_id: str,
+    comment: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    """Approve a reviewed task (IN_REVIEW → APPROVED)."""
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    task = await transition_task(
+        task=task, actor=current_user, action="approve", comment=comment,
+    )
+    return {
+        "id": str(task.id),
+        "status": task.status.value,
+        "approved_by": task.approved_by,
+        "approved_at": task.approved_at,
+        "message": "Task approved",
+    }
+
+
+@router.post("/{task_id}/complete")
+async def complete_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Complete an approved or non-review task (→ COMPLETED)."""
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    task = await transition_task(task=task, actor=current_user, action="complete")
+    return {
+        "id": str(task.id),
+        "status": task.status.value,
+        "completed_at": task.completed_at,
+        "message": "Task completed",
+    }
+
+
+@router.post("/{task_id}/reopen")
+async def reopen_task(
+    task_id: str,
+    reason: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    """Reopen a completed task (COMPLETED → ASSIGNED)."""
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    task = await transition_task(
+        task=task, actor=current_user, action="reopen", reason=reason,
+    )
+    return {
+        "id": str(task.id),
+        "status": task.status.value,
+        "message": "Task reopened",
+    }
+
+
+@router.post("/{task_id}/cancel")
+async def cancel_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel a task."""
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    task = await transition_task(task=task, actor=current_user, action="cancel")
+    return {
+        "id": str(task.id),
+        "status": task.status.value,
+        "message": "Task cancelled",
+    }
+
+
+@router.post("/{task_id}/checklist")
+async def add_checklist_item(
+    task_id: str,
+    text: str = Form(...),
+    required: bool = Form(False),
+    current_user: User = Depends(get_current_user),
+):
+    """Add a checklist item to a task."""
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    new_item = normalize_checklist_item({"text": text, "required": required})
+    task.checklist = list(task.checklist or []) + [new_item]
+    task.updated_at = utc_now()
+    await task.save()
+    return {
+        "id": str(task.id),
+        "checklist": task.checklist,
+        "message": "Checklist item added",
+    }
+
+
+@router.patch("/{task_id}/checklist/{item_id}")
+async def update_checklist_item(
+    task_id: str,
+    item_id: str,
+    completed: Optional[bool] = Form(None),
+    text: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    """Update a checklist item (toggle completion or edit text)."""
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    now = utc_now()
+    updated = False
+    new_checklist = []
+    for item in task.checklist or []:
+        if str(item.get("id")) == str(item_id):
+            if completed is not None:
+                item["completed"] = completed
+                if completed:
+                    item["completed_at"] = now.isoformat()
+                    item["completed_by"] = str(current_user.id)
+                else:
+                    item["completed_at"] = None
+                    item["completed_by"] = None
+            if text is not None:
+                item["text"] = text
+            updated = True
+        new_checklist.append(item)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Checklist item not found")
+    task.checklist = new_checklist
+    task.updated_at = now
+    await task.save()
+    return {
+        "id": str(task.id),
+        "checklist": task.checklist,
+        "message": "Checklist item updated",
+    }
+
+
+@router.delete("/{task_id}/checklist/{item_id}")
+async def delete_checklist_item(
+    task_id: str,
+    item_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a checklist item from a task."""
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    new_checklist = [item for item in (task.checklist or []) if str(item.get("id")) != str(item_id)]
+    if len(new_checklist) == len(task.checklist or []):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Checklist item not found")
+    task.checklist = new_checklist
+    task.updated_at = utc_now()
+    await task.save()
+    return {
+        "id": str(task.id),
+        "checklist": task.checklist,
+        "message": "Checklist item deleted",
+    }
+
+
+@router.post("/{task_id}/dependencies")
+async def add_task_dependency(
+    task_id: str,
+    dependency_id: str = Form(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Add a dependency (blocking task) to a task."""
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    dep_task = await validate_dependency(task, dependency_id)
+    existing_deps = [str(d) for d in (task.dependencies or [])]
+    if dependency_id in existing_deps:
+        return {
+            "id": str(task.id),
+            "dependencies": task.dependencies,
+            "message": "Dependency already exists",
+        }
+    task.dependencies = existing_deps + [dependency_id]
+    task.updated_at = utc_now()
+    await task.save()
+    return {
+        "id": str(task.id),
+        "dependencies": task.dependencies,
+        "message": "Dependency added",
+    }
+
+
+@router.delete("/{task_id}/dependencies/{dependency_id}")
+async def remove_task_dependency(
+    task_id: str,
+    dependency_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Remove a dependency from a task."""
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    task.dependencies = [str(d) for d in (task.dependencies or []) if str(d) != dependency_id]
+    task.updated_at = utc_now()
+    await task.save()
+    return {
+        "id": str(task.id),
+        "dependencies": task.dependencies,
+        "message": "Dependency removed",
     }

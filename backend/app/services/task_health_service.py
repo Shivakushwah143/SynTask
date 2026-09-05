@@ -28,8 +28,11 @@ def _health_value(value: Any) -> str:
 
 def calculate_task_health(task: Task, now: Optional[datetime] = None) -> TaskHealthStatus:
     now = now or utc_now()
-    if task.status == TaskStatus.COMPLETED:
+    status_value = task.status.value if hasattr(task.status, "value") else str(task.status)
+    if status_value == TaskStatus.COMPLETED.value:
         return TaskHealthStatus.COMPLETED
+    if status_value == TaskStatus.CANCELLED.value:
+        return TaskHealthStatus.HEALTHY
     if int(getattr(task, "extension_count", 0) or 0) > 0:
         return TaskHealthStatus.EXTENDED
     if not task.due_date:
@@ -63,11 +66,12 @@ async def sync_task_health(task: Task, now: Optional[datetime] = None) -> Task:
     # dashboard call run an idempotency lookup per due-today/overdue task.
     # The previous insert-only-on-first-occurrence semantics are preserved,
     # because the idempotency key made repeat attempts no-ops anyway.
+    status_value = task.status.value if hasattr(task.status, "value") else str(task.status)
     if (
         transitioned
         and task.assigned_to
         and task.due_date
-        and task.status != TaskStatus.COMPLETED
+        and status_value not in {TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value}
     ):
         if next_health == TaskHealthStatus.DUE_TODAY:
             await _record_task_event(
@@ -89,7 +93,7 @@ async def sync_task_health(task: Task, now: Optional[datetime] = None) -> Task:
 
 
 async def sync_task_health_for_company(company_id: Optional[str] = None) -> int:
-    query: Dict[str, Any] = {"status": {"$ne": TaskStatus.COMPLETED.value}}
+    query: Dict[str, Any] = {"status": {"$nin": [TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value]}}
     if company_id:
         query["company_id"] = company_id
     tasks = await Task.find(query).to_list()
@@ -356,8 +360,8 @@ async def visible_employees(current_user: User) -> list[User]:
 def calculate_performance_metrics(tasks: Iterable[Task]) -> Dict[str, Any]:
     task_list = list(tasks)
     total = len(task_list)
-    completed = [task for task in task_list if task.status == TaskStatus.COMPLETED]
-    pending = [task for task in task_list if task.status != TaskStatus.COMPLETED]
+    completed = [task for task in task_list if _task_status_value(task) == TaskStatus.COMPLETED.value]
+    pending = [task for task in task_list if _task_status_value(task) not in {TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value}]
     overdue = [task for task in task_list if _health_value(getattr(task, "health_status", None)) == TaskHealthStatus.OVERDUE.value]
     extended = [task for task in task_list if int(getattr(task, "extension_count", 0) or 0) > 0]
     completion_seconds = [

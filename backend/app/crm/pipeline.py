@@ -1070,8 +1070,6 @@ class CRMPipelineService:
         query: Dict[str, Any] = {
             "company_id": company_id,
             "deleted": False,
-            # Transferred leads leave the active sales stage lists (they live in Clients).
-            "transferred_at": None,
         }
         if current_user.role == UserRole.EMPLOYEE:
             current_user_id = str(getattr(current_user, "id", ""))
@@ -1265,7 +1263,6 @@ class CRMPipelineService:
             prospect.closed_by = str(getattr(current_user, "id", ""))
             prospect.reason_for_lost = None
             prospect.won_amount = await _resolve_won_amount(company_id, prospect)
-            prospect.won_status = getattr(prospect, "won_status", None) or "payment_pending"
             prospect.converted_at = getattr(prospect, "converted_at", None) or now
             automation_result = await _run_won_automation(current_user, prospect, company_id)
             if automation_result.get("status") == "failed" or not automation_result.get("client_id"):
@@ -1275,8 +1272,13 @@ class CRMPipelineService:
                 )
             if automation_result.get("client_id"):
                 prospect.client_id = automation_result["client_id"]
-            if automation_result.get("project_id"):
-                prospect.project_id = automation_result["project_id"]
+                if automation_result.get("project_id"):
+                    prospect.project_id = automation_result["project_id"]
+                prospect.won_status = "transferred"
+                prospect.transferred_at = getattr(prospect, "transferred_at", None) or now
+                prospect.transferred_by = str(getattr(current_user, "id", ""))
+            else:
+                prospect.won_status = "payment_pending"
         elif normalized_stage == "lost":
             lost_result = await handle_lost_workflow(current_user, prospect, reason)
             prospect = lost_result["lead"]

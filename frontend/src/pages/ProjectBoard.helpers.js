@@ -1,9 +1,13 @@
+import { buildTaskQueryParams } from './tasksLifecycle'
 import { normalizeRole } from '../utils/roles'
 
 export const DEFAULT_STATUSES = [
   { id: 'todo', label: 'To Do' },
+  { id: 'assigned', label: 'Assigned' },
   { id: 'in_progress', label: 'In Progress' },
-  { id: 'in_review', label: 'In Review' },
+  { id: 'in_review', label: 'Review' },
+  { id: 'revision_required', label: 'Revision' },
+  { id: 'approved', label: 'Approved' },
   { id: 'completed', label: 'Completed' },
 ]
 
@@ -149,3 +153,45 @@ export const getProjectRoleAssignmentIds = (projectRecord = {}, assignableUsers 
   if (projectRecord.lead_id) result.lead = String(projectRecord.lead_id)
   return result
 }
+
+// Project Workspace tab (tab= URL param) <-> active workspace tab mapping.
+// Accepts summary|tasks|board|files|pages and defaults to the Tasks tab.
+export const resolveWorkspaceTab = (tabParam) => {
+  const map = { summary: 'summary', tasks: 'board', board: 'board', files: 'pages', pages: 'pages' }
+  return map[tabParam] || 'board'
+}
+
+export const workspaceTabParam = (activeTab) => {
+  const map = { summary: 'summary', board: 'tasks', pages: 'files' }
+  return map[activeTab] || 'summary'
+}
+
+// Group a backend-filtered task list into status buckets for kanban columns.
+export const groupTasksByStatus = (tasks = []) => {
+  const grouped = {}
+  tasks.forEach((task) => {
+    const key = normalizeStatusId(task.status)
+    if (!grouped[key]) grouped[key] = []
+    grouped[key].push(task)
+  })
+  return grouped
+}
+
+// Build backend query params for the Project Task workspace. The active
+// lifecycle status is merged into the shared query builder (which reads
+// filters.status), and project_id is fixed to the current Project so the
+// workspace can never leak into other projects. Every tab click must reach
+// the backend as status_filter - without the merge the list silently shows
+// every Project Task regardless of the selected tab.
+export const buildProjectTaskQuery = ({
+  filters = {},
+  taskStatus = '',
+  attention = '',
+  search = '',
+  page = 1,
+  pageSize = 20,
+  projectId = '',
+} = {}) => ({
+  ...buildTaskQueryParams({ filters: { ...filters, status: taskStatus }, attention, search, page, pageSize }),
+  project_id: projectId,
+})

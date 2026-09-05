@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTaskAssignmentOptions, canEditTaskDetails, getAttachmentKind, getProjectLeadName, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
+import { buildTaskAssignmentOptions, canEditTaskDetails, getAttachmentKind, getProjectLeadName, getRevisionReasonContext, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
 
 describe('TaskDetail assignment helpers', () => {
   it('splits assignable users into lead and employee options', () => {
@@ -62,6 +62,60 @@ describe('TaskDetail assignment helpers', () => {
       selectClass: expect.stringContaining('blue'),
     }))
     expect(getTaskStatusTone('blocked_custom').label).toBe('blocked custom')
+  })
+})
+
+describe('getRevisionReasonContext', () => {
+  it('flags a revision_required task even without a written reason', () => {
+    const ctx = getRevisionReasonContext({ status: 'revision_required', review_round: 2 })
+    expect(ctx.show).toBe(true)
+    expect(ctx.isRevisionRequired).toBe(true)
+    expect(ctx.reason).toBe('')
+    expect(ctx.reviewRound).toBe(2)
+  })
+
+  it('keeps the last written reason visible while the assignee is reworking', () => {
+    const ctx = getRevisionReasonContext({ status: 'in_progress', latest_revision_reason: '  Fix the alignment.  ', review_round: 1 })
+    expect(ctx.show).toBe(true)
+    expect(ctx.isRevisionRequired).toBe(false)
+    expect(ctx.reason).toBe('Fix the alignment.')
+  })
+
+  it('hides the section when there is no revision context', () => {
+    expect(getRevisionReasonContext({ status: 'in_progress' }).show).toBe(false)
+    expect(getRevisionReasonContext({}).show).toBe(false)
+  })
+
+  it('resolves the revision requester from the users list', () => {
+    const ctx = getRevisionReasonContext(
+      { status: 'revision_required', revision_requested_by: 'user-9', latest_revision_reason: 'x' },
+      { users: [{ id: 'user-9', first_name: 'Rita', last_name: 'Reviewer' }] },
+    )
+    expect(ctx.requesterName).toBe('Rita Reviewer')
+  })
+
+  it('falls back to the reviewer name when the requester is the stored reviewer', () => {
+    const ctx = getRevisionReasonContext(
+      { status: 'revision_required', revision_requested_by: 'user-9', reviewer_id: 'user-9', reviewer_name: 'Rita Reviewer', latest_revision_reason: 'x' },
+      { users: [] },
+    )
+    expect(ctx.requesterName).toBe('Rita Reviewer')
+  })
+
+  it('leaves the requester name empty when the requester cannot be resolved', () => {
+    const ctx = getRevisionReasonContext(
+      { status: 'revision_required', revision_requested_by: 'ghost-user', latest_revision_reason: 'x' },
+      { users: [] },
+    )
+    expect(ctx.requesterName).toBe('')
+  })
+
+  it('lets the live status override the stale task.status field', () => {
+    const ctx = getRevisionReasonContext(
+      { status: 'in_progress', latest_revision_reason: 'x' },
+      { status: 'revision_required', users: [] },
+    )
+    expect(ctx.isRevisionRequired).toBe(true)
   })
 })
 

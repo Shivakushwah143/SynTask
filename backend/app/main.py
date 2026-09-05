@@ -8,7 +8,7 @@ import asyncio
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 import logging
 import time
 from datetime import datetime
@@ -144,6 +144,12 @@ async def _startup_tasks() -> None:
                 logger.info("eTimeOffice attendance sync disabled (ETIMEOFFICE_ENABLED=false)")
         except Exception as eto_err:
             logger.warning(f"eTimeOffice attendance sync startup skipped: {eto_err}")
+        try:
+            from app.services.time_tracking_service import recover_stale_stopping_timers
+            asyncio.create_task(recover_stale_stopping_timers())
+            logger.info("Timer recovery background task started")
+        except Exception as timer_err:
+            logger.warning(f"Timer recovery startup skipped: {timer_err}")
     else:
         logger.warning("Database background workers skipped because MongoDB/Beanie is not ready.")
 
@@ -208,6 +214,18 @@ if hasattr(settings, 'ALLOWED_ORIGINS') and settings.ALLOWED_ORIGINS:
     for origin in settings.ALLOWED_ORIGINS:
         if origin not in cors_origins:
             cors_origins.append(origin)
+# Keep local development origins available even when ALLOWED_ORIGINS is
+# supplied by an environment variable that replaces the settings default.
+for origin in (
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://synzent.ai",
+    "https://www.synzent.ai",
+):
+    if origin not in cors_origins:
+        cors_origins.append(origin)
 
 app.add_middleware(
     CORSMiddleware,
@@ -262,23 +280,48 @@ async def add_process_time_header(request: Request, call_next):
 
 @app.middleware("http")
 async def require_database_ready(request: Request, call_next):
+    if request.method == "OPTIONS":
+        origin = request.headers.get("origin")
+        if origin in cors_origins and request.url.path.startswith("/api/v1"):
+            return Response(
+                status_code=200,
+                headers={
+                    "Access-Control-Allow-Origin": origin,
+                    "Access-Control-Allow-Credentials": "true",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-Requested-With",
+                    "Access-Control-Max-Age": "600",
+                },
+            )
+        return await call_next(request)
     if request.url.path.startswith("/api/v1") and not getattr(request.app.state, "db_ready", False):
-        return JSONResponse(
+        response = JSONResponse(
             status_code=503,
             content={
                 "success": False,
                 "message": "Database unavailable. Check MongoDB connection and restart the backend.",
             },
         )
+        origin = request.headers.get("origin")
+        if origin in cors_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
     return await call_next(request)
 
 # Exception handlers
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin and origin in cors_origins:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
     return JSONResponse(
         status_code=500,
-        content={"success": False, "message": "Internal server error"}
+        content={"success": False, "message": "Internal server error"},
+        headers=headers,
     )
 
 

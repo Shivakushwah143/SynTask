@@ -6,7 +6,7 @@ from typing import Optional, Any, Dict
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from pydantic import BaseModel, Field
 
-from app.models.scheduled_job import ScheduledJob, ScheduledJobActionType, ScheduledJobStatus
+from app.models.scheduled_job import ScheduledJob, ScheduledJobActionType, ScheduledJobOccurrence, ScheduledJobScheduleType, ScheduledJobStatus
 from app.models.user import User, UserRole
 from app.api.dependencies import get_current_user
 from app.services.scheduling_service import SchedulingService
@@ -24,10 +24,17 @@ class ScheduleJobRequest(BaseModel):
     payload: Dict[str, Any]
     run_at: datetime
     notes: Optional[str] = None
+    schedule_type: ScheduledJobScheduleType = ScheduledJobScheduleType.ONE_TIME
+    recurrence: Optional[Dict[str, Any]] = None
+    timezone: str = "UTC"
 
 
 class UpdateScheduleRequest(BaseModel):
-    run_at: datetime
+    run_at: Optional[datetime] = None
+    payload: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+    recurrence: Optional[Dict[str, Any]] = None
+    timezone: Optional[str] = None
 
 
 def _normalize_run_at(run_at: datetime) -> datetime:
@@ -88,6 +95,15 @@ def _serialize_job(job: ScheduledJob) -> Dict[str, Any]:
         "retry_count": job.retry_count,
         "error": job.error,
         "notes": job.notes,
+        "schedule_type": getattr(job.schedule_type, "value", job.schedule_type),
+        "enabled": getattr(job, "enabled", True),
+        "recurrence": getattr(job, "recurrence", None),
+        "timezone": getattr(job, "timezone", "UTC"),
+        "next_run_at": getattr(job, "next_run_at", None) or job.run_at,
+        "last_run_at": getattr(job, "last_run_at", None),
+        "occurrence_count": getattr(job, "occurrence_count", 0),
+        "result_type": getattr(job, "result_type", None),
+        "result_id": getattr(job, "result_id", None),
         "created_at": job.created_at,
         "completed_at": job.completed_at,
     }
@@ -106,6 +122,8 @@ async def create_scheduled_job(
         )
     await _ensure_can_schedule_action(current_user, request.action_type, request.payload)
     run_at = _ensure_future_run_at(request.run_at)
+    if request.schedule_type == ScheduledJobScheduleType.RECURRING and not request.recurrence:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Recurring schedules require recurrence")
 
     # If action_type is CREATE_PROJECT, verify project_id and key uniqueness
     if request.action_type == ScheduledJobActionType.CREATE_PROJECT:
@@ -132,6 +150,9 @@ async def create_scheduled_job(
         created_by=str(current_user.id),
         company_id=current_user.company_id,
         notes=request.notes,
+        schedule_type=request.schedule_type,
+        recurrence=request.recurrence,
+        timezone=request.timezone,
     )
     if request.action_type == ScheduledJobActionType.CREATE_PROJECT:
         await cache_delete_pattern(f"{project_list_key(current_user.company_id)}*")
@@ -142,6 +163,8 @@ async def create_scheduled_job(
 async def list_scheduled_jobs(
     status_filter: Optional[str] = Query(None, alias="status"),
     search: Optional[str] = Query(None),
+    schedule_type: Optional[ScheduledJobScheduleType] = Query(None),
+    enabled: Optional[bool] = Query(None),
     pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user)
 ):
@@ -158,6 +181,10 @@ async def list_scheduled_jobs(
 
     if status_filter:
         query["status"] = status_filter
+    if schedule_type:
+        query["schedule_type"] = schedule_type.value
+    if enabled is not None:
+        query["enabled"] = enabled
 
     if search:
         # Search in payload title, name, or action_type
@@ -199,7 +226,7 @@ async def update_scheduled_job(
     request: UpdateScheduleRequest,
     current_user: User = Depends(get_current_user)
 ):
-    """Edit execution time for a pending scheduled job"""
+    """Edit execution time or future recurring rule configuration"""
     job = await ScheduledJob.get(job_id)
     if not job or job.company_id != current_user.company_id:
         raise HTTPException(
@@ -208,16 +235,95 @@ async def update_scheduled_job(
         )
     _ensure_can_manage_scheduled_jobs(current_user)
 
-    if job.status != ScheduledJobStatus.PENDING:
+    if job.schedule_type != ScheduledJobScheduleType.RECURRING and job.status != ScheduledJobStatus.PENDING:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only pending jobs can be modified"
         )
 
-    job.run_at = _ensure_future_run_at(request.run_at)
+    if request.run_at is not None:
+        job.run_at = _ensure_future_run_at(request.run_at)
+        job.next_run_at = job.run_at
+    if request.payload is not None:
+        await _ensure_can_schedule_action(current_user, job.action_type, request.payload)
+        job.payload = request.payload
+    if request.notes is not None:
+        job.notes = request.notes
+    if request.recurrence is not None:
+        job.recurrence = request.recurrence
+    if request.timezone is not None:
+        job.timezone = request.timezone
     await job.save()
     if job.action_type == ScheduledJobActionType.CREATE_PROJECT:
         await cache_delete_pattern(f"{project_list_key(job.company_id)}*")
+    return _serialize_job(job)
+
+
+@router.get("/{job_id}/occurrences")
+async def list_scheduled_job_occurrences(
+    job_id: str,
+    pagination: PaginationParams = Pagination20,
+    current_user: User = Depends(get_current_user),
+):
+    job = await ScheduledJob.get(job_id)
+    if not job or job.company_id != current_user.company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scheduled job not found")
+    _ensure_can_manage_scheduled_jobs(current_user)
+    skip, limit = pagination.skip, pagination.limit
+    items = await ScheduledJobOccurrence.find({"scheduled_job_id": str(job.id), "company_id": job.company_id}).skip(skip).limit(limit).sort("-scheduled_at").to_list()
+    total = await ScheduledJobOccurrence.find({"scheduled_job_id": str(job.id), "company_id": job.company_id}).count()
+    return {
+        "occurrences": [
+            {
+                "id": str(item.id),
+                "occurrence_id": item.occurrence_id,
+                "scheduled_at": item.scheduled_at,
+                "status": item.status.value,
+                "result_type": item.result_type,
+                "result_id": item.result_id,
+                "error": item.error,
+                "retry_count": item.retry_count,
+                "started_at": item.started_at,
+                "completed_at": item.completed_at,
+            }
+            for item in items
+        ],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
+
+
+@router.post("/{job_id}/pause")
+async def pause_scheduled_job(job_id: str, current_user: User = Depends(get_current_user)):
+    job = await ScheduledJob.get(job_id)
+    if not job or job.company_id != current_user.company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scheduled job not found")
+    _ensure_can_manage_scheduled_jobs(current_user)
+    if job.schedule_type != ScheduledJobScheduleType.RECURRING:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only recurring schedules can be paused")
+    job.enabled = False
+    await job.save()
+    return _serialize_job(job)
+
+
+@router.post("/{job_id}/resume")
+async def resume_scheduled_job(job_id: str, current_user: User = Depends(get_current_user)):
+    job = await ScheduledJob.get(job_id)
+    if not job or job.company_id != current_user.company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scheduled job not found")
+    _ensure_can_manage_scheduled_jobs(current_user)
+    if job.schedule_type != ScheduledJobScheduleType.RECURRING:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only recurring schedules can be resumed")
+    job.enabled = True
+    job.status = ScheduledJobStatus.PENDING
+    while job.run_at <= utc_now():
+        next_run = SchedulingService.next_occurrence(job, after=job.run_at)
+        if not next_run:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Recurring schedule has no valid future occurrence")
+        job.run_at = next_run
+    job.next_run_at = job.run_at
+    await job.save()
     return _serialize_job(job)
 
 

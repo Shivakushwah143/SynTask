@@ -1962,3 +1962,77 @@ Indexes are listed under each model above. Most tenant-owned collections include
 
 ## Missing Indexes and Technical Debt
 No automated index audit exists yet. Phase 6 should review compound indexes for common dashboard, board, ticket, sales report, and time tracking queries.
+# Project Foundation Phase 1
+
+`projects` keeps logical `project_id` as the user-visible identifier and MongoDB `_id` as the internal identifier. Phase 1 adds `priority` with allowed values `low`, `medium`, `high`, and `critical`; missing legacy values are treated as `medium`. `client_id` is the canonical client relationship, while `clients.project_ids` remains a compatibility reference maintained during create/update/delete.
+
+`project_type_configurations` stores company-scoped project type options:
+
+- `company_id`
+- `value`
+- `label`
+- `is_default`
+- `active`
+- `created_by`
+- timestamps
+
+# Task Workflow Phase 2
+
+`tasks` remains tenant-scoped by `company_id`. Phase 2 adds the strict execution/review lifecycle statuses `todo`, `assigned`, `in_progress`, `in_review`, `revision_required`, `approved`, `completed`, and `cancelled`.
+
+Generated template and recurring scheduled-work task markers use partial unique index `tasks_template_and_schedule_source_marker` on `company_id`, `source_type`, `related_entity_type`, and `related_entity_id`. The partial filter includes only `source_type in ["project_template", "scheduled_work"]` with string `related_entity_id`; Sales follow-up tasks are excluded because multiple follow-up tasks for the same lead are valid history.
+
+Task workflow fields:
+
+- `assigned_at`: timestamp set when an assignee is assigned.
+- `review_required`: nullable boolean; missing legacy values resolve from source/project context.
+- `reviewer_id`: same-tenant reviewer user id.
+- `review_round`: count of review submissions.
+- `submitted_for_review_at`, `submitted_for_review_by`
+- `revision_requested_at`, `revision_requested_by`, `latest_revision_reason`
+- `approved_at`, `approved_by`
+- `completed_by`
+- `status_changed_at`
+
+Checklist entries are stored in `tasks.checklist` as objects with `id`, `text`, `completed`, `required`, `created_at`, `completed_at`, and `completed_by`. Dependencies remain stored as task-id strings in `tasks.dependencies`; write paths reject self-dependencies, cross-tenant dependencies, and dependency cycles.
+
+Additional task indexes support review queues and status filtering:
+
+- `reviewer_id`
+- compound `company_id`, `reviewer_id`, `status`
+
+# Work Requests and Recurring Scheduled Work Phase 4
+
+`work_requests` is tenant-scoped by `company_id`. Each record has a logical `request_id`, `type`, `title`, `description`, `status`, `priority`, requester/reviewer/resolver user ids, optional project/task/client context, reason/change metadata, timestamps for review/decision/conversion/cancel, and converted Task/Project references.
+
+Work Request statuses are `submitted`, `under_review`, `approved`, `rejected`, `converted`, and `cancelled`. Request types are `new_work`, `change_request`, `approval_request`, `deadline_extension`, `resource_request`, `blocker`, `leave_availability`, `client_request`, and `other`.
+
+Work Request indexes:
+
+- unique `request_id`
+- compound `company_id`, `status`, `updated_at`
+- compound `company_id`, `requested_by`
+- compound `company_id`, `assigned_reviewer_id`, `status`
+- compound `company_id`, `project_id`, `status`
+- text index on title and description
+
+`scheduled_jobs` now supports `schedule_type` values `one_time` and `recurring`, `enabled`, `recurrence`, `timezone`, `next_run_at`, `last_run_at`, and `occurrence_count`. Existing status, payload, retry, result, creator, and tenant fields remain.
+
+`scheduled_job_occurrences` stores execution history per scheduled run. Each occurrence is scoped by `company_id` and has `scheduled_job_id`, unique `occurrence_id`, `scheduled_at`, status, result type/id, error, retry count, started/completed timestamps, and created/updated timestamps. A unique compound index on `scheduled_job_id` and `scheduled_at` prevents duplicate occurrence rows for the same scheduled run.
+
+# Time Tracking and Project Control Phase 5
+
+`active_time_sessions` stores backend-authoritative live timers. Each user can have one active session per company through a unique compound `company_id`, `user_id` index. Fields include `task_id`, optional `project_id` and `client_id`, `started_at`, `last_resumed_at`, `paused_at`, `accumulated_seconds`, `status` (`running` or `paused`), and timestamps.
+
+`time_logs` remains the source of truth for finalized recorded time. Phase 5 adds `source` (`timer`, `manual`, `system`), optional `project_id` and `client_id`, creator/updater audit fields, and void metadata (`voided`, `voided_at`, `voided_by`, `void_reason`) so corrections do not silently erase history.
+
+Additional time indexes:
+
+- compound `company_id`, `user_id`, `date`
+- compound `company_id`, `project_id`, `date`
+- compound `company_id`, `task_id`, `date`
+- `project_id`, `client_id`, and `source`
+
+`tasks.required_for_project_completion` defaults to true. Optional compatibility work can set it false so it does not block project completion readiness.
+
+`projects` stores completion metadata: `completed_at`, `completed_by`, `client_delivery_completed`, `client_delivery_completed_at`, and `client_delivery_completed_by`.

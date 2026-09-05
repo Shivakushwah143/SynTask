@@ -204,6 +204,11 @@ export const HR_MODULES = [
         icon: FileBarChart2,
       },
       {
+        name: "Settings",
+        href: "/hr/recruitment/settings/document-types",
+        icon: ClipboardList,
+      },
+      {
         name: "Candidate Interview Screen",
         href: "/hr/recruitment/interview-screen",
         icon: UserRoundSearch,

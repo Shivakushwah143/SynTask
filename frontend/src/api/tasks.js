@@ -17,13 +17,35 @@ export const tasksAPI = {
     if (filters.status) params.append('status_filter', filters.status)
     if (filters.priority) params.append('priority', filters.priority)
     if (filters.assigned_to) params.append('assigned_to', filters.assigned_to)
+    if (filters.reviewer_id) params.append('reviewer_id', filters.reviewer_id)
     if (filters.created_by) params.append('created_by', filters.created_by)
     if (filters.department_id) params.append('department_id', filters.department_id)
+    if (filters.project_id) params.append('project_id', filters.project_id)
+    if (filters.review_required !== undefined) params.append('review_required', filters.review_required)
+    if (filters.blocked !== undefined) params.append('blocked', filters.blocked)
+    if (filters.overdue !== undefined) params.append('overdue', filters.overdue)
+    if (filters.due_today !== undefined) params.append('due_today', filters.due_today)
+    if (filters.critical !== undefined) params.append('critical', filters.critical)
+    if (filters.awaiting_review !== undefined) params.append('awaiting_review', filters.awaiting_review)
+    if (filters.exclude_follow_up !== undefined) params.append('exclude_follow_up', filters.exclude_follow_up)
+    if (filters.search) params.append('search', filters.search)
+    if (filters.due_from) params.append('due_from', filters.due_from)
+    if (filters.due_to) params.append('due_to', filters.due_to)
     if (filters.skip) params.append('skip', filters.skip)
     if (filters.limit) params.append('limit', filters.limit)
 
     const query = params.toString()
     const response = await api.get(query ? `/tasks/?${query}` : '/tasks/')
+    return response.data
+  },
+
+  // Lifecycle + attention counts for the Tasks workspace (backend scoped).
+  // Pass { project_id } to scope counts to a single Project Workspace.
+  getStatusSummary: async (params = {}) => {
+    const query = new URLSearchParams()
+    if (params.project_id) query.append('project_id', params.project_id)
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    const response = await api.get(`/tasks/status-summary${suffix}`)
     return response.data
   },
 
@@ -183,6 +205,94 @@ export const tasksAPI = {
   // Production: get aggregated production dashboard (Admin/Manager only)
   getProductionDashboard: async () => {
     const response = await api.get('/tasks/production/dashboard')
+    return response.data
+  },
+
+  // Phase 2: semantic workflow actions
+
+  startTask: async (taskId) => {
+    const response = await api.post(`/tasks/${taskId}/start`)
+    return response.data
+  },
+
+  submitForReview: async (taskId, reviewerId = null) => {
+    const formData = toFormData({ reviewer_id: reviewerId })
+    const response = await api.post(`/tasks/${taskId}/submit-review`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  requestRevision: async (taskId, reason) => {
+    const formData = toFormData({ reason })
+    const response = await api.post(`/tasks/${taskId}/request-revision`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  approveTask: async (taskId, comment = '') => {
+    const formData = toFormData({ comment })
+    const response = await api.post(`/tasks/${taskId}/approve`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  completeTask: async (taskId) => {
+    const response = await api.post(`/tasks/${taskId}/complete`)
+    return response.data
+  },
+
+  reopenTask: async (taskId, reason = '') => {
+    const formData = toFormData({ reason })
+    const response = await api.post(`/tasks/${taskId}/reopen`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  cancelTask: async (taskId) => {
+    const response = await api.post(`/tasks/${taskId}/cancel`)
+    return response.data
+  },
+
+  // Checklist operations
+  addChecklistItem: async (taskId, text, required = false) => {
+    const formData = toFormData({ text, required })
+    const response = await api.post(`/tasks/${taskId}/checklist`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  updateChecklistItem: async (taskId, itemId, { completed, text } = {}) => {
+    const payload = {}
+    if (completed !== undefined) payload.completed = completed
+    if (text !== undefined) payload.text = text
+    const formData = toFormData(payload)
+    const response = await api.patch(`/tasks/${taskId}/checklist/${itemId}`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  deleteChecklistItem: async (taskId, itemId) => {
+    const response = await api.delete(`/tasks/${taskId}/checklist/${itemId}`)
+    return response.data
+  },
+
+  // Dependency operations
+  addDependency: async (taskId, dependencyId) => {
+    const formData = toFormData({ dependency_id: dependencyId })
+    const response = await api.post(`/tasks/${taskId}/dependencies`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return response.data
+  },
+
+  removeDependency: async (taskId, dependencyId) => {
+    const response = await api.delete(`/tasks/${taskId}/dependencies/${dependencyId}`)
     return response.data
   },
 }

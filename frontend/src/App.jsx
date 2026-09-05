@@ -29,6 +29,10 @@ const Landing = lazy(() => import('./pages/Landing'))
 const NewLanding = lazy(() => import('./pages/NewLanding'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Tasks = lazy(() => import('./pages/Tasks'))
+const WorkOverview = lazy(() => import('./pages/WorkOverview'))
+const WorkRequests = lazy(() => import('./pages/WorkRequests'))
+const WorkReports = lazy(() => import('./pages/WorkReports'))
+const ProjectTemplates = lazy(() => import('./pages/ProjectTemplates'))
 const Users = lazy(() => import('./pages/Users'))
 const Departments = lazy(() => import('./pages/Departments'))
 const AdminPermissions = lazy(() => import('./pages/AdminPermissions'))
@@ -306,6 +310,10 @@ function App() {
           <Route path="dashboard" element={<DashboardRoute />} />
           <Route path="workflow" element={<Navigate to="/crm/pipeline" replace />} />
           <Route path="leads" element={<Navigate to="/crm/leads" replace />} />
+          <Route path="work/overview" element={<ModuleGuard module="tasks">{withBoundary(<WorkOverview />)}</ModuleGuard>} />
+          <Route path="work/reports" element={<ModuleGuard module="projects">{withBoundary(<WorkReports />)}</ModuleGuard>} />
+          <Route path="project-templates" element={<ModuleGuard module="projects">{withBoundary(<ProjectTemplates />)}</ModuleGuard>} />
+          <Route path="work-requests" element={<ModuleGuard module="tasks">{withBoundary(<WorkRequests />)}</ModuleGuard>} />
           <Route path="tasks" element={<ModuleGuard module="tasks">{withBoundary(<Tasks />)}</ModuleGuard>} />
           <Route path="tickets" element={withBoundary(<Tickets />)} />
           <Route path="chat" element={withBoundary(<Chat />)} />
@@ -362,7 +370,8 @@ function App() {
         <Route path="sop-library" element={withBoundary(<SOPLibrary />)} />
         <Route path="sop-library/:moduleKey" element={withBoundary(<SOPLibrary />)} />
         <Route path="sop-library/:moduleKey/:articleKey" element={withBoundary(<SOPLibrary />)} />
-        <Route path="sections/:sectionKey" element={withBoundary(<SectionLanding />)} />
+          <Route path="sections/work" element={<Navigate to="/work/overview" replace />} />
+          <Route path="sections/:sectionKey" element={withBoundary(<SectionLanding />)} />
         {/* Sales workspace Overview — the first tab of the guided sales journey. */}
         <Route path="sales-overview" element={<ModuleGuard module="sales_overview">{withBoundary(<SalesOverviewPage />)}</ModuleGuard>} />
           <Route path="hr">

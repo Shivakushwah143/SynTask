@@ -166,7 +166,10 @@ class EmployeeProfile(Document):
             # application layer during conversion.
             IndexModel(
                 [("company_id", ASCENDING), ("candidate_id", ASCENDING)],
-                sparse=True,
+                unique=True,
+                partialFilterExpression={
+                    "candidate_id": {"$type": "string"},
+                },
             ),
             # Access-pattern indexes for list filters / detail lookups.
             IndexModel([("company_id", ASCENDING), ("employment_status", ASCENDING)]),

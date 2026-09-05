@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import { format } from 'date-fns'
-import { Clock, Plus, Trash2 } from 'lucide-react'
+import { Clock, Pause, Play, Plus, Square, Trash2 } from 'lucide-react'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { timeTrackingApi } from '../api/timeTracking'
 import { tasksAPI } from '../api/tasks'
@@ -23,9 +22,17 @@ const TimeTracking = () => {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [deletingLogId, setDeletingLogId] = useState(null)
+  const [activeTimer, setActiveTimer] = useState(null)
+  const [tick, setTick] = useState(0)
 
   useEffect(() => {
     loadTasks()
+    loadActiveTimer()
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((value) => value + 1), 1000)
+    return () => window.clearInterval(timer)
   }, [])
 
   useEffect(() => {
@@ -56,6 +63,71 @@ const TimeTracking = () => {
       setTimeSummary(summaryResponse.data)
     } catch (error) {
       toast.error('Failed to load time data')
+    }
+  }
+
+  const loadActiveTimer = async () => {
+    try {
+      const response = await timeTrackingApi.getActive()
+      setActiveTimer(response.data.active_timer)
+    } catch {
+      setActiveTimer(null)
+    }
+  }
+
+  const formatElapsed = (timer, currentTick) => {
+    void currentTick
+    if (!timer) return '00:00:00'
+    let seconds = Number(timer.elapsed_seconds || 0)
+    if (timer.status === 'running' && timer.server_time) {
+      seconds += Math.max(0, Math.floor((Date.now() - new Date(timer.server_time).getTime()) / 1000))
+    }
+    const h = String(Math.floor(seconds / 3600)).padStart(2, '0')
+    const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')
+    const s = String(seconds % 60).padStart(2, '0')
+    return `${h}:${m}:${s}`
+  }
+
+  const handleStartTimer = async () => {
+    if (!selectedTask) return
+    try {
+      const response = await timeTrackingApi.start(selectedTask)
+      setActiveTimer(response.data.active_timer)
+      toast.success('Timer started')
+      await loadTasks()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to start timer')
+    }
+  }
+
+  const handlePauseTimer = async () => {
+    try {
+      const response = await timeTrackingApi.pause()
+      setActiveTimer(response.data.active_timer)
+      toast.success('Timer paused')
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to pause timer')
+    }
+  }
+
+  const handleResumeTimer = async () => {
+    try {
+      const response = await timeTrackingApi.resume()
+      setActiveTimer(response.data.active_timer)
+      toast.success('Timer resumed')
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to resume timer')
+    }
+  }
+
+  const handleStopTimer = async () => {
+    try {
+      await timeTrackingApi.stop()
+      toast.success('Timer stopped')
+      setActiveTimer(null)
+      if (selectedTask) await loadTimeData(selectedTask)
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to stop timer')
     }
   }
 
@@ -115,6 +187,40 @@ const TimeTracking = () => {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Time Tracking</h1>
         <p className="text-gray-600 mt-1">Track time spent on tasks</p>
+      </div>
+
+      <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-sm font-medium text-gray-600">Current Timer</div>
+            <div className="mt-1 text-2xl font-bold text-gray-900">{formatElapsed(activeTimer, tick)}</div>
+            <div className="text-xs text-gray-500">
+              {activeTimer ? `${activeTimer.status} on task ${activeTimer.task_id}` : 'No active timer'}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            {!activeTimer && (
+              <button onClick={handleStartTimer} disabled={!selectedTask} className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                <Play className="h-4 w-4" /> Start Timer
+              </button>
+            )}
+            {activeTimer?.status === 'running' && (
+              <button onClick={handlePauseTimer} className="inline-flex items-center gap-2 rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800">
+                <Pause className="h-4 w-4" /> Pause
+              </button>
+            )}
+            {activeTimer?.status === 'paused' && (
+              <button onClick={handleResumeTimer} className="inline-flex items-center gap-2 rounded-lg bg-primary-100 px-3 py-2 text-sm font-medium text-primary-800">
+                <Play className="h-4 w-4" /> Resume
+              </button>
+            )}
+            {activeTimer && (
+              <button onClick={handleStopTimer} className="inline-flex items-center gap-2 rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-700">
+                <Square className="h-4 w-4" /> Stop
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

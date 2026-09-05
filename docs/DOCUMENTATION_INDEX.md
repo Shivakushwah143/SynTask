@@ -27,6 +27,11 @@ This is the canonical entry point. **Observed** means supported by repository ev
 - [Database schema](../backend/DATABASE_SCHEMA.md)
 - [PRD template](product/PRD_TEMPLATE.md)
 - [Architecture decisions](architecture/decisions/README.md)
+- [Phase 1 Work Foundation Report](../PHASE1_WORK_FOUNDATION_REPORT.md)
+- [Phase 2 Task Execution Report](../PHASE2_TASK_EXECUTION_REPORT.md)
+- [Phase 3 Work Experience Report](../PHASE3_WORK_EXPERIENCE_REPORT.md)
+- [Phase 4 Work Requests and Scheduled Work Report](../PHASE4_REQUESTS_SCHEDULED_WORK_REPORT.md)
+- [Phase 5 Time Project Control Report](../PHASE5_TIME_PROJECT_CONTROL_REPORT.md)
 - Repository maintenance rules: [`AGENTS.md`](../AGENTS.md)
 
 ## Ownership

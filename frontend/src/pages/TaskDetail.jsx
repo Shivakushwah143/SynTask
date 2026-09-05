@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
-  ArrowLeft, Trash2, Paperclip, Eye, History, Mail,
+  ArrowLeft, Trash2, Paperclip, Eye, History, Mail, CalendarClock, GitBranch, GitPullRequest, User,
   X, Lock, Share2, MoreVertical, Maximize2, CheckSquare,
-  Zap, Sparkles, Plus, List, FileText
+  ChevronRight, Zap, Sparkles, Plus, List, FileText
 } from 'lucide-react'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { aiAPI } from '../api/ai'
@@ -15,12 +15,11 @@ import { changelogApi } from '../api/changelog'
 import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
 import { EmailComposer } from '../components/EmailComposer'
-import { Badge, EmptyState } from '../components/ui'
-import { TASK_STATUS_TONES, buildTaskAssignmentOptions, canEditTaskDetails, getAttachmentKind, getProjectLeadName, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
+import { Badge, EmptyState, Modal } from '../components/ui'
+import { TASK_STATUS_TONES, buildTaskAssignmentOptions, canEditTaskDetails, getAttachmentKind, getProjectLeadName, getRevisionReasonContext, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
 import { normalizeRole } from '../utils/roles'
 import { buildTaskShareUrl, resolveTaskBackTarget, resolveTaskCloseFallback } from './taskNavigation'
 import toast from 'react-hot-toast'
-import { format } from 'date-fns'
 import { timeService } from '@/services/timeService'
 
 const dedupeUsersById = (items = []) => {
@@ -31,6 +30,16 @@ const dedupeUsersById = (items = []) => {
     seen.add(id)
     return true
   })
+}
+
+// Lifecycle order used for the subtask status tabs + detail modal actions.
+const SUBTASK_STATUS_ORDER = ['todo', 'assigned', 'in_progress', 'in_review', 'revision_required', 'approved', 'completed', 'cancelled']
+
+const SUBTASK_PRIORITY_META = {
+  critical: { label: 'Critical', chipClass: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' },
+  high: { label: 'High', chipClass: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300' },
+  medium: { label: 'Medium', chipClass: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+  low: { label: 'Low', chipClass: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
 }
 
 const TaskDetail = () => {
@@ -70,9 +79,19 @@ const TaskDetail = () => {
   const [subtasks, setSubtasks] = useState([])
   const [showSubtaskForm, setShowSubtaskForm] = useState(false)
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
+  const [newSubtaskDescription, setNewSubtaskDescription] = useState('')
   const [newSubtaskDueDate, setNewSubtaskDueDate] = useState('')
   const [newSubtaskEstimatedHours, setNewSubtaskEstimatedHours] = useState('')
   const [creatingSubtask, setCreatingSubtask] = useState(false)
+  const [subtaskStatusFilter, setSubtaskStatusFilter] = useState('all')
+  const [selectedSubtask, setSelectedSubtask] = useState(null)
+  const [subtaskUpdatingField, setSubtaskUpdatingField] = useState(null)
+  const [showAssignFirstModal, setShowAssignFirstModal] = useState(false)
+  const [assignFirstEmployeeId, setAssignFirstEmployeeId] = useState('')
+  const [assigningFirstAssignee, setAssigningFirstAssignee] = useState(false)
+  const [showRevisionModal, setShowRevisionModal] = useState(false)
+  const [revisionModalReason, setRevisionModalReason] = useState('')
+  const [submittingRevision, setSubmittingRevision] = useState(false)
   const [extensionForm, setExtensionForm] = useState({ requested_due_date: '', reason: '' })
   const [submittingExtension, setSubmittingExtension] = useState(false)
   const [reviewingExtensionId, setReviewingExtensionId] = useState(null)
@@ -82,7 +101,6 @@ const TaskDetail = () => {
   const [productionCompleted, setProductionCompleted] = useState(0)
   const [productionNotes, setProductionNotes] = useState('')
   const [updatingProduction, setUpdatingProduction] = useState(false)
-  const [dragOverColumn, setDragOverColumn] = useState(null)
   const pageRef = useRef(null)
   const detailsRef = useRef(null)
   const historyRef = useRef(null)
@@ -90,15 +108,96 @@ const TaskDetail = () => {
   const currentAssignee = users.find((item) => getUserId(item) === String(task?.assigned_to || ''))
     || (getUserId(user) === String(task?.assigned_to || '') ? user : null)
   const currentAssigneeRole = normalizeRole(currentAssignee?.role)
-  const selectedEmployeeId = currentAssigneeRole === 'employee' ? String(task?.assigned_to || '') : ''
+  // Show the assigned employee in the select even when the assigned user is not
+  // part of the assignable list (freshly assigned, or outside the manager
+  // scope): otherwise the field keeps showing "No employee assigned" while the
+  // task actually has an assignee.
+  const selectedEmployeeId = currentAssigneeRole === 'employee' || !currentAssignee
+    ? String(task?.assigned_to || '')
+    : ''
+  const assigneeOptions = useMemo(() => {
+    const options = employeeAssignmentOptions.slice()
+    if (task?.assigned_to && !options.some((item) => getUserId(item) === String(task.assigned_to))) {
+      if (currentAssignee) {
+        options.unshift(currentAssignee)
+      } else if (task.assigned_to_name) {
+        options.unshift({ id: task.assigned_to, first_name: task.assigned_to_name, role: 'employee' })
+      }
+    }
+    return options
+  }, [currentAssignee, employeeAssignmentOptions, task?.assigned_to, task?.assigned_to_name])
   const projectLeadName = getProjectLeadName(projectInfo, leadAssignmentOptions, user)
   const canEditDetails = canEditTaskDetails(user, task)
+
+  // ── Subtask workspace: status tabs, filtered list, detail modal ────────────
+  const reloadSubtasks = useCallback(async () => {
+    try {
+      const parentId = task?.id || taskId
+      const data = await tasksAPI.getSubtasks(parentId)
+      const list = Array.isArray(data.subtasks) ? data.subtasks : []
+      setSubtasks(list)
+      setSelectedSubtask((current) => {
+        if (!current) return current
+        const refreshed = list.find((item) => String(item.id) === String(current.id))
+        return refreshed ? { ...current, ...refreshed } : current
+      })
+    } catch (error) {
+      console.error('Error reloading subtasks:', error)
+    }
+  }, [task?.id, taskId])
+
+  const updateSubtaskField = async (field, value) => {
+    const subtaskId = selectedSubtask?.id
+    if (!subtaskId || subtaskUpdatingField) return
+    try {
+      setSubtaskUpdatingField(field)
+      if (field === 'status') {
+        await tasksAPI.updateTaskStatus(subtaskId, value)
+      } else {
+        await tasksAPI.updateTask(subtaskId, { [field]: value || null })
+      }
+      toast.success('Subtask updated')
+      await reloadSubtasks()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update subtask')
+    } finally {
+      setSubtaskUpdatingField(null)
+    }
+  }
+
+  const openSubtaskPage = (subtask) => {
+    if (projectId) navigate(`/projects/${projectId}/tasks/${subtask.id}`)
+    else navigate(`/tasks/${subtask.id}`)
+  }
+
+  const subtaskCountByStatus = useMemo(() => {
+    const counts = {}
+    subtasks.forEach((subtask) => {
+      const key = String(subtask.status || '').toLowerCase()
+      if (key) counts[key] = (counts[key] || 0) + 1
+    })
+    return counts
+  }, [subtasks])
+
+  const visibleSubtasks = useMemo(() => {
+    if (!subtaskStatusFilter || subtaskStatusFilter === 'all') return subtasks
+    return subtasks.filter((subtask) => String(subtask.status || '').toLowerCase() === subtaskStatusFilter)
+  }, [subtaskStatusFilter, subtasks])
+
+  const subtaskAssigneeName = (subtask) => {
+    if (subtask?.assigned_to_name) return subtask.assigned_to_name
+    const match = users.find((item) => getUserId(item) === String(subtask?.assigned_to || ''))
+    return match ? getUserDisplayName(match) : ''
+  }
 
   const updateAssignee = async (newAssignee) => {
     try {
       setUpdatingField('assignee')
       await tasksAPI.updateTask(task.id, { assigned_to: newAssignee || null })
       toast.success('Task reassigned')
+      // Optimistically reflect the assignee so the select never flashes back to
+      // "No employee assigned" while the fresh task loads.
+      setTask((current) => (current ? { ...current, assigned_to: newAssignee || null } : current))
       await loadTask()
     } catch (error) {
       toast.error('Failed to reassign task')
@@ -329,6 +428,25 @@ const TaskDetail = () => {
 
   const handleStatusChange = async (newStatus) => {
     if (!taskId || updatingStatus) return
+    if (newStatus === 'assigned') {
+      if (String(taskStatus).toLowerCase() === 'assigned') {
+        toast.error('Task is already assigned')
+        return
+      }
+      if (!task?.assigned_to) {
+        // Moving to Assigned requires an assignee - prompt before changing state.
+        setAssignFirstEmployeeId('')
+        setShowAssignFirstModal(true)
+        return
+      }
+    }
+    if (newStatus === 'revision_required') {
+      // The backend rejects a revision without a written reason, so collect it
+      // in a modal before calling the semantic request-revision endpoint.
+      setRevisionModalReason('')
+      setShowRevisionModal(true)
+      return
+    }
     try {
       setUpdatingStatus(true)
       await tasksAPI.updateTaskStatus(taskId, newStatus)
@@ -336,9 +454,47 @@ const TaskDetail = () => {
       toast.success('Status updated')
       await loadTask()
     } catch (error) {
-      toast.error('Failed to update status')
+      toast.error(error?.response?.data?.detail || 'Failed to update status')
     } finally {
       setUpdatingStatus(false)
+    }
+  }
+
+  const handleAssignFirstConfirm = async () => {
+    if (!assignFirstEmployeeId) {
+      toast.error('Please select an employee to assign')
+      return
+    }
+    try {
+      setAssigningFirstAssignee(true)
+      await tasksAPI.updateTask(task.id, { assigned_to: assignFirstEmployeeId })
+      await tasksAPI.updateTaskStatus(taskId, 'assigned')
+      toast.success('Task assigned')
+      setShowAssignFirstModal(false)
+      await loadTask()
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to assign task')
+    } finally {
+      setAssigningFirstAssignee(false)
+    }
+  }
+
+  const handleRevisionConfirm = async () => {
+    if (!revisionModalReason.trim()) {
+      toast.error('A revision reason is required')
+      return
+    }
+    try {
+      setSubmittingRevision(true)
+      await tasksAPI.requestRevision(taskId, revisionModalReason.trim())
+      setShowRevisionModal(false)
+      setTaskStatus('revision_required')
+      toast.success('Revision requested')
+      await loadTask()
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to request revision')
+    } finally {
+      setSubmittingRevision(false)
     }
   }
 
@@ -558,6 +714,33 @@ const TaskDetail = () => {
   const statuses = TASK_STATUS_TONES
   const currentStatusTone = getTaskStatusTone(taskStatus || task?.status)
 
+  // ── Revision reason section ────────────────────────────────────────────────
+  // The reviewer's requested changes can get lost on the detail page (no
+  // revision panel existed), so surface the latest revision reason as a
+  // color-coded call-out: red while the task waits in Revision Required,
+  // amber while the assignee is reworking an earlier revision request.
+  const revisionContext = getRevisionReasonContext(task, { status: taskStatus, users })
+  const isRevisionRequired = revisionContext.isRevisionRequired
+  const revisionReason = revisionContext.reason
+  const revisionRequesterName = revisionContext.requesterName
+  const showRevisionSection = revisionContext.show
+  const revisionDateLabel = revisionContext.revisionRequestedAt
+    ? (() => { try { return timeService.formatPattern(revisionContext.revisionRequestedAt, 'MMM d, yyyy') } catch { return String(revisionContext.revisionRequestedAt).slice(0, 10) } })()
+    : ''
+  const revisionTone = isRevisionRequired
+    ? {
+        header: 'from-rose-600 to-red-500',
+        iconWrap: 'bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300',
+        quote: 'border-rose-400/70 bg-rose-50/80 text-rose-950 dark:border-rose-800/60 dark:bg-rose-950/25 dark:text-rose-50',
+        badge: 'Revision required',
+      }
+    : {
+        header: 'from-amber-500 to-orange-500',
+        iconWrap: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300',
+        quote: 'border-amber-400/70 bg-amber-50/80 text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/25 dark:text-amber-50',
+        badge: 'Rework in progress',
+      }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -771,6 +954,54 @@ const TaskDetail = () => {
               </div>
             )}
           </div>
+
+          {/* Revision reason — color-coded highlight so requested changes are never missed */}
+          {showRevisionSection ? (
+            <div className="mb-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+              <div className={`flex items-center justify-between gap-2 bg-gradient-to-r px-4 py-2.5 ${revisionTone.header}`}>
+                <p className="flex items-center gap-2 text-sm font-bold tracking-wide text-white">
+                  <GitPullRequest className="h-4 w-4" />
+                  Revision reason
+                </p>
+                <span className="rounded-full bg-white/25 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                  {revisionTone.badge}
+                </span>
+              </div>
+              <div className="flex items-start gap-3 px-4 py-3.5">
+                <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${revisionTone.iconWrap}`}>
+                  <GitPullRequest className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {isRevisionRequired ? 'The reviewer sent this task back for changes.' : 'Rework is in progress after an earlier revision request.'}
+                  </p>
+                  <p className={`mt-2 whitespace-pre-wrap rounded-xl border-l-4 px-3.5 py-2.5 text-sm font-medium leading-6 ${revisionTone.quote}`}>
+                    {revisionReason || 'The reviewer requested changes but did not leave a written reason.'}
+                  </p>
+                  <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                    {revisionRequesterName ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <User className="h-3.5 w-3.5" />
+                        Requested by {revisionRequesterName}
+                      </span>
+                    ) : null}
+                    {revisionDateLabel ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        {revisionDateLabel}
+                      </span>
+                    ) : null}
+                    {Number(task?.review_round) > 0 ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <GitBranch className="h-3.5 w-3.5" />
+                        Review round {task.review_round}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {isEditing && (
             <div className="mb-6 grid gap-4 sm:grid-cols-2">
@@ -1097,25 +1328,40 @@ const TaskDetail = () => {
             {showSubtaskForm && (
               <form onSubmit={async (e) => {
                 e.preventDefault()
-                if (!newSubtaskTitle.trim()) return
+                if (!newSubtaskTitle.trim()) {
+                  toast.error('Subtask title is required')
+                  return
+                }
+                // Due date and estimated hours are optional - the subtask is
+                // created without them when they are left empty.
+                const subtaskPayload = {
+                  title: newSubtaskTitle.trim(),
+                  description: newSubtaskDescription.trim() || null,
+                  parent_task_id: task.id,
+                  priority: 'medium',
+                }
+                if (newSubtaskDueDate) subtaskPayload.due_date = newSubtaskDueDate
+                if (newSubtaskEstimatedHours && newSubtaskEstimatedHours.trim()) {
+                  const hours = parseFloat(newSubtaskEstimatedHours)
+                  if (!Number.isFinite(hours) || hours <= 0) {
+                    toast.error('Estimated hours must be a positive number (e.g. 0.5)')
+                    return
+                  }
+                  subtaskPayload.estimated_hours = hours
+                }
                 try {
                   setCreatingSubtask(true)
-                  await tasksAPI.createTask({
-                    title: newSubtaskTitle,
-                    parent_task_id: task.id,
-                    priority: 'medium',
-                    due_date: newSubtaskDueDate || null,
-                    estimated_hours: newSubtaskEstimatedHours ? parseFloat(newSubtaskEstimatedHours) : null,
-                  })
+                  await tasksAPI.createTask(subtaskPayload)
                   toast.success('Subtask created')
                   setNewSubtaskTitle('')
+                  setNewSubtaskDescription('')
                   setNewSubtaskDueDate('')
                   setNewSubtaskEstimatedHours('')
                   setShowSubtaskForm(false)
                   const data = await tasksAPI.getSubtasks(task.id)
                   setSubtasks(data.subtasks || [])
                 } catch (error) {
-                  toast.error('Failed to create subtask')
+                  toast.error(error?.response?.data?.detail || error?.message || 'Failed to create subtask')
                 } finally {
                   setCreatingSubtask(false)
                 }
@@ -1129,9 +1375,16 @@ const TaskDetail = () => {
                   required
                   autoFocus
                 />
+                <textarea
+                  value={newSubtaskDescription}
+                  onChange={(e) => setNewSubtaskDescription(e.target.value)}
+                  placeholder="Subtask description (optional)..."
+                  rows={2}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                />
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <label className="mb-0.5 block text-[10px] font-medium text-gray-500">Due date</label>
+                    <label className="mb-0.5 block text-[10px] font-medium text-gray-500">Due date (optional)</label>
                     <input
                       type="date"
                       value={newSubtaskDueDate}
@@ -1140,7 +1393,7 @@ const TaskDetail = () => {
                     />
                   </div>
                   <div className="w-24">
-                    <label className="mb-0.5 block text-[10px] font-medium text-gray-500">Hours</label>
+                    <label className="mb-0.5 block text-[10px] font-medium text-gray-500">Hours (optional)</label>
                     <input
                       type="number"
                       min="0.25"
@@ -1156,7 +1409,7 @@ const TaskDetail = () => {
                   <button type="submit" disabled={creatingSubtask} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-60 flex-1">
                     {creatingSubtask ? 'Creating...' : 'Add'}
                   </button>
-                  <button type="button" onClick={() => { setShowSubtaskForm(false); setNewSubtaskTitle(''); setNewSubtaskDueDate(''); setNewSubtaskEstimatedHours(''); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  <button type="button" onClick={() => { setShowSubtaskForm(false); setNewSubtaskTitle(''); setNewSubtaskDescription(''); setNewSubtaskDueDate(''); setNewSubtaskEstimatedHours(''); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
                     Cancel
                   </button>
                 </div>
@@ -1164,137 +1417,99 @@ const TaskDetail = () => {
             )}
             
             {subtasks.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                {[
-                  { id: 'todo', label: 'To Do', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
-                  { id: 'in_progress', label: 'In Progress', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
-                  { id: 'in_review', label: 'Review', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300' },
-                  { id: 'completed', label: 'Completed', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
-                ].map((column) => {
-                  const columnSubtasks = subtasks.filter((s) => s.status === column.id)
-                  const isOver = dragOverColumn === column.id
-                  return (
-                    <div key={column.id}
-                      onDragOver={(e) => { e.preventDefault(); setDragOverColumn(column.id) }}
-                      onDragEnter={(e) => { e.preventDefault(); setDragOverColumn(column.id) }}
-                      onDragLeave={(e) => {
-                        if (e.currentTarget.contains(e.relatedTarget)) return
-                        setDragOverColumn(null)
-                      }}
-                      onDrop={async (e) => {
-                        e.preventDefault()
-                        setDragOverColumn(null)
-                        const draggedId = e.dataTransfer.getData('text/plain')
-                        if (!draggedId) return
-                        const draggedSubtask = subtasks.find((s) => s.id === draggedId)
-                        if (!draggedSubtask || draggedSubtask.status === column.id) return
-                        try {
-                          await tasksAPI.updateTaskStatus(draggedId, column.id)
-                          toast.success('Subtask moved')
-                          const data = await tasksAPI.getSubtasks(task.id)
-                          setSubtasks(data.subtasks || [])
-                        } catch (error) {
-                          toast.error('Failed to move subtask')
-                        }
-                      }}
-                      className={`rounded-xl border bg-white shadow-sm transition-all duration-200 ${
-                        isOver
-                          ? 'border-indigo-400 bg-indigo-50/50 shadow-md ring-2 ring-indigo-200 dark:border-indigo-500 dark:bg-indigo-950/20 dark:ring-indigo-800'
-                          : 'border-gray-200 dark:border-gray-700 dark:bg-gray-800/50'
-                      }`}
-                    >
-                      <div className="border-b border-gray-100 px-3 py-2 dark:border-gray-700">
-                        <div className="flex items-center justify-between">
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${column.color}`}>
-                            {column.label}
-                          </span>
-                          <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-indigo-100 px-1.5 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                            {columnSubtasks.length}
-                          </span>
-                        </div>
-                      </div>
-                      <div className={`space-y-2 p-2 min-h-[80px] transition-colors ${isOver ? 'bg-indigo-50/30 dark:bg-indigo-950/10' : ''}`}>
-                        {columnSubtasks.length === 0 ? (
-                          <div className={`flex min-h-[60px] items-center justify-center rounded-lg border-2 border-dashed transition-colors ${
-                            isOver ? 'border-indigo-300 bg-indigo-50/50 dark:border-indigo-600 dark:bg-indigo-950/30' : 'border-gray-200 dark:border-gray-700'
-                          }`}>
-                            <p className="text-[11px] text-gray-400">{isOver ? 'Drop here' : 'Empty'}</p>
-                          </div>
-                        ) : (
-                          columnSubtasks.map((subtask) => (
-                            <div key={subtask.id}
-                              draggable
-                              onDragStart={(e) => {
-                                e.dataTransfer.setData('text/plain', subtask.id)
-                                e.dataTransfer.effectAllowed = 'move'
-                              }}
-                              className="group rounded-lg border border-gray-200 bg-white p-2.5 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700 cursor-grab active:cursor-grabbing"
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="text-xs font-medium text-gray-900 dark:text-gray-100 line-clamp-2">{subtask.title}</p>
-                              </div>
-                              <div className="mt-2 flex items-center justify-between gap-2">
-                                <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                                  subtask.priority === 'critical' ? 'bg-red-100 text-red-700' :
-                                  subtask.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-                                  subtask.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
-                                  'bg-gray-100 text-gray-600'
-                                }`}>
-                                  {(subtask.priority || 'medium').charAt(0).toUpperCase() + (subtask.priority || 'medium').slice(1)}
+              <div className="space-y-3">
+                {/* Status tabs - selecting one shows only its subtasks as a list */}
+                <div
+                  role="tablist"
+                  aria-label="Subtask statuses"
+                  className="flex items-center gap-0.5 overflow-x-auto rounded-xl border border-gray-200 bg-gray-100/80 px-1.5 py-1.5 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden dark:border-gray-700 dark:bg-gray-800/80"
+                >
+                  {[{ id: 'all', label: 'All' }, ...SUBTASK_STATUS_ORDER.map((id) => ({ id, label: getTaskStatusTone(id).label }))].map((tab) => {
+                    const isActive = subtaskStatusFilter === tab.id
+                    const count = tab.id === 'all' ? subtasks.length : (subtaskCountByStatus[tab.id] || 0)
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => setSubtaskStatusFilter(tab.id)}
+                        className={`relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                          isActive
+                            ? 'bg-white text-indigo-700 shadow-sm dark:bg-gray-900 dark:text-indigo-300'
+                            : 'text-gray-600 hover:bg-white/70 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/70 dark:hover:text-gray-200'
+                        }`}
+                      >
+                        <span>{tab.label}</span>
+                        <span
+                          className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                            isActive
+                              ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300'
+                              : 'bg-gray-200/80 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                        {isActive ? <span className="absolute inset-x-2 -bottom-1 h-0.5 rounded-full bg-indigo-500" /> : null}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Subtask rows for the selected status - click opens the detail modal */}
+                {visibleSubtasks.length > 0 ? (
+                  <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {visibleSubtasks.map((subtask) => {
+                        const tone = getTaskStatusTone(subtask.status)
+                        const priorityMeta = SUBTASK_PRIORITY_META[String(subtask.priority || 'medium').toLowerCase()] || SUBTASK_PRIORITY_META.medium
+                        const assigneeName = subtaskAssigneeName(subtask)
+                        return (
+                          <button
+                            key={subtask.id}
+                            type="button"
+                            onClick={() => setSelectedSubtask(subtask)}
+                            title={subtask.description ? `${subtask.title} - ${subtask.description}` : subtask.title}
+                            className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                          >
+                            <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">{subtask.title}</p>
+                            <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tone.chipClass}`}>
+                              {tone.label}
+                            </span>
+                            <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${priorityMeta.chipClass}`}>
+                              {priorityMeta.label}
+                            </span>
+                            {subtask.due_date ? (
+                              <span className="hidden shrink-0 text-[11px] text-gray-500 dark:text-gray-400 sm:inline-flex">
+                                Due {timeService.format(subtask.due_date, { month: 'short', day: 'numeric' })}
+                              </span>
+                            ) : null}
+                            {Number(subtask.estimated_hours) > 0 ? (
+                              <span className="hidden shrink-0 text-[11px] text-gray-500 dark:text-gray-400 sm:inline-flex">
+                                {subtask.estimated_hours}h
+                              </span>
+                            ) : null}
+                            {assigneeName ? (
+                              <span className="hidden shrink-0 items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400 md:inline-flex">
+                                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[9px] font-bold uppercase text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                                  {String(assigneeName).charAt(0)}
                                 </span>
-                                <select
-                                  value={subtask.assigned_to || ''}
-                                  onChange={async (e) => {
-                                    try {
-                                      await tasksAPI.updateTask(subtask.id, { assigned_to: e.target.value || null })
-                                      toast.success('Subtask reassigned')
-                                      const data = await tasksAPI.getSubtasks(task.id)
-                                      setSubtasks(data.subtasks || [])
-                                    } catch (error) {
-                                      toast.error('Failed to reassign subtask')
-                                    }
-                                  }}
-                                  className="max-w-[100px] rounded-md border border-gray-200 px-1 py-0.5 text-[10px] text-gray-600 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
-                                  onClick={(e) => e.stopPropagation()}
-                                  title={users.find(u => u.id === subtask.assigned_to) ? `${users.find(u => u.id === subtask.assigned_to).first_name} ${users.find(u => u.id === subtask.assigned_to).last_name}` : 'Assign to...'}
-                                >
-                                  <option value="">Unassigned</option>
-                                  {users.map((u) => (
-                                    <option key={u.id} value={u.id}>
-                                      {u.first_name} {u.last_name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="mt-2">
-                                <select
-                                  value={subtask.status}
-                                  onChange={async (e) => {
-                                    try {
-                                      await tasksAPI.updateTaskStatus(subtask.id, e.target.value)
-                                      toast.success('Subtask status updated')
-                                      const data = await tasksAPI.getSubtasks(task.id)
-                                      setSubtasks(data.subtasks || [])
-                                    } catch (error) {
-                                      toast.error('Failed to update subtask status')
-                                    }
-                                  }}
-                                  className="w-full rounded-md border border-gray-200 px-1.5 py-1 text-[10px] font-medium text-gray-700 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <option value="todo">To Do</option>
-                                  <option value="in_progress">In Progress</option>
-                                  <option value="in_review">Review</option>
-                                  <option value="completed">Completed</option>
-                                </select>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                                <span className="max-w-[110px] truncate">{assigneeName}</span>
+                              </span>
+                            ) : null}
+                            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600" />
+                          </button>
+                        )
+                      })}
                     </div>
-                  )
-                })}
+                  </div>
+                ) : (
+                  <div className="flex min-h-[80px] items-center justify-center rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
+                    <p className="text-xs text-gray-400">
+                      No subtasks are {subtaskStatusFilter === 'all' ? 'available' : `in ${getTaskStatusTone(subtaskStatusFilter).label.toLowerCase()}`}.
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex min-h-[100px] items-center justify-center rounded-xl border-2 border-dashed border-gray-200 p-4 dark:border-gray-700">
@@ -1312,6 +1527,240 @@ const TaskDetail = () => {
               </div>
             )}
           </div>
+
+          {/* Subtask detail modal - full subtask info with status/assignee actions */}
+          <Modal
+            isOpen={Boolean(selectedSubtask)}
+            onClose={() => setSelectedSubtask(null)}
+            title="Subtask details"
+            size="md"
+          >
+            {selectedSubtask ? (
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">{selectedSubtask.title}</h4>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${getTaskStatusTone(selectedSubtask.status).chipClass}`}>
+                      {getTaskStatusTone(selectedSubtask.status).label}
+                    </span>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
+                        SUBTASK_PRIORITY_META[String(selectedSubtask.priority || 'medium').toLowerCase()]?.chipClass || SUBTASK_PRIORITY_META.medium.chipClass
+                      }`}
+                    >
+                      {(SUBTASK_PRIORITY_META[String(selectedSubtask.priority || 'medium').toLowerCase()] || SUBTASK_PRIORITY_META.medium).label}
+                    </span>
+                    {selectedSubtask.health_status === 'overdue' ? (
+                      <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">Overdue</span>
+                    ) : null}
+                    {selectedSubtask.health_status === 'due_today' ? (
+                      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Due Today</span>
+                    ) : null}
+                    {selectedSubtask.is_blocked ? (
+                      <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">Blocked</span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/60">
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    {selectedSubtask.description || 'No description provided.'}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Status</label>
+                    <select
+                      value={String(selectedSubtask.status || '').toLowerCase()}
+                      disabled={subtaskUpdatingField !== null}
+                      onChange={(e) => updateSubtaskField('status', e.target.value)}
+                      className={`w-full rounded-lg border px-3 py-2 text-sm ${subtaskUpdatingField === 'status' ? 'cursor-wait opacity-70' : ''}`}
+                    >
+                      {SUBTASK_STATUS_ORDER.map((id) => (
+                        <option key={id} value={id}>{getTaskStatusTone(id).label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Assignee</label>
+                    <select
+                      value={selectedSubtask.assigned_to || ''}
+                      disabled={subtaskUpdatingField !== null}
+                      onChange={(e) => updateSubtaskField('assigned_to', e.target.value)}
+                      className={`w-full rounded-lg border px-3 py-2 text-sm ${subtaskUpdatingField === 'assigned_to' ? 'cursor-wait opacity-70' : ''}`}
+                    >
+                      <option value="">Unassigned</option>
+                      {users.map((u) => (
+                        <option key={getUserId(u)} value={getUserId(u)}>{getUserDisplayName(u)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Priority</label>
+                    <select
+                      value={String(selectedSubtask.priority || 'medium').toLowerCase()}
+                      disabled={subtaskUpdatingField !== null}
+                      onChange={(e) => updateSubtaskField('priority', e.target.value)}
+                      className={`w-full rounded-lg border px-3 py-2 text-sm ${subtaskUpdatingField === 'priority' ? 'cursor-wait opacity-70' : ''}`}
+                    >
+                      {Object.entries(SUBTASK_PRIORITY_META).map(([id, meta]) => (
+                        <option key={id} value={id}>{meta.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">Due date</label>
+                    <input
+                      type="date"
+                      value={(selectedSubtask.due_date || '').slice(0, 10)}
+                      disabled={subtaskUpdatingField !== null}
+                      onChange={(e) => updateSubtaskField('due_date', e.target.value)}
+                      className={`w-full rounded-lg border px-3 py-2 text-sm ${subtaskUpdatingField === 'due_date' ? 'cursor-wait opacity-70' : ''}`}
+                    />
+                  </div>
+                </div>
+
+                <dl className="grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-3 text-xs dark:bg-gray-800/60">
+                  <div>
+                    <dt className="text-gray-500 dark:text-gray-400">Estimated hours</dt>
+                    <dd className="mt-0.5 font-medium text-gray-900 dark:text-gray-100">
+                      {Number(selectedSubtask.estimated_hours) > 0 ? `${selectedSubtask.estimated_hours}h` : '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500 dark:text-gray-400">Reviewer</dt>
+                    <dd className="mt-0.5 font-medium text-gray-900 dark:text-gray-100">
+                      {selectedSubtask.reviewer_name || '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500 dark:text-gray-400">Created by</dt>
+                    <dd className="mt-0.5 font-medium text-gray-900 dark:text-gray-100">
+                      {selectedSubtask.created_by_name || '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500 dark:text-gray-400">Created</dt>
+                    <dd className="mt-0.5 font-medium text-gray-900 dark:text-gray-100">
+                      {selectedSubtask.created_at ? timeService.format(selectedSubtask.created_at, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                    </dd>
+                  </div>
+                </dl>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
+                  <button
+                    type="button"
+                    onClick={() => openSubtaskPage(selectedSubtask)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-primary-700"
+                  >
+                    Open full task
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSubtask(null)}
+                    className="rounded-lg border border-gray-300 px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </Modal>
+
+          {/* Assign-before-Assigned warning modal */}
+          <Modal
+            isOpen={showAssignFirstModal}
+            onClose={() => setShowAssignFirstModal(false)}
+            title="Assign task first"
+            size="sm"
+          >
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                This task has no assignee yet. Select an employee to assign it to before moving its status to
+                <strong className="text-gray-900 dark:text-gray-100"> Assigned</strong>.
+              </p>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Employee</label>
+                <select
+                  value={assignFirstEmployeeId}
+                  onChange={(e) => setAssignFirstEmployeeId(e.target.value)}
+                  disabled={assigningFirstAssignee}
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                >
+                  <option value="">Select employee...</option>
+                  {assigneeOptions.map((u) => (
+                    <option key={getUserId(u)} value={getUserId(u)}>{getUserDisplayName(u)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleAssignFirstConfirm}
+                  disabled={assigningFirstAssignee}
+                  className="flex-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-700 disabled:opacity-60"
+                >
+                  {assigningFirstAssignee ? 'Assigning...' : 'Assign & Set Assigned'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAssignFirstModal(false)}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </Modal>
+
+          {/* Revision-reason modal — required before moving to Revision Required */}
+          <Modal
+            isOpen={showRevisionModal}
+            onClose={() => { if (!submittingRevision) setShowRevisionModal(false) }}
+            title="Request revision"
+            size="sm"
+          >
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                A revision always needs a written reason. Explain what has to change before the task moves to
+                <strong className="text-gray-900 dark:text-gray-100"> Revision Required</strong> — the assignee will
+                see this reason when the task comes back to them.
+              </p>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">
+                  Revision reason <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={revisionModalReason}
+                  onChange={(e) => setRevisionModalReason(e.target.value)}
+                  disabled={submittingRevision}
+                  rows={4}
+                  autoFocus
+                  placeholder="Explain what needs to change before this task can be approved."
+                  className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleRevisionConfirm}
+                  disabled={submittingRevision || !revisionModalReason.trim()}
+                  className="flex-1 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                >
+                  {submittingRevision ? 'Requesting...' : 'Request revision'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRevisionModal(false)}
+                  disabled={submittingRevision}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </Modal>
 
           {/* Attachments */}
           <div ref={historyRef} className="mb-6">
@@ -1643,7 +2092,7 @@ const TaskDetail = () => {
                       }`}
                     >
                       <option value="">No employee assigned</option>
-                      {employeeAssignmentOptions.map((u) => (
+                      {assigneeOptions.map((u) => (
                         <option key={getUserId(u)} value={getUserId(u)}>
                           {getUserDisplayName(u)}
                         </option>
