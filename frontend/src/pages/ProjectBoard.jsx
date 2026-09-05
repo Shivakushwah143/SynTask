@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  Copy,
   ExternalLink,
   GripVertical,
   LayoutGrid,
@@ -1025,6 +1026,14 @@ export default function ProjectBoard() {
       await loadResources();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to delete resource");
+    }
+  };
+  const copyResourceLink = async (resource) => {
+    try {
+      await navigator.clipboard.writeText(resource.value);
+      toast.success("Link copied");
+    } catch {
+      toast.error("Could not copy link");
     }
   };
   const activeProject =
@@ -2889,9 +2898,14 @@ export default function ProjectBoard() {
                     </p>
                   </div>
                   {safeUrl ? (
-                    <a href={safeUrl} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => copyResourceLink(resource)} aria-label={`Copy ${resource.name} link`} className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-indigo-300">
+                        <Copy className="h-4 w-4" />
+                      </button>
+                      <a href={safeUrl} target="_blank" rel="noopener noreferrer" aria-label={`Open ${resource.name}`}>
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    </div>
                   ) : null}
                   {canManageCurrentProject ? (
                     <>
