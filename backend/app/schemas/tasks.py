@@ -64,6 +64,8 @@ class TaskResponse(BaseModel):
 class UpdateProductionProgressRequest(BaseModel):
     completed_quantity: int = Field(..., ge=0)
     notes: Optional[str] = Field(None, max_length=2000)
+    proof_name: Optional[str] = Field(None, max_length=120)
+    proof_value: Optional[str] = Field(None, max_length=2048)
 
 
 class ProductionEmployeeMetric(BaseModel):

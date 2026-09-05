@@ -89,11 +89,21 @@ def action_for_status_transition(current: Any, target: Any) -> str:
 
 
 def effective_review_required(task: Task, project: Optional[Project] = None) -> bool:
-    if getattr(task, "review_required", None) is not None:
-        return bool(task.review_required)
     if getattr(task, "source_type", None) in REVIEW_BYPASS_SOURCES:
         return False
-    return bool(getattr(task, "project_id", None) or getattr(task, "project_object_id", None) or project)
+    # Standalone tasks are still part of the normal task workflow. Older
+    # standalone records may have persisted review_required=False because the
+    # field previously defaulted from project presence; do not let that legacy
+    # value block In Progress -> In Review.
+    is_standalone = not (getattr(task, "project_id", None) or getattr(task, "project_object_id", None) or project)
+    if is_standalone:
+        return True
+    if getattr(task, "review_required", None) is not None:
+        return bool(task.review_required)
+    # Standalone tasks use the same review workflow as project tasks unless
+    # explicitly opted out. Sales follow-ups are the intentional exception
+    # handled above.
+    return True
 
 
 def creation_status(assigned_to: Optional[str]) -> TaskStatus:
@@ -214,7 +224,7 @@ async def validate_reviewer(task: Task, reviewer_id: Optional[str], project: Opt
 
 
 async def can_manage_workflow(actor: User, task: Task, project: Optional[Project]) -> bool:
-    if actor.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN} and (actor.role == UserRole.SUPER_ADMIN or str(actor.company_id) == str(task.company_id)):
+    if actor.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN} and (actor.role == UserRole.SUPER_ADMIN or str(actor.company_id) == str(task.company_id)):
         return True
     if project and has_project_permission(actor, project, ProjectPermission.MANAGE_TASK):
         return True

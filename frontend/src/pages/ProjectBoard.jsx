@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from 'react-query'
-import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, GripVertical, LayoutGrid, List, Plus, Search, Sparkles, UserPlus } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, GripVertical, LayoutGrid, List, Pencil, Plus, Search, Sparkles, Trash2, UserPlus } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
@@ -170,6 +170,11 @@ export default function ProjectBoard() {
   const [assigningProject, setAssigningProject] = useState(false)
   const [updatingTaskId, setUpdatingTaskId] = useState(null)
   const [activeTaskId, setActiveTaskId] = useState(null)
+  const [resources, setResources] = useState([])
+  const [resourcesOpen, setResourcesOpen] = useState(false)
+  const [resourceFormOpen, setResourceFormOpen] = useState(false)
+  const [resourceForm, setResourceForm] = useState({ id: null, name: '', value: '' })
+  const [savingResource, setSavingResource] = useState(false)
 
   const [showEditModal, setShowEditModal] = useState(false)
   const [editFormData, setEditFormData] = useState({ name: '', description: '', lead_id: '', type: 'software', priority: 'medium', start_date: '', delivery_date: '', status: 'active' })
@@ -731,6 +736,42 @@ export default function ProjectBoard() {
   // Task workflow power for the row-level stage-advance menus: project task
   // managers and company admins always, plus per-row task creators below.
   const canManageProjectTasks = projectPermissions.hasProjectPermission('manage_task') || hasCompanyAdminAccess(user?.role)
+
+  const loadResources = useCallback(async () => {
+    try {
+      const response = await projectsApi.getResources(projectId)
+      setResources(response.data?.resources || [])
+    } catch (error) {
+      console.error('Error loading project resources:', error)
+    }
+  }, [projectId])
+
+  useEffect(() => { loadResources() }, [loadResources])
+
+  const saveResource = async (event) => {
+    event.preventDefault()
+    if (!resourceForm.name.trim() || !resourceForm.value.trim() || savingResource) return
+    try {
+      setSavingResource(true)
+      const payload = { name: resourceForm.name.trim(), value: resourceForm.value.trim() }
+      if (resourceForm.id) await projectsApi.updateResource(projectId, resourceForm.id, payload)
+      else await projectsApi.createResource(projectId, payload)
+      toast.success(resourceForm.id ? 'Resource updated' : 'Resource added')
+      setResourceFormOpen(false)
+      setResourceForm({ id: null, name: '', value: '' })
+      await loadResources()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to save resource')
+    } finally { setSavingResource(false) }
+  }
+
+  const removeResource = async (resource) => {
+    try {
+      await projectsApi.deleteResource(projectId, resource.id)
+      toast.success('Resource deleted')
+      await loadResources()
+    } catch (error) { toast.error(error.response?.data?.detail || 'Failed to delete resource') }
+  }
   const activeProject = projectInfo?.name || boardData?.project?.name || 'Project'
   const projectDescription = projectRecord.description || 'No project description available.'
   const projectStatus = projectRecord.status || 'active'
@@ -1056,6 +1097,23 @@ export default function ProjectBoard() {
               <section className="card p-5">
                 <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Overview</h2>
                 <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">{summaryData.project?.description || projectInfo?.description || 'No project overview available.'}</p>
+              </section>
+              <section className="card p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div><h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Resources</h2><p className="text-xs text-gray-500 dark:text-gray-400">Useful project links and references.</p></div>
+                  {canManageCurrentProject ? <Button size="sm" onClick={() => { setResourceForm({ id: null, name: '', value: '' }); setResourceFormOpen(true) }}><Plus className="h-4 w-4" />Add Resource</Button> : null}
+                </div>
+                <div className="mt-4 space-y-2">
+                  {resources.slice(0, 4).map((resource) => {
+                    const safeUrl = /^https?:\/\//i.test(resource.value) ? resource.value : null
+                    return <div key={resource.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 px-3 py-2 dark:border-gray-800">
+                      <div className="min-w-0"><p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{resource.name}</p><p className="truncate text-xs text-gray-500 dark:text-gray-400">{resource.value}</p></div>
+                      {safeUrl ? <a href={safeUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-300" aria-label={`Open ${resource.name}`}><ExternalLink className="h-4 w-4" /></a> : null}
+                    </div>
+                  })}
+                  {!resources.length ? <p className="rounded-xl border border-dashed border-gray-200 p-4 text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">No project resources added yet.</p> : null}
+                </div>
+                {resources.length ? <button type="button" onClick={() => setResourcesOpen(true)} className="mt-3 text-sm font-semibold text-indigo-600 dark:text-indigo-300">View All</button> : null}
               </section>
               <section className="card p-5">
                 <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Tasks</h2>
@@ -1740,6 +1798,29 @@ export default function ProjectBoard() {
         onConfirm={handleDeleteProject}
         onClose={() => setShowDeleteConfirm(false)}
       />
+
+      <Modal isOpen={resourcesOpen} onClose={() => setResourcesOpen(false)} title="Project Resources">
+        <div className="space-y-3">
+          {resources.map((resource) => {
+            const safeUrl = /^https?:\/\//i.test(resource.value) ? resource.value : null
+            return <div key={resource.id} className="flex items-center gap-3 rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+              <div className="min-w-0 flex-1"><p className="font-semibold text-gray-900 dark:text-white">{resource.name}</p><p className="break-all text-sm text-gray-500 dark:text-gray-400">{resource.value}</p></div>
+              {safeUrl ? <a href={safeUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-4 w-4" /></a> : null}
+              {canManageCurrentProject ? <><button type="button" onClick={() => { setResourceForm(resource); setResourceFormOpen(true) }} aria-label={`Edit ${resource.name}`}><Pencil className="h-4 w-4" /></button><button type="button" onClick={() => removeResource(resource)} aria-label={`Delete ${resource.name}`}><Trash2 className="h-4 w-4 text-rose-500" /></button></> : null}
+            </div>
+          })}
+          {!resources.length ? <p className="text-sm text-gray-500">No project resources added yet.</p> : null}
+          {canManageCurrentProject ? <div className="flex justify-end"><Button onClick={() => { setResourceForm({ id: null, name: '', value: '' }); setResourceFormOpen(true) }}><Plus className="h-4 w-4" />Add Resource</Button></div> : null}
+        </div>
+      </Modal>
+
+      <Modal isOpen={resourceFormOpen} onClose={() => !savingResource && setResourceFormOpen(false)} title={resourceForm.id ? 'Edit Resource' : 'Add Resource'}>
+        <form onSubmit={saveResource} className="space-y-4">
+          <FormField label="Field Name" required><input className={inputClassName} maxLength={120} value={resourceForm.name} onChange={(event) => setResourceForm((value) => ({ ...value, name: event.target.value }))} /></FormField>
+          <FormField label="Value" required><input className={inputClassName} maxLength={2048} value={resourceForm.value} onChange={(event) => setResourceForm((value) => ({ ...value, value: event.target.value }))} placeholder="https://example.com or other useful value" /></FormField>
+          <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setResourceFormOpen(false)}>Cancel</Button><Button type="submit" loading={savingResource} loadingText="Saving">Save</Button></div>
+        </form>
+      </Modal>
 
       {/* Reopen Project Modal */}
       <Modal isOpen={showReopenModal} onClose={() => setShowReopenModal(false)} title="Reopen project">

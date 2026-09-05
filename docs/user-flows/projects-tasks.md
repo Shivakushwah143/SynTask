@@ -111,4 +111,20 @@ Time Tracking supports one backend-authoritative active timer per employee. The 
 
 Manual time entry remains available and creates `source=manual` TimeLogs. Manual entries require positive duration, reject excessive duration, and validate task/project/company scope. Deleting a time log now voids it for audit instead of hard-removing history.
 
+Project Overview includes a compact Resources card with four previews and a
+View All modal. Project managers can add/edit/delete dynamic name/value pairs;
+other authorized members can open safe HTTP(S) links. For quantitative tasks,
+`+/-` changes an unsaved draft and Update opens an optional proof dialog. Skip
+saves quantity alone. Send for Review similarly opens optional proof; Skip still
+sends the task. During either submission, both modal actions are disabled and
+show an inline loading indicator until the request completes. Reviewers can open
+View Proof without proof becoming a separate approval workflow. Quantitative
+tasks cannot be moved to In Review until the target quantity is complete; the
+status selector shows a clear message with the remaining quantity and leaves
+the task in its current status. Same-company Managers and Leads can also move
+an in-progress task to In Review, subject to the same checklist, dependency,
+quantity, and backend workflow validations. Standalone tasks use this review
+workflow by default as well; only tasks explicitly configured with
+`review_required=false` (and Sales follow-ups) bypass review.
+
 Project pages can request completion readiness from `/api/v1/projects/{project_id}/completion-readiness`. A project is not ready while required tasks are incomplete, review/revision/approved-not-completed tasks remain, dependency blockers exist, blocker Work Requests are open, active project timers exist, or the project lifecycle is not eligible. Direct status completion and semantic completion both use this backend readiness gate. Archiving is allowed only after the project reaches reporting and preserves historical tasks, time, requests, scheduled work, and activity.

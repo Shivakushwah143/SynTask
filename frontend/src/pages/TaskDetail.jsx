@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { 
   ArrowLeft, Trash2, Paperclip, Eye, History, Mail, CalendarClock, GitBranch, GitPullRequest, User,
   X, Lock, Share2, MoreVertical, Maximize2, CheckSquare,
-  ChevronRight, Zap, Sparkles, Plus, List, FileText
+  ChevronRight, Zap, Sparkles, Plus, List, FileText, Loader2
 } from 'lucide-react'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { aiAPI } from '../api/ai'
@@ -101,6 +101,10 @@ const TaskDetail = () => {
   const [productionCompleted, setProductionCompleted] = useState(0)
   const [productionNotes, setProductionNotes] = useState('')
   const [updatingProduction, setUpdatingProduction] = useState(false)
+  const [proofs, setProofs] = useState([])
+  const [proofsOpen, setProofsOpen] = useState(false)
+  const [progressProofOpen, setProgressProofOpen] = useState(false)
+  const [proofForm, setProofForm] = useState({ name: '', value: '' })
   const pageRef = useRef(null)
   const detailsRef = useRef(null)
   const historyRef = useRef(null)
@@ -228,6 +232,10 @@ const TaskDetail = () => {
       // Initialize production tracking state
       setProductionCompleted(data.completed_quantity || 0)
       setProductionNotes('')
+      try {
+        const proofData = await tasksAPI.getProofs(taskId)
+        setProofs(proofData.proofs || [])
+      } catch { setProofs([]) }
 
       if (data.attachments) {
         const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
@@ -446,6 +454,16 @@ const TaskDetail = () => {
       setRevisionModalReason('')
       setShowRevisionModal(true)
       return
+    }
+    if (newStatus === 'in_review' && task?.task_type === 'quantitative') {
+      const targetQuantity = Number(task.target_quantity || 0)
+      const completedQuantity = Number(task.completed_quantity || 0)
+      if (targetQuantity > completedQuantity) {
+        const remainingQuantity = targetQuantity - completedQuantity
+        const unit = task.target_unit || 'units'
+        toast.error(`Cannot move task to In Review yet. Complete ${remainingQuantity} more ${unit} (${completedQuantity}/${targetQuantity} completed).`, { duration: 5000 })
+        return
+      }
     }
     try {
       setUpdatingStatus(true)
@@ -2248,34 +2266,20 @@ const TaskDetail = () => {
                     </p>
                   </div>
 
-                  {/* Quick-add buttons */}
+                  {productionCompleted !== (task.completed_quantity ?? 0) ? <p className="mb-2 text-xs font-semibold text-amber-600 dark:text-amber-300">Draft changes — not saved yet</p> : null}
+                  {/* Draft quantity controls */}
                   <div className="mb-3">
-                    <p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">Quick add</p>
+                    <p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">Adjust draft progress</p>
                     <div className="flex gap-2">
-                      {[1, 3, 5].map((n) => (
+                      {[-1, 1].map((n) => (
                         <button
                           key={n}
                           type="button"
-                          disabled={updatingProduction || productionCompleted + n > (task.target_quantity || Infinity)}
-                          onClick={async () => {
-                            try {
-                              setUpdatingProduction(true)
-                              const newQty = productionCompleted + n
-                              await tasksAPI.updateProductionProgress(task.id, {
-                                completed_quantity: newQty,
-                                notes: productionNotes || undefined,
-                              })
-                              setProductionCompleted(newQty)
-                              toast.success(`Added ${n} ${task.target_unit || 'unit'}${n > 1 ? 's' : ''}`)
-                            } catch (error) {
-                              toast.error('Failed to update progress')
-                            } finally {
-                              setUpdatingProduction(false)
-                            }
-                          }}
+                          disabled={updatingProduction || productionCompleted + n < 0 || productionCompleted + n > (task.target_quantity || Infinity)}
+                          onClick={() => setProductionCompleted((value) => value + n)}
                           className="flex-1 rounded-lg border border-purple-300 bg-white px-3 py-2 text-sm font-semibold text-purple-700 transition hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-purple-700 dark:bg-gray-800 dark:text-purple-300 dark:hover:bg-purple-900/30"
                         >
-                          +{n}
+                          {n > 0 ? '+' : '−'}
                         </button>
                       ))}
                     </div>
@@ -2293,28 +2297,17 @@ const TaskDetail = () => {
                     <button
                       type="button"
                       disabled={updatingProduction}
-                      onClick={async () => {
-                        try {
-                          setUpdatingProduction(true)
-                          await tasksAPI.updateProductionProgress(task.id, {
-                            completed_quantity: productionCompleted,
-                            notes: productionNotes || undefined,
-                          })
-                          toast.success('Production progress updated')
-                        } catch (error) {
-                          toast.error('Failed to update progress')
-                        } finally {
-                          setUpdatingProduction(false)
-                        }
-                      }}
+                      onClick={() => setProgressProofOpen(true)}
                       className="w-full rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {updatingProduction ? 'Updating...' : 'Update Progress'}
+                      Update
                     </button>
                   </div>
                 </div>
               </div>
             )}
+
+            {task.status === 'in_review' ? <div className="border-t border-gray-200 pt-4 dark:border-gray-700"><button type="button" onClick={() => setProofsOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 px-3 py-2 text-sm font-semibold text-indigo-700 dark:border-indigo-800 dark:text-indigo-300"><Eye className="h-4 w-4" />{proofs.length ? `View Proof (${proofs.length})` : 'No proof submitted'}</button></div> : null}
 
             {task.assigned_to === String(user?.id || user?._id) && task.status !== 'completed' && task.due_date ? (
               <div className="pt-4 border-t border-gray-200">
@@ -2389,6 +2382,52 @@ const TaskDetail = () => {
         </div>
       </div>
     </div>
+      <Modal isOpen={progressProofOpen} onClose={() => !updatingProduction && setProgressProofOpen(false)} title="Update Progress" description={`${task.completed_quantity ?? 0} → ${productionCompleted} ${task.target_unit || 'units'}`}>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm dark:border-indigo-900 dark:bg-indigo-950/30"><p className="font-semibold">Add work proof <span className="text-xs font-normal">Optional</span></p><p className="text-xs text-gray-500 dark:text-gray-400">You can skip this step.</p></div>
+          <label className="block text-sm font-medium">Proof Name<input className="input mt-1 w-full" value={proofForm.name} onChange={(event) => setProofForm((value) => ({ ...value, name: event.target.value }))} /></label>
+          <label className="block text-sm font-medium">Link / Value<input className="input mt-1 w-full" value={proofForm.value} onChange={(event) => setProofForm((value) => ({ ...value, value: event.target.value }))} /></label>
+          <div className="flex justify-end gap-2">
+            {['skip', 'save'].map((mode) => {
+              const isSubmitting = updatingProduction
+              const label = mode === 'save' ? 'Save Update' : 'Skip'
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  disabled={isSubmitting || (mode === 'save' && (!proofForm.name.trim() || !proofForm.value.trim()))}
+                  aria-busy={isSubmitting || undefined}
+                  onClick={async () => {
+                    try {
+                      setUpdatingProduction(true)
+                      const response = await tasksAPI.updateProductionProgress(task.id, { completed_quantity: productionCompleted, notes: productionNotes || undefined, ...(mode === 'save' ? { proof_name: proofForm.name, proof_value: proofForm.value } : {}) })
+                      setTask((current) => ({ ...current, completed_quantity: productionCompleted }))
+                      setProgressProofOpen(false)
+                      setProofForm({ name: '', value: '' })
+                      if (response.proof_error) toast.error(response.proof_error)
+                      else toast.success('Progress updated')
+                      await loadTask()
+                    } catch {
+                      toast.error('Failed to update progress')
+                    } finally {
+                      setUpdatingProduction(false)
+                    }
+                  }}
+                  className={mode === 'save' ? 'rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50' : 'rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold dark:border-gray-700 disabled:opacity-50'}
+                >
+                  {isSubmitting ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                  {isSubmitting ? `${label}...` : label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={proofsOpen} onClose={() => setProofsOpen(false)} title="Work Proof">
+        <div className="space-y-4">{proofs.map((proof) => <div key={proof.id} className="rounded-xl border border-gray-200 p-3 dark:border-gray-700"><p className="text-xs font-semibold uppercase text-gray-500">{proof.context === 'review_submission' ? 'Review Submission' : 'Progress Update'}</p><p className="mt-1 font-semibold text-gray-900 dark:text-white">{proof.name}</p>{/^https?:\/\//i.test(proof.value) ? <a href={proof.value} target="_blank" rel="noopener noreferrer" className="break-all text-sm text-indigo-600 dark:text-indigo-300">{proof.value}</a> : <p className="break-all text-sm text-gray-600 dark:text-gray-300">{proof.value}</p>}<p className="mt-2 text-xs text-gray-500">{proof.submitted_by_name || 'Task worker'} · {proof.created_at ? timeService.formatPattern(proof.created_at, 'MMM d, yyyy h:mm a') : ''}</p></div>)}{!proofs.length ? <p className="text-sm text-gray-500">No proof submitted.</p> : null}</div>
+      </Modal>
+
       <EmailComposer
         isOpen={composerOpen}
         onClose={() => setComposerOpen(false)}

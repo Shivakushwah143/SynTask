@@ -67,6 +67,11 @@ export const projectsApi = {
   deleteProject: (id) => {
     return api.delete(`/projects/${id}`)
   },
+
+  getResources: (id) => api.get(`/projects/${id}/resources`),
+  createResource: (id, data) => api.post(`/projects/${id}/resources`, data),
+  updateResource: (id, resourceId, data) => api.put(`/projects/${id}/resources/${resourceId}`, data),
+  deleteResource: (id, resourceId) => api.delete(`/projects/${id}/resources/${resourceId}`),
   
   // Epics
   getEpics: (projectId) => {

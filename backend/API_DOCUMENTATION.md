@@ -1054,3 +1054,16 @@ Project APIs now treat `Project.client_id` as the canonical Client -> Project li
 `GET /api/v1/projects/` and `GET /api/v1/projects/{project_id}` include `client`, `owner`, `priority`, `deadline_urgency`, `project_health`, `progress_percentage`, `completed_task_count`, and overdue/open task counts. `PUT /api/v1/projects/{project_id}` updates project details but status changes continue to be validated by the lifecycle workflow.
 
 Company-scoped project types are available through `GET /api/v1/projects/types` and can be created with `POST /api/v1/projects/types`.
+# Project Resources and Optional Task Proof
+
+- `GET/POST /api/v1/projects/{project_id}/resources` lists or creates dynamic
+  resources. Read requires project view; create requires project management.
+- `PUT/DELETE /api/v1/projects/{project_id}/resources/{resource_id}` updates or
+  deletes a same-company resource belonging to that project.
+- `GET/POST /api/v1/tasks/{task_id}/proofs` lists or adds optional task proof.
+  The server derives `submitted_by`; all reads include task authorization and
+  company isolation.
+- `POST /api/v1/tasks/{task_id}/production-progress` accepts optional
+  `proof_name`/`proof_value`; quantity succeeds without proof.
+- `POST /api/v1/tasks/{task_id}/submit-review` accepts optional proof fields;
+  review submission succeeds when proof is skipped.

@@ -44,7 +44,7 @@ describe('TaskStageMenu', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  test('runs the single assignee action (submit for review) directly', async () => {
+  test('opens optional proof and Skip submits for review without proof', async () => {
     const onUpdated = vi.fn()
     render(
       <TaskStageMenu
@@ -55,7 +55,9 @@ describe('TaskStageMenu', () => {
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: /submit for review/i }))
-    await waitFor(() => expect(tasksAPI.submitForReview).toHaveBeenCalledWith('task-1', null))
+    expect(screen.getByText(/add work proof \(optional\)/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+    await waitFor(() => expect(tasksAPI.submitForReview).toHaveBeenCalledWith('task-1', null, null))
     await waitFor(() => expect(onUpdated).toHaveBeenCalled())
   })
 
