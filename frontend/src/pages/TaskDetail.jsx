@@ -104,6 +104,8 @@ const TaskDetail = () => {
   const [proofs, setProofs] = useState([])
   const [proofsOpen, setProofsOpen] = useState(false)
   const [progressProofOpen, setProgressProofOpen] = useState(false)
+  const [reviewProofOpen, setReviewProofOpen] = useState(false)
+  const [reviewProofEntries, setReviewProofEntries] = useState([{ id: 0, category: 'text', value: '' }])
   const [proofEntries, setProofEntries] = useState([])
   const pageRef = useRef(null)
   const detailsRef = useRef(null)
@@ -434,6 +436,23 @@ const TaskDetail = () => {
     }
   }
 
+  const handleReviewSubmit = async (withProof = true) => {
+    try {
+      setUpdatingStatus(true)
+      const proof = withProof ? reviewProofEntries.find((entry) => entry.value.trim()) : null
+      const response = await tasksAPI.submitForReview(taskId, null, proof ? { name: proof.category, value: proof.value.trim() } : null)
+      if (response.proof_error) toast.error(response.proof_error)
+      else toast.success('Submitted for review')
+      setReviewProofOpen(false)
+      setTaskStatus('in_review')
+      await loadTask()
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to submit for review')
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
+
   const handleStatusChange = async (newStatus) => {
     if (!taskId || updatingStatus) return
     if (newStatus === 'assigned') {
@@ -464,6 +483,11 @@ const TaskDetail = () => {
         toast.error(`Cannot move task to In Review yet. Complete ${remainingQuantity} more ${unit} (${completedQuantity}/${targetQuantity} completed).`, { duration: 5000 })
         return
       }
+    }
+    if (newStatus === 'in_review' && user?.role === 'employee') {
+      setReviewProofEntries([{ id: 0, category: 'text', value: '' }])
+      setReviewProofOpen(true)
+      return
     }
     try {
       setUpdatingStatus(true)
@@ -2436,6 +2460,31 @@ const TaskDetail = () => {
                 </button>
               )
             })}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={reviewProofOpen} onClose={() => !updatingStatus && setReviewProofOpen(false)} title="Submit for Review" description="Add optional proof of your work.">
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Proof is optional. Empty fields are skipped.</p>
+          <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+            {reviewProofEntries.map((entry, index) => <div key={entry.id} className="rounded-lg border border-gray-200 p-1.5 dark:border-gray-700">
+              <div className="grid items-center gap-2 sm:grid-cols-[auto_130px_minmax(0,1fr)]">
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">Proof {index + 1}</span>
+                <select className="input w-full px-2 py-1.5 text-xs" value={entry.category} onChange={(event) => setReviewProofEntries((current) => current.map((item) => item.id === entry.id ? { ...item, category: event.target.value, value: '' } : item))} aria-label={`Proof category ${index + 1}`}>
+                  <option value="media_upload">Media upload</option><option value="link">Link</option><option value="text">Text</option>
+                </select>
+                {entry.category === 'media_upload' ? <input type="file" accept="image/*,video/*,audio/*" className="block w-full min-w-0 text-xs text-gray-500 file:mr-2 file:rounded file:border-0 file:bg-indigo-50 file:px-2 file:py-1 file:text-xs file:font-semibold file:text-indigo-700 dark:text-gray-400 dark:file:bg-indigo-950/40 dark:file:text-indigo-300" onChange={(event) => setReviewProofEntries((current) => current.map((item) => item.id === entry.id ? { ...item, value: event.target.files?.[0]?.name || '' } : item))} aria-label={`Upload proof ${index + 1}`} /> : <input type={entry.category === 'link' ? 'url' : 'text'} className="input w-full px-2 py-1.5 text-xs" value={entry.value} onChange={(event) => setReviewProofEntries((current) => current.map((item) => item.id === entry.id ? { ...item, value: event.target.value } : item))} placeholder={entry.category === 'link' ? 'Enter URL' : 'Enter text proof'} aria-label={`Proof value ${index + 1}`} />}
+              </div>
+            </div>)}
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <button type="button" onClick={() => setReviewProofEntries((current) => [...current, { id: Date.now(), category: 'text', value: '' }])} className="rounded-lg border border-indigo-200 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950/30">+ Add proof</button>
+            <div className="flex gap-2">
+              <button type="button" disabled={updatingStatus} onClick={() => setReviewProofOpen(false)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold dark:border-gray-700">Cancel</button>
+              <button type="button" disabled={updatingStatus} onClick={() => handleReviewSubmit(false)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold dark:border-gray-700">Skip</button>
+              <button type="button" disabled={updatingStatus} onClick={() => handleReviewSubmit(true)} className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{updatingStatus ? 'Submitting...' : 'Submit'}</button>
+            </div>
           </div>
         </div>
       </Modal>

@@ -124,6 +124,9 @@ opens optional proof; Skip still sends the task. During either submission, both
 modal actions are disabled and show an inline loading indicator until the
 request completes. Reviewers can open View Proof without proof becoming a
 separate approval workflow. Quantitative
+employees submitting a task for review from Task Detail also receive this
+optional proof dialog, which starts with one row and supports adding more rows.
+Skip submits the task without proof; both Skip and Submit update the status.
 tasks cannot be moved to In Review until the target quantity is complete; the
 status selector shows a clear message with the remaining quantity and leaves
 the task in its current status. Same-company Managers and Leads can also move
