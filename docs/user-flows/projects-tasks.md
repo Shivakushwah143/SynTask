@@ -127,6 +127,8 @@ separate approval workflow. Quantitative
 employees submitting a task for review from Task Detail also receive this
 optional proof dialog, which starts with one row and supports adding more rows.
 Skip submits the task without proof; both Skip and Submit update the status.
+After a task reaches In Review, Add Proof in Production Progress opens the same
+optional proof form, and View Proofs lists all uploaded entries.
 tasks cannot be moved to In Review until the target quantity is complete; the
 status selector shows a clear message with the remaining quantity and leaves
 the task in its current status. Same-company Managers and Leads can also move

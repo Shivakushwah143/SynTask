@@ -228,6 +228,12 @@ export const tasksAPI = {
     return response.data
   },
 
+  createProof: async (taskId, { name, value, category = 'text', context = 'progress_update' }) => {
+    const formData = toFormData({ name, value, context, category })
+    const response = await api.post(`/tasks/${taskId}/proofs`, formData, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
+    return response.data
+  },
+
   requestRevision: async (taskId, reason) => {
     const formData = toFormData({ reason })
     const response = await api.post(`/tasks/${taskId}/request-revision`, formData, {

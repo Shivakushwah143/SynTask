@@ -2069,14 +2069,14 @@ async def list_task_proofs(task_id: str, current_user: User = Depends(get_curren
 
 
 @router.post("/{task_id}/proofs", status_code=201)
-async def create_task_proof(task_id: str, name: str = Form(...), value: str = Form(...), context: TaskProofContext = Form(...), current_user: User = Depends(get_current_user)):
+async def create_task_proof(task_id: str, name: str = Form(...), value: str = Form(...), context: TaskProofContext = Form(...), category: str = Form("text"), current_user: User = Depends(get_current_user)):
     task = await Task.get(task_id)
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     await _assert_task_view(current_user, task)
     if str(task.assigned_to or "") != str(current_user.id) and current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the assigned worker or task manager can add proof")
-    proof = await _save_optional_proof(task, current_user, name, value, context)
+    proof = await _save_optional_proof(task, current_user, name, value, context, category)
     if not proof:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Proof name and value are required")
     return {"proof": _serialize_task_proof(proof, current_user)}

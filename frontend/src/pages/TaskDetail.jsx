@@ -106,6 +106,8 @@ const TaskDetail = () => {
   const [progressProofOpen, setProgressProofOpen] = useState(false)
   const [reviewProofOpen, setReviewProofOpen] = useState(false)
   const [reviewProofEntries, setReviewProofEntries] = useState([{ id: 0, category: 'text', value: '' }])
+  const [uploadProofOpen, setUploadProofOpen] = useState(false)
+  const [uploadingProof, setUploadingProof] = useState(false)
   const [proofEntries, setProofEntries] = useState([])
   const pageRef = useRef(null)
   const detailsRef = useRef(null)
@@ -450,6 +452,27 @@ const TaskDetail = () => {
       toast.error(error?.response?.data?.detail || 'Failed to submit for review')
     } finally {
       setUpdatingStatus(false)
+    }
+  }
+
+  const handleUploadProofs = async () => {
+    const entries = reviewProofEntries.filter((entry) => entry.value.trim())
+    if (!entries.length) {
+      setUploadProofOpen(false)
+      return
+    }
+    try {
+      setUploadingProof(true)
+      await Promise.all(entries.map((entry, index) => tasksAPI.createProof(taskId, { name: `Proof ${index + 1}`, value: entry.value.trim(), category: entry.category, context: 'progress_update' })))
+      toast.success('Proof uploaded')
+      setUploadProofOpen(false)
+      setReviewProofEntries([{ id: 0, category: 'text', value: '' }])
+      const proofData = await tasksAPI.getProofs(taskId)
+      setProofs(proofData.proofs || [])
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to upload proof')
+    } finally {
+      setUploadingProof(false)
     }
   }
 
@@ -1197,6 +1220,16 @@ const TaskDetail = () => {
             </div>
 
             {/* Quantitative Task — Progress & Metrics Section */}
+            {task.task_type !== 'quantitative' ? (
+              <div className="border-t border-indigo-100 px-3 py-2.5 dark:border-indigo-900/40">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Proof</p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  <button type="button" onClick={() => setProofsOpen(true)} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-indigo-200 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300"><Eye className="h-3.5 w-3.5" /> View{proofs.length ? ` (${proofs.length})` : ''}</button>
+                  {task.status === 'in_review' ? <button type="button" onClick={() => { setReviewProofEntries([{ id: 0, category: 'text', value: '' }]); setUploadProofOpen(true) }} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-indigo-200 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300"><Plus className="h-3.5 w-3.5" /> Add</button> : null}
+                </div>
+              </div>
+            ) : null}
+
             {task.task_type === 'quantitative' && (
               <div className="border-t border-purple-200 bg-gradient-to-b from-purple-50/80 to-white px-4 py-4 dark:border-purple-900/40 dark:from-purple-950/20 dark:to-gray-800">
                 <div className="mb-3 flex items-center justify-between gap-2">
@@ -1208,6 +1241,7 @@ const TaskDetail = () => {
                     <button type="button" onClick={() => setProofsOpen(true)} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-purple-300 px-2 py-1 text-[11px] font-semibold text-purple-700 hover:bg-purple-100 dark:border-purple-800 dark:text-purple-300 dark:hover:bg-purple-900/30">
                       <Eye className="h-3.5 w-3.5" /> View Proofs{proofs.length ? ` (${proofs.length})` : ''}
                     </button>
+                    {task.status === 'in_review' ? <button type="button" onClick={() => { setReviewProofEntries([{ id: 0, category: 'text', value: '' }]); setUploadProofOpen(true) }} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-purple-300 px-2 py-1 text-[11px] font-semibold text-purple-700 hover:bg-purple-100 dark:border-purple-800 dark:text-purple-300 dark:hover:bg-purple-900/30"><Plus className="h-3.5 w-3.5" /> Add Proof</button> : null}
                   </div>
                 </div>
 
@@ -2486,6 +2520,16 @@ const TaskDetail = () => {
               <button type="button" disabled={updatingStatus} onClick={() => handleReviewSubmit(true)} className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{updatingStatus ? 'Submitting...' : 'Submit'}</button>
             </div>
           </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={uploadProofOpen} onClose={() => !uploadingProof && setUploadProofOpen(false)} title="Add Proof" description="Upload optional proof for this task.">
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Add one or more proof items. Empty fields are skipped.</p>
+          <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+            {reviewProofEntries.map((entry, index) => <div key={entry.id} className="rounded-lg border border-gray-200 p-1.5 dark:border-gray-700"><div className="grid items-center gap-2 sm:grid-cols-[auto_130px_minmax(0,1fr)]"><span className="text-xs font-semibold text-gray-600 dark:text-gray-300">Proof {index + 1}</span><select className="input w-full px-2 py-1.5 text-xs" value={entry.category} onChange={(event) => setReviewProofEntries((current) => current.map((item) => item.id === entry.id ? { ...item, category: event.target.value, value: '' } : item))} aria-label={`Proof category ${index + 1}`}><option value="media_upload">Media upload</option><option value="link">Link</option><option value="text">Text</option></select>{entry.category === 'media_upload' ? <input type="file" accept="image/*,video/*,audio/*" className="block w-full min-w-0 text-xs text-gray-500 file:mr-2 file:rounded file:border-0 file:bg-indigo-50 file:px-2 file:py-1 file:text-xs file:font-semibold file:text-indigo-700 dark:text-gray-400 dark:file:bg-indigo-950/40 dark:file:text-indigo-300" onChange={(event) => setReviewProofEntries((current) => current.map((item) => item.id === entry.id ? { ...item, value: event.target.files?.[0]?.name || '' } : item))} aria-label={`Upload proof ${index + 1}`} /> : <input type={entry.category === 'link' ? 'url' : 'text'} className="input w-full px-2 py-1.5 text-xs" value={entry.value} onChange={(event) => setReviewProofEntries((current) => current.map((item) => item.id === entry.id ? { ...item, value: event.target.value } : item))} placeholder={entry.category === 'link' ? 'Enter URL' : 'Enter text proof'} aria-label={`Proof value ${index + 1}`} />}</div></div>)}
+          </div>
+          <div className="flex items-center justify-between gap-2"><button type="button" onClick={() => setReviewProofEntries((current) => [...current, { id: Date.now(), category: 'text', value: '' }])} className="rounded-lg border border-indigo-200 px-3 py-2 text-xs font-semibold text-indigo-700 dark:border-indigo-800 dark:text-indigo-300">+ Add proof</button><div className="flex gap-2"><button type="button" disabled={uploadingProof} onClick={() => setUploadProofOpen(false)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold dark:border-gray-700">Cancel</button><button type="button" disabled={uploadingProof} onClick={handleUploadProofs} className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{uploadingProof ? 'Uploading...' : 'Upload'}</button></div></div>
         </div>
       </Modal>
 
