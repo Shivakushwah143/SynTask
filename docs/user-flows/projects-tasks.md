@@ -111,8 +111,9 @@ Time Tracking supports one backend-authoritative active timer per employee. The 
 
 Manual time entry remains available and creates `source=manual` TimeLogs. Manual entries require positive duration, reject excessive duration, and validate task/project/company scope. Deleting a time log now voids it for audit instead of hard-removing history.
 
-Project Overview includes a compact Resources card with four previews and a
-View All modal. Project managers can add/edit/delete dynamic name/value pairs;
+The main Project Workspace overview includes a compact Resources section with
+up to four previews and a View All modal; it is visible before the workspace
+tabs rather than inside the Overview tab. Project managers can add/edit/delete dynamic name/value pairs;
 other authorized members can open safe HTTP(S) links. For quantitative tasks,
 `+/-` changes an unsaved draft and Update opens an optional proof dialog. Skip
 saves quantity alone. Send for Review similarly opens optional proof; Skip still
