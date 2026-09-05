@@ -2271,7 +2271,7 @@ const TaskDetail = () => {
                   <div className="mb-3">
                     <p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">Adjust draft progress</p>
                     <div className="flex gap-2">
-                      {[-1, 1].map((n) => (
+                      {[1, 3, 5, -1].map((n) => (
                         <button
                           key={n}
                           type="button"
@@ -2279,7 +2279,7 @@ const TaskDetail = () => {
                           onClick={() => setProductionCompleted((value) => value + n)}
                           className="flex-1 rounded-lg border border-purple-300 bg-white px-3 py-2 text-sm font-semibold text-purple-700 transition hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-purple-700 dark:bg-gray-800 dark:text-purple-300 dark:hover:bg-purple-900/30"
                         >
-                          {n > 0 ? '+' : '−'}
+                          {n > 0 ? `+${n}` : '−1'}
                         </button>
                       ))}
                     </div>
