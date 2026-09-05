@@ -135,26 +135,26 @@
 //   {
 //     title: 'Agency command center',
 //     subtitle: 'Clients, campaigns, and deadlines at a glance',
-//     image: '/dashboard-preview.png',
+//     image: '/dashboard-preview.webp',
 //     className: 'sm:col-span-2 sm:row-span-2',
 //     objectPosition: 'center top',
 //   },
 //   {
 //     title: 'Content calendar',
 //     subtitle: 'Plan posts, reels, and launch dates',
-//     image: '/dashboard-preview.png',
+//     image: '/dashboard-preview.webp',
 //     objectPosition: 'left center',
 //   },
 //   {
 //     title: 'Creative review',
 //     subtitle: 'Briefs and revisions ready for sign-off',
-//     image: '/dashboard-preview.png',
+//     image: '/dashboard-preview.webp',
 //     objectPosition: 'right center',
 //   },
 //   {
 //     title: 'Client reporting',
 //     subtitle: 'Translate work into results',
-//     image: '/dashboard-preview.png',
+//     image: '/dashboard-preview.webp',
 //     objectPosition: 'center bottom',
 //   },
 //   {
@@ -808,26 +808,26 @@ const galleryCards = [
   {
     title: 'Agency command center',
     subtitle: 'Clients, campaigns, and deadlines at a glance',
-    image: '/dashboard-preview.png',
+    image: '/dashboard-preview.webp',
     className: 'sm:col-span-2 sm:row-span-2',
     objectPosition: 'center top',
   },
   {
     title: 'Content calendar',
     subtitle: 'Plan posts, reels, and launch dates',
-    image: '/dashboard-preview.png',
+    image: '/dashboard-preview.webp',
     objectPosition: 'left center',
   },
   {
     title: 'Creative review',
     subtitle: 'Briefs and revisions ready for sign-off',
-    image: '/dashboard-preview.png',
+    image: '/dashboard-preview.webp',
     objectPosition: 'right center',
   },
   {
     title: 'Client reporting',
     subtitle: 'Translate work into results',
-    image: '/dashboard-preview.png',
+    image: '/dashboard-preview.webp',
     objectPosition: 'center bottom',
   },
   {

@@ -19,11 +19,18 @@ Routes (mounted at ``/api/v1/hr``):
         GET    /hr/documents/{id}                  detail
         PATCH  /hr/documents/{id}                  metadata update
         POST   /hr/documents/{id}/replace          new version (multipart)
+        POST   /hr/documents/{id}/review           HR approve/reject (JSON)
         POST   /hr/documents/{id}/archive          soft delete
         GET    /hr/documents/{id}/versions         version history
         GET    /hr/documents/{id}/preview          authorized inline file
         GET    /hr/documents/{id}/download         authorized download
         GET    /hr/documents/{id}/versions/{version_id}/download
+
+    Employee self-service (authenticated employee identity — never a
+    client-supplied employee id; no HR permission required):
+        GET    /hr/me/documents                    own documents + review state
+        GET    /hr/me/documents/status             required statuses + uploadable types
+        POST   /hr/me/documents                    submit / resubmit (multipart)
 
 Authorization: coarse dependencies gate directory access; the service re-checks
 every per-document permission (ownership, visibility, company scope) so manual
@@ -38,12 +45,14 @@ from app.models.user import User
 from app.schemas.hr_document import (
     HRDocumentListResponse,
     HRDocumentResponse,
+    HRDocumentReviewRequest,
     HRDocumentTypeCreate,
     HRDocumentTypeResponse,
     HRDocumentTypeUpdate,
     HRDocumentUpdate,
     HRDocumentVersionResponse,
     HRMissingRequiredResponse,
+    HRMyDocumentStatusResponse,
 )
 from app.services.hr_document_service import (
     archive_document,
@@ -58,10 +67,14 @@ from app.services.hr_document_service import (
     has_hr_manage,
     list_document_types,
     list_documents,
+    list_my_documents,
     list_versions,
     missing_required_documents,
+    my_document_status,
     replace_document,
+    review_document,
     serialize_document_type,
+    submit_employee_document,
     update_document,
     update_document_type,
     upload_document,
@@ -86,6 +99,69 @@ async def require_hr_document_manage(current_user: User = Depends(get_current_us
     if not await has_hr_manage(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HR document management access required")
     return current_user
+
+
+# =============================================================================
+# Employee self-service (My HR → My Documents)
+#
+# Identity is resolved from the authenticated user on the backend — these
+# endpoints never accept an employee_id, so a normal employee can only ever
+# reach their own documents and can never act as HR.
+# =============================================================================
+
+
+@router.get("/me/documents", response_model=HRDocumentListResponse)
+async def list_my_documents_endpoint(
+    document_type_id: Optional[str] = None,
+    expiry_state: Optional[str] = Query(None, description="no_expiry | valid | expiring_soon | expired"),
+    page: int = 1,
+    page_size: int = 20,
+    current_user: User = Depends(get_current_user),
+):
+    company_id = _company_id(current_user)
+    items, total = await list_my_documents(
+        company_id,
+        current_user,
+        document_type_id=document_type_id,
+        expiry_state=expiry_state,
+        page=page,
+        page_size=page_size,
+    )
+    return HRDocumentListResponse(
+        items=[HRDocumentResponse.model_validate(item) for item in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_next=(page * page_size) < total,
+    )
+
+
+@router.get("/me/documents/status", response_model=HRMyDocumentStatusResponse)
+async def my_document_status_endpoint(
+    current_user: User = Depends(get_current_user),
+):
+    """Required statuses (Missing/Pending/Approved/Rejected) + uploadable types."""
+    data = await my_document_status(_company_id(current_user), current_user)
+    return HRMyDocumentStatusResponse.model_validate(data)
+
+
+@router.post("/me/documents", status_code=status.HTTP_201_CREATED, response_model=HRDocumentResponse)
+async def submit_employee_document_endpoint(
+    document_type_id: str = Form(...),
+    file: UploadFile = File(...),
+    expiry_date: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    """Submit a new document or resubmit a rejected one (self only)."""
+    return await submit_employee_document(
+        _company_id(current_user),
+        current_user,
+        document_type_id=document_type_id,
+        file=file,
+        expiry_date=expiry_date,
+        description=description,
+    )
 
 
 # =============================================================================
@@ -148,6 +224,7 @@ async def list_all_documents_endpoint(
     expiry_state: Optional[str] = Query(None, description="no_expiry | valid | expiring_soon | expired"),
     status: Optional[str] = Query(None, alias="status", description="active | archived"),
     visibility: Optional[str] = None,
+    review_status: Optional[str] = Query(None, description="pending | approved | rejected"),
     search: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
@@ -158,18 +235,16 @@ async def list_all_documents_endpoint(
     items, total = await list_documents(
         company_id,
         current_user,
+        owner_type=owner_type,
         document_type_id=document_type_id,
         expiry_state=expiry_state,
         status_filter=status,
         visibility=visibility,
+        review_status=review_status,
         search=search,
         page=page,
         page_size=page_size,
     )
-    if owner_type == "employee":
-        items = [item for item in items if item["owner_type"] == "employee"]
-    elif owner_type == "candidate":
-        items = [item for item in items if item["owner_type"] == "candidate"]
     return HRDocumentListResponse(
         items=[HRDocumentResponse.model_validate(item) for item in items],
         total=total,
@@ -186,6 +261,7 @@ async def list_employee_documents_endpoint(
     expiry_state: Optional[str] = Query(None, description="no_expiry | valid | expiring_soon | expired"),
     status: Optional[str] = Query(None, alias="status", description="active | archived"),
     visibility: Optional[str] = None,
+    review_status: Optional[str] = Query(None, description="pending | approved | rejected"),
     page: int = 1,
     page_size: int = 20,
     current_user: User = Depends(get_current_user),
@@ -199,6 +275,7 @@ async def list_employee_documents_endpoint(
         expiry_state=expiry_state,
         status_filter=status,
         visibility=visibility,
+        review_status=review_status,
         page=page,
         page_size=page_size,
     )
@@ -249,6 +326,7 @@ async def list_candidate_documents_endpoint(
     expiry_state: Optional[str] = Query(None, description="no_expiry | valid | expiring_soon | expired"),
     status: Optional[str] = Query(None, alias="status", description="active | archived"),
     visibility: Optional[str] = None,
+    review_status: Optional[str] = Query(None, description="pending | approved | rejected"),
     page: int = 1,
     page_size: int = 20,
     current_user: User = Depends(require_hr_document_view),
@@ -262,6 +340,7 @@ async def list_candidate_documents_endpoint(
         expiry_state=expiry_state,
         status_filter=status,
         visibility=visibility,
+        review_status=review_status,
         page=page,
         page_size=page_size,
     )
@@ -336,6 +415,26 @@ async def replace_document_endpoint(
         expiry_date=expiry_date,
         description=description,
         visibility=visibility,
+    )
+
+
+@router.post("/documents/{document_id}/review", response_model=HRDocumentResponse)
+async def review_document_endpoint(
+    document_id: str,
+    payload: HRDocumentReviewRequest,
+    current_user: User = Depends(require_hr_document_manage),
+):
+    """HR reviews a pending employee submission (approve | reject + reason).
+
+    Gated by the manage dependency — normal employees (including the document
+    owner) can never approve or reject, even their own submissions.
+    """
+    return await review_document(
+        _company_id(current_user),
+        current_user,
+        document_id,
+        action=payload.action,
+        note=payload.note,
     )
 
 

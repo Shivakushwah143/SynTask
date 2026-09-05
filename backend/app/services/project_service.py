@@ -380,7 +380,7 @@ class ProjectService:
         reports, and CRM/sales records that merely reference the project.
         """
         from app.core import database
-        from app.core.cache import cache_delete, cache_delete_pattern, project_list_key
+        from app.core.cache import cache_delete, cache_delete_pattern, company_dashboard_pattern, project_list_key
 
         company_id = str(project.company_id)
         actor_id = str(getattr(current_user, "id", "") or "")
@@ -430,7 +430,7 @@ class ProjectService:
         # 5. Cache invalidation.
         try:
             await cache_delete(project_list_key(company_id))
-            await cache_delete_pattern(f"dashboard:stats:{company_id}:*")
+            await cache_delete_pattern(company_dashboard_pattern(company_id))
         except Exception as exc:  # pragma: no cover - cache is best-effort
             logger.warning("Project delete cache invalidation failed: %s", exc)
 
@@ -713,7 +713,7 @@ class ProjectService:
             validate_project_assignees,
             project_list_key,
         )
-        from app.core.cache import cache_delete, cache_delete_pattern
+        from app.core.cache import cache_delete, cache_delete_pattern, company_dashboard_pattern
         from datetime import datetime
 
         if not await can_create_project(current_user):
@@ -838,7 +838,7 @@ class ProjectService:
         project.project_id = final_project_id
         await project.insert()
         await cache_delete(project_list_key(current_user.company_id))
-        await cache_delete_pattern(f"dashboard:stats:{current_user.company_id}:*")
+        await cache_delete_pattern(company_dashboard_pattern(str(current_user.company_id)))
         
         try:
             from app.core.database import get_database

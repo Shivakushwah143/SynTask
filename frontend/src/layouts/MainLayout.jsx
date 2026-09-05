@@ -1,10 +1,10 @@
-import { useCallback, useState } from 'react'
+import { lazy, useCallback, Suspense, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import Header from '../components/Header'
-import { GlobalSearch } from '../components/GlobalSearch'
-import { CommandPalette } from '../components/CommandPalette'
-import { AIAssistantDialog } from '../components/ai/AIAssistantDialog'
+const GlobalSearch = lazy(() => import('../components/GlobalSearch').then(m => ({ default: m.GlobalSearch })))
+const CommandPalette = lazy(() => import('../components/CommandPalette').then(m => ({ default: m.CommandPalette })))
+const AIAssistantDialog = lazy(() => import('../components/ai/AIAssistantDialog').then(m => ({ default: m.AIAssistantDialog })))
 import { SynzinHelpPrompt } from '../components/ai/SynzinHelpPrompt'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
 import ReminderToastListener from '../components/ReminderToastListener'
@@ -277,10 +277,12 @@ const MainLayout = () => {
           </div>
         </div>
 
-        {/* Modals */}
-        <GlobalSearch isOpen={searchOpen} onClose={closeSearch} />
-        <CommandPalette isOpen={commandOpen} onClose={closeCommand} />
-        <AIAssistantDialog isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} />
+        {/* Modals — lazy-loaded so their bundles don't block initial render */}
+        <Suspense fallback={null}>
+          <GlobalSearch isOpen={searchOpen} onClose={closeSearch} />
+          <CommandPalette isOpen={commandOpen} onClose={closeCommand} />
+          <AIAssistantDialog isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} />
+        </Suspense>
         <SynzinHelpPrompt
           isOpen={synzinPromptOpen && !assistantOpen}
           onAsk={() => {

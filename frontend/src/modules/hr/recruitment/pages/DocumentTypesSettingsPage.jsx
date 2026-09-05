@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { FileText, Loader2, Pencil, Plus, RefreshCw, Settings2, X } from 'lucide-react'
 
 import { Button, ConfirmDialog, EmptyState, Modal, PageHeader, inputClassName } from '../../../../components/ui'
-import { hrDocumentsApi } from '../../../../api/hrDocuments'
+import { hrDocumentsApi, normalizeDocumentTypesResponse } from '../../../../api/hrDocuments'
 import { OWNER_SCOPE_LABELS, OWNER_SCOPE_OPTIONS, VISIBILITY_LABELS, VISIBILITY_OPTIONS } from '../utils/documents'
 
 const selectClassName = inputClassName
@@ -17,6 +17,7 @@ const EMPTY_FORM = {
   required: false,
   expiry_supported: true,
   default_visibility: 'employee_visible',
+  employee_upload_allowed: false,
 }
 
 /**
@@ -34,7 +35,7 @@ export default function DocumentTypesSettingsPage() {
   const [deactivateLoading, setDeactivateLoading] = useState(false)
 
   const query = useQuery(['hr-document-types', 'settings'], () => hrDocumentsApi.listTypes({ include_inactive: true }))
-  const types = query.data?.data?.data || query.data?.data || []
+  const types = normalizeDocumentTypesResponse(query.data)
 
   const invalidate = () => queryClient.invalidateQueries(['hr-document-types'])
 
@@ -55,6 +56,7 @@ export default function DocumentTypesSettingsPage() {
       required: Boolean(type.required),
       expiry_supported: type.expiry_supported !== false,
       default_visibility: type.default_visibility || 'employee_visible',
+      employee_upload_allowed: Boolean(type.employee_upload_allowed),
     })
     setErrors({})
   }
@@ -172,6 +174,7 @@ export default function DocumentTypesSettingsPage() {
                       <div className="flex flex-wrap gap-1">
                         {type.required ? <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">Required</span> : null}
                         {type.expiry_supported ? <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">Expiry</span> : null}
+                        {type.employee_upload_allowed ? <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">Employee upload</span> : null}
                         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700/40 dark:text-gray-300">
                           {VISIBILITY_LABELS[type.default_visibility] || 'Employee visible'}
                         </span>
@@ -276,7 +279,15 @@ export default function DocumentTypesSettingsPage() {
               <input type="checkbox" checked={form?.expiry_supported !== false} onChange={(event) => setField('expiry_supported', event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
               Supports expiry date
             </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input type="checkbox" checked={Boolean(form?.employee_upload_allowed)} onChange={(event) => setField('employee_upload_allowed', event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
+              Employees can upload
+            </label>
           </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Employee-submitted documents go to HR for review before approval. Only employee-visible types can be
+            enabled; the type must apply to employees.
+          </p>
         </form>
       </Modal>
 

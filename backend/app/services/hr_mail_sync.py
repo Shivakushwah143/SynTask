@@ -311,7 +311,12 @@ async def run_imap_recruitment_sync_loop() -> None:
         settings.IMAP_TARGET_COMPANY_EMAIL or "unknown-company",
         settings.IMAP_FOLDER,
     )
+    poll_seconds = max(30, int(settings.IMAP_POLL_SECONDS))
+    from app.core.leader import try_acquire_leader
     while True:
+        if not await try_acquire_leader("imap_recruitment_sync", ttl_seconds=max(20, poll_seconds - 10)):
+            await asyncio.sleep(poll_seconds)
+            continue
         try:
             saved = await sync_inbox_once()
             if saved["synced_count"]:
@@ -320,4 +325,4 @@ async def run_imap_recruitment_sync_loop() -> None:
             raise
         except Exception:
             logger.exception("IMAP recruitment sync failed")
-        await asyncio.sleep(max(30, int(settings.IMAP_POLL_SECONDS)))
+        await asyncio.sleep(poll_seconds)

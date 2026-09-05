@@ -49,9 +49,9 @@ export const SECTION_OVERVIEWS = {
   },
   people: {
     title: "People Operations",
-    description: "Manage employees, teams, departments, attendance, leave, and people reporting.",
-    stats: ["Employees", "Attendance", "Leave", "Departments"],
-    actions: ["Open employees", "Review attendance", "Manage leave", "View departments"],
+    description: "Manage employee profiles, HR documents, teams, departments, attendance, leave, and people reporting.",
+    stats: ["Employees", "Documents", "Attendance", "Leave"],
+    actions: ["Open employees", "Review documents", "Review attendance", "Manage leave"],
   },
   recruitment: {
     title: "Recruitment Center",
@@ -76,6 +76,12 @@ export const SECTION_OVERVIEWS = {
     description: "Control user settings, permissions, automation, connected accounts, and system activity.",
     stats: ["Settings", "Permissions", "Automation", "Connections"],
     actions: ["Open settings", "Manage roles", "Connect apps", "Review logs"],
+  },
+  me: {
+    title: "My HR",
+    description: "Your personal HR workspace: own profile, attendance, leave, documents, and salary & payslips — with the same business rules as the HR modules behind them.",
+    stats: ["My profile", "My attendance", "My leave", "My payslips"],
+    actions: ["Open overview", "View profile", "Check attendance", "See payslips"],
   },
 };
 
@@ -251,9 +257,24 @@ export const ITEM_OVERVIEWS = {
     badges: ["Content", "AI"],
   },
   Employees: {
-    description: "Manage company users, roles, reporting structure, status, and user access.",
-    examples: ["Create employee", "Update role", "Review team"],
+    description: "Manage employee HR profiles, employment information, departments, designations, and joining details.",
+    examples: ["Search employees", "Open profile", "Edit employment", "Convert candidate"],
+    badges: ["HR", "Profiles"],
+  },
+  "User Accounts": {
+    description: "Manage company users, roles, reporting structure, account status, and user access.",
+    examples: ["Create user", "Update role", "Review team"],
     badges: ["People", "Admin"],
+  },
+  Documents: {
+    description: "Review employee and candidate HR documents company-wide: uploads, expiry, versions, and visibility.",
+    examples: ["Preview document", "Filter by type", "Check expiry", "Download file"],
+    badges: ["HR", "Documents"],
+  },
+  "Document Types": {
+    description: "Configure the HR document types available for employee and candidate uploads.",
+    examples: ["Create type", "Set required", "Deactivate type", "Manage visibility"],
+    badges: ["HR", "Settings"],
   },
   "My People": {
     description: "Review direct team members, their work context, and people you lead.",
@@ -274,6 +295,31 @@ export const ITEM_OVERVIEWS = {
     description: "Analyze attendance history, summaries, trends, and workforce presence data.",
     examples: ["Open report", "Filter dates", "Export data"],
     badges: ["Reports", "People"],
+  },
+  "Attendance Corrections": {
+    description: "Review and approve employee attendance correction requests.",
+    examples: ["Review corrections", "Approve requests", "Check history"],
+    badges: ["Corrections", "Admin"],
+  },
+  "Attendance Policy": {
+    description: "Configure company attendance rules, work schedule, timezone, grace periods, and overtime.",
+    examples: ["Set work hours", "Configure grace period", "Enable overtime"],
+    badges: ["Policy", "HR Settings"],
+  },
+  Holidays: {
+    description: "Manage company holiday calendar that affects attendance status and payroll.",
+    examples: ["Add holiday", "Edit holiday", "View calendar"],
+    badges: ["Calendar", "HR Settings"],
+  },
+  "Salary Components": {
+    description: "Configure earning and deduction components used in salary structures.",
+    examples: ["Create component", "Set type", "Manage defaults"],
+    badges: ["Salary", "HR Settings"],
+  },
+  Payroll: {
+    description: "Manage monthly payroll periods, calculate salaries, review, approve, process payroll, and generate secure employee payslip PDFs.",
+    examples: ["Create period", "Calculate payroll", "Approve payroll", "Generate payslips", "Preview / download payslip"],
+    badges: ["Payroll", "Finance"],
   },
   "Leave Management": {
     description: "Request, review, approve, forward, and track employee leave workflows.",
@@ -385,6 +431,41 @@ export const ITEM_OVERVIEWS = {
     examples: ["Review logs", "Filter actor", "Audit change"],
     badges: ["Audit", "History"],
   },
+  "My Profile": {
+    description: "View your employment information and update your personal contact and address details.",
+    examples: ["View employment", "Edit contact", "Update address"],
+    badges: ["Self-Service", "Profile"],
+  },
+  "My Attendance": {
+    description: "Check in, take breaks, check out, review your attendance history, and request corrections.",
+    examples: ["Check in", "Take break", "Review history", "Request correction"],
+    badges: ["Self-Service", "Attendance"],
+  },
+  "My Leave": {
+    description: "See your leave balances, request leave, and track or cancel your requests.",
+    examples: ["View balance", "Request leave", "Track status", "Cancel request"],
+    badges: ["Self-Service", "Leave"],
+  },
+  "My Documents": {
+    description: "Preview and download your employee-visible HR documents.",
+    examples: ["Preview document", "Download file", "Check expiry"],
+    badges: ["Self-Service", "Documents"],
+  },
+  "My Payslips": {
+    description: "View your current salary summary and preview or download your generated payslips.",
+    examples: ["View salary", "Preview payslip", "Download payslip"],
+    badges: ["Self-Service", "Payroll"],
+  },
+  "HR Dashboard": {
+    description: "Operational HR overview: employee headcount, attendance today, leave status, document alerts, lifecycle signals, and recruitment summary.",
+    examples: ["View metrics", "Check attention items", "Navigate to reports"],
+    badges: ["Dashboard", "HR"],
+  },
+  "HR Reports": {
+    description: "Filterable operational HR reports across employees, attendance, leave, documents, lifecycle, and payroll with CSV export.",
+    examples: ["Filter report", "Export CSV", "View department data"],
+    badges: ["Reports", "HR"],
+  },
 };
 
 export const getItemOverview = (item) => ITEM_OVERVIEWS[item.name] || {
@@ -455,10 +536,22 @@ export const ITEM_INSIGHTS = {
     queryHints: ["calendar", "events", "crm"],
   },
   Employees: {
-    metrics: ["Employees", "Present today", "On leave", "New joiners"],
-    alerts: ["Inactive users", "Access changes pending"],
+    metrics: ["Employees", "Active", "Probation", "Onboarding"],
+    alerts: ["Profiles missing", "Probation ending"],
     actions: ["Add Employee", "Directory", "Attendance"],
-    queryHints: ["users", "employees"],
+    queryHints: ["employees"],
+  },
+  "User Accounts": {
+    metrics: ["Users", "Active", "Managers", "Leads"],
+    alerts: ["Inactive users", "Access changes pending"],
+    actions: ["Add User", "Directory", "Roles"],
+    queryHints: ["users"],
+  },
+  Documents: {
+    metrics: ["Documents", "Expiring soon", "Expired", "Versions"],
+    alerts: ["Documents expiring", "Required docs missing"],
+    actions: ["Upload", "Preview", "Settings"],
+    queryHints: ["hr-documents", "documents"],
   },
   Attendance: {
     metrics: ["Present", "Late arrivals", "Missing punches", "Attendance %"],

@@ -7,6 +7,7 @@ import httpx
 
 from app.ai.provider import AIProvider, AIProviderResult
 from app.ai.providers.context_envelope import provider_context_message
+from app.ai.providers.http_client import get_shared_client
 from app.core.config import settings
 
 
@@ -36,18 +37,18 @@ class OpenAIProvider(AIProvider):
         if response_format:
             payload["response_format"] = response_format
 
-        timeout = httpx.Timeout(settings.AI_TIMEOUT)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                self.base_url,
-                headers={
-                    "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                content=json.dumps(payload),
-            )
-            response.raise_for_status()
-            data = response.json()
+        # Shared keep-alive client — avoids a fresh TCP+TLS handshake per call.
+        client = get_shared_client(timeout=httpx.Timeout(settings.AI_TIMEOUT))
+        response = await client.post(
+            self.base_url,
+            headers={
+                "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            content=json.dumps(payload),
+        )
+        response.raise_for_status()
+        data = response.json()
 
         choice = (data.get("choices") or [{}])[0]
         message = choice.get("message") or {}

@@ -2,7 +2,7 @@
 Application Configuration
 """
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from typing import List, Optional
 from functools import lru_cache
 
@@ -162,6 +162,16 @@ class Settings(BaseSettings):
     CLOUDINARY_API_SECRET: Optional[str] = None
     CLOUDINARY_UPLOAD_FOLDER: str = "syntask"
     STORAGE_BACKEND: str = "cloudinary"
+
+    @field_validator(
+        "CLOUDINARY_CLOUD_NAME",
+        "CLOUDINARY_API_KEY",
+        "CLOUDINARY_API_SECRET",
+        mode="after",
+    )
+    @classmethod
+    def _strip_cloudinary_whitespace(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() if isinstance(v, str) else v
     
     # Redis (for caching and Celery)
     REDIS_URL: str = Field(..., description="Redis URL for token blacklist and rate limiting.")
@@ -173,6 +183,7 @@ class Settings(BaseSettings):
     REDIS_RETRY_ATTEMPTS: int = 3
     REDIS_RETRY_BASE_DELAY_SECONDS: float = 0.2
     DASHBOARD_CACHE_TTL: int = Field(30, description="Cache TTL for dashboard payloads (seconds)")
+    SEARCH_CACHE_TTL: int = Field(15, description="Cache TTL for global search results (seconds)")
 
     # Celery (Background tasks)
     CELERY_BROKER_URL: Optional[str] = None
@@ -194,6 +205,35 @@ class Settings(BaseSettings):
     META_LEAD_FORM_ID: Optional[str] = None
     META_WHATSAPP_BUSINESS_ID: Optional[str] = None
     
+    # eTimeOffice biometric attendance integration (server-side only).
+    # Credentials live in backend environment variables and are never exposed
+    # to the frontend, through APIs, in logs, or in source code.
+    ETIMEOFFICE_ENABLED: bool = False
+    ETIMEOFFICE_WEB_BASE_URL: str = "https://etimeoffice.com"
+    # Evidence-proven machine-data API base (vendors/API docs all point here).
+    ETIMEOFFICE_API_BASE_URL: str = "https://api.etimeoffice.com/api"
+    ETIMEOFFICE_CORPORATE_ID: Optional[str] = None
+    ETIMEOFFICE_USERNAME: Optional[str] = None
+    ETIMEOFFICE_PASSWORD: Optional[str] = None
+    # Timezone of the eTimeOffice corporate clock (device wall times). Wall
+    # clock times from the API are interpreted in this zone and stored as UTC.
+    # Set to the company's actual timezone; it must match what HR users see.
+    ETIMEOFFICE_TIMEZONE: str = "Asia/Kolkata"
+    # Background automatic sync interval (seconds); manual sync always allowed.
+    ETIMEOFFICE_SYNC_INTERVAL_SECONDS: int = 180
+    # Default look-back window for a sync when no explicit range is supplied.
+    ETIMEOFFICE_SYNC_LOOKBACK_DAYS: int = 7
+
+    @property
+    def etimeoffice_configured(self) -> bool:
+        """True when credentials are fully present (value checks only)."""
+        return bool(
+            self.ETIMEOFFICE_ENABLED
+            and self.ETIMEOFFICE_CORPORATE_ID
+            and self.ETIMEOFFICE_USERNAME
+            and self.ETIMEOFFICE_PASSWORD
+        )
+
     # Pagination
     DEFAULT_PAGE_SIZE: int = 20
     MAX_PAGE_SIZE: int = 500
@@ -215,6 +255,7 @@ class Settings(BaseSettings):
     AI_MAX_TOKENS: int = 500
     AI_TEMPERATURE: float = 0.2
     AI_MODEL_GROQ: str = "llama-3.1-70b-versatile"
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
     AI_MODEL_OPENAI: str = "gpt-4o-mini"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     OPENAI_EMBEDDING_DIMENSIONS: int = 1536
@@ -260,8 +301,8 @@ class Settings(BaseSettings):
     RAG_CSV_MAX_ROWS: int = 10000
 
     # Shared Agent Platform foundation
-    AGENT_PLATFORM_ENABLED: bool = False
-    PROJECT_AGENT_ENABLED: bool = False
+    AGENT_PLATFORM_ENABLED: bool = True
+    PROJECT_AGENT_ENABLED: bool = True
     EMAIL_DRAFT_AGENT_ENABLED: bool = False
     TASK_PERFORMANCE_AGENT_ENABLED: bool = False
     AGENT_RUN_RETENTION_DAYS: int = 90
@@ -272,6 +313,16 @@ class Settings(BaseSettings):
     AGENT_DEFAULT_RUN_TIMEOUT_SECONDS: int = 30
     AGENT_DEFAULT_MAX_TOKENS_PER_RUN: int = 4000
     AGENT_DEFAULT_MAX_COST_PER_RUN: float = 1.0
+
+    # HR Agent
+    HR_AGENT_ENABLED: bool = True
+    HR_AGENT_MAX_STEPS: int = 15
+    HR_AGENT_MODEL: str = ""  # falls back to AI_MODEL_GROQ when empty
+
+    # Executive Operations Agent
+    EXECUTIVE_AGENT_ENABLED: bool = True
+    EXECUTIVE_AGENT_MAX_STEPS: int = 20
+    EXECUTIVE_AGENT_MODEL: str = ""  # falls back to AI_MODEL_GROQ when empty
 
     # Super Admin
     SUPER_ADMIN_EMAIL: str = Field(..., description="Super admin bootstrap email address.")

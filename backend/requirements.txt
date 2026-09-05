@@ -37,6 +37,7 @@ razorpay==1.4.2
 
 # File Upload & Storage
 boto3==1.34.26
+cloudinary==1.46.2
 Pillow>=11.0.0,<12.0.0
 
 # Task Queue & Background Jobs

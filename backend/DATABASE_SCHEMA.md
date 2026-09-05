@@ -10,6 +10,8 @@ Recruitment models under `backend/app/recruitment/models.py` also define tenant-
 
 | Collection | Model Class(es) | Purpose |
 |---|---|---|
+| `attendance` | Attendance, AttendanceSession, BreakLog, MonitoringSession, CameraSession, ScreenShareSession, AttendancePolicy, Holiday, AttendanceCorrectionRequest | Attendance check-in/out records, sessions, breaks, monitoring, policies, holidays, correction requests. Attendance rows carry an optional `source` marker (`etimeoffice` when written by the biometric sync). |
+| `attendance_sync_states` | ETimeOfficeSyncState | Company-scoped runtime state of the eTimeOffice biometric attendance sync (connection health, last run summary, in-flight guard). Never stores credentials. |
 | `automation_executions` | AutomationExecution | AutomationExecution persistence collection. |
 | `automation_rules` | AutomationRule | AutomationRule persistence collection. |
 | `billing_transactions` | BillingTransaction | Billing invoices, payment state, Razorpay metadata. |
@@ -1899,6 +1901,39 @@ Indexes: `['company_id', 'project_id', 'is_active']`
 | `created_at` | `datetime.datetime` | No | No | Creation timestamp |
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 | `created_by` | `str` | Yes | No | Model field |
+
+### `attendance`
+
+#### Model: `Attendance` (fields relevant to the eTimeOffice sync)
+
+Indexes: `['employee_id', 'company_id', 'date', 'status', unique (company_id, employee_id, date)]`
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `employee_id` | `str` | Yes | Yes | SynTask User id (the employee). |
+| `company_id` | `str` | Yes | Yes | Tenant scope key; every query must filter by it. |
+| `date` | `str` (`YYYY-MM-DD`) | Yes | Yes | Calendar day in the company timezone. |
+| `login_time` / `logout_time` | `datetime.datetime` | No | No | Naive-UTC check-in/out instants (converted from the device wall clock in `ETIMEOFFICE_TIMEZONE`). |
+| `total_working_hours` / `break_duration` | `float` | Yes | No | Seconds (work excludes break time, matching vendor arithmetic). |
+| `status` | `AttendanceStatus` | Yes | Yes | `Checked Out` for closed days, `Working` for an in-progress day. |
+| `source` | `Optional[str]` | No | No | `None` (manual app check-in) or `etimeoffice` (biometric sync). The sync never overwrites manual records and manual flows never overwrite biometric records. |
+| `external_employee_code` | `Optional[str]` | No | No | Provider employee identifier (eTimeOffice `Empcode`) that produced the record — audit/reconciliation only, never RBAC. Employees appear in rows for the employee they were mapped to when the row was synced; reassignment of historical rows is an audited one-time operation (`scripts/reconcile_etimeoffice_mappings.py`). |
+
+### `etimeoffice_employee_mappings`
+
+#### Model: `ETimeOfficeEmployeeMapping`
+
+Indexes: `unique (company_id, provider, external_employee_code)`; `unique (company_id, provider, employee_id)` (partial — only when `employee_id` is set, so one SynTask employee maps to at most one eTimeOffice code).
+
+One document per eTimeOffice employee of a company. `external_employee_name` is directory metadata refreshed from every provider fetch (never used for resolution); `employee_id` (SynTask User id) is set only when HR explicitly confirms the mapping in the Attendance UI. Attendance sync resolves punches **only** through this table — numeric-suffix inference from `employee_number` was removed. Company B can never see or map Company A's rows.
+
+### `attendance_sync_states`
+
+#### Model: `ETimeOfficeSyncState`
+
+Indexes: `unique (company_id, provider)`
+
+One document per (company, `etimeoffice` provider). Stores only safe metadata: `connected`, `last_attempted_at`, `last_successful_at`, `last_error`, `last_summary` (last run outcome), and the `syncing` in-flight guard. Credentials, cookies, CSRF tokens, and session ids are never stored.
 
 ## Relationships Diagram
 

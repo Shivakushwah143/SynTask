@@ -45,6 +45,7 @@ import {
 import { projectsApi } from "../api/projects";
 import { meetingsApi } from "../api/meetings";
 import { usersAPI } from "../api/users";
+import { PRODUCT_PREVIEW } from "../config/visualAssets";
 import { useAuthStore } from "../store/authStore";
 import { hasCompanyAdminAccess, isLeadRole } from "../utils/roles";
 import toast from "react-hot-toast";
@@ -107,6 +108,30 @@ const clearClientFormDraft = () => {
 };
 
 const CLIENT_PAGE_SIZE = 20;
+
+/* Company monogram helpers — deterministic colors from the client name so the
+   same company always renders the same avatar tone. */
+const MONOGRAM_COLORS = [
+  'from-indigo-500 to-purple-600',
+  'from-emerald-500 to-teal-600',
+  'from-orange-500 to-amber-600',
+  'from-blue-500 to-cyan-600',
+  'from-rose-500 to-pink-600',
+  'from-violet-500 to-fuchsia-600',
+];
+const getMonogram = (name) =>
+  (name || 'C')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+const getMonogramColor = (name) => {
+  const hash = [...(name || 'C')].reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  return MONOGRAM_COLORS[hash % MONOGRAM_COLORS.length];
+};
 
 const getTomorrowDateValue = () => {
   const date = timeService.now();
@@ -1545,6 +1570,8 @@ const Clients = () => {
       ) : filteredClients.length === 0 ? (
         <EmptyState
           icon={Briefcase}
+          image={PRODUCT_PREVIEW.src}
+          imageAlt="SynTask client workspace preview"
           title="No clients found"
           description="Create a client to link projects, budgets, and documents."
           action={
@@ -1591,8 +1618,8 @@ const Clients = () => {
                     >
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-xs font-bold text-white shadow-sm">
-                            {displayName[0]?.toUpperCase() || "C"}
+                          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-[11px] font-bold text-white shadow-sm ${getMonogramColor(displayName)}`}>
+                            {getMonogram(displayName)}
                           </div>
                           <div>
                             <div className="text-xs font-bold text-gray-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400 transition">

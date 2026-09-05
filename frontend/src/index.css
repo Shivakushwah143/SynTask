@@ -32,6 +32,12 @@
   50% { opacity: 0.6; transform: scale(1.08); }
 }
 
+/* Executive Assistant streaming-dot indicator (subtle, non-blocking). */
+@keyframes exec-pulse {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
+}
+
 .animate-float-slow { animation: float-slow 4s ease-in-out infinite; }
 .animate-float-delayed { animation: float-delayed 4s ease-in-out infinite; }
 .animate-pulse-glow { animation: pulse-glow 3.5s ease-in-out infinite; }

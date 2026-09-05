@@ -1,3 +1,4 @@
+import inspect
 import re
 from datetime import datetime, timedelta
 
@@ -24,6 +25,112 @@ from app.services.project_lifecycle import (
 )
 
 router = APIRouter()
+
+
+async def _batch_project_task_counts(projects: list) -> dict:
+    """Count tasks per listed project in ONE aggregation.
+
+    Mirrors the previous per-project query semantics exactly: a task links to a
+    project through either the user-provided logical ``project_id`` or the
+    MongoDB ``_id`` as a string (backward compatibility), scoped to that
+    project's company. On any aggregation failure (e.g. mocked collections in
+    tests) it falls back to the original per-project ``.count()`` loop so
+    behavior never regresses.
+    """
+    if not projects:
+        return {}
+
+    # Candidate (company_id, project_id-string) pairs each project is linked by.
+    conditions = []
+    per_project = {}
+    for project in projects:
+        logical = project.project_id if project.project_id else str(project.id)
+        candidates = list(dict.fromkeys([logical, str(project.id)]))
+        per_project[str(project.id)] = candidates
+        for candidate in candidates:
+            conditions.append({"company_id": project.company_id, "project_id": candidate})
+
+    try:
+        pipeline = [
+            {"$match": {"$or": conditions}},
+            {"$group": {"_id": {"company_id": "$company_id", "project_id": "$project_id"}, "count": {"$sum": 1}}},
+        ]
+        cursor = Task.get_pymongo_collection().aggregate(pipeline)
+        if inspect.isawaitable(cursor):
+            cursor = await cursor
+        if hasattr(cursor, "to_list"):
+            result = cursor.to_list(length=100000)
+            if inspect.isawaitable(result):
+                rows = await result
+            else:
+                rows = list(result)
+        else:
+            rows = [row async for row in cursor]
+    except Exception:
+        # Fall back to the original per-project count query.
+        counts = {}
+        for project in projects:
+            project_id_for_query = project.project_id if project.project_id else str(project.id)
+            counts[str(project.id)] = await Task.find({
+                "$or": [
+                    {"project_id": project_id_for_query},
+                    {"project_id": str(project.id)},
+                ],
+                "company_id": project.company_id,
+            }).count()
+        return counts
+
+    grouped = {}
+    for row in rows:
+        key = row.get("_id") or {}
+        grouped[(key.get("company_id"), key.get("project_id"))] = row.get("count", 0)
+
+    return {
+        str(project.id): sum(
+            grouped.get((project.company_id, candidate), 0)
+            for candidate in per_project[str(project.id)]
+        )
+        for project in projects
+    }
+
+
+async def _batch_project_users(projects: list) -> dict:
+    """Resolve every project assignee and owner on the page in one query."""
+    assignee_ids = []
+    for project in projects:
+        assignee_ids.extend(project_assignee_ids(project))
+        if getattr(project, "lead_id", None):
+            assignee_ids.append(str(project.lead_id))
+    valid_ids = [ObjectId(uid) for uid in dict.fromkeys(assignee_ids) if ObjectId.is_valid(uid)]
+    if not valid_ids:
+        return {}
+    try:
+        users = await User.find({"_id": {"$in": valid_ids}}).to_list()
+        return {str(user.id): user for user in users}
+    except Exception:
+        # Fall back to the original per-assignee lookups on mocked collections.
+        users_by_id = {}
+        for user_id in dict.fromkeys(assignee_ids):
+            try:
+                user = await User.get(user_id)
+                if user:
+                    users_by_id[str(user.id)] = user
+            except Exception:
+                continue
+        return users_by_id
+
+
+async def _batch_project_clients(projects: list) -> dict:
+    """Resolve every valid client referenced by the page in one query."""
+    client_ids = {
+        str(project.client_id)
+        for project in projects
+        if getattr(project, "client_id", None) and ObjectId.is_valid(str(project.client_id))
+    }
+    if not client_ids:
+        return {}
+    clients = await Client.find({"_id": {"$in": [ObjectId(client_id) for client_id in client_ids]}}).to_list()
+    return {str(client.id): client for client in clients}
 
 
 def serialize_scheduled_project_placeholder(job: ScheduledJob) -> dict:
@@ -214,7 +321,13 @@ async def load_project_tasks(project: Project) -> list:
     return await Task.find(project_task_identity_filter(project)).to_list()
 
 
-async def _serialize_project_row(project: Project, project_tasks=None) -> dict:
+async def _serialize_project_row(
+    project: Project,
+    project_tasks=None,
+    *,
+    users_by_id: Optional[dict] = None,
+    clients_by_id: Optional[dict] = None,
+) -> dict:
     if project_tasks is None:
         project_tasks = await load_project_tasks(project)
     task_count = len(project_tasks)
@@ -223,11 +336,27 @@ async def _serialize_project_row(project: Project, project_tasks=None) -> dict:
     assigned_ids = project_assignee_ids(project)
     assigned_users = []
     for user_id in assigned_ids:
-        assigned_user = await User.get(user_id)
+        assigned_user = (
+            users_by_id.get(str(user_id))
+            if users_by_id is not None
+            else await User.get(user_id)
+        )
         if assigned_user:
             assigned_users.append({"id": str(assigned_user.id), "name": assigned_user.full_name(), "role": assigned_user.role.value})
-    owner = await User.get(project.lead_id) if getattr(project, "lead_id", None) and ObjectId.is_valid(str(project.lead_id)) else None
-    client = await Client.get(project.client_id) if getattr(project, "client_id", None) and ObjectId.is_valid(str(project.client_id)) else None
+    owner = None
+    if getattr(project, "lead_id", None) and ObjectId.is_valid(str(project.lead_id)):
+        owner = (
+            users_by_id.get(str(project.lead_id))
+            if users_by_id is not None
+            else await User.get(project.lead_id)
+        )
+    client = None
+    if getattr(project, "client_id", None) and ObjectId.is_valid(str(project.client_id)):
+        client = (
+            clients_by_id.get(str(project.client_id))
+            if clients_by_id is not None
+            else await Client.get(project.client_id)
+        )
 
     # Calculate days until delivery
     days_until_delivery = None
@@ -431,13 +560,32 @@ async def list_projects(
             item[0].delivery_date if item[0].delivery_date else datetime.max,
         ))
         page_items = enriched[skip:skip + limit]
+        page_projects = [project for project, _health, _tasks in page_items]
+        users_by_id = await _batch_project_users(page_projects)
+        clients_by_id = await _batch_project_clients(page_projects)
         projects_with_stats = [
-            await _serialize_project_row(project, project_tasks=project_tasks)
+            await _serialize_project_row(
+                project,
+                project_tasks=project_tasks,
+                users_by_id=users_by_id,
+                clients_by_id=clients_by_id,
+            )
             for project, _health, project_tasks in page_items
         ]
     else:
         projects = await Project.find(query).skip(skip).limit(limit).sort("-created_at").to_list()
-        projects_with_stats = [await _serialize_project_row(project) for project in projects]
+        grouped = await _group_project_tasks(projects)
+        users_by_id = await _batch_project_users(projects)
+        clients_by_id = await _batch_project_clients(projects)
+        projects_with_stats = [
+            await _serialize_project_row(
+                project,
+                project_tasks=grouped.get(str(project.id), []),
+                users_by_id=users_by_id,
+                clients_by_id=clients_by_id,
+            )
+            for project in projects
+        ]
         total = await Project.find(query).count()
 
     projects_with_stats.sort(key=lambda x: (

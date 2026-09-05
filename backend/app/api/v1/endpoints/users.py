@@ -27,7 +27,9 @@ from app.core.assignable_users import (
     load_assignable_users_for_company,
     resolve_sales_assignment_department,
 )
+from app.core.cache import cache_get, cache_set
 from app.core.clock import utc_now
+from app.core.config import settings
 from app.schemas.admin_permissions import normalize_modules
 
 router = APIRouter()
@@ -195,23 +197,30 @@ async def list_users(
     elif current_user.role in [UserRole.MANAGER, UserRole.LEAD]:
         subordinates = await current_user.get_all_subordinates()
         visible_ids = {str(current_user.id), *[str(user.id) for user in subordinates]}
-        # Also include users from the same department
+        # Also include users from the same department (ids-only round trip — the
+        # previous code loaded the ENTIRE company roster into memory and then
+        # filtered it in Python; the $in query below does the filtering in Mongo).
         department_id = getattr(current_user, "department_id", None)
         if department_id:
-            dept_users = await User.find({
-                "company_id": current_user.company_id,
-                "department_id": department_id,
-            }).to_list()
-            for dept_user in dept_users:
-                visible_ids.add(str(dept_user.id))
-        all_users = await User.find({"company_id": current_user.company_id}).to_list()
-        filtered_users = [user for user in all_users if str(user.id) in visible_ids]
+            dept_docs = await User.get_pymongo_collection().find(
+                {"company_id": current_user.company_id, "department_id": department_id},
+                {"_id": 1},
+            ).to_list(length=None)
+            visible_ids.update(str(doc["_id"]) for doc in dept_docs)
+
+        from bson import ObjectId
+        id_candidates: list = []
+        for raw_id in visible_ids:
+            id_candidates.append(raw_id)
+            if ObjectId.is_valid(raw_id):
+                id_candidates.append(ObjectId(raw_id))
+        query = {"company_id": current_user.company_id, "_id": {"$in": id_candidates}}
         if role:
-            filtered_users = [user for user in filtered_users if user.role.value == role]
+            query["role"] = role
         if status_filter:
-            filtered_users = [user for user in filtered_users if user.status.value == status_filter]
-        users = filtered_users[skip:skip + limit]
-        total = len(filtered_users)
+            query["status"] = status_filter
+        total = await User.find(query).count()
+        users = await User.find(query).skip(skip).limit(limit).to_list()
         department_name_map = await _build_department_name_map(current_user.company_id, users)
         return {
             "users": [_serialize_user_for_list(user, department_name_map) for user in users],
@@ -244,6 +253,41 @@ async def list_users(
         "skip": skip,
         "limit": limit,
     }
+
+
+def _assignable_user_row(user: User) -> dict:
+    """Minimal, JSON-safe row for the assignable-users cache (no sensitive fields)."""
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+        "status": user.status.value if hasattr(user.status, "value") else str(user.status),
+        "department_id": getattr(user, "department_id", None),
+        "department": getattr(user, "department", None),
+    }
+
+
+class _AssignableUserView:
+    """Lightweight view over a cached assignable-user row (supports the same
+    attribute access the endpoint uses: ``.id``/``.email``/``.role.value``...)."""
+
+    def __init__(self, row: dict):
+        self.id = row.get("id")
+        self.email = row.get("email")
+        self.first_name = row.get("first_name")
+        self.last_name = row.get("last_name")
+        self.department_id = row.get("department_id")
+        self.department = row.get("department")
+        role = row.get("role")
+        self.role = UserRole(role) if isinstance(role, str) else (role or UserRole.EMPLOYEE)
+        status = row.get("status")
+        self.status = UserStatus(status) if isinstance(status, str) else (status or UserStatus.ACTIVE)
+
+
+def _row_to_assignable_user(row: dict) -> _AssignableUserView:
+    return _AssignableUserView(row)
 
 
 def _serialize_user_for_list(user: User, department_name_map: dict[str, str]) -> dict:
@@ -281,19 +325,29 @@ async def get_assignable_users(
     so the owner dropdown always matches what lead creation will accept.
     """
     # Valid owner roles remain: UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE.
+    # The dropdown reads the whole (potentially large) active roster on every
+    # modal open. Only the fields the dropdown renders are loaded, and the
+    # serialized roster is cached per company/context/department with a short
+    # TTL. Assignment VALIDATION (lead_engine) intentionally stays live — it
+    # never goes through this cache.
     users: list[User] = []
-
     if current_user.company_id:
-        if context == "sales_lead":
-            users = await load_assignable_users_for_company(
-                current_user.company_id,
-                department_id=resolve_sales_assignment_department(
-                    current_user,
-                    department_id=department_id,
-                ),
-            )
+        dept_scope = (
+            resolve_sales_assignment_department(current_user, department_id=department_id)
+            if context == "sales_lead"
+            else department_id
+        )
+        cache_key = (
+            f"dashboard:data:{current_user.company_id}:assignable:"
+            f"{context or 'default'}:{dept_scope or 'all'}"
+        )
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            users = [_row_to_assignable_user(row) for row in cached]
         else:
-            users = await load_assignable_users_for_company(current_user.company_id)
+            users = await load_assignable_users_for_company(current_user.company_id, department_id=dept_scope)
+            rows = [_assignable_user_row(user) for user in users]
+            await cache_set(cache_key, rows, ttl=settings.DASHBOARD_CACHE_TTL)
 
     if project_id:
         project = await Project.get(project_id)
@@ -392,23 +446,33 @@ async def get_my_team(
         from app.models.task import Task
         from app.models.ticket import Ticket
 
+        # Batch task/ticket counts with two aggregations instead of two
+        # sequential count queries per team member (N+1 over the roster).
+        employee_ids = [str(employee.id) for employee in team_members]
+        task_counts = {}
+        ticket_counts = {}
+        if employee_ids:
+            try:
+                for row in await Task.get_pymongo_collection().aggregate([
+                    {"$match": {"assigned_to": {"$in": employee_ids}, "company_id": current_user.company_id}},
+                    {"$group": {"_id": "$assigned_to", "count": {"$sum": 1}}},
+                ]).to_list(length=None):
+                    task_counts[row["_id"]] = int(row["count"])
+            except Exception:
+                task_counts = {}
+            try:
+                for row in await Ticket.get_pymongo_collection().aggregate([
+                    {"$match": {"assigned_to": {"$in": employee_ids}, "company_id": current_user.company_id}},
+                    {"$group": {"_id": "$assigned_to", "count": {"$sum": 1}}},
+                ]).to_list(length=None):
+                    ticket_counts[row["_id"]] = int(row["count"])
+            except Exception:
+                ticket_counts = {}
+
         team_data = []
         for employee in team_members:
-            try:
-                task_count = await Task.find({
-                    "assigned_to": str(employee.id),
-                    "company_id": current_user.company_id
-                }).count()
-            except Exception:
-                task_count = 0
-
-            try:
-                ticket_count = await Ticket.find({
-                    "assigned_to": str(employee.id),
-                    "company_id": current_user.company_id
-                }).count()
-            except Exception:
-                ticket_count = 0
+            task_count = task_counts.get(str(employee.id), 0)
+            ticket_count = ticket_counts.get(str(employee.id), 0)
 
             team_data.append({
                 "id": str(employee.id),

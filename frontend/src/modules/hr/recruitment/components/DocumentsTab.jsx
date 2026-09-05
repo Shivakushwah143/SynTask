@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from 'react-query'
 import toast from 'react-hot-toast'
 import {
   Archive,
   CalendarClock,
+  CheckCircle2,
+  Clock,
   Download,
   Eye,
   FileText,
@@ -18,12 +21,15 @@ import {
   ShieldAlert,
   UploadCloud,
   X,
+  XCircle,
 } from 'lucide-react'
 
 import { Button, ConfirmDialog, EmptyState, Modal, inputClassName } from '../../../../components/ui'
-import { hrDocumentsApi, hrDocumentFiles, buildDocumentFormData } from '../../../../api/hrDocuments'
+import { hrDocumentsApi, hrDocumentFiles, buildDocumentFormData, normalizeDocumentTypesResponse } from '../../../../api/hrDocuments'
 import {
   EXPIRY_STATES,
+  REVIEW_STATUS_META,
+  SUBMISSION_SOURCE_LABELS,
   VISIBILITY_OPTIONS,
   formatFileSize,
   isPreviewable,
@@ -66,8 +72,12 @@ const expiryStateBadge = (state) => {
  */
 export default function DocumentsTab({ employeeId, candidateId, ownerName, canManage = true }) {
   const queryClient = useQueryClient()
+  // Global mode (no owner passed): company-wide HR document list via
+  // /hr/documents — used by the People → Documents page.
+  const global = !employeeId && !candidateId
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [ownerType, setOwnerType] = useState('')
   const [documentTypeId, setDocumentTypeId] = useState('')
   const [expiryState, setExpiryState] = useState('')
   const [visibility, setVisibility] = useState('')
@@ -86,10 +96,17 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
   const [archiveDoc, setArchiveDoc] = useState(null)
   const [archiveLoading, setArchiveLoading] = useState(false)
 
-  const ownerKey = employeeId ? { employeeId } : { candidateId }
+  // ── Review (approve / reject) state ───────────────────────────────────────
+  const [rejectDoc, setRejectDoc] = useState(null)
+  const [rejectNote, setRejectNote] = useState('')
+  const [rejectSubmitting, setRejectSubmitting] = useState(false)
+  const [approveLoading, setApproveLoading] = useState(false)
+
+  const ownerKey = global ? { global: true } : employeeId ? { employeeId } : { candidateId }
 
   const buildParams = () => ({
     search: debouncedSearch || undefined,
+    owner_type: ownerType || undefined,
     document_type_id: documentTypeId || undefined,
     expiry_state: expiryState || undefined,
     visibility: visibility || undefined,
@@ -100,9 +117,11 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
   // Params captured at render time for the query.
   const params = buildParams()
 
-  const listFn = employeeId
-    ? () => hrDocumentsApi.listEmployeeDocuments(employeeId, params)
-    : () => hrDocumentsApi.listCandidateDocuments(candidateId, params)
+  const listFn = global
+    ? () => hrDocumentsApi.listDocuments(params)
+    : employeeId
+      ? () => hrDocumentsApi.listEmployeeDocuments(employeeId, params)
+      : () => hrDocumentsApi.listCandidateDocuments(candidateId, params)
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -113,7 +132,7 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
   }, [search])
 
   const query = useQuery(
-    ['hr-documents', ownerKey, { search: debouncedSearch, documentTypeId, expiryState, visibility, page }],
+    ['hr-documents', ownerKey, { search: debouncedSearch, ownerType, documentTypeId, expiryState, visibility, page }],
     listFn,
     { keepPreviousData: true }
   )
@@ -121,8 +140,10 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
   const typesQuery = useQuery(['hr-document-types'], () => hrDocumentsApi.listTypes(), {
     staleTime: 5 * 60 * 1000,
   })
-  const types = typesQuery.data?.data?.data || typesQuery.data?.data || []
+  const types = normalizeDocumentTypesResponse(typesQuery.data)
   const activeTypes = types.filter((type) => type.active !== false)
+  const typeLoadError = typesQuery.isError
+  const noTypesAvailable = !typesQuery.isLoading && !typeLoadError && activeTypes.length === 0
 
   // Only HR/view users see the “missing required” banner — employee self-service
   // would be rejected by the backend's directory-view requirement.
@@ -132,12 +153,13 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
     { enabled: Boolean(employeeId && canManage) }
   )
   const missingCount = missingQuery.data?.data?.count || 0
-  const missingNames = missingQuery.data?.data?.missing?.map((item) => item.name) || []
+  const missingDocuments = missingQuery.data?.data?.missing || []
+  const missingNames = missingDocuments.map((item) => item.name) || []
 
   const documents = query.data?.data?.items || []
   const total = query.data?.data?.total || 0
   const hasNext = query.data?.data?.has_next || page * PAGE_SIZE < total
-  const hasActiveFilters = Boolean(documentTypeId || expiryState || visibility || debouncedSearch)
+  const hasActiveFilters = Boolean(ownerType || documentTypeId || expiryState || visibility || debouncedSearch)
 
   const invalidateAll = () => {
     queryClient.invalidateQueries(['hr-documents'])
@@ -292,7 +314,63 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
     }
   }
 
+  // ── Review (approve / reject pending employee submissions) ───────────────
+  const reviewBadge = (status) => {
+    const conf = REVIEW_STATUS_META[status] || REVIEW_STATUS_META.missing
+    return (
+      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${conf.color}`}>
+        {status === 'pending' ? <Clock className="h-3 w-3" /> : null}
+        {status === 'approved' ? <CheckCircle2 className="h-3 w-3" /> : null}
+        {status === 'rejected' ? <XCircle className="h-3 w-3" /> : null}
+        {conf.label}
+      </span>
+    )
+  }
+
+  // A review badge is meaningful for employee-submitted documents; HR uploads
+  // are always approved and add visual noise.
+  const showReview = (document) =>
+    document.submission_source === 'employee' || ['pending', 'rejected'].includes(document.review_status)
+
+  const handleApprove = async (doc) => {
+    setApproveLoading(true)
+    try {
+      await hrDocumentsApi.reviewDocument(doc.id, { action: 'approve' })
+      toast.success('Document approved')
+      invalidateAll()
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to approve document')
+    } finally {
+      setApproveLoading(false)
+    }
+  }
+
+  const openReject = (doc) => {
+    setRejectDoc(doc)
+    setRejectNote('')
+  }
+
+  const handleReject = async () => {
+    if (!rejectNote.trim()) {
+      toast.error('Please enter a rejection reason — the employee will see it.')
+      return
+    }
+    setRejectSubmitting(true)
+    try {
+      await hrDocumentsApi.reviewDocument(rejectDoc.id, { action: 'reject', note: rejectNote.trim() })
+      toast.success('Document rejected with reason')
+      setRejectDoc(null)
+      setRejectNote('')
+      invalidateAll()
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to reject document')
+    } finally {
+      setRejectSubmitting(false)
+    }
+  }
+
   const resetFilters = () => {
+    setOwnerType('')
     setDocumentTypeId('')
     setExpiryState('')
     setVisibility('')
@@ -300,6 +378,18 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
     setDebouncedSearch('')
     setPage(1)
   }
+
+  // Owner display + navigation for the company-wide list.
+  const ownerLabel = (document) =>
+    document.employee_name ||
+    document.candidate_name ||
+    (document.owner_type === 'employee' ? 'Employee' : document.owner_type === 'candidate' ? 'Candidate' : '—')
+  const ownerHref = (document) => {
+    if (document.employee_id) return `/hr/employees/${document.employee_id}`
+    if (document.candidate_id) return '/hr/recruitment/candidates'
+    return null
+  }
+
 
   const typeName = (id) => types.find((type) => type.id === id)?.name || id
 
@@ -321,7 +411,7 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
             </Button>
           )}
         </div>
-        {canManage && (
+        {canManage && !global && (
           <Button onClick={() => setShowUpload(true)}>
             <Plus className="mr-2 h-4 w-4" /> Upload Document
           </Button>
@@ -333,7 +423,7 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-900/20">
           <p className="flex items-center gap-2 text-sm font-medium text-amber-800 dark:text-amber-200">
             <CalendarClock className="h-4 w-4" />
-            Missing required documents: {missingCount}
+            Required documents needing action: {missingCount}
           </p>
           {missingNames.length > 0 && (
             <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{missingNames.join(', ')}</p>
@@ -343,15 +433,32 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
 
       {/* Filters */}
       {showFilters && (
-        <div className="grid grid-cols-1 gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:grid-cols-3">
+        <div className={`grid grid-cols-1 gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 ${global ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
+          {global && (
+            <label className="space-y-1.5">
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">Owner Type</span>
+              <select className={selectClassName} aria-label="Filter by owner type" value={ownerType} onChange={(event) => { setOwnerType(event.target.value); setPage(1) }}>
+                <option value="">All owners</option>
+                <option value="employee">Employees</option>
+                <option value="candidate">Candidates</option>
+              </select>
+            </label>
+          )}
           <label className="space-y-1.5">
             <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">Document Type</span>
             <select className={selectClassName} aria-label="Filter by document type" value={documentTypeId} onChange={(event) => { setDocumentTypeId(event.target.value); setPage(1) }}>
-              <option value="">All types</option>
+              <option value="">
+                {typesQuery.isLoading ? 'Loading types...' : typeLoadError ? 'Document types unavailable' : noTypesAvailable ? 'No document types available' : 'All types'}
+              </option>
               {activeTypes.map((type) => (
                 <option key={type.id} value={type.id}>{type.name}</option>
               ))}
             </select>
+            {typeLoadError ? (
+              <p className="text-xs text-red-600 dark:text-red-400">Unable to load document types. Retry before filtering or uploading.</p>
+            ) : noTypesAvailable ? (
+              <p className="text-xs text-gray-500 dark:text-gray-400">No active document types are configured for this company.</p>
+            ) : null}
           </label>
           <label className="space-y-1.5">
             <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">Expiry State</span>
@@ -400,8 +507,8 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
         <EmptyState
           icon={FileText}
           title="No documents yet"
-          description={`No HR documents have been added for ${ownerName || 'this employee'}.`}
-          action={canManage ? <Button onClick={() => setShowUpload(true)}><UploadCloud className="mr-2 h-4 w-4" /> Upload First Document</Button> : null}
+          description={global ? 'No HR documents have been uploaded for this company yet.' : `No HR documents have been added for ${ownerName || 'this employee'}.`}
+          action={canManage && !global ? <Button onClick={() => setShowUpload(true)}><UploadCloud className="mr-2 h-4 w-4" /> Upload First Document</Button> : null}
         />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -410,9 +517,11 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
               <thead className="bg-gray-50 dark:bg-gray-800/70">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Document</th>
+                  {global && <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Owner</th>}
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Type</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Expiry</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Uploaded</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Review</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Version</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Actions</th>
                 </tr>
@@ -431,6 +540,21 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
                         </div>
                       </div>
                     </td>
+                    {global && (
+                      <td className="px-4 py-3">
+                        {ownerHref(document) ? (
+                          <Link
+                            to={ownerHref(document)}
+                            onClick={(event) => event.stopPropagation()}
+                            className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-800 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300"
+                          >
+                            {ownerLabel(document)}
+                          </Link>
+                        ) : (
+                          <p className="text-sm text-gray-700 dark:text-gray-200">{ownerLabel(document)}</p>
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <p className="text-sm text-gray-700 dark:text-gray-200">{document.document_type || typeName(document.document_type_id)}</p>
                       {document.document_type_required ? <span className="text-xs text-gray-400 dark:text-gray-500">Required</span> : null}
@@ -446,6 +570,24 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
                         {document.uploaded_at ? document.uploaded_at.slice(0, 10) : '—'}
                       </p>
                       <p className="text-xs text-gray-400 dark:text-gray-500">{document.uploaded_by_name || document.uploaded_by || ''}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      {showReview(document) ? (
+                        <div className="space-y-1">
+                          {reviewBadge(document.review_status)}
+                          <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                            {SUBMISSION_SOURCE_LABELS[document.submission_source] || ''}
+                            {document.submission_source === 'employee' && document.reviewed_by_name ? ` · by ${document.reviewed_by_name}` : ''}
+                          </p>
+                          {document.review_note ? (
+                            <p className="max-w-44 truncate text-xs text-rose-600 dark:text-rose-400" title={document.review_note}>
+                              {document.review_note}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700/40 dark:text-gray-300">
@@ -467,6 +609,22 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
                         {document.can_view && (
                           <button type="button" title="History" onClick={() => setHistoryDoc(document)} className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-indigo-900/30 dark:hover:text-indigo-300">
                             <History className="h-4 w-4" />
+                          </button>
+                        )}
+                        {document.can_review && (
+                          <button
+                            type="button"
+                            title="Approve"
+                            onClick={() => handleApprove(document)}
+                            disabled={approveLoading}
+                            className="rounded-lg p-1.5 text-emerald-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:text-emerald-400 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300"
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                          </button>
+                        )}
+                        {document.can_review && (
+                          <button type="button" title="Reject" onClick={() => openReject(document)} disabled={approveLoading} className="rounded-lg p-1.5 text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-900/30 dark:hover:text-rose-300">
+                            <XCircle className="h-4 w-4" />
                           </button>
                         )}
                         {document.can_replace && (
@@ -516,6 +674,9 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
         onClose={() => setShowUpload(false)}
         onUpload={handleUpload}
         documentTypes={types}
+        documentTypesLoading={typesQuery.isLoading}
+        documentTypesError={typeLoadError ? 'Unable to load document types' : null}
+        requiredDocuments={missingDocuments}
       />
 
       {/* ── Preview modal ─────────────────────────────────────────────────── */}
@@ -581,24 +742,31 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
           <EmptyState icon={History} title="No versions" description="This document has no version history." />
         ) : (
           <div className="space-y-3">
-            {versions.map((version) => (
-              <div key={version.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-800/50">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-xs font-bold text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
-                    V{version.version_number}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{version.original_filename}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {version.uploaded_by_name || version.uploaded_by || 'Unknown'} · {version.uploaded_at ? version.uploaded_at.slice(0, 10) : '—'} · {formatFileSize(version.file_size)}
-                    </p>
-                    {version.change_note ? <p className="mt-0.5 text-xs italic text-gray-500 dark:text-gray-400">“{version.change_note}”</p> : null}
+            {versions.map((version) => (                  <div key={version.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-800/50">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-xs font-bold text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
+                        V{version.version_number}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{version.original_filename}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {version.uploaded_by_name || version.uploaded_by || 'Unknown'} · {version.uploaded_at ? version.uploaded_at.slice(0, 10) : '—'} · {formatFileSize(version.file_size)}
+                        </p>
+                        {(version.submission_source === 'employee' || (version.review_status && version.review_status !== 'approved')) ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {reviewBadge(version.review_status || 'approved')}
+                            {version.review_note ? (
+                              <span className="text-xs text-rose-600 dark:text-rose-400">“{version.review_note}”</span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {version.change_note ? <p className="mt-0.5 text-xs italic text-gray-500 dark:text-gray-400">“{version.change_note}”</p> : null}
+                      </div>
+                    </div>
+                    <Button variant="secondary" size="sm" onClick={() => downloadVersion(version)}>
+                      <Download className="mr-1.5 h-3.5 w-3.5" /> Download
+                    </Button>
                   </div>
-                </div>
-                <Button variant="secondary" size="sm" onClick={() => downloadVersion(version)}>
-                  <Download className="mr-1.5 h-3.5 w-3.5" /> Download
-                </Button>
-              </div>
             ))}
           </div>
         )}
@@ -688,12 +856,52 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
         </form>
       </Modal>
 
+      {/* ── Reject (requires reason) ─────────────────────────────────────── */}
+      <Modal
+        isOpen={Boolean(rejectDoc)}
+        onClose={() => setRejectDoc(null)}
+        title="Reject Document"
+        description={
+          rejectDoc
+            ? `Reject “${rejectDoc.filename || rejectDoc.document_type || 'this document'}”? The employee will see your reason and can resubmit.`
+            : undefined
+        }
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setRejectDoc(null)} disabled={rejectSubmitting}>Cancel</Button>
+            <Button variant="danger" onClick={handleReject} loading={rejectSubmitting} loadingText="Rejecting…">
+              <XCircle className="mr-2 h-4 w-4" /> Reject Document
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Rejection Reason <span className="ml-1 text-red-600">*</span>
+            </label>
+            <textarea
+              aria-label="Rejection reason"
+              className={`${inputClassName} min-h-24`}
+              value={rejectNote}
+              onChange={(event) => setRejectNote(event.target.value)}
+              placeholder="Why is this document being rejected? (shown to the employee)"
+              autoFocus
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              The reason is required and is shown to the employee on the rejection.
+            </p>
+          </div>
+        </div>
+      </Modal>
+
       {/* ── Archive confirm ───────────────────────────────────────────────── */}
       <ConfirmDialog
         isOpen={Boolean(archiveDoc)}
         onClose={() => setArchiveDoc(null)}
         title="Archive Document?"
-        message={`Archive “${archiveDoc?.filename || archiveDoc?.document_type || 'this document'}” for ${ownerName || 'this employee'}? The record stays in history and can be restored later, but it will no longer appear in the active list.`}
+        message={`Archive “${archiveDoc?.filename || archiveDoc?.document_type || 'this document'}” for ${global ? (archiveDoc?.employee_name || archiveDoc?.candidate_name || 'the owner') : (ownerName || 'this employee')}? The record stays in history and can be restored later, but it will no longer appear in the active list.`}
         confirmLabel="Archive"
         loading={archiveLoading}
         onConfirm={handleArchive}
@@ -701,4 +909,3 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
     </div>
   )
 }
-

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { MessageSquare } from 'lucide-react'
 
 import { metaInboxApi } from '../../../api/metaInbox'
+import { MetaLogo } from '../../../config/visualAssets'
 import { CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, inputClassName } from '../../../components/ui'
 import { useAuthStore } from '../../../store/authStore'
@@ -95,7 +96,7 @@ export default function MetaInbox() {
         eyebrow="CRM Omnichannel"
         title="Meta Inbox"
         description="One governed inbox for WhatsApp, Instagram, and Messenger conversations. Sending stays disabled until human approval workflow lands."
-        actions={<Badge label="No auto-send" colorKey="warning" />}
+        actions={<div className="flex items-center gap-2"><MetaLogo className="h-5 w-5" /><Badge label="No auto-send" colorKey="warning" /></div>}
       />
 
       <div className="grid gap-4 md:grid-cols-3">

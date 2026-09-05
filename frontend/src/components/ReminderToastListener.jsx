@@ -111,6 +111,9 @@ const ReminderToastListener = () => {
   }, [navigate])
 
   const loadReminderToasts = useCallback(async () => {
+    // Reminder popups are meant to be seen — never poll for them while the
+    // tab is hidden. The visibilitychange handler below catches up on return.
+    if (typeof document !== 'undefined' && document.hidden) return
     if (!user || !isAuthenticated || inFlightRef.current) return
     inFlightRef.current = true
     try {
@@ -138,11 +141,17 @@ const ReminderToastListener = () => {
     window.addEventListener('pointerdown', primeReminderSound, { once: true })
     window.addEventListener('keydown', primeReminderSound, { once: true })
     window.addEventListener('focus', loadReminderToasts)
+    // Deliver any reminders that arrived while the tab was hidden.
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') loadReminderToasts()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
     return () => {
       window.clearInterval(interval)
       window.removeEventListener('pointerdown', primeReminderSound)
       window.removeEventListener('keydown', primeReminderSound)
       window.removeEventListener('focus', loadReminderToasts)
+      document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [isAuthenticated, loadReminderToasts, user])
 

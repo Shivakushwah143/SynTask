@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 
 from app.core.clock import utc_now
@@ -7,6 +8,18 @@ from app.core.clock import utc_now
 from fastapi import HTTPException, status
 
 from app.models.agent import AgentDefinition, SpecialistDefinition
+
+
+async def register_builtin_agent_definitions(*, created_by: str = "system") -> list[AgentDefinition]:
+    from app.agents.executive_operations import executive_operations_agent_definition
+    from app.agents.hr_operations import hr_operations_agent_definition
+
+    return await AgentRegistry().register_definitions(
+        [
+            hr_operations_agent_definition(created_by=created_by),
+            executive_operations_agent_definition(created_by=created_by),
+        ]
+    )
 
 
 class AgentRegistry:
@@ -29,6 +42,29 @@ class AgentRegistry:
     async def versions(self, *, agent_id: str) -> list[dict]:
         definitions = await AgentDefinition.find(AgentDefinition.agent_id == agent_id).sort("-created_at").to_list()
         return [item.model_dump(mode="json") for item in definitions]
+
+    async def register_definition(self, definition: AgentDefinition) -> AgentDefinition:
+        existing = await AgentDefinition.find_one(
+            AgentDefinition.agent_id == definition.agent_id,
+            AgentDefinition.version == definition.version,
+        )
+        if existing and existing.published:
+            return existing
+        payload = definition.model_dump(exclude={"id"})
+        if existing:
+            for key, value in payload.items():
+                setattr(existing, key, value)
+            await existing.save()
+            return existing
+        saved = AgentDefinition(**payload)
+        await saved.insert()
+        return saved
+
+    async def register_definitions(self, definitions: Iterable[AgentDefinition]) -> list[AgentDefinition]:
+        registered = []
+        for definition in definitions:
+            registered.append(await self.register_definition(definition))
+        return registered
 
 
 class SpecialistRegistry:

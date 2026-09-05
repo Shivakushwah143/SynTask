@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format, addDays } from 'date-fns'
 import { 
@@ -75,16 +75,18 @@ import { ticketsAPI } from '../api/tickets'
 import { meetingsApi } from '../api/meetings'
 import { projectsApi } from '../api/projects'
 import { calendarApi } from '../api/calendar'
-import { contentCalendarApi } from '../api/contentCalendar'
 import toast from 'react-hot-toast'
-import AIBriefingCenter from '../components/AIBriefingCenter'
-import { Badge, Button, EmptyState, PageHeader, SkeletonCard, SkeletonTable, Table } from '../components/ui'
+// AI Briefing Center is a large, below-the-fold widget — code-split it so its
+// dependencies (framer-motion, AI icons, charts) load after first paint.
+const AIBriefingCenter = lazy(() => import('../components/AIBriefingCenter'))
+const WorkflowJourney = lazy(() => import('../components/workflow/WorkflowJourney'))
+import { Badge, Table } from '../components/ui'
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { attendanceAPI } from '../api/attendance'
+import { useAttendanceStore } from '../store/attendanceStore'
 import { eodAPI } from '../api/eod'
 import { ChartTooltip } from '../components/charts/ChartTooltip'
 import { WorkflowGuide } from '../components/workflow/WorkflowGuide'
-import WorkflowJourney from '../components/workflow/WorkflowJourney'
 import { ChartCard } from '../components/charts/ChartCard'
 const IncomeExpenseBarChart = lazy(() => import('../components/charts/IncomeExpenseBarChart'))
 const DonutLegendChart = lazy(() => import('../components/charts/DonutLegendChart'))
@@ -250,10 +252,26 @@ const followUpDateTone = (value, now) => {
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
+// Slice keys tracked per dashboard refresh. A section renders once every slice
+// it depends on has settled, so one slow endpoint never blocks the rest.
+const DASHBOARD_READY_KEYS = ['stats', 'tasks', 'meetings', 'projects', 'metrics', 'crm', 'followUps', 'health', 'extensions', 'dashboardHealth', 'tickets', 'attendance', 'eod', 'production', 'calendar']
+
+// Compact per-section loading placeholder shown while a section's own data is
+// still in flight (replaces the old full-page loader that gated the shell).
+const SectionSkeleton = ({ lines = 3 }) => (
+  <section className="animate-pulse rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+    <div className="mb-4 h-4 w-44 rounded bg-gray-200 dark:bg-gray-700" />
+    <div className="space-y-3">
+      {Array.from({ length: lines }).map((_, index) => (
+        <div key={index} className={`h-3 rounded bg-gray-100 dark:bg-gray-700/60 ${index % 2 ? 'w-4/5' : 'w-full'}`} />
+      ))}
+    </div>
+  </section>
+)
+
 const Dashboard = () => {
   const { user } = useAuthStore()
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState(null)
   const [recentTasks, setRecentTasks] = useState([])
   const [recentTickets, setRecentTickets] = useState([])
@@ -274,14 +292,37 @@ const Dashboard = () => {
   const [upcomingDeadlines, setUpcomingDeadlines] = useState([])
   const [upcomingMeetingsList, setUpcomingMeetingsList] = useState([])
   const [workspaceEvents, setWorkspaceEvents] = useState([])
-  const [, setTodayContent] = useState([])
-  const [, setOverdueTasksList] = useState([])
-  const [, setCalendarLoading] = useState(false)
   const [sectionVisibility, setSectionVisibility] = useState(readStoredSectionVisibility)
   const [sectionOrder, setSectionOrder] = useState(readStoredSectionOrder)
   const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(getDefaultSectionPanelCollapsed)
   const [sectionSearch, setSectionSearch] = useState('')
   const [leadFollowUps, setLeadFollowUps] = useState([])
+  // Reuse the attendance store (already fetched by AttendanceStatusBootstrap)
+  // to avoid a duplicate /attendance/me/today request for employees. Read via a
+  // ref so store updates never recreate refreshDashboard (which would re-run the
+  // whole fan-out on every attendance change).
+  const attendanceStoreRecord = useAttendanceStore((s) => s.record)
+  const attendanceRecordRef = useRef(attendanceStoreRecord)
+  attendanceRecordRef.current = attendanceStoreRecord
+
+  // Per-slice readiness: sections render as their data settles (success or
+  // failure), never gated behind the slowest endpoint of the whole dashboard.
+  const [ready, setReady] = useState({})
+  const markReady = useCallback((...keys) => {
+    setReady((current) => {
+      if (keys.every((key) => current[key])) return current
+      const next = { ...current }
+      keys.forEach((key) => { next[key] = true })
+      return next
+    })
+  }, [])
+  // Lives for the component mount. Effects re-arm it when they run and clear it
+  // on cleanup: under React StrictMode the simulated cleanup+re-run happens
+  // synchronously, so by the time responses land the flag is true again and
+  // results commit — a real unmount leaves it false so stale responses are
+  // ignored. This replaces per-effect `active` closures that froze the loader
+  // when a StrictMode remount shared the in-flight refresh.
+  const isMountedRef = useRef(true)
 
   // Load cached dashboard data on mount (stale‑while‑revalidate)
   useEffect(() => {
@@ -290,10 +331,10 @@ const Dashboard = () => {
       setStats(cached.stats)
       setMetrics(cached.metrics)
       setCrmDashboard(cached.crmDashboard)
-      setRecentTasks(cached.recentTasks)
-      setRecentTickets(cached.recentTickets)
-      setUpcomingMeetings(cached.upcomingMeetings)
-      setProjects(cached.projects)
+      setRecentTasks(cached.recentTasks || [])
+      setRecentTickets(cached.recentTickets || [])
+      setUpcomingMeetings(cached.upcomingMeetings || [])
+      setProjects(cached.projects || [])
       setTaskHealth(cached.taskHealth)
       setTaskExtensions(cached.taskExtensions)
       setTeamCompletion(cached.teamCompletion)
@@ -303,128 +344,221 @@ const Dashboard = () => {
       setAttendanceStats(cached.attendanceStats)
       setRevenueMode(cached.revenueMode ?? 'Accrual')
       setLeadFollowUps(cached.leadFollowUps || [])
-      setLoading(false)
+      // The cached payload hydrates every slice at once — mark all sections
+      // ready so nothing waits behind the silent background refresh.
+      setReady((current) => {
+        const hasAll = DASHBOARD_READY_KEYS.every((key) => current[key])
+        if (hasAll) return current
+        const next = { ...current }
+        DASHBOARD_READY_KEYS.forEach((key) => { next[key] = true })
+        return next
+      })
     }
   }, [])
 
-  const refreshDashboard = useCallback(async (isMounted = () => true) => {
-    try {
-      setLoading(true)
-      // Fire all primary API calls concurrently using Promise.allSettled
-      const primaryPromises = {
-        stats: dashboardAPI.getStats().catch(() => null),
-        tasks: tasksAPI.listTasks({ limit: 8 }).catch(() => null),
-        meetings: meetingsApi.list({ limit: 6, upcoming: true }).catch(() => null),
-        projects: projectsApi.getProjects({ limit: 8 }).catch(() => null),
-        metrics: dashboardAPI.getMetrics().catch(() => null),
+  // ── React-Query-style dedup ────────────────────────────────────────────
+  // Concurrent full refreshes (mount + live-sync event races, StrictMode
+  // double-effects) share ONE in-flight promise instead of doubling the
+  // ~16-request fan-out.
+  const inFlightRefreshRef = useRef(null)
+  // ``revenueMode`` must NOT recreate refreshDashboard — that previously
+  // re-ran the whole 16-request fan-out AND the calendar fetch on every
+  // mode toggle. Read the latest value through a ref instead.
+  const revenueModeRef = useRef(revenueMode)
+  revenueModeRef.current = revenueMode
+
+  const refreshDashboard = useCallback(async () => {
+    // Dedup: share ONE in-flight refresh when mount + live-sync events (or
+    // StrictMode double-effects) race, so the fan-out is never doubled. Results
+    // commit through isMountedRef (never a per-effect closure), so the shared
+    // run still applies state once the component is the live mount.
+    if (inFlightRefreshRef.current) return inFlightRefreshRef.current
+    const run = (async () => {
+      // Draft of the session-cache snapshot; persisted only after every request
+      // in this refresh settles so a partially-filled cache is never written.
+      const cacheDraft = { revenueMode: revenueModeRef.current }
+
+      const authRole = normalizeRole(user?.role || ROLE.EMPLOYEE)
+      const isEmployee = authRole === ROLE.EMPLOYEE
+      const isSuperAdmin = authRole === ROLE.SUPER_ADMIN
+      const salesRoles = [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN]
+      const canLoadCrm = salesRoles.includes(authRole)
+      const productionRoles = [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN]
+      const wave = []
+
+      // Fire one slice and commit its result (and readiness) as soon as it
+      // settles — never wait for the slowest request before rendering.
+      const settle = (key, request, apply) => {
+        const promise = Promise.resolve(request)
+          .then((value) => {
+            if (isMountedRef.current) {
+              if (apply) apply(value)
+              markReady(key)
+            }
+            return value
+          })
+          .catch(() => {
+            if (isMountedRef.current) markReady(key)
+            return null
+          })
+        wave.push(promise)
+        return promise
       }
-      const primaryResults = await Promise.allSettled(Object.values(primaryPromises))
-      const [statsData, tasksData, meetingsData, projectsData, metricsData] = primaryResults.map((r) => (r.status === 'fulfilled' ? r.value : null))
 
-      const dashboardRole = normalizeRole(statsData?.role || user?.role)
-      const shouldLoadCrmDashboard = [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(dashboardRole)
-
-      // Conditional and additional parallel calls
-      const crmDashboardPromise = shouldLoadCrmDashboard
-        ? crmApi.getDashboard().then((r) => r?.data || null).catch(() => null)
-        : Promise.resolve(null)
-      // Leads with a follow-up scheduled (next_follow_up_at set) — drives the
-      // Lead Follow-ups dashboard section. Only CRM-capable roles can see the
-      // full company list; employees keep their own calendar-based follow-ups.
-      // limit 500 = backend MAX_PAGE_SIZE; companies with more follow-up leads
-      // silently show the soonest 500 (documented trade-off).
-      const followUpsPromise = shouldLoadCrmDashboard
-        ? crmApi.getLeads({ has_follow_up: true, limit: 500 }).then((r) => r?.data?.prospects || r?.prospects || []).catch(() => [])
-        : Promise.resolve([])
-      const healthPromise =
-        dashboardRole === ROLE.EMPLOYEE
-          ? tasksAPI.getMyTaskHealth().catch(() => null)
-          : tasksAPI.getTaskHealthSummary().catch(() => null)
-      const extensionPromise = tasksAPI.getExtensionRequestSummary().catch(() => null)
-      const teamPromise =
-        dashboardRole !== ROLE.EMPLOYEE ? tasksAPI.getTeamCompletionSummary().catch(() => null) : Promise.resolve(null)
-      const ticketsPromise =
-        dashboardRole === ROLE.EMPLOYEE ? ticketsAPI.listTickets({ limit: 8 }).catch(() => null) : Promise.resolve({ tickets: [] })
-      const attendancePromise =
-        dashboardRole === ROLE.EMPLOYEE ? attendanceAPI.getTodayAttendance().catch(() => null) : attendanceAPI.getDashboardStats().catch(() => null)
-      const eodPromise = dashboardRole === ROLE.EMPLOYEE ? eodAPI.today().catch(() => null) : Promise.resolve(null)
-      const productionDashboardPromise =
-        [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(dashboardRole)
-          ? tasksAPI.getProductionDashboard().catch(() => null)
-          : Promise.resolve(null)
-
-      const [crmDashboardData, healthData, extensionData, teamData, ticketsData, attendanceRes, eodTodayRes, productionDashboardData, followUpsData] = await Promise.all([
-        crmDashboardPromise,
-        healthPromise,
-        extensionPromise,
-        teamPromise,
-        ticketsPromise,
-        attendancePromise,
-        eodPromise,
-        productionDashboardPromise,
-        followUpsPromise,
-      ])
-
-      if (!isMounted()) return
-
-      // Update state
-      setStats(statsData || { role: dashboardRole || 'employee' })
-      setMetrics(metricsData)
-      setCrmDashboard(crmDashboardData)
-      setRecentTasks(tasksData?.tasks || [])
-      setRecentTickets(ticketsData?.tickets || [])
-      setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
-      setProjects((projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8))
-      setTaskHealth(healthData)
-      setTaskExtensions(extensionData)
-      setTeamCompletion(teamData)
-      setProductionDashboard(productionDashboardData)
-      setLeadFollowUps(followUpsData)
-
-      if (dashboardRole === ROLE.EMPLOYEE) {
-        if (attendanceRes && attendanceRes.data) setAttendanceToday(attendanceRes.data)
-        setEodToday(eodTodayRes)
+      // Role is known from the session, so /dashboard/stats is only requested
+      // for super admins (it returns null for every other role) and every slice
+      // below starts immediately — one wave, no sequential dependencies.
+      if (isSuperAdmin) {
+        settle('stats', dashboardAPI.getStats(), (value) => { setStats(value); cacheDraft.stats = value })
       } else {
-        if (attendanceRes && attendanceRes.data) setAttendanceStats(attendanceRes.data)
+        setStats({ role: authRole })
+        cacheDraft.stats = { role: authRole }
+        markReady('stats')
       }
 
-      // Stale‑while‑revalidate: cache the fetched dashboard data in sessionStorage
+      settle('metrics', dashboardAPI.getMetrics(), (value) => { setMetrics(value); cacheDraft.metrics = value })
+      settle('tasks', tasksAPI.listTasks({ limit: 8 }), (value) => {
+        const tasks = value?.tasks || []
+        setRecentTasks(tasks)
+        cacheDraft.recentTasks = tasks
+      })
+      settle('meetings', meetingsApi.list({ limit: 6, upcoming: true }), (value) => {
+        const meetings = (value?.data?.meetings || value?.meetings || []).slice(0, 6)
+        setUpcomingMeetings(meetings)
+        cacheDraft.upcomingMeetings = meetings
+      })
+      settle('projects', projectsApi.getProjects({ limit: 8 }), (value) => {
+        const projects = (value?.data?.projects || value?.projects || []).slice(0, 8)
+        setProjects(projects)
+        cacheDraft.projects = projects
+      })
+
+      if (canLoadCrm) {
+        settle('crm', crmApi.getDashboard(), (value) => {
+          const data = value?.data || value || null
+          setCrmDashboard(data)
+          cacheDraft.crmDashboard = data
+        })
+        settle('followUps', crmApi.getDashboardFollowUps(), (value) => {
+          const leads = value?.data?.prospects || value?.prospects || []
+          setLeadFollowUps(leads)
+          cacheDraft.leadFollowUps = leads
+        })
+      } else {
+        setCrmDashboard(null)
+        setLeadFollowUps([])
+        cacheDraft.crmDashboard = null
+        cacheDraft.leadFollowUps = []
+        markReady('crm', 'followUps')
+      }
+
+      if (isEmployee) {
+        settle('health', tasksAPI.getMyTaskHealth(), (value) => { setTaskHealth(value); cacheDraft.taskHealth = value })
+        settle('extensions', tasksAPI.getExtensionRequestSummary(), (value) => { setTaskExtensions(value); cacheDraft.taskExtensions = value })
+      } else {
+        // The combined /tasks/health/dashboard payload replaces the previous
+        // health-summary + team-completion + extension triple request, which
+        // scanned the same task dataset three times per dashboard load.
+        settle('dashboardHealth', tasksAPI.getDashboardTaskHealth(), (value) => {
+          const health = value?.summary ? { summary: value.summary } : null
+          setTaskHealth(health)
+          cacheDraft.taskHealth = health
+          const team = value?.team_completion || null
+          setTeamCompletion(team)
+          cacheDraft.teamCompletion = team
+          const extensions = value?.extension_summary ? { summary: value.extension_summary } : null
+          setTaskExtensions(extensions)
+          cacheDraft.taskExtensions = extensions
+        })
+      }
+
+      if (isEmployee) {
+        settle('tickets', ticketsAPI.listTickets({ limit: 8 }), (value) => {
+          const tickets = value?.tickets || []
+          setRecentTickets(tickets)
+          cacheDraft.recentTickets = tickets
+        })
+        // Employee attendance comes from the shared attendance store, already
+        // fetched by AttendanceStatusBootstrap — never duplicated here.
+        settle('eod', eodAPI.today(), (value) => { setEodToday(value); cacheDraft.eodToday = value })
+        setAttendanceToday(attendanceRecordRef.current || null)
+        cacheDraft.attendanceToday = attendanceRecordRef.current || null
+        markReady('attendance')
+      } else {
+        settle('attendance', attendanceAPI.getDashboardStats(), (value) => {
+          const stats = value?.data || null
+          setAttendanceStats(stats)
+          cacheDraft.attendanceStats = stats
+          cacheDraft.attendanceToday = stats
+        })
+        markReady('eod', 'tickets')
+      }
+
+      if (productionRoles.includes(authRole)) {
+        settle('production', tasksAPI.getProductionDashboard(), (value) => { setProductionDashboard(value); cacheDraft.productionDashboard = value })
+      } else {
+        setProductionDashboard(null)
+        cacheDraft.productionDashboard = null
+        markReady('production')
+      }
+
+      await Promise.allSettled(wave)
+      if (!isMountedRef.current) return
+      // Stale‑while‑revalidate: persist the fully-hydrated snapshot.
       try {
-        const cachePayload = {
-          stats: statsData,
-          metrics: metricsData,
-          crmDashboard: crmDashboardData,
-          recentTasks: tasksData?.tasks || [],
-          recentTickets: ticketsData?.tickets || [],
-          upcomingMeetings: (meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6),
-          projects: (projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8),
-          taskHealth: healthData,
-          taskExtensions: extensionData,
-          teamCompletion: teamData,
-          attendanceToday: attendanceRes?.data || null,
-          eodToday: eodTodayRes,
-          attendanceStats: attendanceRes?.data || null,
-          revenueMode,
-          leadFollowUps: followUpsData,
-        }
-        sessionStorage.setItem('syntask-dashboard-cache', JSON.stringify(cachePayload))
+        sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(cacheDraft))
       } catch (e) {
         // ignore storage errors
       }
-    } catch (error) {
-      console.error('Error loading dashboard:', error)
+    })()
+    inFlightRefreshRef.current = run
+    try {
+      await run
     } finally {
-      if (isMounted()) setLoading(false)
+      if (inFlightRefreshRef.current === run) inFlightRefreshRef.current = null
     }
-  }, [user?.role, revenueMode])
+    return run
+  }, [user?.role, markReady])
+
+  // Scoped refresh helpers: after a task/project mutation the dashboard only
+  // re-fetches that slice (1 request) instead of re-firing the full fan-out.
+  const updateCachedSlice = useCallback((patch) => {
+    try {
+      const raw = sessionStorage.getItem(DASHBOARD_CACHE_KEY)
+      if (!raw) return
+      sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify({ ...JSON.parse(raw), ...patch }))
+    } catch {
+      // ignore storage errors
+    }
+  }, [])
+
+  const refreshTaskSlice = useCallback(async () => {
+    try {
+      const tasksData = await tasksAPI.listTasks({ limit: 8 }).catch(() => null)
+      if (!isMountedRef.current || !tasksData?.tasks) return
+      setRecentTasks(tasksData.tasks)
+      updateCachedSlice({ recentTasks: tasksData.tasks })
+    } catch (error) {
+      console.error('Error refreshing task slice:', error)
+    }
+  }, [updateCachedSlice])
+
+  const refreshProjectSlice = useCallback(async () => {
+    try {
+      const projectsData = await projectsApi.getProjects({ limit: 8 }).catch(() => null)
+      const projects = (projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8)
+      if (!isMountedRef.current) return
+      setProjects(projects)
+      updateCachedSlice({ projects })
+    } catch (error) {
+      console.error('Error refreshing project slice:', error)
+    }
+  }, [updateCachedSlice])
 
   useEffect(() => {
-    let active = true;
-    const run = async () => {
-      if (!active) return;
-      await refreshDashboard(() => active);
-    };
-    run();
+    // Re-arm the mounted flag for this (possibly StrictMode re-run) mount.
+    isMountedRef.current = true
+    refreshDashboard()
 
     // Event listeners for instant updates after user actions (tasks, projects, CRM).
     // NOTE: 10s interval polling was removed as the PRIMARY CAUSE of the infinite
@@ -432,47 +566,50 @@ const Dashboard = () => {
     // after successful create/update/delete operations.
     // The cascade that previously made this dangerous (NotificationBell dispatching
     // on every poll) has been eliminated.
-    const handleLiveSync = () => {
-      if (active) refreshDashboard(() => active);
-    };
-    window.addEventListener('syntask:tasks-updated', handleLiveSync);
-    window.addEventListener('syntask:projects-updated', handleLiveSync);
-    window.addEventListener('syntask:data-updated', handleLiveSync);
+    // Scoped sync: task/project mutations refresh only their own 1-request slice
+    // instead of re-firing the full fan-out; generic data-updated events (CRM,
+    // attendance, ...) still refresh the whole dashboard.
+    const handleTasksUpdated = () => { refreshTaskSlice() }
+    const handleProjectsUpdated = () => { refreshProjectSlice() }
+    const handleDataUpdated = () => { refreshDashboard() }
+    window.addEventListener('syntask:tasks-updated', handleTasksUpdated)
+    window.addEventListener('syntask:projects-updated', handleProjectsUpdated)
+    window.addEventListener('syntask:data-updated', handleDataUpdated)
 
     return () => {
-      active = false;
-      window.removeEventListener('syntask:tasks-updated', handleLiveSync);
-      window.removeEventListener('syntask:projects-updated', handleLiveSync);
-      window.removeEventListener('syntask:data-updated', handleLiveSync);
-    };
-  }, [refreshDashboard]);
+      isMountedRef.current = false
+      window.removeEventListener('syntask:tasks-updated', handleTasksUpdated)
+      window.removeEventListener('syntask:projects-updated', handleProjectsUpdated)
+      window.removeEventListener('syntask:data-updated', handleDataUpdated)
+    }
+  }, [refreshDashboard, refreshTaskSlice, refreshProjectSlice])
 
-  // Fetch workspace and content calendar data for dashboard widgets
+  // Workspace events drive the Today / Deadlines / Meetings snapshot cards.
+  // The companion 30-day content-calendar request was removed: it only fed an
+  // unused state value. This fetch is deduplicated so a StrictMode remount
+  // issues exactly one request, and it marks the 'calendar' slice ready even on
+  // failure so the snapshot section can render its empty state.
+  const calendarInFlightRef = useRef(null)
   useEffect(() => {
-    let active = true;
-    const fetchCalendarData = async () => {
-      setCalendarLoading(true);
+    isMountedRef.current = true
+    if (calendarInFlightRef.current) return
+    const run = (async () => {
       try {
         const today = timeService.now();
         const startStr = format(today, 'yyyy-MM-dd');
         const endStr = format(addDays(today, 30), 'yyyy-MM-dd');
-        const { data: workspaceResp } = await calendarApi.getEvents({
+        const workspaceResult = await calendarApi.getEvents({
           start_date: startStr,
           end_date: endStr,
           view_type: 'my_calendar',
         });
-        const { data: contentResp } = await contentCalendarApi.getCalendar({
-          start_date: startStr,
-          end_date: endStr,
-        });
-        if (!active) return;
+        const { data: workspaceResp } = workspaceResult;
+        if (!isMountedRef.current) return;
         const workspaceEvents = workspaceResp?.events || [];
-        const contentEvents = contentResp?.events || [];
-        if (active) setWorkspaceEvents(workspaceEvents)
+        setWorkspaceEvents(workspaceEvents)
         const todayStr = format(today, 'yyyy-MM-dd');
 
         setTodayEvents(workspaceEvents.filter((e) => e.start === todayStr));
-        setTodayContent(contentEvents.filter((e) => e.start === todayStr));
 
         const upcomingDead = workspaceEvents.filter((e) => {
           if (e.type !== 'task_due' || !e.start) return false;
@@ -488,24 +625,24 @@ const Dashboard = () => {
         });
         setUpcomingMeetingsList(upcomingMeet);
 
-        const overdue = workspaceEvents.filter((e) => {
-          if (e.type !== 'task_due' || !e.start) return false;
-          const dueDate = timeService.instant(e.start);
-          return dueDate < today && e.status !== 'completed';
-        });
-        setOverdueTasksList(overdue);
+        markReady('calendar')
       } catch (err) {
         console.error(err);
+        if (isMountedRef.current) markReady('calendar')
         toast.error('Failed to load calendar data');
-      } finally {
-        if (active) setCalendarLoading(false);
       }
-    };
-    fetchCalendarData();
+    })()
+    calendarInFlightRef.current = run
+    const clearRef = () => {
+      if (calendarInFlightRef.current === run) calendarInFlightRef.current = null
+    }
+    run.then(clearRef, clearRef)
     return () => {
-      active = false;
-    };
-  }, [refreshDashboard]);
+      isMountedRef.current = false
+    }
+    // Calendar events are independent of the dashboard payload — fetch once on
+    // mount; never re-fire on role or revenue-mode toggles.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     try {
@@ -537,35 +674,9 @@ const Dashboard = () => {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-4 p-4 md:p-5">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 px-4 py-3 text-white shadow-lg">
-          <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-          <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-          <div className="relative z-10">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-1.5 backdrop-blur-sm">
-                <LayoutDashboard className="h-4 w-4" />
-              </div>
-              <div>
-                <h1 className="text-base font-bold leading-tight md:text-lg">Dashboard</h1>
-                <p className="text-[11px] text-indigo-100">Loading workspace overview...</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={3} />)}
-        </div>
-        <div className="grid gap-4 xl:grid-cols-2">
-          <SkeletonCard lines={6} />
-          <SkeletonCard lines={6} />
-        </div>
-        <SkeletonTable rows={5} cols={4} />
-      </div>
-    )
-  }
+  // NOTE: the whole-page loader was removed — the shell (hero + static guides)
+  // renders immediately and each data section below shows its own local skeleton
+  // until the slices it reads have settled (see renderSection / SectionSkeleton).
 
   const role = normalizeRole(stats?.role || user?.role)
   const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
@@ -713,11 +824,11 @@ const Dashboard = () => {
     { id: 'sales-performance', name: 'Sales Performance' },
     { id: 'reports', name: 'Reports' },
     { id: 'employee-attendance', name: 'My Attendance', available: role === ROLE.EMPLOYEE && Boolean(attendanceToday) },
-    { id: 'workplace-attendance', name: 'Workplace Attendance', available: role !== ROLE.EMPLOYEE && Boolean(attendanceStats) },
+    { id: 'workplace-attendance', name: 'Workplace Attendance', available: role !== ROLE.EMPLOYEE && (ready.attendance ? Boolean(attendanceStats) : true) },
     { id: 'ai-briefing', name: 'AI Briefing Center' },
     { id: 'work-meetings', name: 'Work & Meetings' },
     { id: 'project-health', name: 'Project Health' },
-    { id: 'production-tracking', name: 'Production Tracking', available: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(role) && Boolean(productionDashboard) },
+    { id: 'production-tracking', name: 'Production Tracking', available: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(role) && (ready.production ? Boolean(productionDashboard) : true) },
     { id: 'recent-activity', name: 'Recent Activity' },
     { id: 'calendar-overview', name: 'Calendar Overview' },
   ].filter((section) => section.available !== false)
@@ -772,6 +883,16 @@ const Dashboard = () => {
         {content}
       </div>
     )
+  }
+
+  // Progressive rendering: a section shows a compact local skeleton until every
+  // slice it reads has settled, so a slow endpoint only delays its own section.
+  const sectionReady = (requires) => requires.every((key) => ready[key])
+  const renderSection = (sectionId, requires, contentFn) => {
+    if (requires.length && !sectionReady(requires)) {
+      return renderDashboardSection(sectionId, <SectionSkeleton />)
+    }
+    return renderDashboardSection(sectionId, contentFn())
   }
 
   return (
@@ -856,7 +977,7 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* LEAD FOLLOW-UPS */}
       {/* ============================================================ */}
-      {renderDashboardSection('lead-follow-ups', (
+      {renderSection('lead-follow-ups', role === ROLE.EMPLOYEE ? ['calendar'] : ['followUps'], () => (
         <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -948,7 +1069,7 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* WORKFLOW GUIDE */}
       {/* ============================================================ */}
-      {renderDashboardSection('workflow-guide', (
+      {renderSection('workflow-guide', [], () => (
         <WorkflowGuide
           title={role === ROLE.MANAGER ? 'Review team load, then assign the next task' : role === ROLE.LEAD ? 'Clear today\'s team work, then move the pipeline forward' : 'Focus on the highest-risk work first'}
           description={role === ROLE.MANAGER
@@ -981,7 +1102,7 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* WORKFLOW JOURNEY */}
       {/* ============================================================ */}
-      {renderDashboardSection('workflow-journey', (
+      {renderSection('workflow-journey', [], () => (
         <WorkflowJourney
           className="mb-6"
           description="This is the complete operating path in SynTask, from sign-in through revenue, delivery, reporting, and renewal."
@@ -991,7 +1112,7 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* SNAPSHOT CARDS */}
       {/* ============================================================ */}
-      {renderDashboardSection('snapshot-cards', (
+      {renderSection('snapshot-cards', role === ROLE.EMPLOYEE ? ['tasks', 'calendar', 'eod'] : ['tasks', 'calendar', 'attendance'], () => (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
             <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Today</p>
@@ -1072,7 +1193,7 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* TASK HEALTH */}
       {/* ============================================================ */}
-      {renderDashboardSection('task-health', (
+      {renderSection('task-health', role === ROLE.EMPLOYEE ? ['health', 'extensions'] : ['dashboardHealth'], () => (
         <section
           role="button"
           tabIndex={0}
@@ -1124,7 +1245,7 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* REVENUE & PIPELINE */}
       {/* ============================================================ */}
-      {renderDashboardSection('sales-pipeline', (
+      {renderSection('sales-pipeline', role === ROLE.EMPLOYEE ? [] : ['crm', 'metrics'], () => (
         canSeeSalesWidgets ? (
           <section className="grid gap-6 xl:grid-cols-2">
             <Suspense fallback={<div className="h-72 flex items-center justify-center">Loading chart...</div>}>
@@ -1157,7 +1278,7 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* SALES PERFORMANCE */}
       {/* ============================================================ */}
-      {renderDashboardSection('sales-performance', (
+      {renderSection('sales-performance', role === ROLE.EMPLOYEE ? [] : ['crm', 'metrics'], () => (
         <section className="grid gap-6 xl:grid-cols-2">
           {canSeeSalesWidgets ? (
             <>
@@ -1201,7 +1322,7 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* REPORTS */}
       {/* ============================================================ */}
-      {renderDashboardSection('reports', (
+      {renderSection('reports', ['metrics'], () => (
         <section className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {reportMetricCards.map((metric) => (
@@ -1257,7 +1378,7 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* EMPLOYEE ATTENDANCE */}
       {/* ============================================================ */}
-      {renderDashboardSection('employee-attendance', (
+      {renderSection('employee-attendance', [], () => (
         role === ROLE.EMPLOYEE && attendanceToday ? (
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/20">
             <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -1300,7 +1421,7 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* WORKPLACE ATTENDANCE */}
       {/* ============================================================ */}
-      {renderDashboardSection('workplace-attendance', (
+      {renderSection('workplace-attendance', ['attendance'], () => (
         role !== ROLE.EMPLOYEE && attendanceStats ? (
           <section className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5 shadow-sm dark:border-indigo-900/60 dark:bg-indigo-950/20 space-y-4">
             <div className="flex items-center justify-between">
@@ -1350,14 +1471,16 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* AI BRIEFING CENTER */}
       {/* ============================================================ */}
-      {renderDashboardSection('ai-briefing', (
-        <AIBriefingCenter user={user} stats={stats} recentTasks={recentTasks} recentTickets={recentTickets} />
+      {renderSection('ai-briefing', role === ROLE.EMPLOYEE ? ['tasks', 'tickets'] : ['tasks'], () => (
+        <Suspense fallback={null}>
+          <AIBriefingCenter user={user} stats={stats} recentTasks={recentTasks} recentTickets={recentTickets} />
+        </Suspense>
       ))}
 
       {/* ============================================================ */}
       {/* WORK & MEETINGS */}
       {/* ============================================================ */}
-      {renderDashboardSection('work-meetings', (
+      {renderSection('work-meetings', ['tasks', 'meetings'], () => (
         <section className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
           <div className="space-y-6">
             <ChartCard title="Task Due Dates by Priority" period="Next 7 Days">
@@ -1487,7 +1610,7 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* PROJECT HEALTH */}
       {/* ============================================================ */}
-      {renderDashboardSection('project-health', (
+      {renderSection('project-health', ['projects', 'metrics'], () => (
         <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
             <div className="mb-4 flex items-center justify-between">
@@ -1540,7 +1663,7 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* PRODUCTION TRACKING */}
       {/* ============================================================ */}
-      {renderDashboardSection('production-tracking', (
+      {renderSection('production-tracking', ['production'], () => (
         <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
           <SectionHeader
             icon={Target}
@@ -1627,7 +1750,7 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {/* RECENT ACTIVITY */}
       {/* ============================================================ */}
-      {renderDashboardSection('recent-activity', (
+      {renderSection('recent-activity', role === ROLE.EMPLOYEE ? ['tickets'] : ['tasks'], () => (
         <section className="grid gap-6 xl:grid-cols-1">
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
             <h2 className="text-base font-bold text-gray-900 dark:text-white">Recent Activity</h2>

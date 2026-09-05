@@ -14,10 +14,13 @@ Use it as the default response class for the FastAPI application:
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
 from fastapi.responses import JSONResponse
+
+from app.core.json_safe import to_json_safe
 
 # Matches a quoted ISO datetime with a time component and NO timezone suffix,
 # e.g. "2026-07-19T05:00:00" or "2026-07-19T05:00:00.123456". Date-only values
@@ -33,10 +36,15 @@ def _append_z_to_naive_datetimes(text: str) -> str:
 
 
 class UTCJSONResponse(JSONResponse):
-    """JSONResponse that serializes naive UTC datetimes with an explicit ``Z``."""
+    """JSONResponse that serializes naive UTC datetimes with an explicit ``Z``.
+
+    Also converts any remaining non-JSON-serializable types (PydanticObjectId,
+    Enum, datetime, etc.) via ``to_json_safe`` before encoding.
+    """
 
     def render(self, content: Any) -> bytes:
-        rendered = super().render(content)
-        if isinstance(rendered, bytes):
-            rendered = rendered.decode("utf-8")
-        return _append_z_to_naive_datetimes(rendered).encode("utf-8")
+        safe_content = to_json_safe(content)
+        rendered = json.dumps(safe_content, ensure_ascii=False, default=str).encode("utf-8")
+        decoded = rendered.decode("utf-8")
+        decoded = _append_z_to_naive_datetimes(decoded)
+        return decoded.encode("utf-8")

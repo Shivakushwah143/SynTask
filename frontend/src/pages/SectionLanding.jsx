@@ -23,6 +23,8 @@ import {
 } from "../config/navigation";
 import { SECTION_OVERVIEWS, getItemInsights, getItemOverview } from "../config/sectionOverview";
 import { attendanceAPI } from "../api/attendance";
+import { employeesApi } from "../api/employees";
+import { hrDocumentsApi } from "../api/hrDocuments";
 import { calendarApi } from "../api/calendar";
 import { companiesAPI } from "../api/companies";
 import { crmApi } from "../api/crm";
@@ -165,8 +167,11 @@ const itemFetchers = {
   "Approval Queue": async () => (await crmApi.getActivities({ status: "pending", limit: 50 })).data,
   "AI Assistant": () => reportsAPI.getAnalyticsCharts("month"),
   "AI Content Assistant": () => reportsAPI.getAnalyticsCharts("month"),
-  Employees: () => usersAPI.listUsers(null, null, null, 0, 50),
+  Employees: async () => (await employeesApi.list({ page_size: 50 })).data,
+  "User Accounts": () => usersAPI.listUsers(null, null, null, 0, 50),
   "My People": () => usersAPI.getMyTeam(),
+  Documents: async () => (await hrDocumentsApi.listDocuments({ page_size: 50 })).data,
+  "Document Types": async () => (await hrDocumentsApi.listTypes({ include_inactive: true })).data,
   Attendance: () => attendanceAPI.getDashboardStats(),
   "Live Attendance": () => attendanceAPI.getLiveMonitoring(),
   "Attendance Reports": () => attendanceAPI.getDashboardStats(),

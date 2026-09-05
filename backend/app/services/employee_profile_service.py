@@ -589,16 +589,66 @@ async def update_profile(company_id: str, employee_id: str, actor: User, data: d
     if data.get("emergency_contact") is not None:
         changes["emergency_contact"] = data["emergency_contact"]
         profile.emergency_contact = EmergencyContact(**data["emergency_contact"])
+    # Phase 11 — Lifecycle-sensitive fields must go through LifecycleService,
+    # not be directly patched.  employment_status and exit_info changes that
+    # should flow through resignation/termination/confirmation workflows are
+    # blocked here with a clear error.
+    LIFECYCLE_PROTECTED_FIELDS = {"employment_status", "exit_info"}
+    blocked = LIFECYCLE_PROTECTED_FIELDS & {k for k, v in data.items() if v is not None}
+    if blocked:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"The following fields cannot be updated directly: {', '.join(sorted(blocked))}. "
+                "Use the Employee Lifecycle endpoints for status changes, exits, and confirmations."
+            ),
+        )
     if data.get("probation") is not None:
         changes["probation"] = data["probation"]
         profile.probation = ProbationInfo(**data["probation"])
-    if data.get("exit_info") is not None:
-        changes["exit_info"] = data["exit_info"]
-        profile.exit_info = ExitInfo(**data["exit_info"])
 
     if changes:
+        # Phase 11 closure — lifecycle-sensitive changes are recorded BEFORE the
+        # profile save so a history failure aborts the mutation (no silent
+        # history loss). Personal/contact changes never block.
+        from app.services.lifecycle_service import _profile_employment_state, record_profile_changes
+
+        lifecycle_fields = {
+            "department_id", "designation", "reports_to",
+            "employment_type", "work_location", "work_mode",
+        }
+        touch_lifecycle = bool(lifecycle_fields & set(changes.keys()))
+        recorded_events = []
+        if touch_lifecycle:
+            before_state = _profile_employment_state(profile)
+            try:
+                recorded_events = await record_profile_changes(
+                    company_id, actor, profile, changes, before_state=before_state,
+                )
+            except HTTPException:
+                raise
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=(
+                        "Profile could not be updated because the employment history "
+                        "could not be recorded. No changes were saved — please retry."
+                    ),
+                ) from exc
+
         profile.updated_at = utc_now()
-        await profile.save()
+        try:
+            await profile.save()
+        except Exception:
+            # Compensation: history events were persisted but the profile save
+            # failed — remove them so no orphan history is left behind.
+            for event in recorded_events:
+                try:
+                    await event.delete()
+                except Exception:
+                    pass
+            raise
+
         await _record_employee_event(
             company_id, "EmployeeProfileUpdated", actor, profile,
             payload={"employee_id": str(profile.id), "changes": changes},
@@ -781,7 +831,18 @@ class EmployeeOnboardingService:
         candidate.updated_at = utc_now()
         await candidate.save()
 
-        # 8. Emit events (existing recruitment bus; preserves timeline/audit)
+        # 8. Phase 9 — record the JOINED lifecycle foundation event
+        # (idempotent; the profile was just created or linked).
+        try:
+            from app.services.lifecycle_service import record_joined_event
+
+            await record_joined_event(company_id, profile, actor_id=actor_id)
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception("Failed to record JOINED lifecycle event")
+
+        # 9. Emit events (existing recruitment bus; preserves timeline/audit)
         from app.recruitment.events import publish_recruitment_event
 
         payload = {

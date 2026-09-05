@@ -8,6 +8,10 @@ from app.agents.project_agent import PROJECT_AGENT_ID
 from app.agents.task_performance import TASK_PERFORMANCE_AGENT_ID
 
 
+HR_AGENT_ID = "hr_operations_agent"
+EXECUTIVE_AGENT_ID = "executive_operations_agent"
+
+
 GENERAL_ASSISTANT_CAPABILITY = "general_personal_assistant"
 SAFE_READ_TOOLS = ["current_user_summary", "authorized_workspace_summary", "approved_rag_lookup"]
 PROHIBITED_OPERATIONS = [
@@ -56,6 +60,8 @@ def role_capability_pack(role: str, *, modules: list[str] | None = None) -> Role
     module_set = set(modules or [])
     base_agents = [GENERAL_ASSISTANT_CAPABILITY, PROJECT_AGENT_ID, EMAIL_DRAFT_AGENT_ID]
     manager_agents = [*base_agents, TASK_PERFORMANCE_AGENT_ID]
+    hr_agents = [*manager_agents, HR_AGENT_ID]
+    executive_agents = [*hr_agents, EXECUTIVE_AGENT_ID]
     common = {
         "allowed_read_tools": SAFE_READ_TOOLS,
         "proposal_only_actions": ["draft_message", "propose_task_plan", "propose_follow_up"],
@@ -68,34 +74,36 @@ def role_capability_pack(role: str, *, modules: list[str] | None = None) -> Role
         return RoleCapabilityPack(
             role="employee",
             accessible_agents=base_agents,
+            # Employees do not get executive-level access
             default_context_scope="own_work_and_authorized_projects",
             **common,
         )
     if normalized == "lead":
         return RoleCapabilityPack(
             role="lead",
-            accessible_agents=manager_agents,
+            accessible_agents=hr_agents,
+            # Leads get HR but not executive-level access
             default_context_scope="own_work_direct_reports_and_authorized_projects",
             **common,
         )
     if normalized == "manager":
         return RoleCapabilityPack(
             role="manager",
-            accessible_agents=manager_agents,
+            accessible_agents=executive_agents,
             default_context_scope="department_hierarchy_and_authorized_projects",
             **common,
         )
     if normalized == "admin":
         return RoleCapabilityPack(
             role="admin",
-            accessible_agents=manager_agents,
+            accessible_agents=executive_agents,
             default_context_scope="tenant_administration_and_authorized_records",
             **common,
         )
     if normalized == "super_admin":
         return RoleCapabilityPack(
             role="super_admin",
-            accessible_agents=manager_agents,
+            accessible_agents=executive_agents,
             default_context_scope="platform_admin_with_explicit_tenant_scope_required",
             **common,
         )

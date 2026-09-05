@@ -31,6 +31,7 @@ from app.services.hr_document_service import (
     deactivate_document_type,
     ensure_default_document_types,
     get_document,
+    list_document_types,
     list_documents,
     missing_required_documents,
     parse_expiry_date,
@@ -154,13 +155,17 @@ class FakeCursor:
     async def count(self):
         return len(self._docs)
 
-    async def to_list(self):
+    async def to_list(self, length=None):
         docs = list(self._docs)
         if self._sort_spec:
             key = self._sort_spec[0]
             direction = self._sort_spec[1] if len(self._sort_spec) > 1 else 1
+            if isinstance(key, str) and key.startswith("-"):
+                key = key[1:]
+                direction = -1
             docs.sort(key=lambda doc: _norm(_get_path(doc, key)) or 0, reverse=(direction == -1))
-        return docs[self._skip_n:][: self._limit_n] if self._limit_n else docs[self._skip_n:]
+        docs = docs[self._skip_n:][: self._limit_n] if self._limit_n else docs[self._skip_n:]
+        return docs[:length] if length is not None else docs
 
 
 class FakeCollection:
@@ -235,6 +240,10 @@ class FakeModel:
     def find(cls, query):
         return FakeCursor([doc for doc in cls._all if _matches(query, doc)])
 
+    @classmethod
+    def get_pymongo_collection(cls):
+        return cls.collection
+
 
 class FakeHRDocumentType(FakeModel):
     _all = []
@@ -246,6 +255,7 @@ class FakeHRDocumentType(FakeModel):
     required = False
     expiry_supported = True
     default_visibility = None
+    employee_upload_allowed = False
     active = True
     created_by = None
 
@@ -264,6 +274,11 @@ class FakeHRDocument(FakeModel):
     expiry_date = None
     description = None
     visibility = None
+    submission_source = None
+    review_status = None
+    reviewed_by = None
+    reviewed_at = None
+    review_note = None
     uploaded_by = None
     archived_at = None
     archived_by = None
@@ -283,6 +298,11 @@ class FakeHRDocumentVersion(FakeModel):
     storage_resource_type = None
     storage_delivery_type = None
     checksum = None
+    submission_source = None
+    review_status = None
+    reviewed_by = None
+    reviewed_at = None
+    review_note = None
     uploaded_by = None
     uploaded_at = None
     change_note = None
@@ -360,7 +380,8 @@ def _install_models(monkeypatch, tmp_path):
         FakeHRDocumentType._by_id[doc_type.id] = doc_type
         return doc_type
 
-    _seed_type(company_id="company-1", name="PAN Card", code="pan", active=True, owner_scope=HROwnerScope.BOTH, expiry_supported=True, required=False, default_visibility=HRDocumentVisibility.EMPLOYEE_VISIBLE)
+    # PAN Card is one of the standard employee-uploadable types.
+    _seed_type(company_id="company-1", name="PAN Card", code="pan", active=True, owner_scope=HROwnerScope.BOTH, expiry_supported=True, required=False, default_visibility=HRDocumentVisibility.EMPLOYEE_VISIBLE, employee_upload_allowed=True)
     _seed_type(company_id="company-1", name="Bank Document", code="bank_document", active=True, owner_scope=HROwnerScope.EMPLOYEE, expiry_supported=False, required=True, default_visibility=HRDocumentVisibility.HR_ONLY)
     _seed_type(company_id="company-1", name="Inactive Type", code="inactive", active=False, owner_scope=HROwnerScope.BOTH, expiry_supported=True, required=False, default_visibility=HRDocumentVisibility.EMPLOYEE_VISIBLE)
     _seed_type(company_id="company-2", name="Offer Letter", code="offer_letter", active=True, owner_scope=HROwnerScope.BOTH, expiry_supported=True, required=False, default_visibility=HRDocumentVisibility.EMPLOYEE_VISIBLE)
@@ -553,6 +574,40 @@ async def test_ensure_default_document_types_idempotent(monkeypatch, tmp_path):
     created_again = await ensure_default_document_types("company-1")
     assert created_again == 0
     assert len(FakeHRDocumentType._all) == len(svc.DEFAULT_DOCUMENT_TYPES)
+
+
+@pytest.mark.asyncio
+async def test_list_document_types_active_only_and_empty(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    active = await list_document_types("company-1")
+    assert {item.code for item in active} == {"pan", "bank_document"}
+
+    FakeHRDocumentType._all = [item for item in FakeHRDocumentType._all if item.company_id != "company-1"]
+    empty = await list_document_types("company-1")
+    assert empty == []
+
+
+@pytest.mark.asyncio
+async def test_list_document_types_company_isolation(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    company_1 = await list_document_types("company-1", include_inactive=True, active_only=False)
+    company_2 = await list_document_types("company-2", include_inactive=True, active_only=False)
+
+    assert {item.company_id for item in company_1} == {"company-1"}
+    assert {item.code for item in company_1} == {"pan", "bank_document", "inactive"}
+    assert {item.company_id for item in company_2} == {"company-2"}
+    assert {item.code for item in company_2} == {"offer_letter"}
+
+
+@pytest.mark.asyncio
+async def test_hr_department_user_can_list_document_types(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    hr_user = _make_hr_department_user()
+
+    assert await svc.has_hr_directory_view(hr_user) is True
+    types = await list_document_types(hr_user.company_id)
+    assert {item.code for item in types} == {"pan", "bank_document"}
 
 
 # =============================================================================
@@ -1140,3 +1195,423 @@ async def test_missing_required_documents(monkeypatch, tmp_path):
     result = await missing_required_documents("company-1", "p-1", admin)
     assert result["count"] == 0
     assert all(item["code"] != "bank_document" for item in result["missing"])
+
+
+# =============================================================================
+# Employee submission + review workflow
+# =============================================================================
+
+
+def _add_type(**kwargs):
+    from app.models.hr_document import HROwnerScope
+
+    defaults = {
+        "company_id": "company-1",
+        "name": "Test Type",
+        "code": "test_type",
+        "active": True,
+        "owner_scope": HROwnerScope.EMPLOYEE,
+        "expiry_supported": False,
+        "required": False,
+        "default_visibility": HRDocumentVisibility.EMPLOYEE_VISIBLE,
+        "employee_upload_allowed": True,
+    }
+    defaults.update(kwargs)
+    doc_type = FakeHRDocumentType(**defaults)
+    FakeHRDocumentType._all.append(doc_type)
+    FakeHRDocumentType._by_id[doc_type.id] = doc_type
+    return doc_type
+
+
+@pytest.mark.asyncio
+async def test_employee_submit_creates_pending_v1_and_is_visible_immediately(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(user_id="u-1", profile_id="p-1")
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+
+    result = await svc.submit_employee_document(
+        "company-1", employee,
+        document_type_id=pan.id,
+        file=FakeUploadFile(b"%PDF-1.4 mine", "pan-card.pdf"),
+    )
+    assert result["owner_type"] == "employee"
+    assert result["employee_id"] == "p-1"
+    assert result["current_version"] == 1
+    assert result["review_status"] == "pending"
+    assert result["submission_source"] == "employee"
+    assert result["can_review"] is False
+    assert result["can_resubmit"] is False
+
+    # The pending submission is immediately visible through the self list.
+    items, total = await svc.list_my_documents("company-1", employee)
+    assert total == 1
+    assert items[0]["id"] == result["id"]
+    assert items[0]["review_status"] == "pending"
+    assert items[0]["can_manage"] is False
+
+    # Owner document + single version carry the review state.
+    doc = FakeHRDocument._all[0]
+    assert doc.review_status == "pending"
+    assert doc.submission_source == "employee"
+    version = FakeHRDocumentVersion._all[0]
+    assert version.review_status == "pending"
+    assert version.submission_source == "employee"
+
+
+@pytest.mark.asyncio
+async def test_employee_submit_requires_employee_profile(monkeypatch, tmp_path):
+    """Self endpoints resolve identity server-side: an actor with no Employee
+    Profile (or acting outside their own company) can never upload for someone
+    else — there is no employee_id parameter to forge."""
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+    # Actor in company-1 without any profile row (e.g. an org/API account).
+    no_profile = FakeUser(id="u-x", role=UserRole.EMPLOYEE, company_id="company-1")
+    FakeUser._all.append(no_profile)
+    FakeUser._by_id["u-x"] = no_profile
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.submit_employee_document(
+            "company-1", no_profile,
+            document_type_id=pan.id,
+            file=FakeUploadFile(b"%PDF-1.4 x", "x.pdf"),
+        )
+    assert exc.value.status_code == 404
+
+    # Cross-company: profile exists but belongs to company-2 — the actor's own
+    # company scope keeps resolution inside company-2, so no doc is created.
+    employee2, _ = _make_employee(user_id="u-2", company="company-2", profile_id="p-2")
+    with pytest.raises(HTTPException) as exc:
+        await svc.submit_employee_document(
+            "company-1", employee2,
+            document_type_id=pan.id,
+            file=FakeUploadFile(b"%PDF-1.4 x", "x.pdf"),
+        )
+    assert exc.value.status_code == 404
+    assert FakeHRDocument._all == []
+
+
+@pytest.mark.asyncio
+async def test_employee_cannot_upload_disallowed_document_type(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(profile_id="p-1")
+    # Employee-visible but NOT employee-uploadable.
+    restricted = _add_type(code="offer_letter", name="Offer Letter", employee_upload_allowed=False)
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.submit_employee_document(
+            "company-1", employee,
+            document_type_id=restricted.id,
+            file=FakeUploadFile(b"%PDF-1.4 x", "letter.pdf"),
+        )
+    assert exc.value.status_code == 403
+    assert FakeHRDocument._all == []
+    assert FakeHRDocumentVersion._all == []
+
+    # hr_only employee-visible-blocked types are also rejected server-side.
+    bank = await FakeHRDocumentType.find_one({"code": "bank_document"})
+    with pytest.raises(HTTPException) as exc:
+        await svc.submit_employee_document(
+            "company-1", employee,
+            document_type_id=bank.id,
+            file=FakeUploadFile(b"%PDF-1.4 x", "bank.pdf"),
+        )
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_employee_cannot_submit_duplicate_while_pending_or_approved(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(profile_id="p-1")
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+    await svc.submit_employee_document(
+        "company-1", employee, document_type_id=pan.id, file=FakeUploadFile(b"%PDF-1.4 v1", "v1.pdf")
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.submit_employee_document(
+            "company-1", employee, document_type_id=pan.id, file=FakeUploadFile(b"%PDF-1.4 v2", "v2.pdf")
+        )
+    assert exc.value.status_code == 409
+    assert len(FakeHRDocument._all) == 1
+    assert len(FakeHRDocumentVersion._all) == 1
+
+
+@pytest.mark.asyncio
+async def test_hr_reject_requires_reason_and_sets_review_note(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(user_id="u-1", profile_id="p-1")
+    admin = _make_admin()
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+    submitted = await svc.submit_employee_document(
+        "company-1", employee, document_type_id=pan.id, file=FakeUploadFile(b"%PDF-1.4 v1", "v1.pdf")
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.review_document("company-1", admin, submitted["id"], action="reject", note="   ")
+    assert exc.value.status_code == 400
+    assert "reason" in exc.value.detail.lower()
+
+    rejected = await svc.review_document(
+        "company-1", admin, submitted["id"], action="reject", note="Blurry scan — please re-upload"
+    )
+    assert rejected["review_status"] == "rejected"
+    assert rejected["review_note"] == "Blurry scan — please re-upload"
+    assert rejected["reviewed_by"] == "admin-1"
+    assert rejected["can_review"] is False
+
+    # Review state persisted on both the document and its version.
+    doc = FakeHRDocument._all[0]
+    version = FakeHRDocumentVersion._all[0]
+    assert doc.review_status == "rejected"
+    assert doc.review_note == "Blurry scan — please re-upload"
+    assert version.review_status == "rejected"
+    assert version.review_note == "Blurry scan — please re-upload"
+    assert version.reviewed_by == "admin-1"
+
+
+@pytest.mark.asyncio
+async def test_employee_cannot_approve_or_reject_documents(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(user_id="u-1", profile_id="p-1")
+    admin = _make_admin()
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+    submitted = await svc.submit_employee_document(
+        "company-1", employee, document_type_id=pan.id, file=FakeUploadFile(b"%PDF-1.4 v1", "v1.pdf")
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.review_document("company-1", employee, submitted["id"], action="approve")
+    assert exc.value.status_code == 403
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.review_document("company-1", employee, submitted["id"], action="reject", note="nope")
+    assert exc.value.status_code == 403
+    assert FakeHRDocument._all[0].review_status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_hr_approve_pending_submission(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(user_id="u-1", profile_id="p-1")
+    admin = _make_admin()
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+    submitted = await svc.submit_employee_document(
+        "company-1", employee, document_type_id=pan.id, file=FakeUploadFile(b"%PDF-1.4 v1", "v1.pdf")
+    )
+
+    approved = await svc.review_document("company-1", admin, submitted["id"], action="approve")
+    assert approved["review_status"] == "approved"
+    assert approved["reviewed_by"] == "admin-1"
+    assert approved["review_note"] is None
+
+    # Double review rejected (not pending anymore).
+    with pytest.raises(HTTPException) as exc:
+        await svc.review_document("company-1", admin, submitted["id"], action="approve")
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_rejected_resubmission_creates_next_version_and_preserves_history(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(user_id="u-1", profile_id="p-1")
+    admin = _make_admin()
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+
+    submitted = await svc.submit_employee_document(
+        "company-1", employee, document_type_id=pan.id, file=FakeUploadFile(b"%PDF-1.4 v1", "pan-v1.pdf")
+    )
+    doc_id = submitted["id"]
+    await svc.review_document("company-1", admin, doc_id, action="reject", note="Unreadable")
+
+    # Resubmission → V2 pending on the SAME document record.
+    resubmitted = await svc.submit_employee_document(
+        "company-1", employee, document_type_id=pan.id, file=FakeUploadFile(b"%PDF-1.4 v2", "pan-v2.pdf")
+    )
+    assert resubmitted["id"] == doc_id
+    assert resubmitted["current_version"] == 2
+    assert resubmitted["review_status"] == "pending"
+    assert resubmitted["review_note"] is None
+    assert len(FakeHRDocument._all) == 1  # No duplicate document records.
+
+    versions = sorted(FakeHRDocumentVersion._all, key=lambda v: v.version_number)
+    assert [v.version_number for v in versions] == [1, 2]
+    assert versions[0].review_status == "rejected"  # Old outcome preserved.
+    assert versions[0].review_note == "Unreadable"
+    assert versions[1].review_status == "pending"
+
+    # HR approves V2 → document approved, V1 stays rejected in history.
+    final = await svc.review_document("company-1", admin, doc_id, action="approve")
+    assert final["review_status"] == "approved"
+    assert final["current_version"] == 2
+    assert versions[0].review_status == "rejected"
+    assert versions[1].review_status == "approved"
+
+
+@pytest.mark.asyncio
+async def test_hr_upload_stays_approved_for_employee_and_candidate(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    admin = _make_admin()
+    _make_employee(profile_id="p-1")
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+
+    employee_doc = await upload_document(
+        "company-1", admin, employee_id="p-1", document_type_id=pan.id, file=FakeUploadFile(b"%PDF-1.4 h", "hr.pdf")
+    )
+    assert employee_doc["review_status"] == "approved"
+    assert employee_doc["submission_source"] == "hr"
+    assert employee_doc["can_review"] is False
+
+    candidate = FakeCandidate(id="cand-1", company_id="company-1", full_name="Bob Smith")
+    FakeCandidate._all.append(candidate)
+    FakeCandidate._by_id["cand-1"] = candidate
+    candidate_doc = await upload_document(
+        "company-1", admin, candidate_id="cand-1", document_type_id=pan.id, file=FakeUploadFile(b"%PDF-1.4 c", "cand.pdf")
+    )
+    assert candidate_doc["review_status"] == "approved"
+    assert candidate_doc["submission_source"] == "hr"
+
+    # Version mirrors also approved/hr.
+    for version in FakeHRDocumentVersion._all:
+        assert version.review_status == "approved"
+        assert version.submission_source == "hr"
+
+
+@pytest.mark.asyncio
+async def test_hr_replace_keeps_review_state_and_mirrors_version(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(user_id="u-1", profile_id="p-1")
+    admin = _make_admin()
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+    submitted = await svc.submit_employee_document(
+        "company-1", employee, document_type_id=pan.id, file=FakeUploadFile(b"%PDF-1.4 v1", "v1.pdf")
+    )
+    await svc.review_document("company-1", admin, submitted["id"], action="approve")
+
+    replaced = await svc.replace_document(
+        "company-1", submitted["id"], admin, FakeUploadFile(b"%PDF-1.4 v2", "v2.pdf"), change_note="cleaner copy"
+    )
+    assert replaced["current_version"] == 2
+    assert replaced["review_status"] == "approved"
+    assert replaced["submission_source"] == "employee"
+
+
+@pytest.mark.asyncio
+async def test_employee_my_status_overview_distinguishes_states(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(user_id="u-1", profile_id="p-1")
+    admin = _make_admin()
+    # Required employee type not uploaded yet.
+    required_type = _add_type(code="joining_document", name="Joining Document", required=True, employee_upload_allowed=True)
+    # Another required uploadable type (rejected later).
+    required_rejected = _add_type(code="educational_certificate", name="Educational Certificate", required=True, employee_upload_allowed=True)
+    # Uploadable, not required.
+    passport_type = _add_type(code="passport", name="Passport", required=False, employee_upload_allowed=True)
+
+    status = await svc.my_document_status("company-1", employee)
+    by_code = {item["code"]: item for item in status["required"]}
+    assert by_code["joining_document"]["status"] == "missing"
+    assert by_code["joining_document"]["can_upload"] is True
+
+    # Submit joining_document → pending (no longer missing, never approved).
+    await svc.submit_employee_document(
+        "company-1", employee, document_type_id=required_type.id, file=FakeUploadFile(b"%PDF-1.4 j", "j.pdf")
+    )
+    # Submit + reject educational_certificate → rejected.
+    rejected_doc = await svc.submit_employee_document(
+        "company-1", employee, document_type_id=required_rejected.id, file=FakeUploadFile(b"%PDF-1.4 e", "e.pdf")
+    )
+    await svc.review_document("company-1", admin, rejected_doc["id"], action="reject", note="Not legible")
+    # Passport uploaded (optional uploadable type) and approved by HR.
+    passport_doc = await svc.submit_employee_document(
+        "company-1", employee, document_type_id=passport_type.id, file=FakeUploadFile(b"%PDF-1.4 p", "p.pdf")
+    )
+    await svc.review_document("company-1", admin, passport_doc["id"], action="approve")
+
+    status = await svc.my_document_status("company-1", employee)
+    required_by_code = {item["code"]: item for item in status["required"]}
+    assert required_by_code["joining_document"]["status"] == "pending"
+    assert required_by_code["joining_document"]["can_upload"] is False
+    assert required_by_code["educational_certificate"]["status"] == "rejected"
+    assert required_by_code["educational_certificate"]["review_note"] == "Not legible"
+    assert required_by_code["educational_certificate"]["can_upload"] is True  # resubmit allowed
+
+    uploadable_by_code = {item["code"]: item for item in status["uploadable"]}
+    assert uploadable_by_code["passport"]["status"] == "approved"
+    assert uploadable_by_code["passport"]["can_upload"] is False
+    assert uploadable_by_code["pan"]["status"] == "missing"
+    assert uploadable_by_code["pan"]["can_upload"] is True
+
+    # Pending/rejected never satisfy required completion (missing-required view).
+    result = await missing_required_documents("company-1", "p-1", admin)
+    by_code = {item["code"]: item for item in result["missing"]}
+    assert by_code["educational_certificate"]["status"] == "rejected"
+    assert "joining_document" not in by_code  # pending excluded from missing
+
+
+@pytest.mark.asyncio
+async def test_legacy_hr_documents_serialize_as_approved_hr(monkeypatch, tmp_path):
+    """Documents created before the review workflow (no review fields) must
+    read back as approved/hr — no regression for existing HR data."""
+    _install_models(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    admin = _make_admin()
+    _make_employee(profile_id="p-1")
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+    doc = _make_document(employee_id="p-1", document_type_id=pan.id)
+    version = _make_version(doc, 1, uploaded_by="admin-1")
+    doc.current_version_id = version.id
+    doc.current_version_number = 1
+
+    detail = await get_document("company-1", doc.id, admin)
+    assert detail["review_status"] == "approved"
+    assert detail["submission_source"] == "hr"
+    assert detail["can_review"] is False
+
+    versions = await svc.list_versions("company-1", doc.id, admin)
+    assert versions[0]["review_status"] == "approved"
+    assert versions[0]["submission_source"] == "hr"
+
+
+@pytest.mark.asyncio
+async def test_review_cross_company_and_missing_document_denied(monkeypatch, tmp_path):
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(user_id="u-1", profile_id="p-1")
+    admin = _make_admin(company="company-1")
+    other_admin = _make_admin(company="company-2", user_id="admin-2")
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+    submitted = await svc.submit_employee_document(
+        "company-1", employee, document_type_id=pan.id, file=FakeUploadFile(b"%PDF-1.4 v1", "v1.pdf")
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.review_document("company-2", other_admin, submitted["id"], action="approve")
+    assert exc.value.status_code == 404
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.review_document("company-1", admin, "does-not-exist", action="approve")
+    assert exc.value.status_code == 404

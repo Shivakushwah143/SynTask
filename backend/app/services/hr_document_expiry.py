@@ -125,8 +125,12 @@ async def check_hr_document_expirations() -> int:
 
 
 async def run_hr_document_expiry_loop() -> None:
-    """Periodic background loop (daily), mirroring the deadline-checker pattern."""
+    """Periodic background loop (daily), leader-gated across API workers."""
+    from app.core.leader import try_acquire_leader
     while True:
+        if not await try_acquire_leader("hr_document_expiry", ttl_seconds=60 * 60):
+            await asyncio.sleep(60 * 60)
+            continue
         try:
             processed = await check_hr_document_expirations()
             if processed:

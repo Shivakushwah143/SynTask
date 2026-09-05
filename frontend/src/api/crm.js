@@ -2,6 +2,7 @@ import api from './axios'
 
 export const crmApi = {
   getDashboard: () => api.get('/crm/dashboard'),
+  getDashboardFollowUps: (params) => api.get('/crm/dashboard/follow-ups', { params }),
   getCompanies: (params) => api.get('/crm/companies', { params }),
   getCompany: (companyId) => api.get(`/crm/companies/${companyId}`),
   createCompany: (payload) => api.post('/crm/companies', payload),

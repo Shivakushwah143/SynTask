@@ -394,7 +394,12 @@ reminder_service = ReminderService()
 
 
 async def run_reminder_scheduler() -> None:
+    """Hourly reminder generation, leader-gated across API workers."""
+    from app.core.leader import try_acquire_leader
     while True:
+        if not await try_acquire_leader("reminder_scheduler", ttl_seconds=30 * 60):
+            await asyncio.sleep(REMINDER_SCHEDULER_INTERVAL_SECONDS)
+            continue
         try:
             active_users = await User.find({"status": UserStatus.ACTIVE.value}).count()
             logger.info("Reminder scheduler tick; active users=%s", active_users)

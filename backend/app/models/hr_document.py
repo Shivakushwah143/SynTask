@@ -32,6 +32,32 @@ class HROwnerType(str, Enum):
     CANDIDATE = "candidate"
 
 
+class HRSubmissionSource(str, Enum):
+    """Who supplied the current document content.
+
+    ``hr``       — uploaded/replaced by HR staff (auto-approved).
+    ``employee`` — submitted by the employee through My HR self-service
+                   (requires HR review).
+    """
+
+    HR = "hr"
+    EMPLOYEE = "employee"
+
+
+class HRReviewStatus(str, Enum):
+    """Approval state — kept separate from the stored ``active/archived``
+    lifecycle so the two never conflict.
+
+    ``pending``  — employee submission awaiting HR review.
+    ``approved`` — reviewed/approved (HR uploads are always approved).
+    ``rejected`` — rejected by HR with ``review_note``.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class HRDocumentVisibility(str, Enum):
     """Controlled visibility — employees see only ``EMPLOYEE_VISIBLE`` docs.
 
@@ -78,6 +104,12 @@ class HRDocumentType(Document):
     required: bool = False
     expiry_supported: bool = True
     default_visibility: HRDocumentVisibility = HRDocumentVisibility.EMPLOYEE_VISIBLE
+    # Employees may submit this type themselves from My HR (self-service).
+    employee_upload_allowed: bool = False
+    # Set by the idempotent seed-defaults repair the first time it enables a
+    # standard code. After that moment, an explicit ``False`` (recorded via a
+    # later ``updated_at``) is always treated as an HR decision and preserved.
+    employee_upload_defaults_repaired_at: Optional[datetime] = None
     active: bool = True
     created_by: Optional[str] = None
     created_at: datetime = Field(default_factory=utc_now)
@@ -113,6 +145,15 @@ class HRDocument(Document):
     expiry_date: Optional[datetime] = None
     description: Optional[str] = None
     visibility: HRDocumentVisibility = HRDocumentVisibility.EMPLOYEE_VISIBLE
+
+    # ── Review workflow (separate from status lifecycle above) ──────────────
+    # Mirrors the CURRENT version's review state so list/filter queries never
+    # need a join. Each HRDocumentVersion keeps its own copy for history.
+    submission_source: Optional[HRSubmissionSource] = None
+    review_status: Optional[HRReviewStatus] = None
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    review_note: Optional[str] = None
 
     uploaded_by: Optional[str] = None
     archived_at: Optional[datetime] = None
@@ -156,6 +197,14 @@ class HRDocumentVersion(Document):
     storage_resource_type: Optional[str] = None
     storage_delivery_type: Optional[str] = None
     checksum: Optional[str] = None
+
+    # Review outcome at the time this version was current (per-version history:
+    # V1 rejected → V2 pending → V2 approved stays auditable forever).
+    submission_source: Optional[HRSubmissionSource] = None
+    review_status: Optional[HRReviewStatus] = None
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    review_note: Optional[str] = None
 
     uploaded_by: Optional[str] = None
     uploaded_at: datetime = Field(default_factory=utc_now)

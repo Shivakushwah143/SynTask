@@ -1151,7 +1151,10 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           {...attributes}
           {...listeners}
         >
-          <MoveRight className="h-4 w-4 rotate-90" />
+          {/* Company/lead monogram instead of a generic drag icon */}
+          <span className="px-0.5 text-[10px] font-bold leading-none">
+            {String(leadTitle || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'L'}
+          </span>
         </button>
         <button
           type="button"

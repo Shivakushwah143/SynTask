@@ -7,6 +7,11 @@ import EmployeesPage from './EmployeesPage'
 import { employeesApi } from '../../../../api/employees'
 import { departmentsAPI } from '../../../../api/departments'
 import { usersAPI } from '../../../../api/users'
+import { authAPI } from '../../../../api/auth'
+
+vi.mock('../../../../api/auth', () => ({
+  authAPI: { getMe: vi.fn() },
+}))
 
 vi.mock('../../../../api/employees', () => ({
   employeesApi: {
@@ -70,7 +75,7 @@ const createTestQueryClient = () =>
 
 const renderPage = () =>
   render(
-    <MemoryRouter initialEntries={['/hr/recruitment/employees']}>
+    <MemoryRouter initialEntries={['/hr/employees']}>
       <QueryClientProvider client={createTestQueryClient()}>
         <EmployeesPage />
       </QueryClientProvider>
@@ -79,6 +84,11 @@ const renderPage = () =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  authAPI.getMe.mockResolvedValue({
+    role: 'admin',
+    department_key: null,
+    capabilities: [],
+  })
   departmentsAPI.listDepartments.mockResolvedValue(departments)
   usersAPI.getAssignableUsers.mockResolvedValue({ users: [] })
 })
@@ -176,11 +186,11 @@ describe('EmployeesPage', () => {
     employeesApi.list.mockResolvedValue({ data: { items: [employee], total: 1, page: 1, page_size: 20, has_next: false } })
 
     render(
-      <MemoryRouter initialEntries={['/hr/recruitment/employees']}>
+      <MemoryRouter initialEntries={['/hr/employees']}>
         <QueryClientProvider client={createTestQueryClient()}>
           <Routes>
-            <Route path="/hr/recruitment/employees" element={<EmployeesPage />} />
-            <Route path="/hr/recruitment/employees/:employeeId" element={<div data-testid="detail-page">Detail</div>} />
+            <Route path="/hr/employees" element={<EmployeesPage />} />
+            <Route path="/hr/employees/:employeeId" element={<div data-testid="detail-page">Detail</div>} />
           </Routes>
         </QueryClientProvider>
       </MemoryRouter>,

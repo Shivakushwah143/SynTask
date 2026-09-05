@@ -259,12 +259,38 @@ def _reset_fakes():
     FakeProfileModel._all = []
     FakeProfileModel._by_id = {}
     FakeDepartmentModel._by_id = {}
+    FakeLifecycleEvent._all = []
+
+
+class FakeLifecycleEvent:
+    """Minimal stand-in for EmployeeLifecycleEvent used by record_profile_changes."""
+    _all: list = []
+
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+        self.id = f"evt-{len(FakeLifecycleEvent._all) + 1}"
+
+    async def insert(self):
+        FakeLifecycleEvent._all.append(self)
+        return self
+
+    async def delete(self):
+        if self in FakeLifecycleEvent._all:
+            FakeLifecycleEvent._all.remove(self)
+        return None
 
 
 def _install_model_fakes(monkeypatch, *, profile_cls=FakeProfileModel):
     monkeypatch.setattr(svc, "User", FakeUser)
     monkeypatch.setattr(svc, "EmployeeProfile", profile_cls)
     monkeypatch.setattr(svc, "Department", FakeDepartmentModel)
+    # record_profile_changes (called by update_profile for lifecycle-sensitive
+    # fields) persists EmployeeLifecycleEvent — fake it so no live MongoDB is
+    # needed. Timeline emission is already best-effort inside the service.
+    import app.services.lifecycle_service as lifecycle_svc
+
+    FakeLifecycleEvent._all = []
+    monkeypatch.setattr(lifecycle_svc, "EmployeeLifecycleEvent", FakeLifecycleEvent)
 
 
 @pytest.fixture(autouse=True)

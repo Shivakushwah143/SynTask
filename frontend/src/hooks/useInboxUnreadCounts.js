@@ -60,11 +60,24 @@ export const useInboxUnreadCounts = () => {
     }
 
     void fetchCounts()
-    const interval = setInterval(fetchCounts, POLL_INTERVAL_MS)
+    const interval = setInterval(() => {
+      // Pause polling while the tab is hidden — background tabs must not keep
+      // hitting /notifications + Meta inbox APIs every 30s.
+      if (document.hidden) return
+      void fetchCounts()
+    }, POLL_INTERVAL_MS)
+
+    // One catch-up fetch when the tab becomes visible again (the interval
+    // above only ticks while visible, so the badge refreshes on return).
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && !document.hidden) void fetchCounts()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
 
     return () => {
       cancelled = true
       clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [user, isAuthenticated, companyId])
 

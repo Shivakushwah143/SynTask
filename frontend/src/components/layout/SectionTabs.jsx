@@ -84,8 +84,12 @@ const resolveSectionContext = (location) => {
     return { sectionKey: ctx.sectionKey, isLanding: isLegacyLanding, itemName: ctx.itemName };
   }
 
-  // HR recruitment screens belong to the Recruitment section (standalone sidebar entry).
-  // Exact-match only: the interview screen and /hr landing deliberately show no tab bar.
+  // HR screens: determine section based on module key.
+  // Recruitment module items → "recruitment" section.
+  // All other HR items (employees, documents, payroll, settings, etc.) → "people" section.
+  // Exact matches win over prefix matches so nested routes keep their parent tab
+  // (e.g. /hr/employees/:id stays on the Employees tab). The /hr landing page and
+  // the interview screen deliberately show no tab bar.
   const hrItems = HR_MODULES.flatMap((mod) =>
     mod.navigation
       .filter((item) => !HR_ITEM_SKIP.has(item.name))
@@ -93,10 +97,24 @@ const resolveSectionContext = (location) => {
         name: HR_ITEM_RENAMES[item.name] || item.name,
         href: item.href,
         match: item.href === mod.basePath ? mod.basePath : undefined,
+        moduleKey: mod.key,
       })),
   );
+  const hrPath = (item) => (item.href || "").split("?")[0];
+  if (location.pathname === "/hr" || location.pathname === "/hr/recruitment/interview-screen") {
+    return null;
+  }
   const hrExact = hrItems.find((item) => isExactNavMatch(item, location));
-  if (hrExact) return { sectionKey: "recruitment", isLanding: false, itemName: hrExact.name };
+  if (hrExact) {
+    const sectionKey = hrExact.moduleKey === "recruitment" ? "recruitment" : "people";
+    return { sectionKey, isLanding: false, itemName: hrExact.name };
+  }
+  // Prefix match for nested routes (e.g. /hr/employees/:id → Employees tab).
+  const hrPrefix = hrItems.find((item) => location.pathname.startsWith(`${hrPath(item)}/`));
+  if (hrPrefix) {
+    const sectionKey = hrPrefix.moduleKey === "recruitment" ? "recruitment" : "people";
+    return { sectionKey, isLanding: false, itemName: hrPrefix.name };
+  }
 
   return null;
 };

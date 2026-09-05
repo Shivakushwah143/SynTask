@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.core.json_safe import to_json_safe
 
 DISALLOWED_KEYS = {
     "raw_prompt",
@@ -20,7 +21,7 @@ MAX_CONTEXT_CHARS = 12000
 
 
 def provider_context_message(context: dict[str, Any] | None) -> str:
-    safe_context = _sanitize(context or {})
+    safe_context = to_json_safe(_sanitize(context or {}))
     encoded = json.dumps(safe_context, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
     if len(encoded) > MAX_CONTEXT_CHARS:
         encoded = encoded[:MAX_CONTEXT_CHARS] + "...[truncated]"

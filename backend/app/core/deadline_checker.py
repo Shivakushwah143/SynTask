@@ -91,8 +91,17 @@ async def check_approaching_deadlines():
 
 
 async def run_deadline_checker():
-    """Run the deadline checker periodically"""
+    """Run the deadline checker periodically.
+
+    Leader-gated: with multiple API workers only the worker holding the Redis
+    lease runs each cycle, so deadline notifications are not duplicated.
+    """
+    from app.core.leader import try_acquire_leader
     while True:
+        if not await try_acquire_leader("deadline_checker", ttl_seconds=30 * 60):
+            # Another worker owns this cycle — re-attempt next interval.
+            await asyncio.sleep(30 * 60)
+            continue
         try:
             await check_approaching_deadlines()
             # Check every 6 hours

@@ -21,8 +21,7 @@ import { Button, EmptyState, PageHeader, inputClassName } from '../../../../comp
 import { employeesApi } from '../../../../api/employees'
 import { departmentsAPI } from '../../../../api/departments'
 import { usersAPI } from '../../../../api/users'
-import { useAuthStore } from '../../../../store/authStore'
-import { hasCompanyAdminAccess } from '../../../../utils/roles'
+import { useCanManageEmployees } from '../hooks/useCanManageEmployees'
 import { compactParams, fmtDate, labelize } from '../utils/data'
 import EmployeeFormModal, {
   EMPLOYMENT_STATUSES,
@@ -46,8 +45,7 @@ const optionLabel = (options, value) => options.find((option) => option.value ==
 export default function EmployeesPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { user } = useAuthStore()
-  const canManage = hasCompanyAdminAccess(user?.role)
+  const canManage = useCanManageEmployees()
 
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -121,7 +119,7 @@ export default function EmployeesPage() {
     queryClient.invalidateQueries(['employees', 'list'])
   }
 
-  const openDetail = (employee) => navigate(`/hr/recruitment/employees/${employee.id}`)
+  const openDetail = (employee) => navigate(`/hr/employees/${employee.id}`)
 
   const hasActiveFilters = Boolean(departmentId || designation || employmentStatus || employmentType || workMode)
 
@@ -320,7 +318,7 @@ export default function EmployeesPage() {
                       {canManage && (
                         <button
                           type="button"
-                          onClick={() => navigate(`/hr/recruitment/employees/${employee.id}?edit=1`)}
+                          onClick={() => navigate(`/hr/employees/${employee.id}?edit=1`)}
                           className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-indigo-600 dark:hover:bg-gray-700"
                           aria-label={`Edit ${employee.full_name}`}
                           title="Edit"

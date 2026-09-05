@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, Coffee, Play } from 'lucide-react'
+import { CheckCircle2, Clock, Coffee, Play, CalendarDays, Ban, MinusCircle, AlertTriangle } from 'lucide-react'
 
 /**
  * Canonical frontend attendance statuses. The backend normalizes its attendance
@@ -10,6 +10,69 @@ export const ATTENDANCE_STATUS = {
   WORKING: 'working',
   ON_BREAK: 'on_break',
   CHECKED_OUT: 'checked_out',
+}
+
+/**
+ * Phase 4: HR/Payroll-ready attendance statuses.
+ */
+export const HR_ATTENDANCE_STATUS = {
+  PRESENT: 'present',
+  ABSENT: 'absent',
+  PAID_LEAVE: 'paid_leave',
+  UNPAID_LEAVE: 'unpaid_leave',
+  HALF_DAY: 'half_day',
+  HOLIDAY: 'holiday',
+  WEEK_OFF: 'week_off',
+  IN_PROGRESS: 'in_progress',
+  NO_RECORD: 'no_record',
+}
+
+export const HR_STATUS_META = {
+  [HR_ATTENDANCE_STATUS.PRESENT]: {
+    label: 'Present',
+    badge: 'bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300',
+    icon: CheckCircle2,
+  },
+  [HR_ATTENDANCE_STATUS.ABSENT]: {
+    label: 'Absent',
+    badge: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300',
+    icon: Ban,
+  },
+  [HR_ATTENDANCE_STATUS.PAID_LEAVE]: {
+    label: 'Paid Leave',
+    badge: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+    icon: CalendarDays,
+  },
+  [HR_ATTENDANCE_STATUS.UNPAID_LEAVE]: {
+    label: 'Unpaid Leave',
+    badge: 'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
+    icon: CalendarDays,
+  },
+  [HR_ATTENDANCE_STATUS.HALF_DAY]: {
+    label: 'Half Day',
+    badge: 'bg-yellow-50 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300',
+    icon: MinusCircle,
+  },
+  [HR_ATTENDANCE_STATUS.HOLIDAY]: {
+    label: 'Holiday',
+    badge: 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
+    icon: CalendarDays,
+  },
+  [HR_ATTENDANCE_STATUS.WEEK_OFF]: {
+    label: 'Week Off',
+    badge: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+    icon: Coffee,
+  },
+  [HR_ATTENDANCE_STATUS.IN_PROGRESS]: {
+    label: 'In Progress',
+    badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+    icon: Play,
+  },
+  [HR_ATTENDANCE_STATUS.NO_RECORD]: {
+    label: 'No Record',
+    badge: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+    icon: Clock,
+  },
 }
 
 /**
@@ -71,6 +134,55 @@ export const attendanceStatusMeta = {
 
 export function getAttendanceMeta(status) {
   return attendanceStatusMeta[normalizeAttendanceStatus(status)] || attendanceStatusMeta[ATTENDANCE_STATUS.NOT_CHECKED_IN]
+}
+
+/**
+ * Compact pill shown for attendance rows that came from the eTimeOffice
+ * biometric sync (server `source === 'etimeoffice'`). Never shows provider
+ * credentials or other external details.
+ */
+export const sourcePillClassName =
+  'inline-flex shrink-0 items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300'
+
+export const isBiometricSource = (item) => item?.source === 'etimeoffice'
+
+/**
+ * Label/badge for a history row (per-day, one row per date). Rows always come
+ * from persisted Attendance documents, so the absent-day state stays implicit
+ * (matching the rest of the app) unless a leave marker is stored.
+ */
+export function getHistoryDayMeta(item) {
+  if (item?.leave_status) {
+    return { label: 'On Leave', icon: CalendarDays, badge: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' }
+  }
+  const status = item?.status
+  if (status === 'working' || status === 'Working') {
+    return { label: 'Currently Working', icon: Play, badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' }
+  }
+  if (status === 'on_break' || status === 'On Break') {
+    return { label: 'On Break', icon: Coffee, badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' }
+  }
+  const hasCheckIn = Boolean(item?.check_in_at || item?.login_time)
+  if (hasCheckIn) {
+    const hasCheckOut = Boolean(item?.check_out_at || item?.logout_time)
+    if (!hasCheckOut) {
+      return { label: 'Missing Checkout', icon: MinusCircle, badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' }
+    }
+    return { label: 'Completed', icon: CheckCircle2, badge: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300' }
+  }
+  return { label: 'Absent', icon: Ban, badge: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300' }
+}
+
+/**
+ * Human-readable duration for history rows: 14460s -> '4h 01m', 0 -> '—'.
+ */
+export function formatDayDuration(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0))
+  if (!total) return '—'
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const mm = String(minutes).padStart(2, '0')
+  return hours ? `${hours}h ${mm}m` : `${minutes}m`
 }
 
 /**

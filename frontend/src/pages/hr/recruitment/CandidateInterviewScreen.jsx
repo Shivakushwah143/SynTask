@@ -657,9 +657,8 @@ export default function CandidateInterviewScreen() {
 
   const handleSelectCandidate = (candidate) => {
     setSelectedCandidate(candidate);
-    // Here you would typically navigate to or open the interview form
-    // For now, we'll just show a success message
-    console.log("Selected candidate for interview:", candidate);
+    // Navigate to the full interviews page with candidate pre-selected
+    window.location.href = `/hr/recruitment/interviews?candidate_id=${candidate.id || candidate._id}`;
   };
 
   const getSourceBadgeColor = (source) => {

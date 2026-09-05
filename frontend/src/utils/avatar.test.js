@@ -5,7 +5,7 @@ describe('useDefaultAvatar', () => {
   it('replaces a broken image once with the default avatar', () => {
     const target = { src: '/uploads/avatars/missing.png', onerror: () => {} }
     useDefaultAvatar({ currentTarget: target })
-    expect(target.src).toBe('/default-avatar.png')
+    expect(target.src).toBe('/default-avatar.svg')
     expect(target.onerror).toBeNull()
   })
 })

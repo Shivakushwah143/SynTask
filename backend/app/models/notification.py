@@ -42,6 +42,15 @@ class NotificationType(str, Enum):
     LEAVE_FORWARDED = "leave_forwarded"
     LEAVE_APPROVED = "leave_approved"
     LEAVE_REJECTED = "leave_rejected"
+    LIFECYCLE_CONFIRMED = "lifecycle_confirmed"
+    LIFECYCLE_PROMOTED = "lifecycle_promoted"
+    LIFECYCLE_TRANSFERRED = "lifecycle_transferred"
+    LIFECYCLE_MANAGER_CHANGED = "lifecycle_manager_changed"
+    LIFECYCLE_RESIGNATION_SUBMITTED = "lifecycle_resignation_submitted"
+    LIFECYCLE_RESIGNATION_ACCEPTED = "lifecycle_resignation_accepted"
+    LIFECYCLE_RESIGNATION_REJECTED = "lifecycle_resignation_rejected"
+    LIFECYCLE_TERMINATED = "lifecycle_terminated"
+    LIFECYCLE_EXITED = "lifecycle_exited"
     SYSTEM = "system"
 
 

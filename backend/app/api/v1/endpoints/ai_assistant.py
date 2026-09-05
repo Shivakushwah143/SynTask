@@ -7,10 +7,23 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agents.streaming import (
+    DEFAULT_SSE_HEADERS,
+    STATUS_ANALYZING,
+    STATUS_UNDERSTANDING,
+    sse_frame,
+    status_event,
+    token_event,
+    with_heartbeat,
+)
+
 from app.agents.orchestrator import AgentOrchestrator
-from app.agents.capability_packs import role_capability_pack
+from app.agents.capability_packs import EXECUTIVE_AGENT_ID, HR_AGENT_ID, role_capability_pack
+from app.agents.executive.service import ExecutiveAgentService
+from app.agents.hr.service import HRAgentService
 from app.agents.routing import DeterministicAgentRouter
 from app.agents.schemas import AgentRunCreateRequest
 from app.api.dependencies import get_current_user, get_project_by_id
@@ -27,6 +40,8 @@ router = APIRouter()
 orchestrator = AgentOrchestrator()
 working_memory_service = WorkingMemoryService()
 agent_router = DeterministicAgentRouter()
+executive_agent_service = ExecutiveAgentService()
+hr_agent_service = HRAgentService()
 
 
 class UnifiedWorkspaceContext(BaseModel):
@@ -109,7 +124,7 @@ PROHIBITED_MEMORY_TERMS = (
 
 
 def _require_unified_ai_enabled() -> None:
-    if not settings.AGENT_PLATFORM_ENABLED or not settings.PROJECT_AGENT_ENABLED:
+    if not settings.AGENT_PLATFORM_ENABLED:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Unified AI workspace is disabled")
 
 
@@ -151,7 +166,18 @@ async def unified_assistant_chat(payload: UnifiedAssistantChatRequest, current_u
         current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
         modules=list(getattr(current_user, "modules", []) or []),
     )
-    route = agent_router.route(message=payload.message, workspace=workspace, capability_pack=capability_pack)
+    # Build conversation history for LLM intent context
+    conversation_history = []
+    for msg in (conversation.messages or [])[-8:]:
+        if hasattr(msg, "role") and hasattr(msg, "content"):
+            conversation_history.append({"role": msg.role, "content": msg.content})
+    # Use hybrid routing: deterministic first, then LLM intent interpreter for ambiguous queries
+    route = await agent_router.route_with_llm_intent(
+        message=payload.message,
+        workspace=workspace,
+        capability_pack=capability_pack,
+        conversation_history=conversation_history,
+    )
     memory_state = await _personal_memory_state(current_user=current_user)
     merged_preferences = {
         **{item["preference_key"]: item["content"] for item in memory_state["memories"] if item.get("preference_key")},
@@ -179,6 +205,49 @@ async def unified_assistant_chat(payload: UnifiedAssistantChatRequest, current_u
             },
         },
     )
+    if route.agent_id in {EXECUTIVE_AGENT_ID, HR_AGENT_ID}:
+        definition = await orchestrator.registry.get_definition(
+            agent_id=agent_payload.agent_id,
+            version=agent_payload.agent_version,
+        )
+        orchestrator._authorize_definition(current_user=current_user, definition=definition, payload=agent_payload)
+        entity_context = {
+            "workspace": workspace,
+            "routing": route.model_context(),
+        }
+        service = executive_agent_service if route.agent_id == EXECUTIVE_AGENT_ID else hr_agent_service
+        specialized = await service.chat(
+            current_user=current_user,
+            message=payload.message,
+            conversation_id=conversation.conversation_id,
+            session_id=session.session_id,
+            entity_context=entity_context,
+            conversation_history=conversation_history,
+        )
+        answer_text = specialized.get("answer") or ""
+        return UnifiedAssistantChatResponse(
+            conversation_id=conversation.conversation_id,
+            session_id=session.session_id,
+            message_id=message.id,
+            run_id=None,
+            state="COMPLETED" if specialized.get("success") else "FAILED",
+            agent={"agent_id": route.agent_id, "version": route.agent_version, "routing_reason": route.routing_reason},
+            answer={
+                "summary": answer_text,
+                "sections": [],
+                "facts": [],
+                "missing_data": [],
+                "warnings": [specialized["error_detail"]] if specialized.get("error_detail") else [],
+                "confidence": route.confidence,
+            },
+            citations=[],
+            proposed_actions=[],
+            memory={"saved": False, "candidate_ids": []},
+            usage={
+                **(specialized.get("usage") or {}),
+                "tool_calls_summary": specialized.get("tool_calls_summary") or [],
+            },
+        )
     run = await orchestrator.create_run(current_user=current_user, payload=agent_payload)
     result = run.sanitized_result or {}
     answer = {
@@ -195,12 +264,317 @@ async def unified_assistant_chat(payload: UnifiedAssistantChatRequest, current_u
         message_id=message.id,
         run_id=run.run_id,
         state=run.state,
-        agent={"agent_id": run.agent_id, "version": run.agent_version, "routing_reason": route.reason},
+        agent={"agent_id": run.agent_id, "version": run.agent_version, "routing_reason": route.routing_reason},
         answer=answer,
         citations=result.get("citations") or result.get("evidence") or [],
         proposed_actions=result.get("proposed_actions") or [],
         memory={"saved": False, "candidate_ids": []},
         usage={"provider": run.provider, "model": run.model, "token_usage": run.token_usage, "estimated_cost": run.estimated_cost},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Unified AI Assistant — streaming chat (SSE)
+# ---------------------------------------------------------------------------
+
+
+def _streaming_chunk_text(text: str, size: int = 180) -> list[str]:
+    """Split a full answer into small chunks for progressive rendering."""
+    if not text:
+        return []
+    return [text[i:i + size] for i in range(0, len(text), size)]
+
+
+def _unified_streamed_payload(
+    *,
+    conversation_id: str,
+    session_id: str,
+    message_id: str,
+    agent_info: dict[str, Any],
+    state: str,
+    answer: dict[str, Any],
+    citations: list[dict[str, Any]] | None = None,
+    proposed_actions: list[dict[str, Any]] | None = None,
+    usage: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Compose the exact payload shape of ``POST /chat`` (non-stream)."""
+    return {
+        "conversation_id": conversation_id,
+        "session_id": session_id,
+        "message_id": message_id,
+        "run_id": None,
+        "state": state,
+        "agent": agent_info,
+        "answer": answer,
+        "citations": citations or [],
+        "proposed_actions": proposed_actions or [],
+        "memory": {"saved": False, "candidate_ids": []},
+        "usage": usage or {},
+    }
+
+
+@router.post("/chat/stream")
+async def unified_assistant_chat_stream(
+    payload: UnifiedAssistantChatRequest,
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """Streaming version of ``POST /chat`` (SSE / chunked fetch).
+
+    Emits the same user-safe lifecycle events as the Executive/HR streaming
+    endpoints: status (accepted → routing → tools/analyzing → answer), live
+    answer token deltas, then a final ``done`` frame whose payload matches the
+    non-stream ``UnifiedAssistantChatResponse`` exactly.
+
+    The non-stream ``POST /chat`` remains available for compatibility.
+    """
+    _require_unified_ai_enabled()
+    if not getattr(current_user, "company_id", None):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant scope required")
+
+    # ── Request prelude (validation + persistence) — identical to POST /chat ─
+    scope = RAGScope(
+        company_id=current_user.company_id,
+        tenant_id=current_user.company_id,
+        user_id=str(current_user.id),
+        role=current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
+        department_id=getattr(current_user, "department_id", None),
+        current_user=current_user,
+    )
+    conversation = await _get_or_create_conversation(current_user=current_user, conversation_id=payload.conversation_id)
+    workspace = await _validate_workspace(current_user=current_user, workspace=payload.workspace)
+    session = await _get_or_create_session(scope=scope, conversation_id=conversation.conversation_id, session_id=payload.session_id)
+    await working_memory_service.update_client_state(
+        scope=scope,
+        session_id=session.session_id,
+        update=ClientWorkingMemoryUpdate(
+            conversation_id=conversation.conversation_id,
+            message={"role": "user", "content": payload.message},
+            current_page=workspace.get("page"),
+            selected_record=workspace.get("selected_record"),
+            current_filters=workspace.get("filters") or {},
+            reference_bindings=workspace.get("reference_bindings") or {},
+        ),
+    )
+    message = AIConversationMessage(role="user", content=payload.message)
+    conversation.messages.append(message)
+    conversation.updated_at = utc_now()
+    await conversation.save()
+
+    capability_pack = role_capability_pack(
+        current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
+        modules=list(getattr(current_user, "modules", []) or []),
+    )
+    conversation_history = []
+    for msg in (conversation.messages or [])[-8:]:
+        if hasattr(msg, "role") and hasattr(msg, "content"):
+            conversation_history.append({"role": msg.role, "content": msg.content})
+    route = await agent_router.route_with_llm_intent(
+        message=payload.message,
+        workspace=workspace,
+        capability_pack=capability_pack,
+        conversation_history=conversation_history,
+    )
+    memory_state = await _personal_memory_state(current_user=current_user)
+    merged_preferences = {
+        **{item["preference_key"]: item["content"] for item in memory_state["memories"] if item.get("preference_key")},
+        **payload.preferences.model_dump(mode="json"),
+    }
+    agent_payload = AgentRunCreateRequest(
+        agent_id=route.agent_id,
+        agent_version=route.agent_version,
+        trigger_type="manual",
+        idempotency_key=payload.idempotency_key,
+        project_id=workspace.get("project_id"),
+        task_id=workspace.get("task_id"),
+        department_id=getattr(current_user, "department_id", None),
+        session_id=session.session_id,
+        conversation_id=conversation.conversation_id,
+        query=payload.message,
+        input_payload={
+            "workspace": workspace,
+            "preferences": merged_preferences,
+            "personal_memory": memory_state,
+            "unified_gateway": True,
+            "personal_context": {
+                "route": route.model_context(),
+                "capability_pack": capability_pack.model_context(),
+            },
+        },
+    )
+
+    agent_info: dict[str, Any] = {
+        "agent_id": route.agent_id,
+        "version": route.agent_version,
+        "routing_reason": route.routing_reason,
+    }
+    message_id = str(message.id)
+
+    # ── Executive / HR specialized agents: true lifecycle + token streaming ──
+    if route.agent_id in {EXECUTIVE_AGENT_ID, HR_AGENT_ID}:
+        definition = await orchestrator.registry.get_definition(
+            agent_id=route.agent_id,
+            version=route.agent_version,
+        )
+        orchestrator._authorize_definition(current_user=current_user, definition=definition, payload=agent_payload)
+        service = executive_agent_service if route.agent_id == EXECUTIVE_AGENT_ID else hr_agent_service
+        entity_context = {
+            "workspace": workspace,
+            "routing": route.model_context(),
+        }
+
+        async def _specialized_event_stream():
+            source = service.stream_chat(
+                current_user=current_user,
+                message=payload.message,
+                conversation_id=conversation.conversation_id,
+                session_id=session.session_id,
+                entity_context=entity_context,
+                conversation_history=conversation_history,
+            )
+            try:
+                async for ev in with_heartbeat(source):
+                    if ev["type"] == "done":
+                        specialized = ev["data"]
+                        success = bool(specialized.get("success"))
+                        warnings = [specialized["error_detail"]] if specialized.get("error_detail") else []
+                        unified = _unified_streamed_payload(
+                            conversation_id=conversation.conversation_id,
+                            session_id=session.session_id,
+                            message_id=message_id,
+                            agent_info=agent_info,
+                            state="COMPLETED" if success else "FAILED",
+                            answer={
+                                "summary": specialized.get("answer") or "",
+                                "sections": [],
+                                "facts": [],
+                                "missing_data": [],
+                                "warnings": warnings,
+                                "confidence": route.confidence,
+                            },
+                            usage={
+                                **(specialized.get("usage") or {}),
+                                "tool_calls_summary": specialized.get("tool_calls_summary") or [],
+                            },
+                        )
+                        yield sse_frame({"type": "done", "data": unified})
+                    elif ev["type"] == "error":
+                        specialized = ev.get("data") or {}
+                        unified = _unified_streamed_payload(
+                            conversation_id=conversation.conversation_id,
+                            session_id=session.session_id,
+                            message_id=message_id,
+                            agent_info=agent_info,
+                            state="FAILED",
+                            answer={
+                                "summary": specialized.get("answer") or ev.get("message") or "Request failed.",
+                                "sections": [],
+                                "facts": [],
+                                "missing_data": [],
+                                "warnings": [specialized.get("error_detail") or ev.get("message")] if (specialized.get("error_detail") or ev.get("message")) else [],
+                                "confidence": route.confidence,
+                            },
+                            usage={
+                                **(specialized.get("usage") or {}),
+                                "tool_calls_summary": specialized.get("tool_calls_summary") or [],
+                            },
+                        )
+                        yield sse_frame({"type": "error", "message": ev.get("message", "Request failed"), "data": unified})
+                    else:
+                        yield sse_frame(ev)
+            except Exception as exc:  # never break the SSE channel silently
+                yield sse_frame({
+                    "type": "error",
+                    "message": "The request failed on the server. Please try again.",
+                    "data": _unified_streamed_payload(
+                        conversation_id=conversation.conversation_id,
+                        session_id=session.session_id,
+                        message_id=message_id,
+                        agent_info=agent_info,
+                        state="FAILED",
+                        answer={
+                            "summary": "I hit a technical issue while processing your request — please try again.",
+                            "sections": [],
+                            "facts": [],
+                            "missing_data": [],
+                            "warnings": [f"STREAM_ERROR: {exc}"],
+                            "confidence": route.confidence,
+                        },
+                        usage={"model": "", "error": f"STREAM_ERROR: {exc}"},
+                    ),
+                })
+
+        return StreamingResponse(
+            _specialized_event_stream(),
+            media_type="text/event-stream",
+            headers=DEFAULT_SSE_HEADERS,
+        )
+
+    # ── Other orchestrator agents: run normally, then stream the result ──────
+    async def _orchestrator_event_stream():
+        try:
+            yield sse_frame(status_event("accepted", STATUS_UNDERSTANDING))
+            run = await orchestrator.create_run(current_user=current_user, payload=agent_payload)
+            yield sse_frame(status_event("routing", STATUS_UNDERSTANDING))
+            yield sse_frame(status_event("analyzing", STATUS_ANALYZING))
+        except Exception as exc:
+            yield sse_frame({
+                "type": "error",
+                "message": "The request failed on the server. Please try again.",
+                "data": _unified_streamed_payload(
+                    conversation_id=conversation.conversation_id,
+                    session_id=session.session_id,
+                    message_id=message_id,
+                    agent_info=agent_info,
+                    state="FAILED",
+                    answer={
+                        "summary": "I hit a technical issue while processing your request — please try again.",
+                        "sections": [],
+                        "facts": [],
+                        "missing_data": [],
+                        "warnings": [f"RUN_ERROR: {exc}"],
+                        "confidence": route.confidence,
+                    },
+                    usage={},
+                ),
+            })
+            return
+
+        result = run.sanitized_result or {}
+        summary = result.get("summary") or result.get("project_summary") or ""
+        answer = {
+            "summary": summary,
+            "sections": result.get("sections") or [],
+            "facts": result.get("facts") or [],
+            "missing_data": result.get("missing_data") or [],
+            "warnings": result.get("warnings") or [],
+            "confidence": result.get("confidence") or 0.0,
+        }
+        unified = _unified_streamed_payload(
+            conversation_id=conversation.conversation_id,
+            session_id=session.session_id,
+            message_id=message_id,
+            agent_info=agent_info,
+            state=run.state,
+            answer=answer,
+            citations=result.get("citations") or result.get("evidence") or [],
+            proposed_actions=result.get("proposed_actions") or [],
+            usage={
+                "provider": run.provider,
+                "model": run.model,
+                "token_usage": run.token_usage,
+                "estimated_cost": run.estimated_cost,
+            },
+        )
+        if summary:
+            yield sse_frame(status_event("answer", "Preparing your answer…"))
+            for chunk in _streaming_chunk_text(summary):
+                yield sse_frame(token_event(chunk))
+        yield sse_frame({"type": "done", "data": unified})
+
+    return StreamingResponse(
+        _orchestrator_event_stream(),
+        media_type="text/event-stream",
+        headers=DEFAULT_SSE_HEADERS,
     )
 
 

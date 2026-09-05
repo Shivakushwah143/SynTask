@@ -30,6 +30,12 @@ import { Badge, Button, PageHeader } from '../components/ui'
 import { timeService } from '@/services/timeService'
 
 const unifiedWorkspaceEnabled = import.meta.env.VITE_UNIFIED_AI_ASSISTANT_ENABLED === 'true'
+const hrAgentEnabled = import.meta.env.VITE_HR_AGENT_ENABLED === 'true'
+const executiveAgentEnabled = import.meta.env.VITE_EXECUTIVE_AGENT_ENABLED === 'true'
+
+// Intent routing is handled server-side by DeterministicAgentRouter.
+// The frontend no longer duplicates intent detection — all queries go
+// through the general chat endpoint which routes to the correct agent.
 
 const formatAgentName = (agent = {}) => {
   const id = agent.agent_id || agent.id || agent.name || 'Legacy assistant'
@@ -106,15 +112,27 @@ export default function AIChat() {
     return 'Good Evening'
   }, [])
 
-  const quickActions = useMemo(() => [
-    { key: 'summary', icon: Sparkles, label: "Today's Summary", prompt: "Give me today's verified workspace summary with tasks, blockers, projects, and next actions." },
-    { key: 'blockers', icon: AlertTriangle, label: 'Blockers', prompt: 'Show my current blockers and what needs attention first.' },
-    { key: 'hr', icon: HeartPulse, label: 'HR', prompt: 'Summarize HR items that need my attention, including leave and team context.' },
-    { key: 'crm', icon: Briefcase, label: 'CRM', prompt: 'Show CRM follow-ups, leads, and customer actions that need attention.' },
-    { key: 'meetings', icon: CalendarClock, label: 'Meetings', prompt: 'Summarize upcoming meetings and preparation items.' },
-    { key: 'reports', icon: FileText, label: 'Reports', prompt: 'Generate a concise report summary with verified sources and risks.' },
-    { key: 'team-performance', icon: BarChart3, label: 'Team Performance', prompt: 'Show team performance insights with verified metrics, limitations, and safe recommendations.' },
-  ], [])
+  const quickActions = useMemo(() => {
+    const base = [
+      { key: 'summary', icon: Sparkles, label: "Today's Summary", prompt: "Give me today's verified workspace summary with tasks, blockers, projects, and next actions." },
+      { key: 'blockers', icon: AlertTriangle, label: 'Blockers', prompt: 'Show my current blockers and what needs attention first.' },
+      { key: 'crm', icon: Briefcase, label: 'CRM', prompt: 'Show CRM follow-ups, leads, and customer actions that need attention.' },
+      { key: 'meetings', icon: CalendarClock, label: 'Meetings', prompt: 'Summarize upcoming meetings and preparation items.' },
+      { key: 'reports', icon: FileText, label: 'Reports', prompt: 'Generate a concise report summary with verified sources and risks.' },
+      { key: 'team-performance', icon: BarChart3, label: 'Team Performance', prompt: 'Show team performance insights with verified metrics, limitations, and safe recommendations.' },
+    ]
+    if (executiveAgentEnabled) {
+      base.splice(0, 0, {
+        key: 'executive-attention', icon: Sparkles, label: 'Executive Brief', prompt: 'What needs my attention today? Give me a prioritized executive brief.',
+      })
+    }
+    if (hrAgentEnabled) {
+      base.splice(executiveAgentEnabled ? 1 : 0, 0, {
+        key: 'hr-attention', icon: HeartPulse, label: 'HR Attention', prompt: 'What needs HR attention today? Give me a prioritized summary.',
+      })
+    }
+    return base
+  }, [])
 
   const placeholderPrompts = useMemo(() => [
     'Ask for today’s summary...',
@@ -160,8 +178,10 @@ export default function AIChat() {
     setLoading(true)
     setError('')
     setLastPrompt(message)
-
-    try {
+      try {
+      // All queries go through the general chat endpoint.
+      // Backend DeterministicAgentRouter routes to the correct agent
+      // (Executive, HR, Project, Email, Performance, or General).
       const response = await aiAPI.chat({
         message,
         history: nextMessages.slice(0, -1),

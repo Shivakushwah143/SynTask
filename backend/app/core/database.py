@@ -92,10 +92,23 @@ from app.models.sales_masters import (
 )
 from app.models.attendance import (
     Attendance, AttendanceSession, BreakLog,
-    MonitoringSession, CameraSession, ScreenShareSession
+    MonitoringSession, CameraSession, ScreenShareSession,
+    AttendancePolicy, Holiday, AttendanceCorrectionRequest
+)
+from app.integrations.etimeoffice.models import (
+    ETimeOfficeEmployeeMapping,
+    ETimeOfficeSyncState,
 )
 from app.models.timeline import TimelineEvent
-from app.models.leave import LeaveRequest
+from app.models.leave import LeaveBalance, LeaveRequest, LeaveTypeConfig
+from app.models.salary import SalaryComponent, SalaryStructure
+from app.models.payroll import PayrollPeriod, PayrollRecord
+from app.models.payslip import Payslip
+from app.models.lifecycle import (
+    EmployeeLifecycleEvent,
+    EmployeeSeparationRequest,
+    EmployeeOffboarding,
+)
 from app.models.eod import EODReport
 from app.models.capability import seed_default_capabilities
 from app.integrations.meta.models import (
@@ -290,9 +303,14 @@ async def init_db():
         # Get database
         database = client[settings.DATABASE_NAME]
 
+        # ── Pre-flight: drop stale indexes whose spec changed ────────
+        # Beanie raises IndexKeySpecsConflict when the model declares a
+        # different spec (e.g. unique added) but the database already has
+        # an index with the same auto-generated name.  Drop stale indexes
+        # so Beanie can recreate them with the correct spec.
         await _migrate_employee_profile_candidate_index(database)
         await _migrate_task_source_marker_index(database)
-        
+
         # Initialize Beanie with document models
         await init_beanie(
             database=database,
@@ -424,8 +442,23 @@ async def init_db():
                 MonitoringSession,
                 CameraSession,
                 ScreenShareSession,
+                AttendancePolicy,
+                Holiday,
+                AttendanceCorrectionRequest,
+                ETimeOfficeEmployeeMapping,
+                ETimeOfficeSyncState,
                 TimelineEvent,
                 LeaveRequest,
+                LeaveTypeConfig,
+                LeaveBalance,
+                SalaryComponent,
+                SalaryStructure,
+                PayrollPeriod,
+                PayrollRecord,
+                Payslip,
+                EmployeeLifecycleEvent,
+                EmployeeSeparationRequest,
+                EmployeeOffboarding,
                 EODReport,
                 ScheduledJob,
                 ScheduledJobOccurrence,
@@ -474,6 +507,9 @@ async def init_db():
         )
 
         await seed_default_capabilities()
+        from app.agents.registry import register_builtin_agent_definitions
+
+        await register_builtin_agent_definitions()
         
         logger.info("Beanie ODM initialized successfully")
         

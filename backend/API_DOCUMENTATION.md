@@ -425,6 +425,195 @@ Client lifecycle statuses accepted by create/update/list responses are `new`, `o
 | POST | `/api/v1/scheduled-jobs/{job_id}/resume` | `resume_scheduled_job` | Enables a recurring job and advances missed `run_at` values to the next future occurrence; no catch-up tasks are created for paused time. |
 | DELETE | `/api/v1/scheduled-jobs/{job_id}` | `delete_scheduled_job` | Deletes completed, failed, or cancelled jobs only. |
 
+### Payroll & Payslips
+
+Phase 6 payroll endpoints manage monthly periods and employee records; Phase 7 payslip endpoints generate, preview, download, and version PDF payslips. **A payslip is a presentation artifact of an already PROCESSED payroll record — generation never recalculates payroll.** It reads the record's stored snapshots (employee, salary, attendance, earnings, deductions, gross/net) only.
+
+Permission model (backend authoritative):
+
+- `payroll.view` — view periods/records, preview and download payslips (company admins pass through).
+- `payroll.manage` — create/calculate periods, generate and regenerate payslips.
+- `payroll.approve` — approve/process periods.
+- Employee self-ownership — a user may preview/download **only their own** payslips; employee A can never access employee B's payslip. Managers without payroll permission are denied (reporting relationship ≠ salary access).
+- Company isolation — every operation is scoped to the actor's company; cross-company payslip IDs return `404`.
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/payroll/periods` | `list_periods` | Lists company payroll periods (`status` filter optional). Requires `payroll.view`. |
+| POST | `/api/v1/payroll/periods` | `create_period` | Creates a DRAFT payroll period (`year`, `month`). Requires `payroll.manage`. |
+| GET | `/api/v1/payroll/periods/{period_id}` | `get_period` | Payroll period detail with lifecycle metadata. Requires `payroll.view`. |
+| POST | `/api/v1/payroll/periods/{period_id}/calculate` | `calculate_period` | Runs the Phase 6 calculation (DRAFT→CALCULATED). Requires `payroll.manage`. |
+| POST | `/api/v1/payroll/periods/{period_id}/review` | `review_period` | Moves CALCULATED → REVIEW. Requires `payroll.manage`. |
+| POST | `/api/v1/payroll/periods/{period_id}/approve` | `approve_period` | Moves REVIEW → APPROVED (rejects when blocked records exist). Requires `payroll.approve`. |
+| POST | `/api/v1/payroll/periods/{period_id}/process` | `process_period` | Moves APPROVED → PROCESSED (terminal; finalizes records) and **auto-generates missing payslips** for eligible records (idempotent — records with an existing payslip or in BLOCKED state are skipped; per-record failures never roll back the transition). Requires `payroll.approve`. |
+| GET | `/api/v1/payroll/periods/{period_id}/records` | `list_records` | Employee payroll records for a period; each item includes `payslip` state and `can_generate`/`can_preview`/`can_download`/`can_regenerate` flags. Requires `payroll.view`. |
+| GET | `/api/v1/payroll/records/{record_id}` | `get_payroll_record` | One employee payroll record with full snapshot + payslip state. Requires `payroll.view`. |
+| POST | `/api/v1/payroll/records/{record_id}/payslip` | `create_record_payslip` | Generates the payslip for one record. Only allowed after the period is PROCESSED; idempotent (returns the existing payslip on repeat). Requires `payroll.manage`. |
+| POST | `/api/v1/payroll/periods/{period_id}/payslips/generate` | `generate_period_payslips` | Bulk-generates payslips for all eligible records of a processed period. Idempotent: existing payslips are skipped unless `regenerate=true`. Returns `{ generated, already_existing, failed, skipped }` — one failing record never rolls back the rest. Requires `payroll.manage`. |
+| GET | `/api/v1/payroll/records/{record_id}/payslips` | `get_record_payslips` | Payslip version history for one record (newest first). Requires `payroll.view`. |
+| GET | `/api/v1/payroll/payslips/{payslip_id}` | `get_payslip_metadata` | Payslip metadata (version, file name, generated at/by, `can_*` flags). `payroll.view` OR the payslip's own employee. |
+| GET | `/api/v1/payroll/payslips/{payslip_id}/preview` | `preview_payslip` | Inline PDF preview (authorized; local file stream or short-lived Cloudinary signed URL — never a raw public URL). `payroll.view` OR the payslip's own employee. |
+| GET | `/api/v1/payroll/payslips/{payslip_id}/download` | `download_payslip` | Secure PDF download with attachment disposition. `payroll.view` OR the payslip's own employee. |
+| POST | `/api/v1/payroll/payslips/{payslip_id}/regenerate` | `regenerate_payslip` | Creates the next payslip version (V2, V3, …) from the SAME processed snapshot; the previous version and file are preserved. Never alters payroll values. Requires `payroll.manage`. |
+| GET | `/api/v1/payroll/me/payslips` | `my_payslips` | The caller's own payslips only (latest version per record) — Phase 8 self-service readiness. Any authenticated user. |
+
+### Employee Self-Service (ESS)
+
+Phase 8 surfaces the employee's **own** data from the existing modules through a `My HR` workspace (`/hr/me` in the frontend). ESS is secure employee access to existing HR modules — it never duplicates Employee / Attendance / Leave / Documents / Payroll logic. All self endpoints resolve the identity from the authenticated user; **no `employee_id` is accepted from the request** (manual-ID attacks are structurally impossible on self routes).
+
+Identity & permission model:
+
+- **Identity resolution** — the authenticated `User` is matched to their company-scoped `EmployeeProfile` (`company_id + user_id`). Availability depends on the Employee Profile existing, **not** on role string — MANAGER / LEAD / HR / ADMIN users who are also employees get My HR alongside their admin surfaces.
+- **No profile** — platform super-admins / non-employee accounts receive `404` (`Employee profile is not available for this account.`) instead of a crash; the frontend shows a graceful state.
+- **Self vs management** — self-access never requires the module management permission: viewing own attendance needs no `attendance.manage`, viewing own payslips needs no company `payroll.view`. Self-service never grants company-wide payroll/HR access.
+- **Profile self-edit whitelist** — `PATCH /api/v1/employees/me` accepts only `personal_email`, `personal_phone`, `address`, `emergency_contact`. HR-controlled fields (department, designation, manager, employee number, employment type/status, joining date, work mode/location, salary-affecting fields, …) are **explicitly rejected with `400`**, never silently ignored. Address/emergency contact merge over stored values (partial updates never erase sibling fields). Self-changes are audited through the existing profile event bus.
+- **Ownership** — documents: only own + `EMPLOYEE_VISIBLE` + ACTIVE (Phase 2 service; HR-only/confidential records omitted entirely, even filenames). Payslips: `payroll.view` OR the payslip's own employee (Phase 7 service). Salary: own user only. Cross-employee access is denied backend-side.
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/employees/me` | `my_employee_profile` | The current user's own Employee Profile detail DTO (Phase 1). Any authenticated user with a profile. |
+| PATCH | `/api/v1/employees/me` | `update_my_employee_profile` | Self-edit of the whitelisted personal fields only (see above); HR-controlled fields rejected with `400`. |
+| GET | `/api/v1/attendance/me/today` | `get_my_today_attendance` | Today's attendance for the caller (Phase 4). |
+| GET | `/api/v1/attendance/me/today-enhanced` | `get_my_today_enhanced` | Today's attendance with policy-aware HR status, expected hours, late flags (Phase 4). |
+| GET | `/api/v1/attendance/me/history` | `get_my_attendance_history` | The caller's own attendance history — **strictly self-scoped for every role** (managers/admins never receive team/company rows here), one row per date (Phase 4). |
+| GET | `/api/v1/attendance/corrections/me` | `get_my_corrections` | The caller's attendance correction requests (Phase 4). |
+| GET | `/api/v1/leaves/balances/me` | `get_my_leave_balances` | The caller's leave balances across active leave types, backend-computed (Phase 3). |
+| GET | `/api/v1/leaves/my` | `get_my_leave_requests` | The caller's leave requests (Phase 3). |
+| GET | `/api/v1/hr/employees/{employee_id}/documents` | `list_employee_documents_endpoint` | The caller's own documents when called with their own Employee Profile id and no HR directory permission: server-side restricted to own + `EMPLOYEE_VISIBLE` + ACTIVE (Phase 2 service; HR-only/confidential omitted; other employee ids return `403`). |
+| GET | `/api/v1/salary/me` | `get_my_salary` | The caller's own current + upcoming Salary Structure (Phase 5 data, ownership by construction — keyed by user). |
+| GET | `/api/v1/payroll/me/payslips` | `my_payslips` | The caller's own generated payslips (Phase 7; see Payroll & Payslips above). |
+| GET | `/api/v1/hr/me/summary` | `my_hr_summary` | Lightweight My HR overview aggregate (profile essentials, today's attendance, leave balance summary + pending count, employee-visible document alerts incl. `pending_review`/`rejected` counts, latest payslip, ESS capability flags incl. `can_upload_document: true`). Summaries only — module pages use their own APIs for full histories. `404` when the caller has no Employee Profile. |
+
+### HR Documents (Phase 2) & Employee Submissions
+
+The HR document system stores metadata over the existing file service; every row is company-scoped and owned by exactly one employee or candidate. Review state is **separate from the stored `active`/`archived` lifecycle**:
+
+- `review_status`: `pending` | `approved` | `rejected` — only `approved` satisfies a required document type.
+- `submission_source`: `hr` (uploaded by HR, always approved) | `employee` (self-service submission awaiting review).
+- `reviewed_by` / `reviewed_at` / `review_note` — who reviewed, when, and the rejection reason surfaced to the employee.
+- Each `HRDocumentVersion` keeps its own copy of the review outcome, so a resubmission history like V1 rejected → V2 pending → V2 approved is preserved forever (resubmission never duplicates the document record).
+- Legacy documents (pre-review-flow) read back as `approved`/`hr`; the `scripts/migrate_hr_document_review_flow.py` migration backfills them.
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/hr/document-types` | `list_document_types_endpoint` | Company document types (idempotently seeded). Requires HR document view. Types now carry `employee_upload_allowed`. |
+| POST | `/api/v1/hr/document-types` | `create_document_type_endpoint` | Create a document type incl. `employee_upload_allowed`. Requires HR document manage. |
+| PATCH | `/api/v1/hr/document-types/{id}` | `update_document_type_endpoint` | Update a document type incl. `employee_upload_allowed`. Requires HR document manage. |
+| GET | `/api/v1/hr/documents` | `list_all_documents_endpoint` | Company-wide HR document list; filters incl. `review_status` (`pending`/`approved`/`rejected`). Requires HR document view. |
+| GET | `/api/v1/hr/employees/{employee_id}/documents` | `list_employee_documents_endpoint` | HR directory view of one employee's documents (HR-only docs included for HR). Without HR directory permission the caller is restricted to their own + `EMPLOYEE_VISIBLE` + ACTIVE records (`403` for any other employee id). |
+| POST | `/api/v1/hr/employees/{employee_id}/documents` | `upload_employee_document_endpoint` | HR upload (manage required). Stored as `submission_source=hr`, `review_status=approved` — existing behavior unchanged. |
+| POST | `/api/v1/hr/candidates/{candidate_id}/documents` | `upload_candidate_document_endpoint` | HR candidate upload — always approved, no review flow for candidates. |
+| GET | `/api/v1/hr/employees/{employee_id}/documents/missing-required` | `missing_required_endpoint` | Required types without an approved document; items carry `status` `missing`/`rejected`. Pending submissions are excluded (not missing — awaiting review). Requires HR directory view. |
+| GET | `/api/v1/hr/documents/{document_id}` | `get_document_endpoint` | Document detail incl. review fields + `can_review`/`can_resubmit` capability flags. |
+| POST | `/api/v1/hr/documents/{document_id}/replace` | `replace_document_endpoint` | HR file replacement — new version keeps the current review state. Manage required. |
+| POST | `/api/v1/hr/documents/{document_id}/review` | `review_document_endpoint` | HR approves (`action=approve`) or rejects (`action=reject` + required `note`) a **pending employee submission** only. Rejection reason is stored on the document and current version and shown to the employee. Manage required — normal employees (including the owner) can never approve/reject. |
+| GET | `/api/v1/hr/documents/{document_id}/versions` | `list_document_versions_endpoint` | Version history with each version's review outcome (`review_status`, `review_note`, reviewer). |
+| GET | `/api/v1/hr/documents/{document_id}/preview` `/download`, `/versions/{version_id}/download` | — | Authorized blob/signed file access (re-authorizes company + ownership + visibility on every call). |
+
+**Employee self-service endpoints (My HR → My Documents)** — identity is resolved from the authenticated user; **no `employee_id` is accepted**, so an employee can only ever touch their own documents and can never act as HR:
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/hr/me/documents` | `list_my_documents_endpoint` | The authenticated employee's own ACTIVE + `EMPLOYEE_VISIBLE` documents at any review state (a new submission is visible immediately). No HR permission required. |
+| GET | `/api/v1/hr/me/documents/status` | `my_document_status_endpoint` | Per-type overview: `required` rows (Missing / Pending Review / Approved / Rejected with rejection note) and `uploadable` rows (only types with `employee_upload_allowed`, employee scope + employee-visible), each with `can_upload`. |
+| POST | `/api/v1/hr/me/documents` | `submit_employee_document_endpoint` | Submit a new document (creates V1 `pending`) or resubmit a rejected one (creates the next version on the **same** document, `pending`). Document type must be active + `employee_upload_allowed` + employee-visible; `visibility`/review fields are never client-supplied. A type already pending/approved returns `409`. |
+
+### eTimeOffice Biometric Attendance Integration (Attendance module)
+
+The Attendance module can sync biometric attendance from the company's
+**eTimeOffice** portal into the normal per-employee-per-day Attendance records
+so HR sees device punches inside the existing attendance experience with
+`source: "etimeoffice"`. The provider runs **server-side only** — React never
+talks to eTimeOffice and never receives provider credentials, cookies, CSRF
+tokens, or session ids.
+
+- Provider authentication is HTTP Basic against `https://api.etimeoffice.com/api`
+  with the compound username `<CorporateID>:<Username>:<Password>:true` (the
+  Basic password field is empty) — confirmed against the live service.
+- Read-only: the provider only downloads punches (`DownloadInOutPunchData`);
+  it never writes to eTimeOffice.
+- **Explicit mapping only.** An eTimeOffice `Empcode` resolves to a SynTask
+  employee exclusively through the company-scoped `etimeoffice_employee_mappings`
+  table — HR confirms each mapping in the Attendance UI (see `/mappings`
+  endpoints below). There is **no inference** from `EmployeeProfile.employee_number`
+  numeric suffixes and no name-based runtime assignment; the earlier suffix
+  matching was removed because it attached punches to the wrong employees.
+  The provider directory (`Empcode` + `Name`) is persisted as external
+  identity metadata on every fetch and is used only to *suggest* a likely
+  SynTask employee in the mapping UI (a suggestion is never an assignment,
+  and placeholder names such as `Empname0005` are never suggested). Unmapped
+  external employees are counted and reported; they never fail a sync and no
+  Attendance is created for them.
+- Sync is idempotent: re-running the same window updates changed days and
+  skips identical ones (`duplicates_skipped`). It never overwrites attendance
+  created by the SynTask app check-in and never deletes attendance.
+- Biometric Attendance rows store the source code (`source: "etimeoffice"` +
+  `external_employee_code`) so HR reports can display the actual eTimeOffice
+  code next to the employee. Reassignment of historical rows is a deliberate,
+  audited operation (see `scripts/reconcile_etimeoffice_mappings.py`).
+- Biometric rows are first-class attendance: they drive the employee's
+  Today/Recent Attendance, navbar status, activity feed, and HR reports exactly
+  like manual rows, and carry `source: "etimeoffice"` for the UI's
+  `Biometric` badge.
+- Manual flows never mutate biometric rows. A day written by the biometric
+  sync hides the Check In / Break / Check Out actions in the employee UI, and
+  the server returns `409` on `POST /attendance/check-in`, `check-out`, and
+  `/break/start|end` when today's row is biometric — corrections remain the
+  sanctioned change path.
+- Wall-clock times from the device are interpreted in `ETIMEOFFICE_TIMEZONE`
+  and stored as naive UTC like all other Attendance instants; late/early flags
+  are recomputed through SynTask attendance policy rules (not vendor values).
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| POST | `/api/v1/attendance/integrations/etimeoffice/sync` | `etimeoffice_sync` | Manual sync for the caller's company. Optional `from_date`/`to_date` (`YYYY-MM-DD`, window ≤ 62 days, default: last 7 days). Company admin / sub-admin only. Returns only safe metadata: `success`, `employees_received`, `mapped`, `unmapped`, `attendance_updated`, `duplicates_skipped`, `skipped_app_attendance`, `errors`, `last_sync` — never credentials. `409` while another sync runs; `502` with "eTimeOffice synchronization failed. Existing attendance data remains available." on provider failure. |
+| GET | `/api/v1/attendance/integrations/etimeoffice/status` | `etimeoffice_status` | Company-scoped integration status for the Attendance UI: `enabled`, `configured`, `connected`, `syncing`, `last_attempted_at`, `last_successful_at`, `last_error`, `last_summary`, cadence settings. Safe metadata only. Any authenticated company user. |
+| GET | `/api/v1/attendance/integrations/etimeoffice/mappings?refresh=` | `etimeoffice_mappings` | List the company's eTimeOffice directory with mapping status: `rows` (code, provider name, mapped SynTask employee, `status` mapped/unmapped, `suggestion`), plus `employees` (selectable company employees) and counts. `refresh=true` first downloads the current directory from the provider (read-only). Company admin / sub-admin only. Provider outage → `502` with the safe sync message. |
+| PUT | `/api/v1/attendance/integrations/etimeoffice/mappings/{code}` | `etimeoffice_upsert_mapping` | Confirm/change which SynTask employee (`employee_id`) owns an eTimeOffice code; `employee_id: null` removes the mapping (code stays listed unmapped). Tenancy + active-role validated; a SynTask employee already mapped to another code → `400`. Company admin / sub-admin only. |
+| DELETE | `/api/v1/attendance/integrations/etimeoffice/mappings/{code}` | `etimeoffice_remove_mapping` | Remove the mapping for a code (row remains listed). Company admin / sub-admin only. |
+
+A leader-gated background loop (default every 3 minutes) re-runs the same sync
+when `ETIMEOFFICE_ENABLED=true`; overlapping sync jobs are prevented both by
+the Redis leader lease and a per-company in-flight guard. A failed external
+connection never breaks SynTask — existing attendance remains available and
+the run can simply be retried.
+
+### HR Dashboard & Reports
+
+Phase 10 provides an operational HR Dashboard and categorized reporting workspace. **Dashboard / Reports = read existing domain truth** — they never recalculate HR business logic independently. All metrics are computed backend-side from existing Employee, Attendance, Leave, Document, Recruitment, Lifecycle, and Payroll services.
+
+Permission model:
+
+- Dashboard is available to all company users (HR, managers, admins, employees) — sections are permission-aware.
+- Payroll summary on the dashboard is visible only to users with `payroll.view` or company admin role.
+- Payroll report endpoints require `payroll.view` capability.
+- Recruitment summary is visible to admins/managers.
+- All report queries are company-scoped. Cross-company data access is impossible.
+- Platform super-admins without a company see `403` on the dashboard.
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/hr/dashboard` | `get_hr_dashboard` | Aggregated HR dashboard: employee summary, attendance today, leave summary, document summary, lifecycle summary, recruitment summary (if authorized), payroll summary (if authorized), attention items. |
+| GET | `/api/v1/hr/reports/employees/directory` | `employee_directory_report` | Paginated employee directory with department/status/type filters. |
+| GET | `/api/v1/hr/reports/employees/headcount` | `headcount_report` | Headcount aggregated by department with overall summary. |
+| GET | `/api/v1/hr/reports/employees/joining-exit` | `joining_exit_report` | Joining/exit trend data for chart visualization (configurable months). |
+| GET | `/api/v1/hr/reports/attendance/summary` | `attendance_summary_report` | Per-employee attendance summary for a date range (present, leave, absent, late, overtime). |
+| GET | `/api/v1/hr/reports/attendance/late` | `late_arrival_report` | Late arrival report with expected vs actual check-in. |
+| GET | `/api/v1/hr/reports/attendance/absence` | `absence_report` | Absence report (excludes holidays, week-offs, and approved leaves). |
+| GET | `/api/v1/hr/reports/leave/balances` | `leave_balance_report` | Leave balances per employee per leave type. |
+| GET | `/api/v1/hr/reports/leave/usage` | `leave_usage_report` | Leave usage by type (approved, pending, rejected units). |
+| GET | `/api/v1/hr/reports/documents/expiry` | `document_expiry_report` | Document expiry report with status (expired, expiring soon, valid). |
+| GET | `/api/v1/hr/reports/lifecycle/events` | `lifecycle_events_report` | Lifecycle events with before/after state summaries. |
+| GET | `/api/v1/hr/reports/lifecycle/probation` | `probation_report` | Employees on probation with confirmation due dates. |
+| GET | `/api/v1/hr/reports/lifecycle/notice` | `notice_period_report` | Employees in notice period with exit details. |
+| GET | `/api/v1/hr/reports/payroll/summary` | `payroll_summary_report` | Payroll history by period. **Requires `payroll.view`.** |
+| GET | `/api/v1/hr/reports/payroll/employees` | `employee_payroll_report` | Per-employee payroll records. **Requires `payroll.view`.** |
+| GET | `/api/v1/hr/reports/employees/directory/export` | `export_employee_directory` | CSV export of employee directory. |
+| GET | `/api/v1/hr/reports/attendance/summary/export` | `export_attendance_summary` | CSV export of attendance summary. |
+| GET | `/api/v1/hr/reports/leave/balances/export` | `export_leave_balances` | CSV export of leave balances. |
+| GET | `/api/v1/hr/reports/payroll/summary/export` | `export_payroll_summary` | CSV export of payroll summary. **Requires `payroll.view`.** |
+| GET | `/api/v1/hr/reports/documents/expiry/export` | `export_document_expiry` | CSV export of document expiry report. |
+
 ### Work Requests
 
 Work Request endpoints require the Tasks module gate and same-company access. They coordinate operational work requests and approvals without replacing Support Tickets.
@@ -676,6 +865,11 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | POST | `/api/v1/tasks/{task_id}/dependencies` | `add_task_dependency` | Task manager adds a same-tenant, same-project dependency; self-dependency and cycles are rejected. |
 | DELETE | `/api/v1/tasks/{task_id}/dependencies/{dependency_id}` | `delete_task_dependency` | Task manager removes a dependency. |
 | GET | `/api/v1/tasks/{task_id}/subtasks` | `get_task_subtasks` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/tasks/health/dashboard` | `dashboard_task_health` | Combined Task Health payload for the Dashboard: `summary` (health-status counts), `team_completion` (`employees` with performance metrics), and `extension_summary` (status counts). Replaces the three separate `health/summary` + `health/team-completion` + `health/extensions` calls the Dashboard made — each previously scanned the same task dataset — with ONE task scan. Admin/Sub Admin/Manager/Lead/Super Admin only; 403 for Employees. Same company/RBAC scoping as the individual endpoints it consolidates. |
+| GET | `/api/v1/tasks/health/summary` | `task_health_summary` | Unchanged; kept for other consumers. Dashboard now uses the combined endpoint above. |
+| GET | `/api/v1/tasks/health/team-completion` | `team_completion_summary` | Unchanged; kept for other consumers. |
+| GET | `/api/v1/tasks/health/extensions` | `extension_request_summary` | Unchanged; kept for other consumers. |
+| GET | `/api/v1/tasks/health/me` | `my_task_health` | Employee self-service task health; unchanged. |
 
 ### Tickets
 

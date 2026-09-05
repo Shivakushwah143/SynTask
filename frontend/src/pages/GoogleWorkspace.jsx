@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from 'react-query'
 import { isAfter } from 'date-fns'
 import { timeService } from '@/services/timeService'
+import { GoogleLogo } from '@/config/visualAssets'
 import {
   CalendarDays,
   CheckCircle2,
@@ -267,8 +268,11 @@ export default function GoogleWorkspacePage() {
       <div className="grid gap-4 xl:grid-cols-2">
         <Section title="Connected account" description="Reuses the existing Google identity and stored Workspace credentials.">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800">
+            <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800">
               {account.avatar ? <img src={account.avatar} alt={account.name || 'Google account'} className="h-full w-full object-cover" /> : <UserCircle2 className="h-6 w-6 text-gray-400" />}
+              <span className="absolute -bottom-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-gray-200 dark:bg-gray-700 dark:ring-gray-600">
+                <GoogleLogo className="h-3 w-3" />
+              </span>
             </div>
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">

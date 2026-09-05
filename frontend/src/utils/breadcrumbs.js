@@ -72,6 +72,7 @@ export const buildBreadcrumbTrail = (pathname, search = '') => {
     const isCompanyWorkspace = segments.length === 3 && segments[0] === 'crm' && segments[1] === 'companies'
     const isTaskDetail = segments.length === 4 && segments[0] === 'projects' && segments[2] === 'tasks'
     const isDirectTaskDetail = segments.length === 2 && segments[0] === 'tasks'
+    const isEmployeeDetail = segments.length === 3 && segments[0] === 'hr' && segments[1] === 'employees'
     const isRecruitmentJobDetail = segments.length === 4 && segments[0] === 'hr' && segments[1] === 'recruitment' && segments[2] === 'jobs'
     const isRecruitmentCandidateDetail = segments.length === 4 && segments[0] === 'hr' && segments[1] === 'recruitment' && segments[2] === 'candidates'
 
@@ -79,6 +80,7 @@ export const buildBreadcrumbTrail = (pathname, search = '') => {
     else if (isCompanyWorkspace) trail.push('Company')
     else if (isTaskDetail) trail.push('Tasks', 'Task Detail')
     else if (isDirectTaskDetail) trail.push('Task Detail')
+    else if (isEmployeeDetail) trail.push('Employee Profile')
     else if (isRecruitmentJobDetail) trail.push('Job Detail')
     else if (isRecruitmentCandidateDetail) trail.push('Candidate Detail')
     else if (!context.matchedExact) {
@@ -92,13 +94,35 @@ export const buildBreadcrumbTrail = (pathname, search = '') => {
     return trail
   }
 
+  // Phase 8 — My HR (Employee Self-Service): /hr/me and /hr/me/* belong to the
+  // My HR section (sidebar labels), not the People/HR admin screens.
+  if (segments[0] === 'hr' && segments[1] === 'me') {
+    const MY_HR_LABELS = {
+      profile: 'My Profile',
+      attendance: 'My Attendance',
+      leave: 'My Leave',
+      documents: 'My Documents',
+      payslips: 'My Payslips',
+    }
+    const trail = ['Home', 'My HR']
+    if (segments[2]) trail.push(MY_HR_LABELS[segments[2]] || 'Overview')
+    return trail
+  }
+
   // Routes not present in the sidebar (chat, meetings, HR screens, ...):
   // Home prefix + the legacy segment label maps.
   const isCrmPath = segments[0] === 'crm'
   const isHrPath = segments[0] === 'hr'
   const labelSegment = (segment, index) => {
     if (isCrmPath && index > 0) return CRM_BREADCRUMB_LABELS[segment] || BREADCRUMB_LABELS[segment] || segment
-    if (isHrPath && segment === 'reports') return 'Hiring Reports'
+    if (isHrPath && segment === 'dashboard') return 'HR Dashboard'
+    if (isHrPath && segment === 'reports') return 'HR Reports'
+    if (isHrPath && segment === 'employees') return 'Employees'
+    if (isHrPath && segment === 'documents') return 'Documents'
+    if (isHrPath && segment === 'settings') return 'HR Settings'
+    if (isHrPath && segment === 'document-types') return 'Document Types'
+    if (isHrPath && segment === 'leave-types') return 'Leave Types'
+    if (isHrPath && segment === 'leave-allocations') return 'Leave Allocations'
     return BREADCRUMB_LABELS[segment] || segment
   }
   let displaySegments = segments.map(labelSegment)
@@ -107,12 +131,14 @@ export const buildBreadcrumbTrail = (pathname, search = '') => {
   const isCompanyWorkspace = segments.length === 3 && segments[0] === 'crm' && segments[1] === 'companies'
   const isTaskDetail = segments.length === 4 && segments[0] === 'projects' && segments[2] === 'tasks'
   const isDirectTaskDetail = segments.length === 2 && segments[0] === 'tasks'
+  const isEmployeeDetail = isHrPath && segments.length === 3 && segments[1] === 'employees'
   const isRecruitmentJobDetail = segments.length === 4 && segments[0] === 'hr' && segments[1] === 'recruitment' && segments[2] === 'jobs'
   const isRecruitmentCandidateDetail = segments.length === 4 && segments[0] === 'hr' && segments[1] === 'recruitment' && segments[2] === 'candidates'
   if (isLeadWorkspace) displaySegments = [displaySegments[0], displaySegments[1], 'Lead']
   else if (isCompanyWorkspace) displaySegments = [displaySegments[0], displaySegments[1], 'Company']
   else if (isTaskDetail) displaySegments = ['Projects', displaySegments[1], 'Tasks', 'Task Detail']
   else if (isDirectTaskDetail) displaySegments = ['Tasks', 'Task Detail']
+  else if (isEmployeeDetail) displaySegments = ['People', 'Employees', 'Employee Profile']
   else if (isRecruitmentJobDetail) displaySegments = ['Recruitment', 'Job Openings', 'Job Detail']
   else if (isRecruitmentCandidateDetail) displaySegments = ['Recruitment', 'Candidates', 'Candidate Detail']
 

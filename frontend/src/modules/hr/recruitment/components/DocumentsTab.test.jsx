@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from 'react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -9,6 +10,7 @@ import { authAPI } from '../../../../api/auth'
 vi.mock('../../../../api/hrDocuments', () => ({
   hrDocumentsApi: {
     listTypes: vi.fn(),
+    listDocuments: vi.fn(),
     listEmployeeDocuments: vi.fn(),
     listCandidateDocuments: vi.fn(),
     missingRequired: vi.fn(),
@@ -16,6 +18,7 @@ vi.mock('../../../../api/hrDocuments', () => ({
     uploadCandidateDocument: vi.fn(),
     updateDocument: vi.fn(),
     replaceDocument: vi.fn(),
+    reviewDocument: vi.fn(),
     archiveDocument: vi.fn(),
     listVersions: vi.fn(),
   },
@@ -23,6 +26,14 @@ vi.mock('../../../../api/hrDocuments', () => ({
     preview: vi.fn(),
     download: vi.fn(),
     downloadVersion: vi.fn(),
+  },
+  normalizeDocumentTypesResponse: (response) => {
+    const payload = response?.data ?? response
+    if (Array.isArray(payload)) return payload
+    if (Array.isArray(payload?.data)) return payload.data
+    if (Array.isArray(payload?.data?.data)) return payload.data.data
+    if (Array.isArray(payload?.items)) return payload.items
+    return []
   },
   buildDocumentFormData: (payload) => {
     const data = new FormData()
@@ -84,6 +95,15 @@ const renderTab = (props = {}) =>
         {...props}
       />
     </QueryClientProvider>,
+  )
+
+const renderGlobalTab = (props = {}) =>
+  render(
+    <MemoryRouter>
+      <QueryClientProvider client={createTestQueryClient()}>
+        <DocumentsTab canManage={true} {...props} />
+      </QueryClientProvider>
+    </MemoryRouter>,
   )
 
 beforeEach(() => {
@@ -170,6 +190,30 @@ describe('DocumentsTab', () => {
     )
   })
 
+  it('handles an empty document type list without crashing the dropdown', async () => {
+    hrDocumentsApi.listTypes.mockResolvedValue({ data: [] })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Filters/i }))
+
+    await waitFor(() => expect(screen.getByText(/No active document types are configured/)).toBeInTheDocument())
+    expect(screen.getByRole('option', { name: /No document types available/i })).toBeInTheDocument()
+  })
+
+  it('shows a document type loading error instead of mapping a bad response', async () => {
+    hrDocumentsApi.listTypes.mockRejectedValue(new Error('forbidden'))
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Filters/i }))
+
+    await waitFor(() => expect(screen.getByText(/Unable to load document types/)).toBeInTheDocument())
+    expect(screen.getByRole('option', { name: /Document types unavailable/i })).toBeInTheDocument()
+  })
+
   it('previews a PDF through the authorized endpoint', async () => {
     hrDocumentFiles.preview.mockResolvedValue({ data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }) })
 
@@ -247,6 +291,175 @@ describe('DocumentsTab', () => {
     fireEvent.click(confirmArchive)
 
     await waitFor(() => expect(hrDocumentsApi.archiveDocument).toHaveBeenCalledWith('doc-1'))
+  })
+
+  it('lists company-wide documents via /hr/documents in global mode', async () => {
+    hrDocumentsApi.listDocuments.mockResolvedValue({
+      data: { items: [{ ...doc, employee_name: 'Jane Doe' }], total: 1, page: 1, page_size: 15, has_next: false },
+    })
+
+    renderGlobalTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    expect(hrDocumentsApi.listDocuments).toHaveBeenCalledWith(expect.objectContaining({ page_size: 15 }))
+    // Owner names come from the backend list (no per-row requests).
+    expect(screen.getByText('Jane Doe')).toBeInTheDocument()
+  })
+
+  it('links the owner to the employee profile from the global list', async () => {
+    hrDocumentsApi.listDocuments.mockResolvedValue({
+      data: { items: [{ ...doc, employee_id: 'emp-1', employee_name: 'Jane Doe' }], total: 1, page: 1, page_size: 15, has_next: false },
+    })
+
+    renderGlobalTab()
+
+    await waitFor(() => expect(screen.getByText('Jane Doe')).toBeInTheDocument())
+    expect(screen.getByText('Jane Doe').getAttribute('href')).toBe('/hr/employees/emp-1')
+  })
+
+  it('filters the global list by owner type via the backend', async () => {
+    hrDocumentsApi.listDocuments.mockResolvedValue({
+      data: { items: [{ ...doc, candidate_id: 'cand-1', candidate_name: 'John C' }], total: 1, page: 1, page_size: 15, has_next: false },
+    })
+
+    renderGlobalTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Filters/i }))
+    await waitFor(() => expect(screen.getByLabelText('Filter by owner type')).toBeInTheDocument())
+    fireEvent.change(screen.getByLabelText('Filter by owner type'), { target: { value: 'candidate' } })
+
+    await waitFor(() =>
+      expect(hrDocumentsApi.listDocuments).toHaveBeenCalledWith(expect.objectContaining({ owner_type: 'candidate' })),
+    )
+  })
+
+  it('hides the upload button in global mode', async () => {
+    hrDocumentsApi.listDocuments.mockResolvedValue({
+      data: { items: [{ ...doc, employee_name: 'Jane Doe' }], total: 1, page: 1, page_size: 15, has_next: false },
+    })
+
+    renderGlobalTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /Upload Document/i })).toBeNull()
+  })
+
+  it('shows review status and approve/reject actions for a pending employee submission', async () => {
+    hrDocumentsApi.listEmployeeDocuments.mockResolvedValue({
+      data: {
+        items: [{
+          ...doc,
+          submission_source: 'employee',
+          review_status: 'pending',
+          can_review: true,
+          can_resubmit: false,
+        }],
+        total: 1,
+        page: 1,
+        page_size: 15,
+        has_next: false,
+      },
+    })
+    hrDocumentsApi.reviewDocument.mockResolvedValue({ data: { ...doc, review_status: 'approved' } })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    expect(screen.getByText('Pending Review')).toBeInTheDocument()
+    expect(screen.getByText('Employee')).toBeInTheDocument()
+    expect(screen.getByTitle('Approve')).toBeInTheDocument()
+    expect(screen.getByTitle('Reject')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTitle('Approve'))
+    await waitFor(() => expect(hrDocumentsApi.reviewDocument).toHaveBeenCalledWith('doc-1', { action: 'approve' }))
+  })
+
+  it('rejects a pending submission with a required reason and refreshes without reload', async () => {
+    hrDocumentsApi.listEmployeeDocuments.mockResolvedValue({
+      data: {
+        items: [{
+          ...doc,
+          submission_source: 'employee',
+          review_status: 'pending',
+          can_review: true,
+        }],
+        total: 1,
+        page: 1,
+        page_size: 15,
+        has_next: false,
+      },
+    })
+    hrDocumentsApi.reviewDocument.mockResolvedValue({ data: { ...doc, review_status: 'rejected', review_note: 'Not legible' } })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('Pending Review')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Reject'))
+    await waitFor(() => expect(screen.getByLabelText('Rejection reason')).toBeInTheDocument())
+
+    // Rejection without a reason is blocked.
+    fireEvent.click(screen.getByRole('button', { name: /Reject Document/i }))
+    await waitFor(() => expect(hrDocumentsApi.reviewDocument).not.toHaveBeenCalled())
+
+    fireEvent.change(screen.getByLabelText('Rejection reason'), { target: { value: 'Not legible — please re-upload' } })
+    fireEvent.click(screen.getByRole('button', { name: /Reject Document/i }))
+    await waitFor(() =>
+      expect(hrDocumentsApi.reviewDocument).toHaveBeenCalledWith('doc-1', { action: 'reject', note: 'Not legible — please re-upload' }),
+    )
+  })
+
+  it('hides review actions for non-pending documents', async () => {
+    hrDocumentsApi.listEmployeeDocuments.mockResolvedValue({
+      data: { items: [doc], total: 1, page: 1, page_size: 15, has_next: false },
+    })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('aadhaar.pdf')).toBeInTheDocument())
+    expect(screen.queryByTitle('Approve')).toBeNull()
+    expect(screen.queryByTitle('Reject')).toBeNull()
+  })
+
+  it('shows per-version review badges in the history modal', async () => {
+    hrDocumentsApi.listVersions.mockResolvedValue({
+      data: [
+        {
+          id: 'v2', version_number: 2, original_filename: 'aadhaar-v2.pdf', uploaded_by_name: 'Jane Doe',
+          uploaded_at: '2026-08-10T10:00:00Z', file_size: 2048, can_download: true,
+          submission_source: 'employee', review_status: 'pending',
+        },
+        {
+          id: 'v1', version_number: 1, original_filename: 'aadhaar.pdf', uploaded_by_name: 'HR User',
+          uploaded_at: '2026-08-01T10:00:00Z', file_size: 1024, can_download: true,
+          submission_source: 'employee', review_status: 'rejected', review_note: 'Old copy was blurry',
+        },
+      ],
+    })
+    hrDocumentsApi.listEmployeeDocuments.mockResolvedValue({
+      data: {
+        items: [{
+          ...doc,
+          submission_source: 'employee',
+          review_status: 'pending',
+          can_review: true,
+          current_version: 2,
+        }],
+        total: 1,
+        page: 1,
+        page_size: 15,
+        has_next: false,
+      },
+    })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByTitle('History')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('History'))
+
+    await waitFor(() => expect(screen.getByText('Rejected')).toBeInTheDocument())
+    expect(screen.getAllByText('Pending Review').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('“Old copy was blurry”')).toBeInTheDocument()
   })
 
   it('hides manage actions when the backend forbids them', async () => {

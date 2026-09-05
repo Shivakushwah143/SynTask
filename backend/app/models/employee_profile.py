@@ -160,14 +160,17 @@ class EmployeeProfile(Document):
                 [("company_id", ASCENDING), ("user_id", ASCENDING)],
                 unique=True,
             ),
-            # One profile per converted candidate.
+            # One profile per converted candidate — sparse so null
+            # candidate_ids (non-recruitment hires) are excluded.
+            # Not unique at DB level: duplicates are guarded at the
+            # application layer during conversion.
             IndexModel(
-    [("company_id", ASCENDING), ("candidate_id", ASCENDING)],
-    unique=True,
-    partialFilterExpression={
-        "candidate_id": {"$type": "string"},
-    },
-),
+                [("company_id", ASCENDING), ("candidate_id", ASCENDING)],
+                unique=True,
+                partialFilterExpression={
+                    "candidate_id": {"$type": "string"},
+                },
+            ),
             # Access-pattern indexes for list filters / detail lookups.
             IndexModel([("company_id", ASCENDING), ("employment_status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("department_id", ASCENDING)]),

@@ -9,19 +9,29 @@ import { useAuthStore } from '../store/authStore'
 import { ROLE, hasCompanyAdminAccess, isManagerRole, isLeadRole, normalizeRole } from '../utils/roles'
 import { timeService } from '@/services/timeService'
 
-const LEAVE_TYPES = [
+// Phase 3 normalized model: Leave Type is a separate concept from Duration.
+// Leave types come from the backend configuration (/leaves/types) — never
+// hard-coded here. Duration is the separate Full Day / Half Day axis.
+const LEAVE_DURATIONS = [
   ['full_day', 'Full Day'],
   ['half_day', 'Half Day'],
-  ['sick_leave', 'Sick Leave'],
-  ['casual_leave', 'Casual Leave'],
-  ['emergency_leave', 'Emergency Leave'],
-  ['work_from_home', 'Work From Home'],
 ]
+
+// Legacy enum values that may still appear on historical requests (display only).
+const LEGACY_LEAVE_LABELS = {
+  full_day: 'Full Day',
+  half_day: 'Half Day',
+  sick_leave: 'Sick Leave',
+  casual_leave: 'Casual Leave',
+  emergency_leave: 'Emergency Leave',
+  work_from_home: 'Work From Home',
+}
 
 const STATUS_OPTIONS = ['pending', 'forwarded', 'approved', 'rejected', 'cancelled']
 
 const defaultForm = {
-  leave_type: 'full_day',
+  leave_type_id: '',
+  duration: 'full_day',
   start_date: '',
   end_date: '',
   reason: '',
@@ -114,7 +124,8 @@ export default function Leaves() {
   const [availability, setAvailability] = useState({ availability: 'working' })
   const [users, setUsers] = useState([])
   const [forwardTargetUsers, setForwardTargetUsers] = useState([])
-  const [filters, setFilters] = useState({ status: '', leave_type: '', employee_id: '', start_date: '', end_date: '' })
+  const [leaveTypes, setLeaveTypes] = useState([])
+  const [filters, setFilters] = useState({ status: '', leave_type_id: '', employee_id: '', start_date: '', end_date: '' })
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [actionPending, setActionPending] = useState(false)
@@ -165,7 +176,7 @@ export default function Leaves() {
       setLoading(true)
       const params = {
         ...(filters.status ? { status: filters.status } : {}),
-        ...(filters.leave_type ? { leave_type: filters.leave_type } : {}),
+        ...(filters.leave_type_id ? { leave_type_id: filters.leave_type_id } : {}),
         ...(filters.employee_id ? { employee_id: filters.employee_id } : {}),
         ...(filters.start_date ? { start_date: timeService.toUtcISOString(filters.start_date) } : {}),
         ...(filters.end_date ? { end_date: timeService.zonedInputToUtcISOString(`${filters.end_date}T23:59:59`) } : {}),
@@ -174,18 +185,21 @@ export default function Leaves() {
         leavesAPI.list(params),
         leavesAPI.calendar(),
         leavesAPI.availability(),
+        leavesAPI.leaveTypes(),
       ]
       // Admins & Managers: also load their own submitted leaves separately
       if (canManage && user?.id) {
         promises.push(leavesAPI.myLeaves())
       }
       const results = await Promise.all(promises)
-      const [leaveData, calendarData, availabilityData] = results
+      const [leaveData, calendarData, availabilityData, leaveTypesData] = results
       setLeaves(leaveData.leaves || [])
       setCalendar(calendarData || { today: [], upcoming: [] })
       setAvailability(availabilityData || { availability: 'working' })
-      if (canManage && results[3]) {
-        setMyLeaves(results[3].leaves || [])
+      const types = Array.isArray(leaveTypesData) ? leaveTypesData : leaveTypesData?.items || []
+      setLeaveTypes(types)
+      if (canManage && results[4]) {
+        setMyLeaves(results[4].leaves || [])
       }
     } catch (error) {
       console.error('Error loading leaves:', error)
@@ -232,6 +246,10 @@ export default function Leaves() {
   const submitLeave = async (event) => {
     event.preventDefault()
     // Client-side date validation
+    if (!form.leave_type_id) {
+      toast.error('Please select a leave type')
+      return
+    }
     if (!form.start_date || !form.end_date) {
       toast.error('Please select both start and end dates')
       return
@@ -419,6 +437,79 @@ export default function Leaves() {
       </div>
 
       <div className={contentGridClassName}>
+        {canRequestLeave ? (
+          <form onSubmit={submitLeave} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-3 dark:border-gray-700">
+              <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+                <Plus className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <h2 className="font-bold text-gray-900 dark:text-white">New Request</h2>
+            </div>
+            <div className="space-y-4">
+              <FormField label="Leave type" required>
+                <select 
+                  className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+                  value={form.leave_type_id} 
+                  onChange={(event) => setForm({ ...form, leave_type_id: event.target.value })}
+                >
+                  <option value="">Select leave type…</option>
+                  {leaveTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Duration">
+                <select 
+                  className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+                  value={form.duration} 
+                  onChange={(event) => setForm({ ...form, duration: event.target.value })}
+                >
+                  {LEAVE_DURATIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </FormField>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FormField label="Start date" required>
+                  <input 
+                    className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+                    type="date" 
+                    required 
+                    value={form.start_date} 
+                    onChange={(event) => setForm({ ...form, start_date: event.target.value })} 
+                  />
+                </FormField>
+                <FormField label="End date" required>
+                  <input 
+                    className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+                    type="date" 
+                    required 
+                    value={form.end_date} 
+                    onChange={(event) => setForm({ ...form, end_date: event.target.value })} 
+                  />
+                </FormField>
+              </div>
+              <FormField label="Reason" required>
+                <textarea 
+                  className={`${inputClassName} min-h-28 resize-y bg-gray-50 dark:bg-gray-900/50`} 
+                  required 
+                  value={form.reason} 
+                  onChange={(event) => setForm({ ...form, reason: event.target.value })} 
+                  placeholder="Please provide details for your leave request..."
+                />
+              </FormField>
+              <FormField label="Attachment">
+                <input 
+                  className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+                  type="file" 
+                  onChange={(event) => setForm({ ...form, attachment: event.target.files?.[0] || null })} 
+                />
+              </FormField>
+              <Button type="submit" loading={submitting} className="w-full">
+                <Send className="h-4 w-4 mr-2" />
+                Submit Request
+              </Button>
+            </div>
+          </form>
+        ) : null}
+
+
         <section className="space-y-4">
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
             <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
@@ -466,11 +557,11 @@ export default function Leaves() {
                 </select>
                 <select 
                   className={compactInputClassName} 
-                  value={filters.leave_type} 
-                  onChange={(event) => setFilters({ ...filters, leave_type: event.target.value })}
+                  value={filters.leave_type_id} 
+                  onChange={(event) => setFilters({ ...filters, leave_type_id: event.target.value })}
                 >
                   <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All types</option>
-                  {LEAVE_TYPES.map(([value, label]) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={value} value={value}>{label}</option>)}
+                  {leaveTypes.map((type) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={type.id} value={type.id}>{type.name}</option>)}
                 </select>
                 {canManage ? (
                   <select 
@@ -754,7 +845,7 @@ export default function Leaves() {
                 <p className="font-semibold">{actionState.leave.employee_name || 'Employee'}</p>
                 <Badge label={actionState.leave.status} colorKey={actionState.leave.status} />
               </div>
-              <p className="mt-1">{typeLabel(actionState.leave.leave_type)} · {dateRange(actionState.leave)}</p>
+              <p className="mt-1">{leaveDisplayName(actionState.leave)} · {dateRange(actionState.leave)}</p>
               <p className="mt-3 leading-6 text-gray-600 dark:text-indigo-100/85">{actionState.leave.reason}</p>
             </div>
           ) : null}
@@ -965,14 +1056,14 @@ function CalendarList({ title, items }) {
           <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg bg-white p-3 shadow-sm dark:bg-gray-800">
             <div>
               <p className="text-sm font-medium text-gray-900 dark:text-white">{item.employee_name || 'Employee'}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{typeLabel(item.leave_type)} · {dateRange(item)}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{leaveDisplayName(item)} · {dateRange(item)}</p>
             </div>
             <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
               item.leave_type === 'work_from_home' 
                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' 
                 : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
             }`}>
-              {item.leave_type === 'work_from_home' ? 'WFH' : item.leave_type === 'half_day' ? 'Half-day' : 'Leave'}
+              {item.leave_type === 'work_from_home' ? 'WFH' : item.duration === 'half_day' ? 'Half-day' : leaveDisplayName(item)}
             </span>
           </div>
         )) : <p className="text-sm text-gray-500 dark:text-gray-400">No items</p>}
@@ -1002,7 +1093,15 @@ function StatusCard({ icon: Icon, label, value, colorKey }) {
 }
 
 function typeLabel(type) {
-  return LEAVE_TYPES.find(([value]) => value === type)?.[1] || String(type || '').replace(/_/g, ' ')
+  if (!type) return 'Leave'
+  return LEGACY_LEAVE_LABELS[type] || String(type).replace(/_/g, ' ')
+}
+
+// Normalized leaves carry leave_type_name from the backend; legacy ones fall
+// back to the legacy label mapping.
+function leaveDisplayName(leave) {
+  if (leave?.leave_type_name) return leave.leave_type_name
+  return typeLabel(leave?.leave_type)
 }
 
 function availabilityLabel(value) {

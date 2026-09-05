@@ -431,9 +431,16 @@ class SchedulingService:
 
     @staticmethod
     async def run_scheduled_jobs_loop():
-        """Run the scheduling loop every 60 seconds"""
+        """Run the scheduling loop every 60 seconds (leader-gated so only ONE
+        worker executes pending jobs per cycle; multi-worker duplicates would
+        double-execute side effects like task creation)."""
+        from app.core.leader import try_acquire_leader
         logger.info("Starting run_scheduled_jobs_loop background loop")
         while True:
+            if not await try_acquire_leader("scheduled_jobs_loop", ttl_seconds=45):
+                # Another worker owns this 60s cycle.
+                await asyncio.sleep(60)
+                continue
             try:
                 await SchedulingService.execute_pending_jobs()
             except Exception as e:

@@ -178,6 +178,8 @@ class SalesProspect(Document):
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("current_stage", ASCENDING), ("updated_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("status", ASCENDING), ("closed_date", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("assigned_to", ASCENDING), ("updated_at", DESCENDING)]),
+            # Dashboard follow-up query: filter by company_id + deleted + next_follow_up_at, sort by next_follow_up_at
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("next_follow_up_at", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("crm_company_id", ASCENDING), ("updated_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("country_code", ASCENDING), ("phone", ASCENDING)]),
             IndexModel(

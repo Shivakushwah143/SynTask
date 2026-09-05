@@ -22,6 +22,7 @@ from app.services.task_service import TaskService
 from app.services.task_health_service import (
     assert_task_manage_access,
     assert_task_view_access,
+    build_dashboard_task_health,
     build_employee_task_summary,
     build_extension_request_summary,
     build_overdue_task_summary,
@@ -390,10 +391,23 @@ def can_update_task_field(current_user: User, task: Task, field_name: str) -> bo
     return False
 
 
-async def serialize_task_response(task: Task, current_user: User, *, include_detail: bool = False) -> dict:
-    assigned_user = await User.get(task.assigned_to) if task.assigned_to else None
-    reviewer = await User.get(task.reviewer_id) if getattr(task, "reviewer_id", None) else None
-    created_by_user = await User.get(task.created_by) if getattr(task, "created_by", None) else None
+async def serialize_task_response(
+    task: Task,
+    current_user: User,
+    *,
+    include_detail: bool = False,
+    users_by_id: Optional[dict] = None,
+) -> dict:
+    async def resolve_user(user_id):
+        if not user_id:
+            return None
+        if users_by_id is not None:
+            return users_by_id.get(str(user_id))
+        return await User.get(user_id)
+
+    assigned_user = await resolve_user(task.assigned_to)
+    reviewer = await resolve_user(getattr(task, "reviewer_id", None))
+    created_by_user = await resolve_user(getattr(task, "created_by", None))
     blockers = await blocking_dependencies(task)
     payload = {
         "id": str(task.id),
@@ -846,7 +860,28 @@ async def list_tasks(
         scheduled_jobs = await ScheduledJob.find(scheduled_query).sort("run_at").to_list()
         scheduled_task_placeholders = [serialize_scheduled_task_placeholder(job) for job in scheduled_jobs]
         total += len(scheduled_task_placeholders)
-    task_payloads = [await serialize_task_response(task, current_user) for task in tasks]
+    # Batch-resolve all users needed by the richer task serializer instead of
+    # issuing up to three User.get calls per task.
+    related_user_ids = {
+        str(user_id)
+        for task in tasks
+        for user_id in (
+            getattr(task, "assigned_to", None),
+            getattr(task, "reviewer_id", None),
+            getattr(task, "created_by", None),
+        )
+        if user_id
+    }
+    users_by_id = {}
+    if related_user_ids:
+        valid_ids = [ObjectId(user_id) for user_id in related_user_ids if ObjectId.is_valid(user_id)]
+        if valid_ids:
+            related_users = await User.find({"_id": {"$in": valid_ids}}).to_list()
+            users_by_id = {str(user.id): user for user in related_users}
+    task_payloads = [
+        await serialize_task_response(task, current_user, users_by_id=users_by_id)
+        for task in tasks
+    ]
 
     return {
         "tasks": scheduled_task_placeholders + task_payloads,
@@ -937,6 +972,20 @@ async def my_task_health(current_user: User = Depends(get_current_user)):
 @router.get("/health/summary")
 async def task_health_summary(current_user: User = Depends(get_current_user)):
     return await build_task_health_summary(current_user)
+
+
+@router.get("/health/dashboard")
+async def dashboard_task_health(current_user: User = Depends(get_current_user)):
+    """Combined Task Health payload for the dashboard (one task scan).
+
+    Returns the health summary, team-completion rows and extension-request
+    counts the dashboard renders, so it can replace the three separate
+    ``/health/summary`` + ``/health/team-completion`` + ``/health/extensions``
+    requests that each scanned the same task dataset.
+    """
+    if current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or Admin access required")
+    return await build_dashboard_task_health(current_user)
 
 
 @router.get("/health/team-completion")
@@ -1198,7 +1247,7 @@ async def delete_task(
     await _assert_task_manage(current_user, task)
 
     await task.delete()
-    await cache_delete_pattern(f"dashboard:stats:{task.company_id}:*")
+    await cache_delete_pattern(company_dashboard_pattern(str(task.company_id)))
 
     await publish_event(
         build_domain_event(
@@ -1574,7 +1623,7 @@ async def add_task_comment(
     # Update task's updated_at
     task.updated_at = utc_now()
     await task.save()
-    await cache_delete_pattern(f"dashboard:stats:{task.company_id}:*")
+    await cache_delete_pattern(company_dashboard_pattern(str(task.company_id)))
     await _notify_task_comment(task, comment, current_user)
 
     await publish_event(

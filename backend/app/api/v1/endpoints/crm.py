@@ -12,6 +12,7 @@ from app.api.dependencies import get_current_user
 from app.crm.application import build_crm_dashboard
 from app.crm.lead_timeline import CRMLeadTimelineService
 from app.api.v1.endpoints.sales_prospects import _get_company_prospects, _lead_identity_score, _serialize_prospect_identity
+from app.core.cache import cache_get, dashboard_metrics_cache_key
 from app.crm.models import SalesProspect
 from app.crm.pipeline import normalize_stage_display, resolved_stage_status
 from app.models.user import User
@@ -22,6 +23,18 @@ router = APIRouter()
 
 @router.get("/dashboard")
 async def crm_dashboard(current_user: User = Depends(get_current_user)):
+    # Avoid recomputing sales summaries that /dashboard/metrics already builds.
+    # If the metrics cache is warm, reuse its sales data to eliminate redundant
+    # database queries and Python-side aggregation.
+    metrics_cache_key = dashboard_metrics_cache_key(
+        str(current_user.id),
+        current_user.role.value,
+        current_user.company_id,
+    )
+    cached_metrics = await cache_get(metrics_cache_key)
+    if cached_metrics:
+        from app.crm.application import build_crm_dashboard_from_metrics
+        return build_crm_dashboard_from_metrics(current_user, cached_metrics)
     return await build_crm_dashboard(current_user)
 
 
@@ -96,6 +109,48 @@ async def crm_leads(
                 "won_status": getattr(p, "won_status", None),
                 "transferred_at": getattr(p, "transferred_at", None),
                 "current_stage_status": resolved_stage_status(p),
+            }
+            for p in prospects
+        ],
+    }
+
+
+@router.get("/dashboard/follow-ups")
+async def crm_dashboard_follow_ups(
+    limit: int = 100,
+    current_user: User = Depends(get_current_user),
+):
+    """Compact follow-up list for the dashboard widget.
+
+    Returns only the fields the dashboard needs (prospect name, phone,
+    stage, next_follow_up_at) instead of full lead documents.  Capped at
+    100 records sorted by soonest follow-up first.
+    """
+    query = {
+        "deleted": False,
+        "company_id": current_user.company_id,
+        "next_follow_up_at": {"$exists": True, "$ne": None},
+        "transferred_at": None,
+    }
+    prospects = await (
+        SalesProspect.find(query)
+        .sort(SalesProspect.next_follow_up_at)
+        .limit(min(limit, 100))
+        .to_list()
+    )
+    return {
+        "prospects": [
+            {
+                "id": str(p.id),
+                "prospect_name": p.prospect_name,
+                "company_name": p.company_name,
+                "phone": p.phone,
+                "country_code": p.country_code,
+                "current_stage": normalize_stage_display(p.current_stage),
+                "next_follow_up_at": getattr(p, "next_follow_up_at", None),
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "next_action": getattr(p, "next_action", None),
+                "owner_name": p.owner_name,
             }
             for p in prospects
         ],

@@ -25,6 +25,7 @@ const initialState = {
   location: "",
   employment_type: "full_time",
   work_mode: "onsite",
+  openings: 1,
   experience_min: 0,
   experience_max: 0,
   salary_min: "",
@@ -77,17 +78,25 @@ export function JobForm({ initialValue, onSubmit, loading, departments = [] }) {
     event.preventDefault();
     const nextErrors = {};
     if (!form.title.trim()) nextErrors.title = "Job title is required";
+    if (!form.department_id) nextErrors.department_id = "Department is required";
+    if (!form.location.trim()) nextErrors.location = "Location is required";
     if (!form.description.trim()) nextErrors.description = "Description is required";
+    else if (form.description.trim().length < 10) nextErrors.description = "Description must be at least 10 characters";
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
     onSubmit({
-      ...form,
+      title: form.title.trim(),
+      department_id: form.department_id,
+      location: form.location.trim(),
+      employment_type: form.employment_type,
+      work_mode: form.work_mode,
+      openings: Math.max(1, Number(form.openings || 1)),
       experience_min: Number(form.experience_min || 0),
       experience_max: Number(form.experience_max || 0),
       salary_min: form.salary_min === "" ? null : Number(form.salary_min),
       salary_max: form.salary_max === "" ? null : Number(form.salary_max),
-      department_name: departmentName || undefined,
       required_skills: Array.isArray(form.required_skills) ? form.required_skills : [],
+      description: form.description.trim(),
     });
   };
 
@@ -97,7 +106,7 @@ export function JobForm({ initialValue, onSubmit, loading, departments = [] }) {
         <input className={inputClassName} value={form.title} onChange={(e) => setField("title", e.target.value)} />
       </FormField>
       <div className="grid gap-4 md:grid-cols-2">
-        <FormField label="Department" helperText={departmentName ? `Selected: ${departmentName}` : "Choose a department for this job"}>
+        <FormField label="Department" error={errors.department_id} required>
           <select className={inputClassName} value={form.department_id || ""} onChange={(e) => setField("department_id", e.target.value)}>
             <option value="">Select department</option>
             {departments.map((department) => (
@@ -107,7 +116,7 @@ export function JobForm({ initialValue, onSubmit, loading, departments = [] }) {
             ))}
           </select>
         </FormField>
-        <FormField label="Location">
+        <FormField label="Location" error={errors.location}>
           <input className={inputClassName} value={form.location || ""} onChange={(e) => setField("location", e.target.value)} />
         </FormField>
         <FormField label="Employment type">
@@ -119,6 +128,9 @@ export function JobForm({ initialValue, onSubmit, loading, departments = [] }) {
           <select className={inputClassName} value={form.work_mode} onChange={(e) => setField("work_mode", e.target.value)}>
             {WORK_MODES.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
           </select>
+        </FormField>
+        <FormField label="Openings">
+          <input className={inputClassName} type="number" min="1" value={form.openings} onChange={(e) => setField("openings", e.target.value)} />
         </FormField>
         <FormField label="Experience min">
           <input className={inputClassName} type="number" value={form.experience_min} onChange={(e) => setField("experience_min", e.target.value)} />
@@ -173,7 +185,7 @@ export function JobForm({ initialValue, onSubmit, loading, departments = [] }) {
         </div>
       </FormField>
       <FormField label="Description" error={errors.description} required>
-        <textarea className={`${inputClassName} min-h-32`} value={form.description || ""} onChange={(e) => setField("description", e.target.value)} />
+        <textarea className={`${inputClassName} min-h-32`} value={form.description || ""} onChange={(e) => setField("description", e.target.value)} placeholder="Minimum 10 characters..." />
       </FormField>
       <div className="flex justify-end">
         <Button type="submit" loading={loading}>Save job</Button>

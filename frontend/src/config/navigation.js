@@ -22,6 +22,8 @@ import {
   DollarSign,
   Factory,
   FileBarChart2,
+  FileText,
+  FileWarning,
   FolderKanban,
   Gauge,
   GitBranch,
@@ -43,9 +45,11 @@ import {
   TrendingUp,
   UserCheck,
   UserCog,
+  UserRound,
   UserRoundSearch,
   Users,
   Globe,
+  Command,
 } from "lucide-react";
 import {
   ROLE,
@@ -74,6 +78,7 @@ export const SECTION_ICONS = {
   finance: DollarSign,
   insights: LineChart,
   settings: Settings,
+  me: UserRound,
   sop: BookOpenText,
 };
 
@@ -358,6 +363,7 @@ export const SECTIONS = [
     key: "people",
     label: "People",
     items: [
+      "User Accounts",
       "Employees",
       "My People",
       "Attendance",
@@ -376,7 +382,7 @@ export const SECTIONS = [
       "Job Openings",
       "Applications",
       "Candidates",
-      "Employee Profiles",
+      "Employees",
       "Talent Pool",
       "Interviews",
       "Offers",
@@ -408,6 +414,15 @@ export const SECTIONS = [
       "Activity Logs",
       "Client Settings",
     ],
+  },
+  // Phase 8 — My HR (Employee Self-Service): the employee's own HR workspace.
+  // Visible to every authenticated company user with an Employee Profile; the
+  // layout itself shows the graceful "profile not set up" state otherwise.
+  {
+    key: "me",
+    label: "My HR",
+    items: ["My Profile", "My Attendance", "My Leave", "My Documents", "My Payslips"],
+    overviewHref: "/hr/me",
   },
   {
     key: "sop",
@@ -562,6 +577,12 @@ export const navigation = [
     module: "ai_assistant",
   },
   {
+    name: "Executive Operations",
+    href: "/executive-assistant",
+    icon: Command,
+    roles: STANDARD_ROLES,
+  },
+  {
     name: "AI Content Assistant",
     href: "/marketing-support",
     icon: Headphones,
@@ -569,8 +590,9 @@ export const navigation = [
     module: "ai_content_assistant",
   },
 
-  // People
-  { name: "Employees", href: "/users", icon: UserCog, roles: TEAM_ROLES },
+  // People. Employee Profiles are supplied by HR_MODULES; /users remains
+  // account administration and is intentionally labelled separately.
+  { name: "User Accounts", href: "/users", icon: UserCog, roles: TEAM_ROLES },
   {
     name: "My People",
     href: "/my-team",
@@ -598,6 +620,12 @@ export const navigation = [
     icon: FileBarChart2,
     roles: STANDARD_ROLES,
     module: "attendance_reports",
+  },
+  {
+    name: "Attendance Corrections",
+    href: "/attendance/corrections",
+    icon: FileWarning,
+    roles: TEAM_ROLES,
   },
   {
     name: "Leave Management",
@@ -703,6 +731,13 @@ export const navigation = [
     roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD],
     module: "activity_logs",
   },
+  // Phase 8 — My HR (Employee Self-Service) sub-pages. The section link itself
+  // opens /hr/me (the Overview); the SectionTabs bar renders these as tabs.
+  { name: "My Profile", href: "/hr/me/profile", icon: UserRound, roles: STANDARD_ROLES },
+  { name: "My Attendance", href: "/hr/me/attendance", icon: UserCheck, roles: STANDARD_ROLES },
+  { name: "My Leave", href: "/hr/me/leave", icon: CalendarCheck2, roles: STANDARD_ROLES },
+  { name: "My Documents", href: "/hr/me/documents", icon: FileText, roles: STANDARD_ROLES },
+  { name: "My Payslips", href: "/hr/me/payslips", icon: Receipt, roles: STANDARD_ROLES },
   { name: "SOP Library", href: "/sop-library", icon: BookOpenText },
 ];
 
@@ -858,14 +893,15 @@ export const metaNavigation = [
 
 // ── HR items: rename for plain business English (spec §8 People) and drop merged/hidden ones ───
 export const HR_ITEM_RENAMES = {
+  "HR Dashboard": "HR Dashboard",
+  "HR Reports": "HR Reports",
   "Recruitment Dashboard": "Hiring Dashboard",
   Jobs: "Job Openings",
   Inbox: "Applications",
   "Resume Pool": "Talent Pool",
   Reports: "Hiring Reports",
-  // The HR employee-profile screen is distinct from People → Employees (/users,
-  // account management), so it is relabelled to avoid a duplicate nav entry.
-  Employees: "Employee Profiles",
+  // Employees / Documents are HR-wide modules surfaced under People — the
+  // recruitment module no longer owns them, so no renames are needed.
 };
 // "Candidate Interview Screen" is a workflow screen, not a navigation item —
 // hidden per the exact-structure rule.
@@ -922,12 +958,22 @@ export const ITEM_COLORS = {
   "AI Assistant": "text-purple-400",
   "AI Content Assistant": "text-rose-400",
 
-  Employees: "text-gray-400",
+  Employees: "text-emerald-400",
+  "User Accounts": "text-gray-400",
+  Documents: "text-sky-400",
+  "Document Types": "text-amber-400",
   "My People": "text-pink-400",
   Attendance: "text-orange-400",
   "Live Attendance": "text-amber-400",
   "Attendance Reports": "text-yellow-400",
+  "Attendance Corrections": "text-orange-400",
   "Leave Management": "text-emerald-400",
+  "Attendance Policy": "text-blue-400",
+  Holidays: "text-rose-400",
+  "Salary Components": "text-emerald-400",
+  "Leave Types": "text-violet-400",
+  "Leave Allocations": "text-indigo-400",
+  Payroll: "text-yellow-400",
   Departments: "text-indigo-400",
   "Company Directory": "text-blue-400",
 
@@ -954,6 +1000,13 @@ export const ITEM_COLORS = {
   "Activity Logs": "text-orange-400",
   "Client Settings": "text-gray-400",
 
+  // Phase 8 — My HR
+  "My Profile": "text-indigo-400",
+  "My Attendance": "text-orange-400",
+  "My Leave": "text-emerald-400",
+  "My Documents": "text-sky-400",
+  "My Payslips": "text-yellow-400",
+
   default: "text-gray-400",
 };
 
@@ -972,6 +1025,7 @@ export const SECTION_COLORS = {
   finance: "text-yellow-400",
   insights: "text-lime-400",
   settings: "text-gray-400",
+  me: "text-emerald-400",
   sop: "text-teal-400",
   default: "text-gray-400",
 };
@@ -1136,6 +1190,8 @@ export const isSectionVisible = (section, user) => {
 // HR items (renamed for People, merged/hidden items skipped) — same rules as the old Sidebar.
 const getHrNavItems = (user) => {
   const role = normalizeRole(user?.role);
+  // Company admins (incl. SUB_ADMIN) + managers + HR-department staff. Super
+  // admins are granted too — the backend treats them as full HR access.
   const userDepartment = String(
     user?.department || user?.department_key || "",
   ).toLowerCase();
@@ -1143,7 +1199,8 @@ const getHrNavItems = (user) => {
     isManagerRole(role) ||
     userDepartment === "hr" ||
     role === ROLE.ADMIN ||
-    role === ROLE.SUB_ADMIN;
+    role === ROLE.SUB_ADMIN ||
+    isSuperAdminRole(role);
   if (!canSeeHr) return [];
   return HR_MODULES.filter(
     (module) =>

@@ -42,6 +42,20 @@ class TimelineEventType(str, Enum):
     WFH_ENDED = "wfh_ended"
     EOD_SUBMITTED = "eod_submitted"
     EOD_UPDATED = "eod_updated"
+    PAYSLIP_GENERATED = "payslip_generated"
+    PAYSLIP_REGENERATED = "payslip_regenerated"
+    LIFECYCLE_JOINED = "lifecycle_joined"
+    LIFECYCLE_CONFIRMED = "lifecycle_confirmed"
+    LIFECYCLE_PROMOTED = "lifecycle_promoted"
+    LIFECYCLE_TRANSFERRED = "lifecycle_transferred"
+    LIFECYCLE_MANAGER_CHANGED = "lifecycle_manager_changed"
+    LIFECYCLE_EMPLOYMENT_TYPE_CHANGED = "lifecycle_employment_type_changed"
+    LIFECYCLE_RESIGNATION_SUBMITTED = "lifecycle_resignation_submitted"
+    LIFECYCLE_RESIGNATION_WITHDRAWN = "lifecycle_resignation_withdrawn"
+    LIFECYCLE_RESIGNATION_ACCEPTED = "lifecycle_resignation_accepted"
+    LIFECYCLE_RESIGNATION_REJECTED = "lifecycle_resignation_rejected"
+    LIFECYCLE_TERMINATED = "lifecycle_terminated"
+    LIFECYCLE_EXITED = "lifecycle_exited"
 
 
 class TimelineModule(str, Enum):
@@ -50,6 +64,8 @@ class TimelineModule(str, Enum):
     ATTENDANCE = "attendance"
     LEAVE = "leave"
     EOD = "eod"
+    PAYROLL = "payroll"
+    LIFECYCLE = "lifecycle"
 
 
 class TimelineEvent(Document):

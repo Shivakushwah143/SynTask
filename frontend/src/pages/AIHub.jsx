@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ProductPreviewImage } from '../config/visualAssets'
 import {
   ArrowRight,
   Bot,
@@ -225,6 +226,12 @@ const AgentCard = ({ employee, onClick }) => {
       onClick={onClick}
       className="group rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700"
     >
+      {/* Real SynTask product preview — deterministic crop per agent */}
+      <ProductPreviewImage
+        crop={[...employee.title].reduce((acc, ch) => acc + ch.charCodeAt(0), 0)}
+        alt={`${employee.title} workspace preview`}
+        className="mb-4 h-16"
+      />
       <div className="flex items-start gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg transition-transform group-hover:scale-110">
           <Icon className="h-6 w-6" />

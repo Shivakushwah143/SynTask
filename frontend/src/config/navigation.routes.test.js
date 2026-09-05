@@ -227,8 +227,8 @@ describe('sidebar config integrity (Phase 7)', () => {
     expect(missing).toEqual([])
   })
 
-  it('defines exactly 14 sections with unique keys', () => {
-    expect(SECTIONS).toHaveLength(14)
+  it('defines exactly 15 sections with unique keys', () => {
+    expect(SECTIONS).toHaveLength(15)
     const keys = SECTIONS.map((section) => section.key)
     expect(new Set(keys).size).toBe(keys.length)
   })
