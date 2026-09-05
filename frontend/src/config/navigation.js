@@ -109,6 +109,8 @@ const TEAM_ROLES = [
 ];
 // Company admins only.
 const ADMIN_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN];
+// Client management is company-scoped and Managers have the same Client view.
+const CLIENT_MANAGER_ROLES = [...ADMIN_ROLES, ROLE.MANAGER];
 // Roles allowed in CRM settings (mirrors CRMSettingsGuard: company admin + manager).
 const CRM_SETTINGS_ROLES = [
   ROLE.SUPER_ADMIN,
@@ -209,56 +211,56 @@ export const CLIENT_STAGE_ITEMS = [
     name: "New",
     href: "/clients/new",
     icon: Briefcase,
-    roles: ADMIN_ROLES,
+    roles: CLIENT_MANAGER_ROLES,
     module: "clients",
   },
   {
     name: "Onboarding",
     href: "/clients/onboarding",
     icon: Briefcase,
-    roles: ADMIN_ROLES,
+    roles: CLIENT_MANAGER_ROLES,
     module: "clients",
   },
   {
     name: "Active",
     href: "/clients/active",
     icon: Briefcase,
-    roles: ADMIN_ROLES,
+    roles: CLIENT_MANAGER_ROLES,
     module: "clients",
   },
   {
     name: "At Risk",
     href: "/clients/at-risk",
     icon: Briefcase,
-    roles: ADMIN_ROLES,
+    roles: CLIENT_MANAGER_ROLES,
     module: "clients",
   },
   {
     name: "On Hold",
     href: "/clients/on-hold",
     icon: Briefcase,
-    roles: ADMIN_ROLES,
+    roles: CLIENT_MANAGER_ROLES,
     module: "clients",
   },
   {
     name: "Renewal Due",
     href: "/clients/renewal-due",
     icon: Briefcase,
-    roles: ADMIN_ROLES,
+    roles: CLIENT_MANAGER_ROLES,
     module: "clients",
   },
   {
     name: "Churned",
     href: "/clients/churned",
     icon: Briefcase,
-    roles: ADMIN_ROLES,
+    roles: CLIENT_MANAGER_ROLES,
     module: "clients",
   },
   {
     name: "Archived",
     href: "/clients/archived",
     icon: Briefcase,
-    roles: ADMIN_ROLES,
+    roles: CLIENT_MANAGER_ROLES,
     module: "clients",
   },
 ];
@@ -461,12 +463,12 @@ export const navigation = [
     module: "import_leads",
   },
 
-  // Clients — /clients has no backend module gate; company admins only.
+  // Clients — Managers have the same company-scoped Client view as admins.
   {
     name: "All Clients",
     href: "/clients",
     icon: Briefcase,
-    roles: ADMIN_ROLES,
+    roles: CLIENT_MANAGER_ROLES,
   },
   ...CLIENT_STAGE_ITEMS,
 

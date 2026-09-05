@@ -47,7 +47,7 @@ import { meetingsApi } from "../api/meetings";
 import { usersAPI } from "../api/users";
 import { PRODUCT_PREVIEW } from "../config/visualAssets";
 import { useAuthStore } from "../store/authStore";
-import { hasCompanyAdminAccess, isLeadRole } from "../utils/roles";
+import { hasCompanyAdminAccess, isLeadRole, isManagerRole } from "../utils/roles";
 import toast from "react-hot-toast";
 import { format } from "date-fns";
 import { timeService } from "@/services/timeService";
@@ -329,6 +329,7 @@ const Clients = () => {
     : "Manage enterprise client accounts, linked projects, contract budgets & files";
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role);
+  const canManageClients = isCompanyAdmin || isManagerRole(user?.role);
   const isLead = isLeadRole(user?.role);
 
   const loadClients = useCallback(async () => {
@@ -1246,7 +1247,7 @@ const Clients = () => {
               <p className="text-xs text-indigo-100">{pageDescription}</p>
             </div>
           </div>
-          {(isCompanyAdmin || isLead) && (
+          {(canManageClients || isLead) && (
             <button
               type="button"
               onClick={openCreateModal}
@@ -1575,7 +1576,7 @@ const Clients = () => {
           title="No clients found"
           description="Create a client to link projects, budgets, and documents."
           action={
-            isCompanyAdmin || isLead ? (
+            canManageClients || isLead ? (
               <button
                 type="button"
                 onClick={openCreateModal}
@@ -1692,7 +1693,7 @@ const Clients = () => {
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {(isCompanyAdmin || isLead) &&
+                          {(canManageClients || isLead) &&
                           lifecycleRule?.allowed_destinations?.length ? (
                             <button
                               type="button"
@@ -1722,7 +1723,7 @@ const Clients = () => {
                           >
                             <Eye className="h-4 w-4" />
                           </button>
-                          {isCompanyAdmin && (
+                          {canManageClients && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1798,7 +1799,7 @@ const Clients = () => {
                   >
                     Save View
                   </Button>
-                  {(isCompanyAdmin || isLead) && (
+                  {(canManageClients || isLead) && (
                     <Button
                       type="button"
                       size="sm"
@@ -2423,7 +2424,7 @@ const Clients = () => {
                       className="input min-h-11"
                       createLabel="Create user"
                       onCreate={() => setShowQuickEmployeeModal(true)}
-                      canCreate={isCompanyAdmin || isLead}
+                      canCreate={canManageClients || isLead}
                     >
                       <option value="">Select owner</option>
                       {leads.map((lead) => (
@@ -2708,7 +2709,7 @@ const Clients = () => {
                       className="input"
                       createLabel="Create user"
                       onCreate={() => setShowQuickEmployeeModal(true)}
-                      canCreate={isCompanyAdmin || isLead}
+                      canCreate={canManageClients || isLead}
                     >
                       <option value="">Select Lead/Admin</option>
                       {leads.map((lead) => (
@@ -3135,7 +3136,7 @@ const Clients = () => {
                       Linked Projects
                     </h3>
                   </div>
-                  {(isCompanyAdmin || isLead) && (
+                  {(canManageClients || isLead) && (
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -3248,7 +3249,7 @@ const Clients = () => {
                       Uploaded Documents
                     </h3>
                   </div>
-                  {(isCompanyAdmin || isLead) && (
+                  {(canManageClients || isLead) && (
                     <button
                       type="button"
                       onClick={() => setShowDocumentModal(true)}
@@ -3375,7 +3376,7 @@ const Clients = () => {
                   required
                   createLabel="Create project"
                   onCreate={() => setShowQuickProjectModal(true)}
-                  canCreate={isCompanyAdmin}
+                  canCreate={canManageClients}
                 >
                   <option value="">
                     {filteredAvailableProjects.length

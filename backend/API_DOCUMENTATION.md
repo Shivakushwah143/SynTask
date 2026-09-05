@@ -568,9 +568,15 @@ tokens, or session ids.
 |---|---|---|---|
 | POST | `/api/v1/attendance/integrations/etimeoffice/sync` | `etimeoffice_sync` | Manual sync for the caller's company. Optional `from_date`/`to_date` (`YYYY-MM-DD`, window ≤ 62 days, default: last 7 days). Company admin / sub-admin only. Returns only safe metadata: `success`, `employees_received`, `mapped`, `unmapped`, `attendance_updated`, `duplicates_skipped`, `skipped_app_attendance`, `errors`, `last_sync` — never credentials. `409` while another sync runs; `502` with "eTimeOffice synchronization failed. Existing attendance data remains available." on provider failure. |
 | GET | `/api/v1/attendance/integrations/etimeoffice/status` | `etimeoffice_status` | Company-scoped integration status for the Attendance UI: `enabled`, `configured`, `connected`, `syncing`, `last_attempted_at`, `last_successful_at`, `last_error`, `last_summary`, cadence settings. Safe metadata only. Any authenticated company user. |
-| GET | `/api/v1/attendance/integrations/etimeoffice/mappings?refresh=` | `etimeoffice_mappings` | List the company's eTimeOffice directory with mapping status: `rows` (code, provider name, mapped SynTask employee, `status` mapped/unmapped, `suggestion`), plus `employees` (selectable company employees) and counts. `refresh=true` first downloads the current directory from the provider (read-only). Company admin / sub-admin only. Provider outage → `502` with the safe sync message. |
-| PUT | `/api/v1/attendance/integrations/etimeoffice/mappings/{code}` | `etimeoffice_upsert_mapping` | Confirm/change which SynTask employee (`employee_id`) owns an eTimeOffice code; `employee_id: null` removes the mapping (code stays listed unmapped). Tenancy + active-role validated; a SynTask employee already mapped to another code → `400`. Company admin / sub-admin only. |
-| DELETE | `/api/v1/attendance/integrations/etimeoffice/mappings/{code}` | `etimeoffice_remove_mapping` | Remove the mapping for a code (row remains listed). Company admin / sub-admin only. |
+| GET | `/api/v1/attendance/integrations/etimeoffice/mappings?refresh=` | `etimeoffice_mappings` | List the company's eTimeOffice directory with mapping status: `rows` (code, provider name, mapped SynTask employee, `status` mapped/unmapped, `suggestion`), plus `employees` (selectable company employees) and counts. `refresh=true` first downloads the current directory from the provider (read-only). Company admin / sub-admin / manager only. Provider outage → `502` with the safe sync message. |
+| PUT | `/api/v1/attendance/integrations/etimeoffice/mappings/{code}` | `etimeoffice_upsert_mapping` | Confirm/change which SynTask employee (`employee_id`) owns an eTimeOffice code; `employee_id: null` removes the mapping (code stays listed unmapped). Tenancy + active-role validated; a SynTask employee already mapped to another code → `400`. Company admin / sub-admin / manager only. |
+| DELETE | `/api/v1/attendance/integrations/etimeoffice/mappings/{code}` | `etimeoffice_remove_mapping` | Remove the mapping for a code (row remains listed). Company admin / sub-admin / manager only. |
+
+**Mapping access:** Company Admins, Sub Admins, Super Admins, and Managers may
+list, create, change, or remove mappings for their own `company_id`. Managers
+cannot run an eTimeOffice sync. Leads and Employees are denied mapping access;
+the mapping service validates that every selected employee belongs to the same
+company, including when a caller supplies an employee id from another tenant.
 
 A leader-gated background loop (default every 3 minutes) re-runs the same sync
 when `ETIMEOFFICE_ENABLED=true`; overlapping sync jobs are prevented both by

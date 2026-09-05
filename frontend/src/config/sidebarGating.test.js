@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasModuleAccess, getSectionItems, gateNavItem } from './navigation'
+import { CLIENT_STAGE_ITEMS, hasModuleAccess, getSectionItems, gateNavItem } from './navigation'
 
 const salesItem = { name: 'Qualify', href: '/crm/pipeline/qualify', roles: ['super_admin', 'admin', 'sub_admin', 'manager', 'lead', 'employee'], module: 'sales_crm' }
 const projectsItem = { name: 'Projects', href: '/projects', roles: ['super_admin', 'admin', 'sub_admin', 'manager', 'lead', 'employee'], module: 'projects' }
@@ -52,6 +52,12 @@ describe('sidebar module gating (explicit member permissions are authoritative)'
     const superAdmin = { role: 'super_admin', modules: [] }
     expect(hasModuleAccess(admin, 'sales_crm')).toBe(true)
     expect(hasModuleAccess(superAdmin, 'sales_crm')).toBe(true)
+  })
+
+  it('keeps Client lifecycle access for Managers with older explicit modules', () => {
+    const manager = { role: 'manager', modules: ['projects', 'tasks'] }
+    expect(hasModuleAccess(manager, 'clients')).toBe(true)
+    expect(gateNavItem(manager, CLIENT_STAGE_ITEMS[0])).toBe(true)
   })
 
   it('hides the whole Sales section when every sales item is gated out', () => {

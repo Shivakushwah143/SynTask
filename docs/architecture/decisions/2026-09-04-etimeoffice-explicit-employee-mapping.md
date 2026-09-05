@@ -55,8 +55,8 @@ Borse's punches appeared under the employee whose number was `EMP-2026-0001`).
 - Companies must confirm mappings for every eTimeOffice employee before their
   punches appear; codes without a confirmed mapping stay unmapped in the UI.
 - Company isolation is unchanged: every mapping row and attendance row is
-  tenant-scoped by `company_id`, and all mapping endpoints are restricted to
-  company admin/sub-admin roles.
+  tenant-scoped by `company_id`. Company admins, sub-admins, and managers can
+  manage mappings only for their own company; Leads and Employees are denied.
 - Existing wrong rows were reconciled for the affected company (see the
   reconciliation report in the integration task notes); a documented script is
   kept so any other company can be reconciled identically.

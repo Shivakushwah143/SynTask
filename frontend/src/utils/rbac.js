@@ -101,6 +101,13 @@ export const hasModuleAccess = (role, modules, moduleName) => {
     return true;
   }
 
+  // Managers always receive the company-scoped Client workspace. This mirrors
+  // the backend role grant and supports existing accounts with older module
+  // selections that predate the Client lifecycle access rule.
+  if (moduleName === "clients" && normalized === ROLE.MANAGER) {
+    return true;
+  }
+
   // Backend role auto-grant applies ONLY to legacy (pre-permission-system)
   // module lists. Explicit lists are authoritative. The set mirrors the
   // backend require_module auto-grant exactly (incl. task/tasks_projects).

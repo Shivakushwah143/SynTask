@@ -45,7 +45,8 @@ const AttendanceReports = () => {
   const [etoStatus, setEtoStatus] = useState(null)
   const [syncing, setSyncing] = useState(false)
   const [mappingOpen, setMappingOpen] = useState(false)
-  const isAdmin = ['admin', 'sub_admin'].includes(user?.role)
+  const canManageBiometricMappings = ['admin', 'sub_admin', 'manager', 'super_admin'].includes(user?.role)
+  const canSyncBiometricAttendance = ['admin', 'sub_admin', 'super_admin'].includes(user?.role)
   const isEtoVisible = Boolean(etoStatus?.enabled || etoStatus?.configured)
 
   const loadEmployeesDropdown = useCallback(async () => {
@@ -162,7 +163,7 @@ const AttendanceReports = () => {
                 <Badge label={etoStatus?.syncing ? 'Syncing…' : 'Disconnected'} colorKey="lost" pill />
               )}
             </div>
-            {isAdmin && (
+            {canManageBiometricMappings && (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setMappingOpen((open) => !open)}
@@ -175,14 +176,16 @@ const AttendanceReports = () => {
                   <UserCheck className="h-4 w-4" />
                   {mappingOpen ? 'Hide Mapping' : 'Employee Mapping'}
                 </button>
-                <button
-                  onClick={handleEtimeSync}
-                  disabled={syncing || etoStatus?.syncing}
-                  className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                  {syncing ? 'Syncing…' : 'Sync Now'}
-                </button>
+                {canSyncBiometricAttendance && (
+                  <button
+                    onClick={handleEtimeSync}
+                    disabled={syncing || etoStatus?.syncing}
+                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+                    {syncing ? 'Syncing…' : 'Sync Now'}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -217,7 +220,7 @@ const AttendanceReports = () => {
               </div>
             </div>
           )}
-          {mappingOpen && isAdmin && <EtimeOfficeEmployeeMapping />}
+          {mappingOpen && canManageBiometricMappings && <EtimeOfficeEmployeeMapping />}
         </section>
       )}
 

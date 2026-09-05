@@ -199,6 +199,11 @@ def require_module(module_name: str):
         # Super Admin, Admin, and Sub Admin have full access to all modules
         if current_role == UserRole.SUPER_ADMIN or current_role == UserRole.ADMIN or current_role == UserRole.SUB_ADMIN:
             return current_user
+        # Managers always receive the company-scoped Client workspace. This is
+        # a role grant so existing Manager accounts with older explicit module
+        # lists are not stranded outside the Client lifecycle routes.
+        if module_name == "clients" and current_role == UserRole.MANAGER:
+            return current_user
         # Legacy members (pre-permission-system module lists) keep the role
         # auto-grants so they never lose access after this change ships.
         legacy_config = _is_legacy_module_config(getattr(current_user, "modules", []) or [])
@@ -310,6 +315,30 @@ async def get_current_company_admin_or_lead(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin, Manager, or Lead access required"
+        )
+    return current_user
+
+
+async def get_current_company_admin_or_manager(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """Require a company admin, sub-admin, manager, or super admin.
+
+    This intentionally excludes Leads: biometric employee mapping is a
+    company-level attendance administration action, not a reporting-line
+    action.
+    """
+    allowed_roles = {
+        UserRole.ADMIN,
+        UserRole.SUB_ADMIN,
+        UserRole.MANAGER,
+        UserRole.SUPER_ADMIN,
+    }
+    current_role = _normalize_role(getattr(current_user, "role", None))
+    if current_role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or Manager access required",
         )
     return current_user
 
