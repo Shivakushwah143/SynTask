@@ -112,8 +112,11 @@ Time Tracking supports one backend-authoritative active timer per employee. The 
 Manual time entry remains available and creates `source=manual` TimeLogs. Manual entries require positive duration, reject excessive duration, and validate task/project/company scope. Deleting a time log now voids it for audit instead of hard-removing history.
 
 The main Project Workspace overview includes a compact Resources section with
-up to four previews and a View All modal; it is visible before the workspace
-tabs rather than inside the Overview tab. Project managers can add/edit/delete dynamic name/value pairs;
+up to four previews and a View All modal; it is visible inside the overview
+hero before the workspace tabs rather than inside the Tasks/Overview tab.
+The full modal filters resources by All, Links, Media, or Text. Project managers can add/edit/delete dynamic name/value pairs;
+resource creation supports Link, Media file, and Text types with multiple
+compact fields added in one form submission.
 other authorized members can open safe HTTP(S) links. For quantitative tasks,
 `+/-` changes an unsaved draft and Update opens an optional proof dialog. The
 dialog shows one optional proof row per newly added item, with Media upload,

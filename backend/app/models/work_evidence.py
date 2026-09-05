@@ -19,6 +19,7 @@ class ProjectResource(Document):
     project_id: Indexed(str)
     name: str
     value: str
+    category: str = "link"
     created_by: str
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)

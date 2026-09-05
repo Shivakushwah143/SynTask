@@ -14,10 +14,11 @@ router = APIRouter()
 class ResourcePayload(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     value: str = Field(min_length=1, max_length=2048)
+    category: str = Field("link", pattern="^(media_file|link|text)$")
 
 
 def serialize_resource(item: ProjectResource) -> dict:
-    return {"id": str(item.id), "name": item.name, "value": item.value, "created_by": item.created_by,
+    return {"id": str(item.id), "name": item.name, "value": item.value, "category": getattr(item, "category", "link"), "created_by": item.created_by,
             "created_at": item.created_at, "updated_at": item.updated_at}
 
 
@@ -41,7 +42,7 @@ async def list_resources(project_id: str, current_user: User = Depends(get_curre
 async def create_resource(project_id: str, payload: ResourcePayload, current_user: User = Depends(get_current_user)):
     project = await require_project_permission(current_user, project_id, ProjectPermission.MANAGE_PROJECT)
     item = ProjectResource(company_id=str(project.company_id), project_id=str(project.project_id or project.id),
-                           name=payload.name.strip(), value=payload.value.strip(), created_by=str(current_user.id))
+                           name=payload.name.strip(), value=payload.value.strip(), category=payload.category, created_by=str(current_user.id))
     await item.insert()
     return {"resource": serialize_resource(item)}
 
@@ -50,7 +51,7 @@ async def create_resource(project_id: str, payload: ResourcePayload, current_use
 async def update_resource(project_id: str, resource_id: str, payload: ResourcePayload, current_user: User = Depends(get_current_user)):
     project = await require_project_permission(current_user, project_id, ProjectPermission.MANAGE_PROJECT)
     item = await scoped_resource(project, resource_id)
-    item.name, item.value, item.updated_at = payload.name.strip(), payload.value.strip(), utc_now()
+    item.name, item.value, item.category, item.updated_at = payload.name.strip(), payload.value.strip(), payload.category, utc_now()
     await item.save()
     return {"resource": serialize_resource(item)}
 
