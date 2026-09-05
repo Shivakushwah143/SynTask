@@ -104,7 +104,7 @@ const TaskDetail = () => {
   const [proofs, setProofs] = useState([])
   const [proofsOpen, setProofsOpen] = useState(false)
   const [progressProofOpen, setProgressProofOpen] = useState(false)
-  const [proofForm, setProofForm] = useState({ name: '', value: '' })
+  const [proofEntries, setProofEntries] = useState([])
   const pageRef = useRef(null)
   const detailsRef = useRef(null)
   const historyRef = useRef(null)
@@ -1175,11 +1175,16 @@ const TaskDetail = () => {
             {/* Quantitative Task — Progress & Metrics Section */}
             {task.task_type === 'quantitative' && (
               <div className="border-t border-purple-200 bg-gradient-to-b from-purple-50/80 to-white px-4 py-4 dark:border-purple-900/40 dark:from-purple-950/20 dark:to-gray-800">
-                <div className="mb-3 flex items-center justify-between">
+                <div className="mb-3 flex items-center justify-between gap-2">
                   <h4 className="text-sm font-bold text-purple-800 dark:text-purple-300">📊 Production Progress</h4>
-                  <span className="rounded-full bg-purple-100 px-3 py-1 text-[11px] font-semibold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
-                    {task.measurement_type ? task.measurement_type.replace(/_/g, ' ') : task.custom_measurement_label || 'Quantitative'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-purple-100 px-3 py-1 text-[11px] font-semibold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                      {task.measurement_type ? task.measurement_type.replace(/_/g, ' ') : task.custom_measurement_label || 'Quantitative'}
+                    </span>
+                    <button type="button" onClick={() => setProofsOpen(true)} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-purple-300 px-2 py-1 text-[11px] font-semibold text-purple-700 hover:bg-purple-100 dark:border-purple-800 dark:text-purple-300 dark:hover:bg-purple-900/30">
+                      <Eye className="h-3.5 w-3.5" /> View Proofs{proofs.length ? ` (${proofs.length})` : ''}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Big progress stat */}
@@ -2297,7 +2302,7 @@ const TaskDetail = () => {
                     <button
                       type="button"
                       disabled={updatingProduction}
-                      onClick={() => setProgressProofOpen(true)}
+                      onClick={() => { const addedItems = Math.max(0, productionCompleted - Number(task.completed_quantity ?? 0)); setProofEntries(Array.from({ length: Math.min(addedItems, 50) }, (_, index) => ({ id: index, category: 'text', value: '' }))); setProgressProofOpen(true) }}
                       className="w-full rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Update
@@ -2385,8 +2390,19 @@ const TaskDetail = () => {
       <Modal isOpen={progressProofOpen} onClose={() => !updatingProduction && setProgressProofOpen(false)} title="Update Progress" description={`${task.completed_quantity ?? 0} → ${productionCompleted} ${task.target_unit || 'units'}`}>
         <div className="space-y-4">
           <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm dark:border-indigo-900 dark:bg-indigo-950/30"><p className="font-semibold">Add work proof <span className="text-xs font-normal">Optional</span></p><p className="text-xs text-gray-500 dark:text-gray-400">You can skip this step.</p></div>
-          <label className="block text-sm font-medium">Proof Name<input className="input mt-1 w-full" value={proofForm.name} onChange={(event) => setProofForm((value) => ({ ...value, name: event.target.value }))} /></label>
-          <label className="block text-sm font-medium">Link / Value<input className="input mt-1 w-full" value={proofForm.value} onChange={(event) => setProofForm((value) => ({ ...value, value: event.target.value }))} /></label>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Proof requested only for newly added items. Empty rows are skipped.</p>
+          <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+            {proofEntries.map((entry, index) => <div key={entry.id} className="rounded-lg border border-gray-200 p-1.5 dark:border-gray-700">
+              <div className="grid items-center gap-2 sm:grid-cols-[auto_130px_minmax(0,1fr)]">
+                <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Item {index + 1}</p>
+                <select className="input w-full px-2 py-1.5 text-xs" value={entry.category} onChange={(event) => setProofEntries((current) => current.map((item) => item.id === entry.id ? { ...item, category: event.target.value, value: '' } : item))} aria-label={`Proof category for item ${index + 1}`}>
+                  <option value="media_upload">Media upload</option><option value="link">Link</option><option value="text">Text</option>
+                </select>
+                {entry.category === 'media_upload' ? <input type="file" accept="image/*,video/*,audio/*" className="block w-full min-w-0 text-xs text-gray-500 file:mr-2 file:rounded file:border-0 file:bg-indigo-50 file:px-2 file:py-1 file:text-xs file:font-semibold file:text-indigo-700 dark:text-gray-400 dark:file:bg-indigo-950/40 dark:file:text-indigo-300" onChange={(event) => setProofEntries((current) => current.map((item) => item.id === entry.id ? { ...item, value: event.target.files?.[0]?.name || '' } : item))} aria-label={`Upload proof for item ${index + 1}`} /> : <input type={entry.category === 'link' ? 'url' : 'text'} className="input w-full px-2 py-1.5 text-xs" value={entry.value} onChange={(event) => setProofEntries((current) => current.map((item) => item.id === entry.id ? { ...item, value: event.target.value } : item))} placeholder={entry.category === 'link' ? 'Enter URL' : 'Enter text proof'} aria-label={`Proof value for item ${index + 1}`} />}
+              </div>
+            </div>)}
+            {!proofEntries.length ? <p className="rounded-lg border border-dashed border-gray-200 p-3 text-sm text-gray-500 dark:border-gray-700">No completed items yet. You can still skip proof.</p> : null}
+          </div>
           <div className="flex justify-end gap-2">
             {['skip', 'save'].map((mode) => {
               const isSubmitting = updatingProduction
@@ -2395,15 +2411,15 @@ const TaskDetail = () => {
                 <button
                   key={mode}
                   type="button"
-                  disabled={isSubmitting || (mode === 'save' && (!proofForm.name.trim() || !proofForm.value.trim()))}
+                  disabled={isSubmitting}
                   aria-busy={isSubmitting || undefined}
                   onClick={async () => {
                     try {
                       setUpdatingProduction(true)
-                      const response = await tasksAPI.updateProductionProgress(task.id, { completed_quantity: productionCompleted, notes: productionNotes || undefined, ...(mode === 'save' ? { proof_name: proofForm.name, proof_value: proofForm.value } : {}) })
+                      const response = await tasksAPI.updateProductionProgress(task.id, { completed_quantity: productionCompleted, notes: productionNotes || undefined, ...(mode === 'save' ? { proof_entries: proofEntries.filter((entry) => entry.value.trim()).map(({ category, value }) => ({ category, value: value.trim() })) } : {}) })
                       setTask((current) => ({ ...current, completed_quantity: productionCompleted }))
                       setProgressProofOpen(false)
-                      setProofForm({ name: '', value: '' })
+                      setProofEntries([])
                       if (response.proof_error) toast.error(response.proof_error)
                       else toast.success('Progress updated')
                       await loadTask()

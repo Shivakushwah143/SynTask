@@ -61,11 +61,17 @@ class TaskResponse(BaseModel):
     remaining_quantity: Optional[int] = None
 
 
+class TaskProofEntryRequest(BaseModel):
+    category: str = Field("text", pattern="^(media_upload|link|text)$")
+    value: Optional[str] = Field(None, max_length=2048)
+
+
 class UpdateProductionProgressRequest(BaseModel):
     completed_quantity: int = Field(..., ge=0)
     notes: Optional[str] = Field(None, max_length=2000)
     proof_name: Optional[str] = Field(None, max_length=120)
     proof_value: Optional[str] = Field(None, max_length=2048)
+    proof_entries: list[TaskProofEntryRequest] = Field(default_factory=list, max_length=50)
 
 
 class ProductionEmployeeMetric(BaseModel):

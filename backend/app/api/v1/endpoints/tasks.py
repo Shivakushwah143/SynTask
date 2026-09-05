@@ -63,17 +63,18 @@ router = APIRouter()
 
 def _serialize_task_proof(proof: TaskProof, submitter=None) -> dict:
     return {"id": str(proof.id), "name": proof.name, "value": proof.value,
+            "category": getattr(proof, "category", "text"),
             "context": getattr(proof.context, "value", proof.context),
             "submitted_by": proof.submitted_by,
             "submitted_by_name": submitter.full_name() if submitter else None,
             "created_at": proof.created_at}
 
 
-async def _save_optional_proof(task: Task, actor: User, name: str | None, value: str | None, context: TaskProofContext):
+async def _save_optional_proof(task: Task, actor: User, name: str | None, value: str | None, context: TaskProofContext, category: str = "text"):
     if not (name and name.strip() and value and value.strip()):
         return None
     proof = TaskProof(company_id=str(task.company_id), task_id=str(task.id), submitted_by=str(actor.id),
-                      name=name.strip(), value=value.strip(), context=context)
+                      name=name.strip(), value=value.strip(), category=category, context=context)
     await proof.insert()
     return proof
 
@@ -2044,8 +2045,12 @@ async def update_task_production_progress(
         "completion_percentage": completion_pct,
     }
     try:
+        proofs = []
+        for index, entry in enumerate(body.proof_entries):
+            if entry.value and entry.value.strip():
+                proofs.append(await _save_optional_proof(task, current_user, f"Item {index + 1}", entry.value, TaskProofContext.PROGRESS_UPDATE, entry.category))
         proof = await _save_optional_proof(task, current_user, body.proof_name, body.proof_value, TaskProofContext.PROGRESS_UPDATE)
-        response["proof_saved"] = bool(proof)
+        response["proof_saved"] = bool(proof or any(proofs))
     except Exception:
         response["proof_saved"] = False
         response["proof_error"] = "Progress was saved, but proof could not be saved"

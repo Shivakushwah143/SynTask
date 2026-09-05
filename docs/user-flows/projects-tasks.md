@@ -115,11 +115,15 @@ The main Project Workspace overview includes a compact Resources section with
 up to four previews and a View All modal; it is visible before the workspace
 tabs rather than inside the Overview tab. Project managers can add/edit/delete dynamic name/value pairs;
 other authorized members can open safe HTTP(S) links. For quantitative tasks,
-`+/-` changes an unsaved draft and Update opens an optional proof dialog. Skip
-saves quantity alone. Send for Review similarly opens optional proof; Skip still
-sends the task. During either submission, both modal actions are disabled and
-show an inline loading indicator until the request completes. Reviewers can open
-View Proof without proof becoming a separate approval workflow. Quantitative
+`+/-` changes an unsaved draft and Update opens an optional proof dialog. The
+dialog shows one optional proof row per newly added item, with Media upload,
+Link, or Text category choices. Existing completed items are not requested
+again. Subtract-only updates require no proof fields. Empty rows are ignored, so partially filled proof
+does not block saving. Skip saves quantity alone. Send for Review similarly
+opens optional proof; Skip still sends the task. During either submission, both
+modal actions are disabled and show an inline loading indicator until the
+request completes. Reviewers can open View Proof without proof becoming a
+separate approval workflow. Quantitative
 tasks cannot be moved to In Review until the target quantity is complete; the
 status selector shows a clear message with the remaining quantity and leaves
 the task in its current status. Same-company Managers and Leads can also move

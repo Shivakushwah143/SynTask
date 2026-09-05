@@ -34,6 +34,7 @@ class TaskProof(Document):
     submitted_by: str
     name: str
     value: str
+    category: str = "text"
     context: TaskProofContext
     created_at: datetime = Field(default_factory=utc_now)
 
