@@ -2407,7 +2407,7 @@ attached biometric punches to the wrong people, so the inference was removed:
 - Mapping management endpoints under `/attendance/integrations/etimeoffice`:
   `GET /mappings` (directory + status + suggestion), `PUT /mappings/{code}`
   (confirm/change), `DELETE /mappings/{code}` (remove) — company admin /
-  sub-admin only, tenant-scoped by `company_id`.
+  sub-admin / manager only, tenant-scoped by `company_id`.
 - UI: HR → Attendance Reports → Biometric Attendance (eTimeOffice) card now has
   an **Employee Mapping** panel (Map / Change Mapping / Remove Mapping) plus a
   **Biometric Code** column on HR attendance rows.

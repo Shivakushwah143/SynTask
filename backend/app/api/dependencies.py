@@ -314,6 +314,30 @@ async def get_current_company_admin_or_lead(
     return current_user
 
 
+async def get_current_company_admin_or_manager(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """Require a company admin, sub-admin, manager, or super admin.
+
+    This intentionally excludes Leads: biometric employee mapping is a
+    company-level attendance administration action, not a reporting-line
+    action.
+    """
+    allowed_roles = {
+        UserRole.ADMIN,
+        UserRole.SUB_ADMIN,
+        UserRole.MANAGER,
+        UserRole.SUPER_ADMIN,
+    }
+    current_role = _normalize_role(getattr(current_user, "role", None))
+    if current_role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or Manager access required",
+        )
+    return current_user
+
+
 def check_company_access(user: User, company_id: str):
     """Check if user has access to a specific company"""
     current_role = _normalize_role(getattr(user, "role", None))
