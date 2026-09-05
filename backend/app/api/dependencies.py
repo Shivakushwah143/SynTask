@@ -199,6 +199,11 @@ def require_module(module_name: str):
         # Super Admin, Admin, and Sub Admin have full access to all modules
         if current_role == UserRole.SUPER_ADMIN or current_role == UserRole.ADMIN or current_role == UserRole.SUB_ADMIN:
             return current_user
+        # Managers always receive the company-scoped Client workspace. This is
+        # a role grant so existing Manager accounts with older explicit module
+        # lists are not stranded outside the Client lifecycle routes.
+        if module_name == "clients" and current_role == UserRole.MANAGER:
+            return current_user
         # Legacy members (pre-permission-system module lists) keep the role
         # auto-grants so they never lose access after this change ships.
         legacy_config = _is_legacy_module_config(getattr(current_user, "modules", []) or [])

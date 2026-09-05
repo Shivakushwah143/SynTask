@@ -235,7 +235,7 @@ export const ROLE_MODULE_DEFAULTS = {
   super_admin: MODULE_CATALOG.map((m) => m.id),
   admin: MODULE_CATALOG.map((m) => m.id),
   sub_admin: MODULE_CATALOG.map((m) => m.id),
-  manager: ['projects', 'tasks', 'scheduled_work', 'time_tracking', 'daily_updates', 'content_calendar', 'chat', 'meetings_calendar', 'attendance', 'live_attendance', 'attendance_reports', 'leave_management', 'ai_assistant', 'ai_content_assistant'],
+  manager: ['projects', 'tasks', 'scheduled_work', 'time_tracking', 'daily_updates', 'content_calendar', 'chat', 'meetings_calendar', 'clients', 'attendance', 'live_attendance', 'attendance_reports', 'leave_management', 'ai_assistant', 'ai_content_assistant'],
   lead: ['projects', 'tasks', 'scheduled_work', 'time_tracking', 'daily_updates', 'content_calendar', 'chat', 'meetings_calendar', 'attendance', 'attendance_reports', 'leave_management'],
   employee: ['projects', 'tasks', 'time_tracking', 'daily_updates', 'content_calendar', 'chat', 'meetings_calendar', 'attendance', 'leave_management'],
 }

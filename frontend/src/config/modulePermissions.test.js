@@ -38,6 +38,10 @@ describe('modulePermissions registry', () => {
     expect(getRoleModuleDefaults('hr_manager')).toEqual(getRoleModuleDefaults('employee'))
   })
 
+  test('manager defaults include the Clients module', () => {
+    expect(getRoleModuleDefaults('manager')).toContain('clients')
+  })
+
   test('legacy detection matches the backend defaults', () => {
     expect(isLegacyModules([])).toBe(true)
     expect(isLegacyModules(['task'])).toBe(true)
