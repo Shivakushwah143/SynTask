@@ -643,6 +643,21 @@ Acceptance criteria: creation rejects missing owner, invalid owner, cross-compan
 
 # Work Module Phase 4 Work Requests and Scheduled Work
 
+## Project resources and optional task proof
+
+Implemented: Project Overview shows up to four dynamic resources and opens a
+modal for the full list. Users with `manage_project` may add, edit, and delete;
+authorized project members may read/open them. `ProjectResource` is scoped by
+`company_id` and logical `project_id`.
+
+Assigned task workers may optionally attach named proof values to quantitative
+progress updates or review submissions. Proof is never required and Skip still
+persists progress or sends the task to Review. Quantitative `+/-` changes React
+draft state only; Update performs the write. Reviewers with task access can read
+all proof. `TaskProof` is scoped by `company_id` and `task_id`, and
+`submitted_by` is derived from authentication. Cross-tenant resource and proof
+lookups must return no record.
+
 Implemented behavior: Work Requests are operational request records for new work, changes, approvals, deadline extensions, resources, blockers, leave/availability, client requests, and other work coordination. They do not replace Support Tickets. A request is company-scoped, can reference a project, task, client, or related entity, follows `submitted`, `under_review`, `approved`, `rejected`, `converted`, and `cancelled`, and can be converted into a Task or Project after approval/review. Scheduled Work supports one-time and recurring jobs. Recurring schedules can generate future Tasks or Projects, preserve occurrence history, and can be paused or resumed without deleting history.
 
 Access rules: Work Request APIs require the Work/Tasks module gate and authenticated same-company access. The requester, assigned reviewer/resolver, admins, managers, and project-authorized users can view or act according to role and context. Context validation rejects cross-tenant project, task, client, and reviewer references. Scheduled Work remains company-scoped; project scheduling is limited to management roles, while task scheduling can include authorized Leads for their permitted project.

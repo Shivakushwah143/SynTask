@@ -26,6 +26,7 @@ from app.models.task import Task, TaskComment, TaskExtensionRequest
 from app.models.ticket import Ticket, TicketComment
 from app.models.notification import Notification
 from app.models.project import Project, Epic, Sprint, ProjectTypeConfiguration
+from app.models.work_evidence import ProjectResource, TaskProof
 from app.models.scheduled_job import ScheduledJob, ScheduledJobOccurrence
 from app.models.work_request import WorkRequest
 from app.models.project_template import ProjectTemplate, TemplateTask, TemplateTaskChecklistItem
@@ -350,6 +351,8 @@ async def init_db():
                 Notification,
                 Project,
                 ProjectTypeConfiguration,
+                ProjectResource,
+                TaskProof,
                 ScheduledJob,
                 ScheduledJobOccurrence,
                 WorkRequest,

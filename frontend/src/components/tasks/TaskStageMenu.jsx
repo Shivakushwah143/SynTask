@@ -95,7 +95,10 @@ export default function TaskStageMenu({ task, user, canManage = false, assignabl
           await tasksAPI.startTask(task.id)
           break
         case 'submit_review':
-          await tasksAPI.submitForReview(task.id, payload.reviewer_id || null)
+          {
+            const result = await tasksAPI.submitForReview(task.id, payload.reviewer_id || null, payload.proof || null)
+            if (result.proof_error) toast.error(result.proof_error)
+          }
           break
         case 'request_revision':
           await tasksAPI.requestRevision(task.id, payload.reason)
@@ -124,6 +127,12 @@ export default function TaskStageMenu({ task, user, canManage = false, assignabl
   }
 
   const chooseOption = (option) => {
+    if (option.action === 'submit_review') {
+      setRequirement({ action: option.action, proof_name: '', proof_value: '', option })
+      closeMenus()
+      setFormError('')
+      return
+    }
     if (option.requirement) {
       setRequirement({ action: option.action, assignee_id: '', reason: '', option })
       closeMenus()
@@ -161,9 +170,16 @@ export default function TaskStageMenu({ task, user, canManage = false, assignabl
       setFormError('A revision reason is required.')
       return
     }
+    if (requirement.action === 'submit_review' && Boolean(requirement.proof_name?.trim()) !== Boolean(requirement.proof_value?.trim())) {
+      setFormError('Enter both proof name and value, or use Skip.')
+      return
+    }
     runOption(requirement.option, {
       assignee_id: requirement.assignee_id,
       reason: requirement.reason,
+      proof: requirement.action === 'submit_review' && requirement.proof_name.trim() && requirement.proof_value.trim()
+        ? { name: requirement.proof_name.trim(), value: requirement.proof_value.trim() }
+        : null,
     })
   }
 
@@ -311,7 +327,7 @@ export default function TaskStageMenu({ task, user, canManage = false, assignabl
       <Modal
         isOpen={Boolean(requirement)}
         onClose={() => { if (!busy) { setRequirement(null); setFormError('') } }}
-        title={requirement?.action === 'assign' ? 'Assign task' : 'Request revision'}
+        title={requirement?.action === 'assign' ? 'Assign task' : requirement?.action === 'submit_review' ? 'Send for Review' : 'Request revision'}
         description={pickLabel(task)}
       >
         <form onSubmit={submitRequirement} className="space-y-4">
@@ -320,7 +336,7 @@ export default function TaskStageMenu({ task, user, canManage = false, assignabl
             <span>
               {requirement?.action === 'assign'
                 ? 'Requirement: choose the employee who will own this task. Assigning moves the task from To Do to Assigned.'
-                : 'Requirement: a revision reason is required and will be shown to the assignee with the task.'}
+                : requirement?.action === 'submit_review' ? 'Add work proof (Optional). You can skip this step and still send the task for review.' : 'Requirement: a revision reason is required and will be shown to the assignee with the task.'}
             </span>
           </div>
 
@@ -339,6 +355,8 @@ export default function TaskStageMenu({ task, user, canManage = false, assignabl
                 ))}
               </select>
             </FormField>
+          ) : requirement?.action === 'submit_review' ? (
+            <div className="space-y-3"><FormField label="Proof Name"><input className={inputClassName} value={requirement.proof_name || ''} onChange={(event) => setRequirement((current) => ({ ...current, proof_name: event.target.value }))} /></FormField><FormField label="Link / Value"><input className={inputClassName} value={requirement.proof_value || ''} onChange={(event) => setRequirement((current) => ({ ...current, proof_value: event.target.value }))} /></FormField></div>
           ) : (
             <FormField label="Revision reason" required>
               <textarea
@@ -354,9 +372,9 @@ export default function TaskStageMenu({ task, user, canManage = false, assignabl
           {formError ? <p className="text-xs font-medium text-rose-600 dark:text-rose-400">{formError}</p> : null}
 
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" type="button" disabled={busy} onClick={() => setRequirement(null)}>Cancel</Button>
+            {requirement?.action === 'submit_review' ? <Button variant="secondary" type="button" disabled={busy} onClick={() => runOption(requirement.option)}>Skip</Button> : <Button variant="secondary" type="button" disabled={busy} onClick={() => setRequirement(null)}>Cancel</Button>}
             <Button type="submit" loading={Boolean(busyAction)} loadingText={requirement?.action === 'assign' ? 'Assigning' : 'Requesting'} disabled={busy && !busyAction}>
-              {requirement?.action === 'assign' ? 'Assign task' : 'Send for revision'}
+              {requirement?.action === 'assign' ? 'Assign task' : requirement?.action === 'submit_review' ? 'Save & Review' : 'Send for revision'}
             </Button>
           </div>
         </form>

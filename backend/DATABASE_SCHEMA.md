@@ -2036,3 +2036,13 @@ Additional time indexes:
 `tasks.required_for_project_completion` defaults to true. Optional compatibility work can set it false so it does not block project completion readiness.
 
 `projects` stores completion metadata: `completed_at`, `completed_by`, `client_delivery_completed`, `client_delivery_completed_at`, and `client_delivery_completed_by`.
+# Project Resources and Task Proofs
+
+`project_resources`: `_id`, `company_id`, `project_id` (logical Project id),
+`name`, `value`, `created_by`, `created_at`, `updated_at`. Indexed by
+`(company_id, project_id, created_at)`.
+
+`task_proofs`: `_id`, `company_id`, `task_id`, `submitted_by`, `name`, `value`,
+`context` (`progress_update` or `review_submission`), `created_at`. Indexed by
+`(company_id, task_id, created_at)`. There is no draft-progress collection;
+draft quantity is frontend-only.
