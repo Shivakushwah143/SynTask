@@ -59,9 +59,9 @@ const WORKLOAD_COLORS = {
 }
 
 const SEVERITY_COLORS = {
-  high: 'border-l-red-500 bg-red-50/50',
-  medium: 'border-l-amber-500 bg-amber-50/50',
-  low: 'border-l-blue-500 bg-blue-50/50',
+  high: 'border-l-red-500 bg-red-50/50 dark:border-[var(--color-app-border)] dark:bg-red-950/25',
+  medium: 'border-l-amber-500 bg-amber-50/50 dark:border-[var(--color-app-border)] dark:bg-amber-950/25',
+  low: 'border-l-blue-500 bg-blue-50/50 dark:border-[var(--color-app-border)] dark:bg-blue-950/25',
 }
 
 // ── Helper Components ──────────────────────────────────────────────────────
@@ -208,7 +208,7 @@ function AttentionItem({ item }) {
   return (
     <Link
       to={route}
-      className={`block rounded-lg border border-surface-border border-l-4 p-3 shadow-sm transition hover:border-primary-300 ${SEVERITY_COLORS[item.severity] || 'border-l-gray-300'}`}
+      className={`block rounded-lg border border-surface-border border-l-4 p-3 shadow-sm transition hover:border-primary-300 dark:border-[var(--color-app-border)] dark:hover:border-primary-400 ${SEVERITY_COLORS[item.severity] || 'border-l-gray-300 dark:bg-[var(--color-app-surface-muted)]'}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -493,7 +493,7 @@ function ManagerWorkOverview({ data }) {
 
         {/* Management Attention - compact right side panel */}
         {data.management_attention?.length > 0 && (
-          <aside className="rounded-2xl border border-surface-border bg-surface p-3 shadow-sm lg:sticky lg:top-4 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto">
+          <aside className="rounded-2xl border border-surface-border bg-surface p-3 shadow-sm dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] lg:sticky lg:top-4 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto">
             <SectionHeader title="Management Attention" count={data.management_attention.length} />
             <div className="space-y-2">
               {data.management_attention.map((item, i) => (
