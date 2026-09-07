@@ -1789,6 +1789,7 @@ async def build_file_response(version: HRDocumentVersion, *, download: bool = Fa
             resource_type=resource_type,
             delivery_type=delivery_type,
             storage_url=version.storage_url,
+            mime_type=version.mime_type,
         )
         if resp is None:
             logger.error(
