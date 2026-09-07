@@ -863,6 +863,7 @@ async def build_payslip_file_response(payslip: Payslip, *, download: bool = Fals
             resource_type=rt,
             delivery_type=payslip.storage_delivery_type or "authenticated",
             storage_url=payslip.storage_url,
+            mime_type=payslip.mime_type or "application/pdf",
         )
         if pdf_bytes and pdf_bytes.startswith(b"%PDF"):
             return _pdf_response(pdf_bytes)
