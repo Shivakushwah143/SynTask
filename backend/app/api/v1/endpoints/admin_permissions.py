@@ -6,10 +6,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.dependencies import _module_access_allowed, get_current_user
+from app.api.dependencies import _module_access_allowed, get_current_user, get_effective_permissions
 from app.models.department import Department
 from app.models.user import User, UserRole
-from app.schemas.admin_permissions import MODULE_CATALOG, ModuleUpdateRequest, normalize_modules
+from app.schemas.admin_permissions import MODULE_CATALOG, ModuleUpdateRequest, CapabilityGrantUpdateRequest, normalize_modules
 from app.services.timeline_service import create_timeline_event
 from app.models.timeline import TimelineEventType, TimelineModule
 
@@ -122,6 +122,7 @@ async def get_admin_permissions_overview(current_user: User = Depends(get_curren
             "role": user.role.value,
             "department_id": getattr(user, "department_id", None),
             "modules": list(getattr(user, "modules", []) or []),
+            "capability_grants": list(getattr(user, "capability_grants", []) or []),
         }
         for user in employees
     ]
@@ -198,6 +199,30 @@ async def update_user_modules(user_id: str, payload: ModuleUpdateRequest, curren
     await target_user.save()
     await _record_admin_action(current_user, target_user, "user_modules_updated", before={"modules": before_modules}, after={"modules": normalized_modules}, target_type="user")
     return {"modules": normalized_modules}
+
+
+@router.put("/users/{user_id}/capabilities")
+async def update_user_capability_grants(user_id: str, payload: CapabilityGrantUpdateRequest, current_user: User = Depends(get_current_user)):
+    """Set explicit grants without changing role defaults or tenant scope."""
+    current_user = await _require_admin_company_scope(current_user)
+    target_user = await _get_tenant_target_user(user_id, current_user.company_id)
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    target_role = _normalize_role(getattr(target_user, "role", None))
+    current_role = _normalize_role(getattr(current_user, "role", None))
+    if target_role == UserRole.ADMIN or (target_role == UserRole.SUB_ADMIN and current_role != UserRole.ADMIN):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin permissions cannot be changed here")
+    requested = list(dict.fromkeys(str(item).strip() for item in payload.capabilities if str(item).strip()))
+    if current_role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+        delegatable = await get_effective_permissions(current_user)
+        if "*" not in delegatable and not set(requested).issubset(delegatable):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot grant a capability you do not hold")
+    before = list(getattr(target_user, "capability_grants", []) or [])
+    target_user.capability_grants = requested
+    target_user.updated_at = utc_now()
+    await target_user.save()
+    await _record_admin_action(current_user, target_user, "user_capabilities_updated", before={"capabilities": before}, after={"capabilities": requested}, target_type="user")
+    return {"capabilities": requested}
 
 
 @router.post("/users/{user_id}/promote")

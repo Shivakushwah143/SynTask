@@ -11,7 +11,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 
-from app.api.dependencies import get_current_user, require_capability
+from app.api.dependencies import get_current_user, require_capability, has_capability
 from app.models.user import User, UserRole
 from app.services.salary_component_service import (
     create_component,
@@ -167,7 +167,7 @@ async def get_employee_salary(
     salary_user_id = await resolve_salary_employee_user_id(current_user.company_id, employee_id)
 
     # Permission check: only salary_management.view, own profile, or admin
-    _assert_salary_view_permission(current_user, salary_user_id)
+    await _assert_salary_view_permission(current_user, salary_user_id)
 
     current = await get_current_salary(current_user.company_id, salary_user_id)
     upcoming = await get_upcoming_salary(current_user.company_id, salary_user_id)
@@ -191,7 +191,7 @@ async def get_employee_salary_history(
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="User must belong to a company")
 
     salary_user_id = await resolve_salary_employee_user_id(current_user.company_id, employee_id)
-    _assert_salary_view_permission(current_user, salary_user_id)
+    await _assert_salary_view_permission(current_user, salary_user_id)
 
     structures = await get_salary_history(current_user.company_id, salary_user_id)
     return {
@@ -266,7 +266,7 @@ async def get_payroll_salary_snapshot(
 # =============================================================================
 
 
-def _assert_salary_view_permission(current_user: User, employee_id: str) -> None:
+async def _assert_salary_view_permission(current_user: User, employee_id: str) -> None:
     """Assert the current user can view the target employee's salary."""
     role = current_user.role
 
@@ -277,6 +277,11 @@ def _assert_salary_view_permission(current_user: User, employee_id: str) -> None
     # Admin / Sub-admin with salary_management.view capability
     if role in (UserRole.ADMIN, UserRole.SUB_ADMIN):
         # Company admin — check company scope (done at API level)
+        return
+
+    # Explicit role/department grants are company-scoped; the endpoint already
+    # resolved the target against the authenticated company.
+    if await has_capability(current_user, "salary_management.view"):
         return
 
     # Own salary (employee viewing own profile)
