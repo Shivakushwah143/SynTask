@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import base64
 import logging
+import re
 import time
 import uuid
 from pathlib import Path
@@ -158,18 +159,39 @@ class CloudinaryStorage:
                 return f"https://res.cloudinary.com/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/upload/{public_id}"
             return storage_url
 
-        delivery_tail = None
+        # Cloudinary signed delivery URL format (matches the SDK output and the
+        # docs at cloudinary.com/documentation/delivery_url_signatures):
+        #   /{cloud}/{resource_type}/{delivery_type}/s--{sig}--/{transformations}/{public_id}
+        # The signed string is exactly what follows the s--{sig}-- component:
+        # any transformations (e.g. fl_attachment), then the versioned public_id.
+        #
+        # storage_url (captured at upload time) can already be a signed URL for
+        # legacy/affected rows, so before re-signing we repeatedly strip stale
+        # signature components (s--XXXXXXXX--/) and fl_attachment/ wrappers that
+        # may have been nested into the stored path by earlier code. Leaving any
+        # of them in place makes Cloudinary reject the URL with 400 Bad Request.
+        delivery_tail = public_id.lstrip("/")
         parsed = urlparse(storage_url or "")
         marker = f"/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/{delivery_type}/"
         if parsed.scheme and marker in parsed.path:
-            delivery_tail = parsed.path.split(marker, 1)[1].lstrip("/")
-        if not delivery_tail:
-            delivery_tail = public_id.lstrip("/")
+            tail = parsed.path.split(marker, 1)[1].lstrip("/")
+            if tail:
+                delivery_tail = tail
 
-        if attachment and not delivery_tail.startswith("fl_attachment/"):
-            delivery_tail = f"fl_attachment/{delivery_tail}"
-        signature = _delivery_signature(delivery_tail)
-        signed_path = f"/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/{delivery_type}/s--{signature}--/{delivery_tail}"
+        previous = None
+        while previous != delivery_tail:
+            previous = delivery_tail
+            delivery_tail = re.sub(
+                r"^(?:s--[A-Za-z0-9_-]+--|fl_attachment)/", "", delivery_tail
+            )
+
+        transformation = "fl_attachment/" if attachment else ""
+        signature = _delivery_signature(f"{transformation}{delivery_tail}")
+        signed_path = (
+            f"/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/{delivery_type}/"
+            f"s--{signature}--/{transformation}{delivery_tail}"
+        )
+
         if parsed.scheme:
             return urlunparse((parsed.scheme, parsed.netloc, signed_path, "", "", ""))
         return f"https://res.cloudinary.com{signed_path}"
@@ -260,6 +282,75 @@ class CloudinaryStorage:
             return None
 
         return content
+
+    @staticmethod
+    def download_response(
+        public_id: str,
+        *,
+        resource_type: str = "image",
+        delivery_type: str = "authenticated",
+        storage_url: str | None = None,
+        attachment: bool = False,
+    ) -> requests.Response | None:
+        """Open a streaming HTTP response to a stored Cloudinary file (server-side).
+
+        Used by backend-controlled file delivery so sensitive HR documents are
+        proxied through the SynTask backend instead of redirecting the browser
+        cross-origin to Cloudinary. The signed delivery URL is built here and
+        fetched by the backend; the client only ever receives bytes from
+        SynTask, so signatures and Cloudinary credentials are never exposed.
+
+        The caller is responsible for closing the returned response once the
+        stream has been consumed. Returns ``None`` (with structured logs) when
+        Cloudinary is not configured, the URL cannot be built, the request
+        fails, or the resource is not retrievable.
+        """
+        if not CloudinaryStorage.enabled() or not public_id:
+            return None
+
+        url = CloudinaryStorage.signed_url(
+            public_id,
+            resource_type=resource_type,
+            delivery_type=delivery_type,
+            storage_url=storage_url,
+            attachment=attachment,
+        )
+        if not url:
+            logger.error(
+                "Cloudinary delivery URL could not be built | public_id=%s "
+                "resource_type=%s delivery_type=%s",
+                public_id,
+                resource_type,
+                delivery_type,
+            )
+            return None
+
+        try:
+            resp = requests.get(url, stream=True, timeout=30)
+        except requests.RequestException:
+            logger.exception(
+                "Cloudinary delivery request failed | public_id=%s resource_type=%s delivery_type=%s",
+                public_id,
+                resource_type,
+                delivery_type,
+            )
+            return None
+
+        if resp.status_code != 200:
+            cld_error = resp.headers.get("X-Cld-Error") or ""
+            logger.error(
+                "Cloudinary delivery failed | status=%s public_id=%s resource_type=%s "
+                "delivery_type=%s X-Cld-Error=%s body_prefix=%s",
+                resp.status_code,
+                public_id,
+                resource_type,
+                delivery_type,
+                cld_error,
+                (resp.text[:200] if resp.text else ""),
+            )
+            resp.close()
+            return None
+        return resp
 
     @staticmethod
     def delete(public_id: str, resource_type: str = "image", delivery_type: str = "upload") -> None:

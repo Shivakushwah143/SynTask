@@ -126,6 +126,7 @@ async def test_generate_employee_number_skips_taken_numbers(monkeypatch):
 class FakeUser:
     _all: list = []
     _by_id: dict = {}
+    department_id = None  # real User always has this attribute (may be None)
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
@@ -494,6 +495,79 @@ async def test_get_employee_cross_company_not_found(monkeypatch):
         await get_employee("company-1", "p-1", actor)
 
     assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_employee_allows_manager_to_view_any_employee(monkeypatch):
+    """Managers have directory view: they can open another employee's profile
+    (and therefore reach the Documents tab where employee uploads appear)."""
+    actor = _make_user(id="m-1", role=UserRole.MANAGER, department_id="dept-m")
+    user = _make_user(id="u-1", first_name="Jane", last_name="Doe")
+    FakeUser._all += [actor, user]
+    FakeUser._by_id.update({"u-1": user, "m-1": actor})
+    profile = _make_profile()
+    FakeProfileModel._all.append(profile)
+    FakeProfileModel._by_id["p-1"] = profile
+    _install_model_fakes(monkeypatch)
+
+    detail = await get_employee("company-1", "p-1", actor)
+
+    assert detail["full_name"] == "Jane Doe"
+    assert detail["user_id"] == "u-1"
+
+
+@pytest.mark.asyncio
+async def test_get_employee_allows_hr_staff_with_view_capability(monkeypatch):
+    from app.models.department import DepartmentType
+    import app.models.capability as capability_mod
+
+    async def fake_capabilities(department_type, role, company_id):
+        return {"employee_management.view", "employee_management.manage"}
+
+    monkeypatch.setattr(capability_mod, "get_capabilities_for_role", fake_capabilities)
+
+    actor = _make_user(id="hr-1", role=UserRole.EMPLOYEE, department_id="dept-hr")
+    user = _make_user(id="u-1", first_name="Jane", last_name="Doe")
+    FakeUser._all += [actor, user]
+    FakeUser._by_id.update({"u-1": user, "hr-1": actor})
+    FakeDepartmentModel._by_id = {
+        "dept-hr": FakeDepartment(company_id="company-1", department_type=DepartmentType.HR, deleted_at=None),
+    }
+    profile = _make_profile()
+    FakeProfileModel._all.append(profile)
+    FakeProfileModel._by_id["p-1"] = profile
+    _install_model_fakes(monkeypatch)
+
+    detail = await get_employee("company-1", "p-1", actor)
+    assert detail["full_name"] == "Jane Doe"
+
+
+@pytest.mark.asyncio
+async def test_get_employee_blocks_hr_staff_without_view_capability(monkeypatch):
+    from app.models.department import DepartmentType
+    import app.models.capability as capability_mod
+
+    async def fake_capabilities(department_type, role, company_id):
+        return set()
+
+    monkeypatch.setattr(capability_mod, "get_capabilities_for_role", fake_capabilities)
+
+    actor = _make_user(id="hr-1", role=UserRole.EMPLOYEE, department_id="dept-hr")
+    user = _make_user(id="u-1")
+    FakeUser._all += [actor, user]
+    FakeUser._by_id.update({"u-1": user, "hr-1": actor})
+    FakeDepartmentModel._by_id = {
+        "dept-hr": FakeDepartment(company_id="company-1", department_type=DepartmentType.HR, deleted_at=None),
+    }
+    profile = _make_profile()
+    FakeProfileModel._all.append(profile)
+    FakeProfileModel._by_id["p-1"] = profile
+    _install_model_fakes(monkeypatch)
+
+    with pytest.raises(HTTPException) as exc:
+        await get_employee("company-1", "p-1", actor)
+
+    assert exc.value.status_code == 403
 
 
 # =============================================================================

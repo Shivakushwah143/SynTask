@@ -24,7 +24,7 @@ from fastapi import HTTPException, status
 
 from app.core.clock import utc_now
 from app.core.security import get_password_hash
-from app.models.department import Department
+from app.models.department import Department, DepartmentType
 from app.models.employee_profile import (
     Address,
     EmergencyContact,
@@ -460,11 +460,47 @@ async def list_employees(
     return items, total
 
 
+async def can_view_employee_directory(user: User) -> bool:
+    """Directory view access — mirrors the endpoint's ``require_employee_view``:
+
+    - Company admins and managers pass.
+    - HR department staff pass when they hold the ``employee_management.view``
+      capability (department type, company scope and deletion checked).
+    - Ordinary employees/leads may only view their own profile.
+
+    Single source of truth shared by the employee detail service and the
+    ``require_employee_view`` FastAPI dependency.
+    """
+    role = user.role if isinstance(user.role, UserRole) else UserRole.from_legacy(str(user.role))
+    if role in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER}:
+        return True
+    if not user.company_id or not user.department_id:
+        return False
+    department = await Department.get(user.department_id)
+    if (
+        not department
+        or department.company_id != user.company_id
+        or department.deleted_at is not None
+        or department.department_type != DepartmentType.HR
+    ):
+        return False
+    try:
+        from app.models.capability import get_capabilities_for_role
+
+        allowed = await get_capabilities_for_role(
+            department.department_type, user.role, user.company_id
+        )
+        return "employee_management.view" in allowed
+    except Exception:
+        return False
+
+
 async def get_employee(company_id: str, employee_id: str, actor: User, *, can_edit: bool = False) -> dict:
     """Return the normalized detail DTO for one employee.
 
-    Access rules:
-    - Company admins / HR managers (managed by the endpoint dependency) pass.
+    Access rules (defense in depth — the endpoint dependency gates first):
+    - Company admins / managers / HR staff with directory view may open any
+      employee's profile.
     - A regular employee may only open their own profile.
     - ``can_edit`` is computed by the endpoint from the manage permission.
     """
@@ -474,8 +510,7 @@ async def get_employee(company_id: str, employee_id: str, actor: User, *, can_ed
 
     user = await _get_company_user(company_id, profile.user_id)
 
-    role = actor.role if isinstance(actor.role, UserRole) else UserRole.from_legacy(str(actor.role))
-    if role not in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN} and str(actor.id) != str(user.id):
+    if str(actor.id) != str(user.id) and not await can_view_employee_directory(actor):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only view your own employee profile",

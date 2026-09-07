@@ -44,14 +44,27 @@ export const hrDocumentsApi = {
   reviewDocument: (id, payload) => api.post(`/hr/documents/${id}/review`, payload),
   archiveDocument: (id) => api.post(`/hr/documents/${id}/archive`),
   listVersions: (id) => api.get(`/hr/documents/${id}/versions`),
+
+  // ── Document Requests (HR-initiated) ──────────────────────────────────────
+  listDocumentRequests: (params) => api.get('/hr/document-requests', { params }),
+  createDocumentRequest: (payload) => api.post('/hr/document-requests', payload),
+  getDocumentRequest: (id) => api.get(`/hr/document-requests/${id}`),
+  cancelDocumentRequest: (id) => api.post(`/hr/document-requests/${id}/cancel`),
+
+  // ── Employee self-service document requests ───────────────────────────────
+  listMyDocumentRequests: (params) => api.get('/hr/me/document-requests', { params }),
+  uploadForDocumentRequest: (requestId, formData) => api.post(`/hr/me/document-requests/${requestId}/upload`, formData),
 }
 
 /** Authorized file access — fetched as blobs so previews/downloads carry the
- *  auth headers and confidential files are never exposed through raw URLs. */
+ *  auth headers and confidential files are never exposed through raw URLs.
+ *  The backend streams the stored bytes through SynTask (no cross-origin
+ *  redirect), so failures arrive as JSON error bodies inside the Blob.
+ *  suppressGlobalToast lets each page surface one contextual message. */
 export const hrDocumentFiles = {
-  preview: (id) => api.get(`/hr/documents/${id}/preview`, { responseType: 'blob' }),
-  download: (id) => api.get(`/hr/documents/${id}/download`, { responseType: 'blob' }),
-  downloadVersion: (id, versionId) => api.get(`/hr/documents/${id}/versions/${versionId}/download`, { responseType: 'blob' }),
+  preview: (id) => api.get(`/hr/documents/${id}/preview`, { responseType: 'blob', suppressGlobalToast: true }),
+  download: (id) => api.get(`/hr/documents/${id}/download`, { responseType: 'blob', suppressGlobalToast: true }),
+  downloadVersion: (id, versionId) => api.get(`/hr/documents/${id}/versions/${versionId}/download`, { responseType: 'blob', suppressGlobalToast: true }),
 }
 
 /** Build a multipart FormData body for uploads/replacements. */

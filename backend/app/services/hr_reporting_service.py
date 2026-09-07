@@ -580,13 +580,15 @@ async def get_payroll_summary(company_id: str) -> Optional[dict]:
 async def get_attention_items(company_id: str) -> list:
     """Build actionable attention items — only items the user can act on.
 
-    All five probes run as parallel ``count_documents`` calls (one projected
-    latest-period lookup) instead of five sequential queries plus a full
-    document load for the expiring-document check.
+    All six probes run as parallel ``count_documents`` calls (one projected
+    latest-period lookup) instead of six sequential queries plus a full
+    document load for the expiring-document check. Includes a probe for
+    employee document submissions awaiting HR review so HR notices uploads
+    immediately.
     """
     from app.models.leave import LeaveRequest, LeaveStatus
     from app.models.attendance import AttendanceCorrectionRequest, CorrectionStatus
-    from app.models.hr_document import HRDocument, HRDocumentStatus
+    from app.models.hr_document import HRDocument, HRDocumentStatus, HRReviewStatus, HRSubmissionSource
     from app.models.payroll import PayrollPeriod, PayrollPeriodStatus, PayrollRecord, PayrollRecordStatus
     from app.models.employee_profile import EmployeeProfile, EmploymentStatus
 
@@ -599,6 +601,7 @@ async def get_attention_items(company_id: str) -> list:
     (
         pending_leaves,
         pending_corrections,
+        pending_document_reviews,
         expiring_count,
         confirmations_due,
         latest_periods,
@@ -608,6 +611,12 @@ async def get_attention_items(company_id: str) -> list:
         }),
         AttendanceCorrectionRequest.get_pymongo_collection().count_documents({
             "company_id": company_id, "status": CorrectionStatus.PENDING.value,
+        }),
+        HRDocument.get_pymongo_collection().count_documents({
+            "company_id": company_id,
+            "status": HRDocumentStatus.ACTIVE.value,
+            "review_status": HRReviewStatus.PENDING.value,
+            "submission_source": HRSubmissionSource.EMPLOYEE.value,
         }),
         HRDocument.get_pymongo_collection().count_documents({
             "company_id": company_id,
@@ -643,6 +652,15 @@ async def get_attention_items(company_id: str) -> list:
             "count": pending_corrections,
             "severity": "info",
             "route": "/attendance/corrections",
+        })
+
+    if pending_document_reviews > 0:
+        items.append({
+            "type": "document_review_pending",
+            "label": f"{pending_document_reviews} Document{'s' if pending_document_reviews != 1 else ''} Pending Review",
+            "count": pending_document_reviews,
+            "severity": "warning",
+            "route": "/hr/documents",
         })
 
     if expiring_count > 0:

@@ -1,4 +1,5 @@
 // Shared HR document UI helpers (Phase 2).
+import { decodeBlobErrorMessage } from '../../../../utils/download'
 
 export const EXPIRY_STATES = {
   no_expiry: { label: 'No Expiry', color: 'bg-gray-100 text-gray-600 dark:bg-gray-700/40 dark:text-gray-300' },
@@ -85,4 +86,28 @@ export function isPreviewable(mimeType) {
 /** Map a document DTO to the shape the preview modal expects. */
 export function previewBlobUrl(blob) {
   return window.URL.createObjectURL(blob)
+}
+
+/**
+ * Turn a failed authorized file request (preview/download) into a useful
+ * user-facing message.
+ *
+ * Blob requests hide the backend's JSON error body, so the message is decoded
+ * from the Blob first; HTTP status is then mapped to a specific hint, and only
+ * truly unexplained failures fall back to the generic text.
+ */
+export async function documentFileErrorMessage(error, fallback = 'Unable to access this document.') {
+  if (!error) return fallback
+
+  const status = error?.response?.status
+
+  // Blob error responses contain the FastAPI JSON detail — surface it.
+  const decoded = await decodeBlobErrorMessage(error)
+  if (decoded && decoded !== 'Request failed') return decoded
+
+  if (status === 404) return 'The stored file could not be found.'
+  if (status === 403) return 'You do not have permission to access this document.'
+  if (status === 415) return 'Preview is not supported for this file type. Download the file instead.'
+  if (!error.response) return 'The server is unreachable. Check your connection and try again.'
+  return fallback
 }

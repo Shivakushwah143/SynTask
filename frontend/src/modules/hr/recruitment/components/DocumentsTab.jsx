@@ -31,11 +31,13 @@ import {
   REVIEW_STATUS_META,
   SUBMISSION_SOURCE_LABELS,
   VISIBILITY_OPTIONS,
+  documentFileErrorMessage,
   formatFileSize,
   isPreviewable,
   previewBlobUrl,
 } from '../utils/documents'
 import DocumentUploadModal from './DocumentUploadModal'
+import RequestDocumentModal from './RequestDocumentModal'
 
 const PAGE_SIZE = 15
 const selectClassName = inputClassName
@@ -84,6 +86,9 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
   const [page, setPage] = useState(1)
   const [showFilters, setShowFilters] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
+
+  // ── Document Requests state ─────────────────────────────────────────────
+  const [showRequestModal, setShowRequestModal] = useState(false)
 
   const [previewDoc, setPreviewDoc] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
@@ -156,6 +161,14 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
   const missingDocuments = missingQuery.data?.data?.missing || []
   const missingNames = missingDocuments.map((item) => item.name) || []
 
+  // ── Document Requests (HR view) ──────────────────────────────────────────
+  const requestsQuery = useQuery(
+    ['hr-document-requests', employeeId],
+    () => hrDocumentsApi.listDocumentRequests({ employee_id: employeeId || undefined, page_size: 50 }),
+    { enabled: canManage },
+  )
+  const documentRequests = requestsQuery.data?.data?.items || []
+
   const documents = query.data?.data?.items || []
   const total = query.data?.data?.total || 0
   const hasNext = query.data?.data?.has_next || page * PAGE_SIZE < total
@@ -164,6 +177,7 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
   const invalidateAll = () => {
     queryClient.invalidateQueries(['hr-documents'])
     queryClient.invalidateQueries(['hr-document-types'])
+    queryClient.invalidateQueries(['hr-document-requests'])
   }
 
   const handleUpload = async (payload) => {
@@ -183,7 +197,8 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
       const response = await hrDocumentFiles.preview(document.id)
       setPreviewUrl(previewBlobUrl(response.data))
     } catch (error) {
-      setPreviewError(error?.response?.data?.detail || 'Unable to preview this document. You may not have permission.')
+      // Blob responses hide the backend detail; decode it for a useful message.
+      setPreviewError(await documentFileErrorMessage(error, 'Unable to preview this document. You may not have permission.'))
     } finally {
       setPreviewLoading(false)
     }
@@ -209,7 +224,7 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
       link.remove()
       window.URL.revokeObjectURL(url)
     } catch (error) {
-      toast.error(error?.response?.data?.detail || 'Failed to download document')
+      toast.error(await documentFileErrorMessage(error, 'Failed to download document'))
     }
   }
 
@@ -233,7 +248,7 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
       link.remove()
       window.URL.revokeObjectURL(url)
     } catch (error) {
-      toast.error(error?.response?.data?.detail || 'Failed to download this version')
+      toast.error(await documentFileErrorMessage(error, 'Failed to download this version'))
     }
   }
 
@@ -412,8 +427,18 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
           )}
         </div>
         {canManage && !global && (
-          <Button onClick={() => setShowUpload(true)}>
-            <Plus className="mr-2 h-4 w-4" /> Upload Document
+          <div className="flex gap-2">
+            <Button onClick={() => setShowUpload(true)}>
+              <Plus className="mr-2 h-4 w-4" /> Upload Document
+            </Button>
+            <Button variant="secondary" onClick={() => setShowRequestModal(true)}>
+              <FileText className="mr-2 h-4 w-4" /> Request Additional Document
+            </Button>
+          </div>
+        )}
+        {canManage && global && (
+          <Button variant="secondary" onClick={() => setShowRequestModal(true)}>
+            <FileText className="mr-2 h-4 w-4" /> Request Document
           </Button>
         )}
       </div>
@@ -429,6 +454,98 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
             <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{missingNames.join(', ')}</p>
           )}
         </div>
+      )}
+
+      {/* Document Requests (HR view — shows pending requests for the employee) */}
+      {canManage && employeeId && documentRequests.length > 0 && (
+        <section className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 dark:border-indigo-900/40 dark:bg-indigo-900/10">
+          <h4 className="mb-3 text-sm font-semibold text-indigo-800 dark:text-indigo-200">Requested Documents</h4>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-indigo-200 text-xs uppercase tracking-wide text-indigo-500 dark:border-indigo-800">
+                  <th className="py-2 pr-3">Document Type</th>
+                  <th className="py-2 pr-3">Requirement</th>
+                  <th className="py-2 pr-3">Priority</th>
+                  <th className="py-2 pr-3">Due Date</th>
+                  <th className="py-2 pr-3">Status</th>
+                  <th className="py-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {documentRequests.map((req) => (
+                  <tr key={req.id} className="border-b border-indigo-100 dark:border-indigo-800/50">
+                    <td className="py-2.5 pr-3">
+                      <p className="font-medium text-gray-800 dark:text-gray-100">{req.document_type_name}</p>
+                      {req.instructions && (
+                        <p className="max-w-52 truncate text-xs text-gray-500 dark:text-gray-400" title={req.instructions}>
+                          {req.instructions}
+                        </p>
+                      )}
+                    </td>
+                    <td className="py-2.5 pr-3">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                        req.requirement_level === 'mandatory'
+                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+                          : 'bg-gray-100 text-gray-600 dark:bg-gray-700/40 dark:text-gray-300'
+                      }`}>
+                        {req.requirement_level === 'mandatory' ? 'Required' : 'Optional'}
+                      </span>
+                    </td>
+                    <td className="py-2.5 pr-3">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                        req.priority === 'urgent'
+                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+                          : req.priority === 'high'
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                            : 'bg-gray-100 text-gray-600 dark:bg-gray-700/40 dark:text-gray-300'
+                      }`}>
+                        {req.priority.charAt(0).toUpperCase() + req.priority.slice(1)}
+                      </span>
+                    </td>
+                    <td className="py-2.5 pr-3 text-xs text-gray-600 dark:text-gray-400">
+                      {req.due_date ? req.due_date.slice(0, 10) : '—'}
+                    </td>
+                    <td className="py-2.5 pr-3">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                        req.status === 'pending'
+                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                          : req.status === 'submitted'
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                            : req.status === 'approved'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                              : req.status === 'rejected'
+                                ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+                                : 'bg-gray-100 text-gray-600 dark:bg-gray-700/40 dark:text-gray-300'
+                      }`}>
+                        {req.status === 'pending' ? 'Pending Upload' : req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                      </span>
+                    </td>
+                    <td className="py-2.5">
+                      {req.can_cancel && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await hrDocumentsApi.cancelDocumentRequest(req.id)
+                              toast.success('Request cancelled')
+                              invalidateAll()
+                            } catch (error) {
+                              toast.error(error?.response?.data?.detail || 'Failed to cancel request')
+                            }
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {/* Filters */}
@@ -682,7 +799,12 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
       {/* ── Preview modal ─────────────────────────────────────────────────── */}
       <Modal
         isOpen={Boolean(previewDoc)}
-        onClose={() => setPreviewDoc(null)}
+        onClose={() => {
+          setPreviewDoc(null)
+          // Dropping the URL triggers the effect cleanup that revokes it.
+          setPreviewUrl(null)
+          setPreviewError(null)
+        }}
         title={previewDoc?.filename || 'Preview'}
         description={previewDoc ? `${previewDoc.document_type || ''} · V${previewDoc.current_version || 1}` : undefined}
         size="xl"
@@ -742,31 +864,32 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
           <EmptyState icon={History} title="No versions" description="This document has no version history." />
         ) : (
           <div className="space-y-3">
-            {versions.map((version) => (                  <div key={version.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-800/50">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-xs font-bold text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
-                        V{version.version_number}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{version.original_filename}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {version.uploaded_by_name || version.uploaded_by || 'Unknown'} · {version.uploaded_at ? version.uploaded_at.slice(0, 10) : '—'} · {formatFileSize(version.file_size)}
-                        </p>
-                        {(version.submission_source === 'employee' || (version.review_status && version.review_status !== 'approved')) ? (
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            {reviewBadge(version.review_status || 'approved')}
-                            {version.review_note ? (
-                              <span className="text-xs text-rose-600 dark:text-rose-400">“{version.review_note}”</span>
-                            ) : null}
-                          </div>
+            {versions.map((version) => (
+              <div key={version.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-800/50">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-xs font-bold text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
+                    V{version.version_number}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{version.original_filename}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {version.uploaded_by_name || version.uploaded_by || 'Unknown'} · {version.uploaded_at ? version.uploaded_at.slice(0, 10) : '—'} · {formatFileSize(version.file_size)}
+                    </p>
+                    {(version.submission_source === 'employee' || (version.review_status && version.review_status !== 'approved')) ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        {reviewBadge(version.review_status || 'approved')}
+                        {version.review_note ? (
+                          <span className="text-xs text-rose-600 dark:text-rose-400">“{version.review_note}”</span>
                         ) : null}
-                        {version.change_note ? <p className="mt-0.5 text-xs italic text-gray-500 dark:text-gray-400">“{version.change_note}”</p> : null}
                       </div>
-                    </div>
-                    <Button variant="secondary" size="sm" onClick={() => downloadVersion(version)}>
-                      <Download className="mr-1.5 h-3.5 w-3.5" /> Download
-                    </Button>
+                    ) : null}
+                    {version.change_note ? <p className="mt-0.5 text-xs italic text-gray-500 dark:text-gray-400">“{version.change_note}”</p> : null}
                   </div>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => downloadVersion(version)}>
+                  <Download className="mr-1.5 h-3.5 w-3.5" /> Download
+                </Button>
+              </div>
             ))}
           </div>
         )}
@@ -905,6 +1028,14 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
         confirmLabel="Archive"
         loading={archiveLoading}
         onConfirm={handleArchive}
+      />
+
+      {/* ── Request Additional Document modal ─────────────────────────────── */}
+      <RequestDocumentModal
+        open={showRequestModal}
+        onClose={() => setShowRequestModal(false)}
+        employeeId={employeeId || null}
+        employeeName={ownerName || null}
       />
     </div>
   )

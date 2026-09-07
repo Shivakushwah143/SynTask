@@ -83,3 +83,91 @@ def test_cloudinary_signed_url_keeps_upload_url(monkeypatch):
         delivery_type="upload",
         storage_url=stored_url,
     ) == stored_url
+
+
+def test_cloudinary_signed_url_attachment_places_fl_after_signature(monkeypatch):
+    """fl_attachment is a transformation and must follow the s-- signature, inside the signed string."""
+    monkeypatch.setattr(CloudinaryStorage, "enabled", staticmethod(lambda: True))
+    monkeypatch.setattr("app.services.cloudinary_storage.settings.CLOUDINARY_CLOUD_NAME", "demo")
+    monkeypatch.setattr("app.services.cloudinary_storage.settings.CLOUDINARY_API_SECRET", "secret")
+
+    url = CloudinaryStorage.signed_url(
+        "syntask/hr/doc",
+        resource_type="image",
+        delivery_type="authenticated",
+        attachment=True,
+        storage_url="https://res.cloudinary.com/demo/image/authenticated/v123/syntask/hr/doc.pdf",
+    )
+
+    # Delivery type comes first, then the signature, then the transformation.
+    assert url.startswith("https://res.cloudinary.com/demo/image/authenticated/s--")
+    assert "/demo/image/fl_attachment/authenticated/" not in url
+    assert url.count("s--") == 1
+    assert url.endswith("--/fl_attachment/v123/syntask/hr/doc.pdf")
+
+
+def test_cloudinary_signed_url_strips_old_signature_from_storage_url(monkeypatch):
+    """When storage_url contains a previously signed URL, the old signature must be stripped."""
+    monkeypatch.setattr(CloudinaryStorage, "enabled", staticmethod(lambda: True))
+    monkeypatch.setattr("app.services.cloudinary_storage.settings.CLOUDINARY_CLOUD_NAME", "demo")
+    monkeypatch.setattr("app.services.cloudinary_storage.settings.CLOUDINARY_API_SECRET", "secret")
+
+    url = CloudinaryStorage.signed_url(
+        "syntask/hr/doc",
+        resource_type="image",
+        delivery_type="authenticated",
+        storage_url="https://res.cloudinary.com/demo/image/authenticated/s--OLD_SIGN--/v456/syntask/hr/doc.pdf",
+    )
+
+    # Old signature must NOT appear in the URL
+    assert "OLD_SIGN" not in url
+    # Must have exactly one signature segment
+    assert url.count("s--") == 1
+    # Must end with the versioned public_id
+    assert url.endswith("--/v456/syntask/hr/doc.pdf")
+
+
+def test_cloudinary_signed_url_strips_old_signature_with_attachment(monkeypatch):
+    """Attachment + stale signature in storage_url must both be handled correctly."""
+    monkeypatch.setattr(CloudinaryStorage, "enabled", staticmethod(lambda: True))
+    monkeypatch.setattr("app.services.cloudinary_storage.settings.CLOUDINARY_CLOUD_NAME", "demo")
+    monkeypatch.setattr("app.services.cloudinary_storage.settings.CLOUDINARY_API_SECRET", "secret")
+
+    url = CloudinaryStorage.signed_url(
+        "syntask/hr/doc",
+        resource_type="image",
+        delivery_type="authenticated",
+        attachment=True,
+        storage_url="https://res.cloudinary.com/demo/image/authenticated/s--OLD_SIGN--/v789/syntask/hr/doc.pdf",
+    )
+
+    assert "OLD_SIGN" not in url
+    assert url.startswith("https://res.cloudinary.com/demo/image/authenticated/s--")
+    assert url.count("s--") == 1
+    assert url.endswith("--/fl_attachment/v789/syntask/hr/doc.pdf")
+
+
+def test_cloudinary_signed_url_strips_deeply_nested_stale_signatures(monkeypatch):
+    """Repeated re-signing of an already-signed storage_url nests signatures; all must be removed."""
+    monkeypatch.setattr(CloudinaryStorage, "enabled", staticmethod(lambda: True))
+    monkeypatch.setattr("app.services.cloudinary_storage.settings.CLOUDINARY_CLOUD_NAME", "demo")
+    monkeypatch.setattr("app.services.cloudinary_storage.settings.CLOUDINARY_API_SECRET", "secret")
+
+    url = CloudinaryStorage.signed_url(
+        "syntask/hr/doc",
+        resource_type="image",
+        delivery_type="authenticated",
+        attachment=True,
+        storage_url=(
+            "https://res.cloudinary.com/demo/image/authenticated/"
+            "s--OUTER_SIGN--/fl_attachment/s--INNER_SIGN--/v1788772577/"
+            "syntask/hr/doc.pdf"
+        ),
+    )
+
+    assert "OUTER_SIGN" not in url
+    assert "INNER_SIGN" not in url
+    assert "fl_attachment/authenticated" not in url
+    assert url.startswith("https://res.cloudinary.com/demo/image/authenticated/s--")
+    assert url.count("s--") == 1
+    assert url.endswith("--/fl_attachment/v1788772577/syntask/hr/doc.pdf")
