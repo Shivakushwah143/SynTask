@@ -230,39 +230,36 @@ def require_module(module_name: str):
 
 
 def require_capability(capability: str):
-    """Dependency factory to ensure the current user has a department capability."""
+    """Require an effective capability within the authenticated user's company."""
     async def _checker(current_user: User = Depends(get_current_user)) -> User:
-        current_role = _normalize_role(getattr(current_user, "role", None))
-        if current_role == UserRole.SUPER_ADMIN:
-            return current_user
-        if current_role == UserRole.ADMIN:
-            return current_user
-        if current_role == UserRole.SUB_ADMIN:
-            return current_user
-        department_id = getattr(current_user, "department_id", None)
-        if not department_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing capability: {capability}",
-            )
-        department = await Department.get(department_id)
-        if not department or department.company_id != current_user.company_id or department.deleted_at is not None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing capability: {capability}",
-            )
-        allowed = await get_capabilities_for_role(
-            department.department_type,
-            current_user.role,
-            current_user.company_id,
-        )
-        if capability not in allowed:
+        if not await has_capability(current_user, capability):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Missing capability: {capability}",
             )
         return current_user
     return _checker
+
+
+async def get_effective_permissions(user: User) -> set[str]:
+    """Resolve role defaults plus explicit user grants; never grants tenant scope."""
+    role = _normalize_role(getattr(user, "role", None))
+    if role in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN}:
+        return {"*"}
+    effective = set(getattr(user, "capability_grants", []) or [])
+    department_id = getattr(user, "department_id", None)
+    if not department_id or not user.company_id:
+        return effective
+    department = await Department.get(department_id)
+    if not department or department.company_id != user.company_id or department.deleted_at is not None:
+        return effective
+    effective.update(await get_capabilities_for_role(department.department_type, user.role, user.company_id))
+    return effective
+
+
+async def has_capability(user: User, capability: str) -> bool:
+    effective = await get_effective_permissions(user)
+    return "*" in effective or capability in effective
 
 
 async def get_current_super_admin(

@@ -25,7 +25,7 @@ from app.core.file_validation import detect_mime_type
 from app.core.security import get_token_from_header, decode_refresh_token
 from app.core.token_blacklist import blacklist_token, is_token_blacklisted
 from app.middleware.rate_limiter import limiter
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, get_effective_permissions
 from app.schemas.auth import RefreshTokenRequest, LoginRequest, ChangePasswordRequest
 from app.core.email import send_password_reset_email as _send_password_reset_email
 from app.core.clock import utc_now
@@ -611,13 +611,7 @@ async def get_current_user_info(
         ):
             department = None
     department_key = department.department_type.value if department else None
-    capabilities = (
-        await get_capabilities_for_role(
-            department.department_type, current_user.role, current_user.company_id
-        )
-        if department
-        else []
-    )
+    capabilities = sorted(await get_effective_permissions(current_user))
     return {
         "id": str(current_user.id),
         "email": current_user.email,
@@ -629,6 +623,7 @@ async def get_current_user_info(
         "department_key": department_key,
         "modules": getattr(current_user, "modules", ["task", "attendance_leaves"]),
         "capabilities": capabilities,
+        "capability_grants": list(getattr(current_user, "capability_grants", []) or []),
         "status": current_user.status.value,
         "avatar": current_user.avatar,
         "notification_preferences": getattr(current_user, 'notification_preferences', {

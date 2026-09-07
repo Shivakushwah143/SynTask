@@ -15,7 +15,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.dependencies import get_current_user, require_capability
+from app.api.dependencies import get_current_user, has_capability
 from app.models.department import Department, DepartmentType
 from app.models.user import User, UserRole
 from app.schemas.employee_profile import (
@@ -55,21 +55,7 @@ async def _has_employee_manage_access(user: User) -> bool:
     """Boolean manage check — company admins + HR department staff with the capability."""
     if _role(user) in (UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN):
         return True
-    if not user.company_id or not user.department_id:
-        return False
-    department = await Department.get(user.department_id)
-    if (
-        not department
-        or department.company_id != user.company_id
-        or department.deleted_at is not None
-        or department.department_type != DepartmentType.HR
-    ):
-        return False
-    try:
-        await require_capability("employee_management.manage")(user)
-        return True
-    except HTTPException:
-        return False
+    return bool(user.company_id) and await has_capability(user, "employee_management.manage")
 
 
 async def require_employee_manage(current_user: User = Depends(get_current_user)) -> User:
