@@ -44,6 +44,16 @@ export const hrDocumentsApi = {
   reviewDocument: (id, payload) => api.post(`/hr/documents/${id}/review`, payload),
   archiveDocument: (id) => api.post(`/hr/documents/${id}/archive`),
   listVersions: (id) => api.get(`/hr/documents/${id}/versions`),
+
+  // ── Document Requests (HR-initiated) ──────────────────────────────────────
+  listDocumentRequests: (params) => api.get('/hr/document-requests', { params }),
+  createDocumentRequest: (payload) => api.post('/hr/document-requests', payload),
+  getDocumentRequest: (id) => api.get(`/hr/document-requests/${id}`),
+  cancelDocumentRequest: (id) => api.post(`/hr/document-requests/${id}/cancel`),
+
+  // ── Employee self-service document requests ───────────────────────────────
+  listMyDocumentRequests: (params) => api.get('/hr/me/document-requests', { params }),
+  uploadForDocumentRequest: (requestId, formData) => api.post(`/hr/me/document-requests/${requestId}/upload`, formData),
 }
 
 /** Authorized file access — fetched as blobs so previews/downloads carry the

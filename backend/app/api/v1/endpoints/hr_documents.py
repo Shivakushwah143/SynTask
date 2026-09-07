@@ -44,6 +44,10 @@ from app.api.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.hr_document import (
     HRDocumentListResponse,
+    HRDocumentRequestCreate,
+    HRDocumentRequestListResponse,
+    HRDocumentRequestResponse,
+    HRDocumentRequestUpdate,
     HRDocumentResponse,
     HRDocumentReviewRequest,
     HRDocumentTypeCreate,
@@ -57,14 +61,19 @@ from app.schemas.hr_document import (
 from app.services.hr_document_service import (
     archive_document,
     build_file_response,
+    cancel_document_request,
+    create_document_request,
     create_document_type,
     deactivate_document_type,
+    employee_upload_for_request,
     ensure_default_document_types,
     get_current_version,
     get_document,
+    get_document_request,
     get_version_for_download,
     has_hr_directory_view,
     has_hr_manage,
+    list_document_requests,
     list_document_types,
     list_documents,
     list_my_documents,
@@ -151,9 +160,13 @@ async def submit_employee_document_endpoint(
     file: UploadFile = File(...),
     expiry_date: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
+    document_request_id: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
 ):
-    """Submit a new document or resubmit a rejected one (self only)."""
+    """Submit a new document or resubmit a rejected one (self only).
+
+    Optionally links the submission to a document request via ``document_request_id``.
+    """
     return await submit_employee_document(
         _company_id(current_user),
         current_user,
@@ -161,6 +174,7 @@ async def submit_employee_document_endpoint(
         file=file,
         expiry_date=expiry_date,
         description=description,
+        document_request_id=document_request_id,
     )
 
 
@@ -484,3 +498,123 @@ async def download_document_version_endpoint(
     """Authorized download of a specific historical version."""
     version = await get_version_for_download(_company_id(current_user), document_id, version_id, current_user)
     return build_file_response(version, download=True)
+
+
+# =============================================================================
+# Document Requests (HR-initiated requests for employees to provide documents)
+# =============================================================================
+
+
+@router.get("/document-requests", response_model=HRDocumentRequestListResponse)
+async def list_document_requests_endpoint(
+    employee_id: Optional[str] = Query(None, description="Filter by employee"),
+    status: Optional[str] = Query(None, description="pending | submitted | approved | rejected | cancelled"),
+    page: int = 1,
+    page_size: int = 20,
+    current_user: User = Depends(get_current_user),
+):
+    """List document requests. HR sees all company requests; employees see only their own."""
+    items, total = await list_document_requests(
+        _company_id(current_user),
+        current_user,
+        employee_id=employee_id,
+        status_filter=status,
+        page=page,
+        page_size=page_size,
+    )
+    return HRDocumentRequestListResponse(
+        items=[HRDocumentRequestResponse.model_validate(item) for item in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_next=(page * page_size) < total,
+    )
+
+
+@router.post("/document-requests", status_code=status.HTTP_201_CREATED, response_model=HRDocumentRequestResponse)
+async def create_document_request_endpoint(
+    payload: HRDocumentRequestCreate,
+    current_user: User = Depends(require_hr_document_manage),
+):
+    """HR creates a document request for an employee."""
+    result = await create_document_request(_company_id(current_user), current_user, payload.model_dump())
+    return HRDocumentRequestResponse.model_validate(result)
+
+
+@router.get("/document-requests/{request_id}", response_model=HRDocumentRequestResponse)
+async def get_document_request_endpoint(
+    request_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Get a single document request."""
+    result = await get_document_request(_company_id(current_user), request_id, current_user)
+    return HRDocumentRequestResponse.model_validate(result)
+
+
+@router.patch("/document-requests/{request_id}", response_model=HRDocumentRequestResponse)
+async def update_document_request_endpoint(
+    request_id: str,
+    payload: HRDocumentRequestUpdate,
+    current_user: User = Depends(require_hr_document_manage),
+):
+    """HR cancels or updates a document request."""
+    if payload.status == "cancelled":
+        result = await cancel_document_request(_company_id(current_user), request_id, current_user)
+    else:
+        # For now, only cancel is supported via PATCH
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only cancellation is supported via this endpoint")
+    return HRDocumentRequestResponse.model_validate(result)
+
+
+@router.post("/document-requests/{request_id}/cancel", response_model=HRDocumentRequestResponse)
+async def cancel_document_request_endpoint(
+    request_id: str,
+    current_user: User = Depends(require_hr_document_manage),
+):
+    """HR cancels a document request."""
+    result = await cancel_document_request(_company_id(current_user), request_id, current_user)
+    return HRDocumentRequestResponse.model_validate(result)
+
+
+@router.get("/me/document-requests", response_model=HRDocumentRequestListResponse)
+async def list_my_document_requests_endpoint(
+    status: Optional[str] = Query(None, description="pending | submitted | approved | rejected | cancelled"),
+    page: int = 1,
+    page_size: int = 20,
+    current_user: User = Depends(get_current_user),
+):
+    """Employee sees their own document requests."""
+    items, total = await list_document_requests(
+        _company_id(current_user),
+        current_user,
+        status_filter=status,
+        page=page,
+        page_size=page_size,
+    )
+    return HRDocumentRequestListResponse(
+        items=[HRDocumentRequestResponse.model_validate(item) for item in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_next=(page * page_size) < total,
+    )
+
+
+@router.post("/me/document-requests/{request_id}/upload", status_code=status.HTTP_201_CREATED, response_model=HRDocumentResponse)
+async def upload_for_document_request_endpoint(
+    request_id: str,
+    file: UploadFile = File(...),
+    expiry_date: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    """Employee uploads a document against a specific request."""
+    result = await employee_upload_for_request(
+        _company_id(current_user),
+        current_user,
+        document_request_id=request_id,
+        file=file,
+        expiry_date=expiry_date,
+        description=description,
+    )
+    return HRDocumentResponse.model_validate(result)

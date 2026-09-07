@@ -35,10 +35,14 @@ from app.models.department import Department, DepartmentType
 from app.models.employee_profile import EmployeeProfile
 from app.models.hr_document import (
     HRDocument,
+    HRDocumentRequest,
     HRDocumentType,
     HRDocumentVersion,
     HRDocumentStatus,
     HRDocumentVisibility,
+    HRRequestPriority,
+    HRRequestRequirementLevel,
+    HRRequestStatus,
     HRReviewStatus,
     HRSubmissionSource,
     HROwnerScope,
@@ -747,7 +751,7 @@ async def serialize_document(
         "updated_at": document.updated_at,
         "can_view": True,
         "can_manage": can_manage,
-        "can_preview": bool(version),
+        "can_preview": bool(version) and (version.mime_type or "").startswith(("image/", "application/pdf")),
         "can_download": bool(version),
         "can_replace": can_manage and document.status == HRDocumentStatus.ACTIVE,
         "can_edit": can_manage,
@@ -804,12 +808,13 @@ async def _build_list_context(company_id: str, documents: list[HRDocument]) -> d
             candidate_by_id = {str(c.id): c for c in fetched}
 
     # Version counts (batch) for accurate history indicators.
+    # HRDocumentVersion.document_id is stored as str — query with strings, not ObjectId.
     version_counts: dict = {}
     if documents:
-        doc_ids = [ObjectId(str(doc.id)) for doc in documents if ObjectId.is_valid(str(doc.id))]
-        if doc_ids:
+        doc_id_strs = [str(doc.id) for doc in documents if doc.id]
+        if doc_id_strs:
             pipeline = [
-                {"$match": {"document_id": {"$in": doc_ids}}},
+                {"$match": {"document_id": {"$in": doc_id_strs}}},
                 {"$group": {"_id": "$document_id", "count": {"$sum": 1}}},
             ]
             for row in await HRDocumentVersion.get_pymongo_collection().aggregate(pipeline).to_list(length=None):
@@ -885,7 +890,7 @@ async def list_documents(
         elif owner_type == "candidate":
             query["candidate_id"] = {"$ne": None}
         if search:
-            # Resolve matching employees + candidates for the search term.
+            # Resolve matching employees + candidates + document types for the search term.
             term = search.strip()
             employee_filter = {
                 "company_id": company_id,
@@ -897,15 +902,35 @@ async def list_documents(
             }
             matched_users = await User.find(employee_filter).to_list()
             user_ids = {str(u.id) for u in matched_users}
+            # Also match by employee_number (employee code)
+            code_profiles = await EmployeeProfile.find({
+                "company_id": company_id,
+                "employee_number": {"$regex": term, "$options": "i"},
+            }).to_list()
+            code_user_ids = {p.user_id for p in code_profiles}
+            user_ids.update(code_user_ids)
             profiles = await EmployeeProfile.find({"company_id": company_id, "user_id": {"$in": list(user_ids)}}).to_list()
             employee_ids = {str(p.id) for p in profiles}
             candidate_filter = {"company_id": company_id, "full_name": {"$regex": term, "$options": "i"}}
             candidates = await Candidate.find(candidate_filter).to_list()
-            candidate_ids = {str(c.id) for c in candidates}
-            query["$or"] = [
-                {"employee_id": {"$in": list(employee_ids)}},
-                {"candidate_id": {"$in": list(candidate_ids)}},
-            ]
+            candidate_ids_set = {str(c.id) for c in candidates}
+            # Also find document types matching the search term
+            matching_types = await HRDocumentType.find({
+                "company_id": company_id,
+                "name": {"$regex": term, "$options": "i"},
+            }).to_list()
+            matching_type_ids = [str(t.id) for t in matching_types]
+            or_conditions = []
+            if employee_ids:
+                or_conditions.append({"employee_id": {"$in": list(employee_ids)}})
+            if candidate_ids_set:
+                or_conditions.append({"candidate_id": {"$in": list(candidate_ids_set)}})
+            if matching_type_ids:
+                or_conditions.append({"document_type_id": {"$in": matching_type_ids}})
+            # Also search description field directly
+            or_conditions.append({"description": {"$regex": term, "$options": "i"}})
+            if or_conditions:
+                query["$or"] = or_conditions
 
     if document_type_id:
         query["document_type_id"] = document_type_id
@@ -1158,7 +1183,7 @@ async def _my_document_type_rows(
                 status = HRReviewStatus.REJECTED.value
 
         if status == "missing":
-            document_id, current_version, filename, review_note = None, 0, None, None
+            document_id, current_version, filename, review_note, version = None, 0, None, None, None
         else:
             document_id = str(latest.id)
             current_version = latest.current_version_number or 0
@@ -1175,6 +1200,14 @@ async def _my_document_type_rows(
             and doc_type.default_visibility == HRDocumentVisibility.EMPLOYEE_VISIBLE
             and status in ("missing", HRReviewStatus.REJECTED.value)
         )
+        # Preview/download mirror the file endpoints' authorization: employees
+        # can only open their own employee-visible documents.
+        employee_visible = (
+            doc_type.default_visibility == HRDocumentVisibility.EMPLOYEE_VISIBLE
+            if isinstance(doc_type.default_visibility, HRDocumentVisibility)
+            else doc_type.default_visibility == HRDocumentVisibility.EMPLOYEE_VISIBLE.value
+        )
+        can_open = bool(version and employee_visible)
         rows.append({
             "document_type_id": str(doc_type.id),
             "name": doc_type.name,
@@ -1186,6 +1219,8 @@ async def _my_document_type_rows(
             else doc_type.default_visibility,
             "status": status,
             "can_upload": can_upload,
+            "can_preview": can_open,
+            "can_download": can_open,
             "document_id": document_id,
             "current_version": current_version,
             "filename": filename,
@@ -1239,6 +1274,7 @@ async def submit_employee_document(
     file: UploadFile,
     expiry_date: Optional[str] = None,
     description: Optional[str] = None,
+    document_request_id: Optional[str] = None,
 ) -> dict:
     """Employee submits a new document OR resubmits a rejected one.
 
@@ -1246,6 +1282,13 @@ async def submit_employee_document(
     request-supplied id. Resubmission reuses the version architecture — a
     rejected document gets V(n+1) set to ``pending``; it is never duplicated
     and previous versions stay in history.
+
+    If ``document_request_id`` is provided, the document is linked to that
+    request and the request status advances to ``submitted``.
+
+    ``expiry_date`` is an optional field: it declares the expiry of the
+    particular document being submitted and is accepted for any
+    employee-visible type (not gated by the type's ``expiry_supported`` flag).
     """
     profile = await _require_employee_profile(company_id, actor)
     await ensure_default_document_types(company_id, actor_id=str(actor.id))
@@ -1262,9 +1305,12 @@ async def submit_employee_document(
             detail="This document type is not available for employee submission",
         )
 
+    # ``expiry_date`` is optional metadata on employee self-service documents:
+    # the employee declares the expiry of the particular document they are
+    # submitting, and it is accepted for any employee-visible type regardless
+    # of the type-level ``expiry_supported`` flag (which remains a UI hint for
+    # the HR-side upload flow).
     parsed_expiry = parse_expiry_date(expiry_date)
-    if parsed_expiry and not doc_type.expiry_supported:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This document type does not support expiry dates")
 
     existing = (
         await HRDocument.find({
@@ -1295,6 +1341,9 @@ async def submit_employee_document(
         _set_review_state(version, submission_source=HRSubmissionSource.EMPLOYEE, review_status=HRReviewStatus.PENDING)
         await version.save()
         _set_review_state(document, submission_source=HRSubmissionSource.EMPLOYEE, review_status=HRReviewStatus.PENDING)
+        # Refresh the declared expiry with the resubmitted form value (optional:
+        # an empty date clears it for this document).
+        document.expiry_date = parsed_expiry
         document.updated_at = utc_now()
         await document.save()
         await _record_document_event(
@@ -1350,6 +1399,30 @@ async def submit_employee_document(
         company_id, "HRDocumentSubmitted", actor, document,
         {"document_id": str(document.id), "version": 1, "document_type_id": str(doc_type.id)},
     )
+
+    # Link to a document request if provided
+    if document_request_id:
+        req = await HRDocumentRequest.get(document_request_id)
+        if req and req.company_id == company_id and str(profile.id) == req.employee_id:
+            if req.status in (HRRequestStatus.PENDING, HRRequestStatus.REJECTED):
+                req.fulfilled_document_id = str(document.id)
+                req.status = HRRequestStatus.SUBMITTED
+                req.submitted_at = utc_now()
+                req.updated_at = utc_now()
+                await req.save()
+                # Notify the requester
+                requester_user = await User.get(req.requested_by)
+                if requester_user:
+                    await _create_notification(
+                        company_id,
+                        str(requester_user.id),
+                        f"Document Submitted: {req.document_type_name}",
+                        f"{actor.full_name()} submitted {req.document_type_name} for your review.",
+                        related_id=str(document.id),
+                        related_type="hr_document",
+                        action_url=f"/hr/employees/{req.employee_id}",
+                    )
+
     context = await _build_list_context(company_id, [document])
     return await serialize_document(document, context=context, can_manage=False)
 
@@ -1414,7 +1487,7 @@ async def review_document(
     version = None
     if document.current_version_id:
         version = await HRDocumentVersion.get(document.current_version_id)
-    if not version or version.document_id != str(document.id):
+    if not version or version.document_id != str(document.id) or version.company_id != company_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stored version not found")
 
     now = utc_now()
@@ -1442,6 +1515,44 @@ async def review_document(
         company_id, event_name, actor, document,
         {"document_id": str(document.id), "version": document.current_version_number, **change},
     )
+
+    # Update linked document request if one exists
+    linked_request = await HRDocumentRequest.find_one({
+        "company_id": company_id,
+        "fulfilled_document_id": str(document.id),
+    })
+    if linked_request:
+        linked_request.status = HRRequestStatus.APPROVED if new_status == HRReviewStatus.APPROVED else HRRequestStatus.REJECTED
+        linked_request.reviewed_at = now
+        linked_request.updated_at = now
+        await linked_request.save()
+
+        # Notify the employee
+        profile = await EmployeeProfile.get(linked_request.employee_id)
+        if profile:
+            emp_user = await User.get(profile.user_id)
+            if emp_user:
+                if new_status == HRReviewStatus.APPROVED:
+                    await _create_notification(
+                        company_id,
+                        str(emp_user.id),
+                        f"Document Approved: {linked_request.document_type_name}",
+                        f"Your {linked_request.document_type_name} has been approved by HR.",
+                        related_id=str(document.id),
+                        related_type="hr_document",
+                        action_url="/hr/me/documents",
+                    )
+                else:
+                    await _create_notification(
+                        company_id,
+                        str(emp_user.id),
+                        f"Document Rejected: {linked_request.document_type_name}",
+                        f"Your {linked_request.document_type_name} was rejected: {reason}",
+                        related_id=str(document.id),
+                        related_type="hr_document",
+                        action_url="/hr/me/documents",
+                    )
+
     context = await _build_list_context(company_id, [document])
     return await serialize_document(document, context=context, can_manage=True)
 
@@ -1767,3 +1878,454 @@ async def _record_document_event(
     except Exception:
         # Event publishing must never break the core operation.
         logger.exception("Failed to publish HR document event")
+
+
+# =============================================================================
+# Document Request Lifecycle (HR requests documents from employees)
+# =============================================================================
+
+
+async def _create_notification(
+    company_id: str,
+    user_id: str,
+    title: str,
+    message: str,
+    *,
+    related_id: Optional[str] = None,
+    related_type: Optional[str] = None,
+    action_url: Optional[str] = None,
+) -> None:
+    """Best-effort in-app notification — must never break the core flow."""
+    try:
+        from app.models.notification import Notification, NotificationType
+
+        notification = Notification(
+            user_id=user_id,
+            company_id=company_id,
+            type=NotificationType.SYSTEM,
+            title=title,
+            message=message,
+            related_id=related_id,
+            related_type=related_type,
+            action_url=action_url,
+        )
+        await notification.insert()
+    except Exception:
+        logger.exception("Failed to create notification for HR document request")
+
+
+async def create_document_request(
+    company_id: str,
+    actor: User,
+    data: dict,
+) -> dict:
+    """HR creates a request for an employee to provide a document.
+
+    Duplicate-prevention: if the same employee already has an active (pending/
+    submitted) request for the same document type, a 409 is raised. If an
+    approved document already exists for that type, a warning note is returned
+    but the request is still created (HR may explicitly request a replacement).
+    """
+    employee_id = data["employee_id"]
+    profile = await EmployeeProfile.get(employee_id)
+    if not profile or profile.company_id != company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+
+    # Resolve document type (optional — may be a free-form name)
+    doc_type_id = data.get("document_type_id")
+    doc_type_name = data["document_type_name"]
+    if doc_type_id:
+        doc_type = await HRDocumentType.get(doc_type_id)
+        if not doc_type or doc_type.company_id != company_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document type not found")
+        doc_type_name = doc_type.name
+    else:
+        doc_type = None
+
+    # Duplicate prevention: same employee + same type + active request
+    duplicate_query = {
+        "company_id": company_id,
+        "employee_id": employee_id,
+        "status": {"$in": [HRRequestStatus.PENDING.value, HRRequestStatus.SUBMITTED.value]},
+    }
+    if doc_type_id:
+        duplicate_query["document_type_id"] = doc_type_id
+    else:
+        duplicate_query["document_type_name"] = {"$regex": f"^{doc_type_name}$", "$options": "i"}
+    existing_active = await HRDocumentRequest.find_one(duplicate_query)
+    if existing_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An active request for this document type already exists for this employee",
+        )
+
+    # Parse due date
+    parsed_due = parse_expiry_date(data.get("due_date")) if data.get("due_date") else None
+
+    requirement_level = HRRequestRequirementLevel(data.get("requirement_level", "mandatory"))
+    priority = HRRequestPriority(data.get("priority", "normal"))
+
+    request = HRDocumentRequest(
+        company_id=company_id,
+        employee_id=employee_id,
+        document_type_id=doc_type_id,
+        document_type_name=doc_type_name,
+        requirement_level=requirement_level,
+        priority=priority,
+        instructions=data.get("instructions"),
+        due_date=parsed_due,
+        status=HRRequestStatus.PENDING,
+        requested_by=str(actor.id),
+    )
+    await request.insert()
+
+    # Notify the employee
+    user = await User.get(profile.user_id)
+    if user:
+        await _create_notification(
+            company_id,
+            str(user.id),
+            f"Document Requested: {doc_type_name}",
+            f"{actor.full_name()} requested your {requirement_level.value} document: {doc_type_name}"
+            + (f". Due: {parsed_due.strftime('%d %b %Y')}" if parsed_due else "")
+            + (f"\n{request.instructions}" if request.instructions else ""),
+            related_id=str(request.id),
+            related_type="hr_document_request",
+            action_url="/hr/me/document-requests",
+        )
+
+    await _record_document_event(
+        company_id, "HRDocumentRequestCreated", actor, request,
+        {"request_id": str(request.id), "employee_id": employee_id, "document_type_name": doc_type_name},
+    )
+
+    return await _serialize_document_request(company_id, request)
+
+
+async def list_document_requests(
+    company_id: str,
+    actor: User,
+    *,
+    employee_id: Optional[str] = None,
+    status_filter: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[dict], int]:
+    """List document requests — HR sees all company requests; employee sees only their own."""
+    if page < 1:
+        page = 1
+    page_size = max(1, min(page_size, 100))
+
+    is_hr = await has_hr_directory_view(actor)
+
+    if is_hr:
+        query: dict = {"company_id": company_id}
+        if employee_id:
+            query["employee_id"] = employee_id
+    else:
+        # Employee self-service: only their own requests
+        profile = await _actor_employee_profile(company_id, actor)
+        if not profile:
+            return [], 0
+        query = {"company_id": company_id, "employee_id": str(profile.id)}
+
+    if status_filter and status_filter in {s.value for s in HRRequestStatus}:
+        query["status"] = status_filter
+
+    total = await HRDocumentRequest.find(query).count()
+    requests = (
+        await HRDocumentRequest.find(query)
+        .sort("-created_at")
+        .skip((page - 1) * page_size)
+        .limit(page_size)
+        .to_list()
+    )
+
+    items = []
+    for req in requests:
+        items.append(await _serialize_document_request(company_id, req))
+
+    return items, total
+
+
+async def get_document_request(
+    company_id: str,
+    request_id: str,
+    actor: User,
+) -> dict:
+    """Get a single document request with authorization check."""
+    request = await HRDocumentRequest.get(request_id)
+    if not request or request.company_id != company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document request not found")
+
+    is_hr = await has_hr_directory_view(actor)
+    if not is_hr:
+        profile = await _actor_employee_profile(company_id, actor)
+        if not profile or str(profile.id) != request.employee_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    return await _serialize_document_request(company_id, request)
+
+
+async def cancel_document_request(
+    company_id: str,
+    request_id: str,
+    actor: User,
+) -> dict:
+    """HR cancels a pending document request."""
+    request = await HRDocumentRequest.get(request_id)
+    if not request or request.company_id != company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document request not found")
+
+    if not await has_hr_manage(actor):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
+
+    if request.status not in (HRRequestStatus.PENDING, HRRequestStatus.SUBMITTED):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel a request in '{request.status.value}' status",
+        )
+
+    request.status = HRRequestStatus.CANCELLED
+    request.updated_at = utc_now()
+    await request.save()
+
+    await _record_document_event(
+        company_id, "HRDocumentRequestCancelled", actor, request,
+        {"request_id": str(request.id), "employee_id": request.employee_id},
+    )
+
+    # Notify employee
+    profile = await EmployeeProfile.get(request.employee_id)
+    if profile:
+        user = await User.get(profile.user_id)
+        if user:
+            await _create_notification(
+                company_id,
+                str(user.id),
+                f"Document Request Cancelled: {request.document_type_name}",
+                f"The request for {request.document_type_name} has been cancelled by HR.",
+                related_id=str(request.id),
+                related_type="hr_document_request",
+            )
+
+    return await _serialize_document_request(company_id, request)
+
+
+async def employee_upload_for_request(
+    company_id: str,
+    actor: User,
+    *,
+    document_request_id: str,
+    file: UploadFile,
+    expiry_date: Optional[str] = None,
+    description: Optional[str] = None,
+) -> dict:
+    """Employee uploads a document against a specific request.
+
+    Flow:
+    1. Validate the request exists, belongs to the employee, and is in a state
+       that accepts uploads (pending or rejected).
+    2. Upload/create the HRDocument using existing employee self-service logic.
+    3. Link the document to the request and advance the request status.
+    """
+    profile = await _require_employee_profile(company_id, actor)
+
+    request = await HRDocumentRequest.get(document_request_id)
+    if not request or request.company_id != company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document request not found")
+    if str(profile.id) != request.employee_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This request is not for you")
+    if request.status not in (HRRequestStatus.PENDING, HRRequestStatus.REJECTED):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot upload for a request in '{request.status.value}' status",
+        )
+
+    # Resolve document type
+    if request.document_type_id:
+        doc_type = await _resolve_document_type(company_id, request.document_type_id, owner_type="employee")
+    else:
+        # Free-form request — find or create a matching document type
+        doc_type = await HRDocumentType.find_one({
+            "company_id": company_id,
+            "name": {"$regex": f"^{request.document_type_name}$", "$options": "i"},
+            "active": True,
+        })
+        if not doc_type:
+            # Create a basic employee-uploadable type on the fly
+            code = request.document_type_name.lower().strip().replace(" ", "_")[:60]
+            doc_type = HRDocumentType(
+                company_id=company_id,
+                name=request.document_type_name,
+                code=code,
+                owner_scope=HROwnerScope.EMPLOYEE,
+                required=request.requirement_level == HRRequestRequirementLevel.MANDATORY,
+                default_visibility=HRDocumentVisibility.EMPLOYEE_VISIBLE,
+                employee_upload_allowed=True,
+                created_by=str(actor.id),
+            )
+            await doc_type.insert()
+
+    if not doc_type.employee_upload_allowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Employee upload is not enabled for this document type",
+        )
+
+    # If the request already has a fulfilled document (resubmission after rejection),
+    # reuse/update that document. Otherwise create a new one.
+    existing_doc = None
+    if request.fulfilled_document_id:
+        existing_doc = await HRDocument.get(request.fulfilled_document_id)
+        if existing_doc and existing_doc.company_id == company_id and existing_doc.status == HRDocumentStatus.ACTIVE:
+            # Resubmission: create a new version
+            version = await _store_and_increment_version(company_id, existing_doc, actor, file)
+            _set_review_state(version, submission_source=HRSubmissionSource.EMPLOYEE, review_status=HRReviewStatus.PENDING)
+            await version.save()
+            _set_review_state(existing_doc, submission_source=HRSubmissionSource.EMPLOYEE, review_status=HRReviewStatus.PENDING)
+            existing_doc.current_version_id = str(version.id)
+            existing_doc.updated_at = utc_now()
+            await existing_doc.save()
+        else:
+            existing_doc = None
+
+    if not existing_doc:
+        # Brand-new document
+        parsed_expiry = parse_expiry_date(expiry_date)
+        stored = await _store_hr_file(file)
+        version_number = 1
+        version = _build_version_from_stored(
+            stored, company_id=company_id, document_id="", version_number=version_number,
+            uploaded_by=str(actor.id), change_note=None,
+        )
+        _set_review_state(version, submission_source=HRSubmissionSource.EMPLOYEE, review_status=HRReviewStatus.PENDING)
+
+        employee_doc = HRDocument(
+            company_id=company_id,
+            employee_id=str(profile.id),
+            owner_key=build_owner_key(employee_id=str(profile.id)),
+            document_type_id=str(doc_type.id),
+            status=HRDocumentStatus.ACTIVE,
+            submission_source=HRSubmissionSource.EMPLOYEE,
+            review_status=HRReviewStatus.PENDING,
+            expiry_date=parsed_expiry,
+            description=description,
+            visibility=doc_type.default_visibility,
+            uploaded_by=str(actor.id),
+            current_version_number=version_number,
+        )
+        try:
+            await employee_doc.insert()
+            version.document_id = str(employee_doc.id)
+            await version.insert()
+            employee_doc.current_version_id = str(version.id)
+            employee_doc.updated_at = utc_now()
+            await employee_doc.save()
+        except Exception:
+            if version.id:
+                await _delete_stored_file(version)
+            try:
+                await employee_doc.delete()
+            except Exception:
+                pass
+            raise
+        existing_doc = employee_doc
+
+    # Update request status
+    request.fulfilled_document_id = str(existing_doc.id)
+    request.status = HRRequestStatus.SUBMITTED
+    request.submitted_at = utc_now()
+    request.updated_at = utc_now()
+    await request.save()
+
+    # Notify HR
+    await _record_document_event(
+        company_id, "HRDocumentRequestFulfilled", actor, existing_doc,
+        {"request_id": str(request.id), "document_id": str(existing_doc.id)},
+    )
+
+    # Notify the HR person who made the request
+    requester_user = await User.get(request.requested_by)
+    if requester_user:
+        await _create_notification(
+            company_id,
+            str(requester_user.id),
+            f"Document Submitted: {request.document_type_name}",
+            f"{actor.full_name()} submitted {request.document_type_name} for your review.",
+            related_id=str(existing_doc.id),
+            related_type="hr_document",
+            action_url=f"/hr/employees/{request.employee_id}",
+        )
+
+    context = await _build_list_context(company_id, [existing_doc])
+    return await serialize_document(existing_doc, context=context, can_manage=False)
+
+
+async def _serialize_document_request(company_id: str, request: HRDocumentRequest) -> dict:
+    """Serialize a document request for the frontend."""
+    employee_name = None
+    employee_code = None
+    requested_by_name = None
+
+    if request.employee_id:
+        profile = await EmployeeProfile.get(request.employee_id)
+        if profile:
+            user = await User.get(profile.user_id)
+            if user:
+                employee_name = user.full_name()
+            employee_code = profile.employee_number
+
+    if request.requested_by:
+        user = await User.get(request.requested_by)
+        if user:
+            requested_by_name = user.full_name()
+
+    # Derive overdue status
+    is_overdue = False
+    if (
+        request.status in (HRRequestStatus.PENDING, HRRequestStatus.SUBMITTED)
+        and request.due_date
+        and request.due_date.date() < utc_now().date()
+    ):
+        is_overdue = True
+
+    # Permission flags — resolve whether the requesting user is HR
+    is_hr = False
+    if request.requested_by:
+        requester = await User.get(request.requested_by)
+        if requester:
+            is_hr = await has_hr_directory_view(requester)
+
+    can_cancel = (
+        is_hr
+        and request.status in (HRRequestStatus.PENDING, HRRequestStatus.SUBMITTED)
+    )
+
+    can_upload = request.status in (HRRequestStatus.PENDING, HRRequestStatus.REJECTED)
+
+    return {
+        "id": str(request.id),
+        "company_id": request.company_id,
+        "employee_id": request.employee_id,
+        "employee_name": employee_name,
+        "employee_code": employee_code,
+        "document_type_id": request.document_type_id,
+        "document_type_name": request.document_type_name,
+        "requirement_level": request.requirement_level.value if isinstance(request.requirement_level, HRRequestRequirementLevel) else request.requirement_level,
+        "priority": request.priority.value if isinstance(request.priority, HRRequestPriority) else request.priority,
+        "instructions": request.instructions,
+        "due_date": request.due_date,
+        "status": request.status.value if isinstance(request.status, HRRequestStatus) else request.status,
+        "requested_by": request.requested_by,
+        "requested_by_name": requested_by_name,
+        "requested_at": request.requested_at,
+        "submitted_at": request.submitted_at,
+        "reviewed_at": request.reviewed_at,
+        "fulfilled_document_id": request.fulfilled_document_id,
+        "is_overdue": is_overdue,
+        "created_at": request.created_at,
+        "updated_at": request.updated_at,
+        "can_cancel": can_cancel,
+        "can_upload": can_upload,
+    }

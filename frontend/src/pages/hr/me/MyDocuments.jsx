@@ -2,11 +2,13 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import {
   AlertCircle,
+  Calendar,
   CheckCircle2,
   Clock,
   Download,
   Eye,
   FileText,
+  FileUp,
   Loader2,
   RefreshCw,
   ShieldAlert,
@@ -14,11 +16,11 @@ import {
   XCircle,
 } from 'lucide-react'
 import { hrDocumentFiles } from '../../../api/hrDocuments'
-import { useMyDocumentActions, useMyDocumentStatus, useMyDocuments, useMyProfile } from '../../../hooks/useMyHr'
+import { useMyDocumentActions, useMyDocumentRequests, useMyDocumentStatus, useMyDocuments, useMyProfile, useUploadForDocumentRequest } from '../../../hooks/useMyHr'
 import { Button, EmptyState, Modal, Skeleton, inputClassName } from '../../../components/ui'
 import { downloadBlob, getDownloadFilename } from '../../../utils/download'
 import { EXPIRY_STATE_META, formatDate } from './myHrUtils'
-import { REVIEW_STATUS_META, formatFileSize } from '../../../modules/hr/recruitment/utils/documents'
+import { REVIEW_STATUS_META, formatFileSize, isPreviewable } from '../../../modules/hr/recruitment/utils/documents'
 
 const reviewBadge = (status) => {
   const conf = REVIEW_STATUS_META[status] || REVIEW_STATUS_META.missing
@@ -41,8 +43,14 @@ const MyDocuments = () => {
     isError: statusError,
     refetch: refetchStatus,
   } = useMyDocumentStatus()
+  const {
+    data: docRequests,
+    isLoading: requestsLoading,
+    refetch: refetchRequests,
+  } = useMyDocumentRequests()
 
   const uploadMutation = useMyDocumentActions()
+  const uploadForRequestMutation = useUploadForDocumentRequest()
 
   // documents from the backend's HRDocumentListResponse ({ items, total, ... })
   const items = documents?.items || []
@@ -62,10 +70,13 @@ const MyDocuments = () => {
   const openUpload = (typeId = null) => {
     const allowed = uploadableRows.filter((row) => row.can_upload)
     const target = typeId && allowed.some((row) => row.document_type_id === typeId) ? typeId : allowed[0]?.document_type_id || ''
+    // Resubmitting a rejected document keeps its declared expiry so the
+    // employee can preserve, change, or clear it (date inputs need YYYY-MM-DD).
+    const existing = items.find((doc) => doc.document_type_id === target && doc.review_status === 'rejected')
     setPresetTypeId(target)
     setSelectedTypeId(target)
     setFile(null)
-    setExpiryDate('')
+    setExpiryDate(existing?.expiry_date ? String(existing.expiry_date).slice(0, 10) : '')
     setDescription('')
     setUploadOpen(true)
   }
@@ -75,7 +86,6 @@ const MyDocuments = () => {
   }
 
   const selectedRow = uploadableRows.find((row) => row.document_type_id === selectedTypeId)
-  const selectedTypeSupportsExpiry = selectedRow?.expiry_supported !== false
 
   const handleUpload = async (event) => {
     event.preventDefault()
@@ -86,7 +96,9 @@ const MyDocuments = () => {
     const formData = new FormData()
     formData.append('file', file)
     if (selectedTypeId) formData.append('document_type_id', selectedTypeId)
-    if (selectedTypeSupportsExpiry && expiryDate) formData.append('expiry_date', expiryDate)
+    // Expiry date is an optional field used to declare the expiry of the
+    // particular document being submitted — sent whenever the employee set it.
+    if (expiryDate) formData.append('expiry_date', expiryDate)
     if (description.trim()) formData.append('description', description.trim())
     try {
       await uploadMutation.mutateAsync(formData)
@@ -98,19 +110,67 @@ const MyDocuments = () => {
     }
   }
 
+  // ── Upload for a specific document request ─────────────────────────────
+  const [requestUploadOpen, setRequestUploadOpen] = useState(false)
+  const [activeRequest, setActiveRequest] = useState(null)
+  const [requestFile, setRequestFile] = useState(null)
+  const [requestExpiry, setRequestExpiry] = useState('')
+  const [requestDescription, setRequestDescription] = useState('')
+
+  const openRequestUpload = (request) => {
+    setActiveRequest(request)
+    setRequestFile(null)
+    setRequestExpiry('')
+    setRequestDescription('')
+    setRequestUploadOpen(true)
+  }
+
+  const closeRequestUpload = () => {
+    if (!uploadForRequestMutation.isLoading) {
+      setRequestUploadOpen(false)
+      setActiveRequest(null)
+    }
+  }
+
+  const handleRequestUpload = async (event) => {
+    event.preventDefault()
+    if (!requestFile) {
+      toast.error('Please choose a file')
+      return
+    }
+    const formData = new FormData()
+    formData.append('file', requestFile)
+    if (requestExpiry) formData.append('expiry_date', requestExpiry)
+    if (requestDescription.trim()) formData.append('description', requestDescription.trim())
+    try {
+      await uploadForRequestMutation.mutateAsync({ requestId: activeRequest.id, formData })
+      toast.success('Document uploaded — it is now pending HR review')
+      setRequestUploadOpen(false)
+      setActiveRequest(null)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Failed to upload document')
+    }
+  }
+
+  const requestItems = docRequests?.items || []
+
   // ── Preview / download (authorized blob access) ──────────────────────────
   const [preview, setPreview] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
+  const [previewMime, setPreviewMime] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState(null)
 
   const openPreview = async (document) => {
     setPreview(document)
     setPreviewUrl(null)
+    setPreviewMime(null)
     setPreviewError(null)
     setPreviewLoading(true)
     try {
       const response = await hrDocumentFiles.preview(document.id)
+      const mime = response.headers?.['content-type'] || document.mime_type || null
+      setPreviewMime(mime)
       setPreviewUrl(window.URL.createObjectURL(response.data))
     } catch (err) {
       setPreviewError(err?.response?.data?.detail || 'Unable to preview this document. You may not have permission.')
@@ -135,6 +195,7 @@ const MyDocuments = () => {
   const refetchAll = () => {
     refetchDocs()
     refetchStatus()
+    refetchRequests()
   }
 
   if (profileLoading) {
@@ -224,14 +285,98 @@ const MyDocuments = () => {
                     {row.status === 'pending' ? (
                       <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">Awaiting HR review.</p>
                     ) : null}
-                    {row.can_upload ? (
-                      <Button variant="secondary" size="sm" className="mt-3" onClick={() => openUpload(row.document_type_id)}>
-                        <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
-                        {row.status === 'rejected' ? 'Resubmit' : 'Upload'}
-                      </Button>
+                    {row.can_upload || row.can_preview ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {row.can_preview && row.document_id ? (
+                          <Button variant="secondary" size="sm" onClick={() => openPreview({ id: row.document_id, filename: row.filename })}>
+                            <Eye className="mr-1.5 h-3.5 w-3.5" /> Preview
+                          </Button>
+                        ) : null}
+                        {row.can_upload ? (
+                          <Button variant="secondary" size="sm" onClick={() => openUpload(row.document_type_id)}>
+                            <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
+                            {row.status === 'rejected' ? 'Resubmit' : 'Upload'}
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
                 ))}
+              </div>
+            </section>
+          )}
+
+          {/* Document requests from HR */}
+          {requestItems.length > 0 && (
+            <section className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+              <h4 className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">Requested Documents</h4>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {requestItems.map((req) => {
+                  const isOverdue = req.is_overdue
+                  const statusColors = {
+                    pending: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+                    submitted: 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+                    approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+                    rejected: 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
+                    cancelled: 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400',
+                  }
+                  const priorityColors = {
+                    low: 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400',
+                    normal: 'bg-sky-50 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400',
+                    high: 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
+                    urgent: 'bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400',
+                  }
+                  return (
+                    <div
+                      key={req.id}
+                      className={`rounded-xl border p-4 dark:border-gray-700 ${
+                        isOverdue
+                          ? 'border-rose-200 bg-rose-50/40 dark:bg-rose-900/10'
+                          : 'border-gray-100 bg-gray-50/60 dark:bg-gray-800/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">
+                            {req.document_type_name}
+                          </p>
+                          {req.instructions && (
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{req.instructions}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColors[req.status] || ''}`}>
+                          {req.status}
+                        </span>
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${priorityColors[req.priority] || ''}`}>
+                          {req.priority}
+                        </span>
+                        {isOverdue && (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+                            <AlertCircle className="h-3 w-3" /> Overdue
+                          </span>
+                        )}
+                      </div>
+                      {req.due_date && (
+                        <p className="mt-2 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                          <Calendar className="h-3 w-3" /> Due {formatDate(req.due_date)}
+                        </p>
+                      )}
+                      {req.status === 'rejected' && (
+                        <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">Please re-upload the requested document.</p>
+                      )}
+                      {req.can_upload && (
+                        <div className="mt-3">
+                          <Button size="sm" onClick={() => openRequestUpload(req)}>
+                            <FileUp className="mr-1.5 h-3.5 w-3.5" />
+                            {req.status === 'rejected' ? 'Re-upload' : 'Upload Document'}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </section>
           )}
@@ -380,15 +525,18 @@ const MyDocuments = () => {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Expiry Date{selectedTypeSupportsExpiry ? '' : ' (not supported)'}
+                Expiry Date <span className="font-normal text-gray-400 dark:text-gray-500">(optional)</span>
               </label>
               <input
                 type="date"
                 className={inputClassName}
                 value={expiryDate}
                 onChange={(event) => setExpiryDate(event.target.value)}
-                disabled={!selectedTypeSupportsExpiry}
+                aria-label="Expiry date"
               />
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Declare when this particular document expires. Leave blank if it never expires.
+              </p>
             </div>
             <div className="space-y-1.5">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
@@ -428,9 +576,75 @@ const MyDocuments = () => {
           </div>
         ) : previewError ? (
           <EmptyState icon={ShieldAlert} title="Preview unavailable" description={previewError} />
+        ) : previewUrl && previewMime?.startsWith('image/') ? (
+          <img src={previewUrl} alt={preview?.filename || 'Document preview'} className="max-h-[70vh] w-auto rounded-xl border border-gray-200 object-contain dark:border-gray-700" />
         ) : previewUrl ? (
           <iframe src={previewUrl} title="Document preview" className="h-[70vh] w-full rounded-xl border border-gray-200 dark:border-gray-700" />
         ) : null}
+      </Modal>
+
+      {/* ── Upload for document request modal ────────────────────────────── */}
+      <Modal
+        isOpen={requestUploadOpen}
+        onClose={closeRequestUpload}
+        title="Upload Requested Document"
+        description={activeRequest ? `Upload "${activeRequest.document_type_name}" as requested by HR.` : ''}
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={closeRequestUpload} disabled={uploadForRequestMutation.isLoading}>Cancel</Button>
+            <Button form="request-upload-form" type="submit" loading={uploadForRequestMutation.isLoading} loadingText="Uploading…">
+              <UploadCloud className="mr-2 h-4 w-4" /> Submit
+            </Button>
+          </div>
+        }
+      >
+        <form id="request-upload-form" onSubmit={handleRequestUpload} className="space-y-4">
+          {activeRequest?.instructions && (
+            <div className="rounded-lg bg-sky-50 p-3 text-sm text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
+              <span className="font-medium">Instructions: </span>{activeRequest.instructions}
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              File <span className="ml-1 text-red-600">*</span>
+            </label>
+            <input
+              type="file"
+              aria-label="Choose file"
+              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+              onChange={(event) => setRequestFile(event.target.files?.[0] || null)}
+              className="block w-full cursor-pointer rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-600 transition hover:border-sky-400 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-300"
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400">PDF, JPG, PNG, DOC, DOCX</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Expiry Date <span className="font-normal text-gray-400 dark:text-gray-500">(optional)</span>
+              </label>
+              <input
+                type="date"
+                className={inputClassName}
+                value={requestExpiry}
+                onChange={(event) => setRequestExpiry(event.target.value)}
+                aria-label="Expiry date"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Declare when this document expires. Leave blank if it never expires.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
+              <input
+                className={inputClassName}
+                value={requestDescription}
+                onChange={(event) => setRequestDescription(event.target.value)}
+                placeholder="Optional note for HR…"
+              />
+            </div>
+          </div>
+        </form>
       </Modal>
     </div>
   )

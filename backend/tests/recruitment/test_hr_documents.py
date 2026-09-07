@@ -1261,6 +1261,43 @@ async def test_employee_submit_creates_pending_v1_and_is_visible_immediately(mon
 
 
 @pytest.mark.asyncio
+async def test_employee_submit_accepts_optional_expiry_for_any_type(monkeypatch, tmp_path):
+    """Expiry date is an optional field: the employee declares the expiry of
+    the particular document they submit, and it is accepted even for types
+    whose ``expiry_supported`` flag is False (previously a 400)."""
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(profile_id="p-1")
+    # _add_type defaults to expiry_supported=False + employee_upload_allowed=True.
+    no_expiry_type = _add_type(code="education", name="Educational Certificate")
+
+    result = await svc.submit_employee_document(
+        "company-1", employee,
+        document_type_id=no_expiry_type.id,
+        file=FakeUploadFile(b"%PDF-1.4 x", "certificate.pdf"),
+        expiry_date="2028-06-30",
+    )
+    assert result["review_status"] == "pending"
+    assert result["expiry_date"] is not None
+
+    # The expiry is persisted on the submitted document.
+    doc = FakeHRDocument._all[0]
+    assert doc.expiry_date.date().isoformat() == "2028-06-30"
+
+    # Submitting the same type without an expiry still works (field is optional).
+    await svc.review_document(
+        "company-1", _make_admin(), result["id"], action="reject", note="Needs a clearer scan"
+    )
+    resubmitted = await svc.submit_employee_document(
+        "company-1", employee,
+        document_type_id=no_expiry_type.id,
+        file=FakeUploadFile(b"%PDF-1.4 v2", "certificate-v2.pdf"),
+    )
+    assert resubmitted["expiry_date"] is None
+
+
+@pytest.mark.asyncio
 async def test_employee_submit_requires_employee_profile(monkeypatch, tmp_path):
     """Self endpoints resolve identity server-side: an actor with no Employee
     Profile (or acting outside their own company) can never upload for someone
@@ -1400,6 +1437,50 @@ async def test_employee_cannot_approve_or_reject_documents(monkeypatch, tmp_path
         await svc.review_document("company-1", employee, submitted["id"], action="reject", note="nope")
     assert exc.value.status_code == 403
     assert FakeHRDocument._all[0].review_status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_employee_submission_visible_and_previewable_by_hr(monkeypatch, tmp_path):
+    """An employee-uploaded document is immediately visible to HR/admin in
+    both the company-wide list and the per-employee list (with review actions),
+    and HR can preview the stored file — nothing hides pending submissions."""
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(user_id="u-1", profile_id="p-1")
+    admin = _make_admin()
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+
+    submitted = await svc.submit_employee_document(
+        "company-1", employee,
+        document_type_id=pan.id,
+        file=FakeUploadFile(b"%PDF-1.4 employee upload", "employee-pan.pdf"),
+    )
+    assert submitted["review_status"] == "pending"
+
+    # Company-wide HR list includes the pending employee submission.
+    global_items, global_total = await svc.list_documents("company-1", admin)
+    assert global_total == 1
+    assert global_items[0]["id"] == submitted["id"]
+    assert global_items[0]["review_status"] == "pending"
+    assert global_items[0]["submission_source"] == "employee"
+    assert global_items[0]["can_review"] is True  # HR sees approve/reject actions
+
+    # Per-employee HR list (employee profile → Documents tab) also includes it.
+    emp_items, emp_total = await svc.list_documents("company-1", admin, employee_id="p-1")
+    assert emp_total == 1
+    assert emp_items[0]["id"] == submitted["id"]
+    assert emp_items[0]["review_status"] == "pending"
+    assert emp_items[0]["can_preview"] is True
+    assert emp_items[0]["can_download"] is True
+
+    # HR can resolve the stored file for preview/download (authorized blob).
+    version = await svc.get_current_version("company-1", submitted["id"], admin)
+    assert version.original_filename == "employee-pan.pdf"
+
+    # And the employee previews their own upload immediately too.
+    own_version = await svc.get_current_version("company-1", submitted["id"], employee)
+    assert own_version.document_id == submitted["id"]
 
 
 @pytest.mark.asyncio
@@ -1563,6 +1644,26 @@ async def test_employee_my_status_overview_distinguishes_states(monkeypatch, tmp
     assert uploadable_by_code["passport"]["can_upload"] is False
     assert uploadable_by_code["pan"]["status"] == "missing"
     assert uploadable_by_code["pan"]["can_upload"] is True
+
+    # Uploaded employee-visible documents are previewable/downloadable from the
+    # status rows; nothing to open when no document exists yet.
+    assert required_by_code["joining_document"]["can_preview"] is True
+    assert required_by_code["joining_document"]["can_download"] is True
+    assert required_by_code["educational_certificate"]["can_preview"] is True
+    assert uploadable_by_code["passport"]["can_preview"] is True
+    assert uploadable_by_code["pan"]["can_preview"] is False
+
+    # hr_only documents (uploaded by HR) stay hidden from the employee: no
+    # preview even though a stored version exists.
+    bank = await FakeHRDocumentType.find_one({"code": "bank_document"})
+    await svc.upload_document(
+        "company-1", admin, employee_id="p-1", document_type_id=bank.id,
+        file=FakeUploadFile(b"%PDF-1.4 b", "bank-statement.pdf"),
+    )
+    status = await svc.my_document_status("company-1", employee)
+    required_by_code = {item["code"]: item for item in status["required"]}
+    assert required_by_code["bank_document"]["can_preview"] is False
+    assert required_by_code["bank_document"]["can_download"] is False
 
     # Pending/rejected never satisfy required completion (missing-required view).
     result = await missing_required_documents("company-1", "p-1", admin)

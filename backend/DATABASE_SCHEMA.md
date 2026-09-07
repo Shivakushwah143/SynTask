@@ -2,7 +2,7 @@
 
 Database: `alphanexis_task_management`
 
-This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **61 unique MongoDB collection names** across **66 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
+This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **62 unique MongoDB collection names** across **67 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
 
 Recruitment models under `backend/app/recruitment/models.py` also define tenant-scoped collections. `recruitment_candidates` stores public applicant profile data including `date_of_birth` when submitted. `recruitment_applications` stores candidate job applications with `company_id`, `candidate_id`, `job_id`, `status`, globally unique `tracking_code`, hashed `tracking_secret_hash`, `tracking_secret_created_at`, `applied_at`, `updated_at`, and `deleted_at`. `recruitment_candidate_portal_credentials` is a temporary public tracking credential collection keyed by `company_id`, `candidate_id`, `application_id`, `job_id`, and `tracking_code`; it stores only `secret_hash`, never the temporary password. Public candidate tracking verifies `tracking_code` plus PIN against a temporary credential hash and never exposes the hash or MongoDB id. `recruitment_offer_access_tokens` stores tenant-scoped offer access records with a token hash and optional encrypted raw token used to render public offer links in candidate tracking; public offer routes still verify the token hash and expiry before exposing offer details. Terminal candidate states remove temporary credential documents while retaining recruitment audit/application records.
 
@@ -28,6 +28,10 @@ Recruitment models under `backend/app/recruitment/models.py` also define tenant-
 | `contact_sharing` | ContactSharing | Sales contact sharing permissions. |
 | `conversations` | Conversation | Chat conversation metadata. |
 | `epics` | Epic | Project epic records. |
+| `hr_documents` | HRDocument | HR document metadata: owner (employee/candidate), type, visibility, expiry, review status, and version linkage. Company-scoped. |
+| `hr_document_types` | HRDocumentType | Company-scoped document type catalog (Resume, Aadhaar, PAN, etc.) with `required`, `employee_upload_allowed`, and `default_visibility` flags. |
+| `hr_document_versions` | HRDocumentVersion | Stored file references and per-version review history for HR documents. Links to `hr_documents` via `document_id` (stored as str). |
+| `hr_document_requests` | HRDocumentRequest | HR-initiated document requests to employees: request lifecycle (`pending` → `submitted` → `approved`/`rejected`/`cancelled`), priority, due date, and linkage to fulfilled document. |
 | `invoices` | Invoice | Client invoice records, payments, tax, and PDF generation data. |
 | `issue_links` | IssueLink | IssueLink persistence collection. |
 | `issue_types` | IssueType | IssueType persistence collection. |
@@ -534,6 +538,114 @@ Indexes: `['project_id', 'company_id', 'owner_id']`
 | `due_date` | `Optional[datetime.datetime]` | No | No | Model field |
 | `progress_percentage` | `float` | No | No | Model field |
 | `color` | `Optional[str]` | No | No | Model field |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `updated_at` | `datetime.datetime` | No | No | Update timestamp |
+
+### `hr_document_types`
+
+#### Model: `HRDocumentType`
+
+Indexes: `[(company_id, code) unique]`, `[(company_id, active)]`
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `id` | `Optional[ObjectId]` | No | Yes | Primary key |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `name` | `str` | Yes | No | Display name (e.g. "Resume", "Aadhaar Card") |
+| `code` | `str` | Yes | Yes | Machine-readable code, unique per company |
+| `description` | `Optional[str]` | No | No | Optional description |
+| `owner_scope` | `str` | No | No | `employee` / `candidate` / `both` |
+| `required` | `bool` | No | No | Whether this type is mandatory for employees |
+| `expiry_supported` | `bool` | No | No | Whether HR-side upload supports expiry date |
+| `default_visibility` | `str` | No | No | `employee_visible` / `hr_only` |
+| `employee_upload_allowed` | `bool` | No | No | Whether employees can self-upload this type |
+| `active` | `bool` | No | Yes | Soft-delete flag (never physically deleted) |
+| `created_by` | `Optional[str]` | No | No | Creator user ID |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `updated_at` | `datetime.datetime` | No | No | Update timestamp |
+
+### `hr_documents`
+
+#### Model: `HRDocument`
+
+Indexes: `company_id`, `[(company_id, employee_id)]`, `[(company_id, candidate_id)]`, `[(company_id, document_type_id)]`, `[(company_id, employee_id, status)]`, `[(company_id, employee_id, status, document_type_id)]`
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `id` | `Optional[ObjectId]` | No | Yes | Primary key |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `employee_id` | `Optional[str]` | No | Yes | Owner employee ID (XOR with candidate_id) |
+| `candidate_id` | `Optional[str]` | No | Yes | Owner candidate ID (XOR with employee_id) |
+| `owner_key` | `Optional[str]` | No | No | Canonical owner key (`employee:<id>` or `candidate:<id>`) |
+| `document_type_id` | `Optional[str]` | No | Yes | FK to `hr_document_types` |
+| `current_version_id` | `Optional[str]` | No | No | FK to active `hr_document_versions` |
+| `current_version_number` | `int` | No | No | Current version counter |
+| `status` | `str` | No | No | `active` / `archived` |
+| `expiry_date` | `Optional[datetime]` | No | No | Date-based expiry (midnight UTC) |
+| `description` | `Optional[str]` | No | No | User-provided description |
+| `visibility` | `str` | No | No | `employee_visible` / `hr_only` |
+| `submission_source` | `Optional[str]` | No | No | `hr` / `employee` |
+| `review_status` | `Optional[str]` | No | No | `pending` / `approved` / `rejected` |
+| `reviewed_by` | `Optional[str]` | No | No | Reviewer user ID |
+| `reviewed_at` | `Optional[datetime]` | No | No | Review timestamp |
+| `review_note` | `Optional[str]` | No | No | Rejection reason |
+| `uploaded_by` | `Optional[str]` | No | No | Uploader user ID |
+| `archived_at` | `Optional[datetime]` | No | No | Archive timestamp |
+| `archived_by` | `Optional[str]` | No | No | Archive actor user ID |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `updated_at` | `datetime.datetime` | No | No | Update timestamp |
+
+### `hr_document_versions`
+
+#### Model: `HRDocumentVersion`
+
+Indexes: `[(document_id, version_number) unique]`, `[(company_id, document_id, uploaded_at)]`
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `id` | `Optional[ObjectId]` | No | Yes | Primary key |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `document_id` | `str` | Yes | Yes | FK to `hr_documents` (stored as str) |
+| `version_number` | `int` | Yes | Yes | Version counter (unique per document) |
+| `original_filename` | `str` | Yes | No | Original upload filename |
+| `mime_type` | `str` | Yes | No | Detected MIME type |
+| `file_size` | `int` | Yes | No | File size in bytes |
+| `storage_provider` | `str` | No | No | `local` / `cloudinary` |
+| `storage_reference` | `Optional[str]` | No | No | Relative path or Cloudinary public_id |
+| `storage_url` | `Optional[str]` | No | No | Cloudinary URL if applicable |
+| `checksum` | `Optional[str]` | No | No | SHA-256 checksum |
+| `submission_source` | `Optional[str]` | No | No | `hr` / `employee` (per-version review history) |
+| `review_status` | `Optional[str]` | No | No | `pending` / `approved` / `rejected` |
+| `reviewed_by` | `Optional[str]` | No | No | Reviewer user ID |
+| `reviewed_at` | `Optional[datetime]` | No | No | Review timestamp |
+| `review_note` | `Optional[str]` | No | No | Rejection reason |
+| `uploaded_by` | `Optional[str]` | No | No | Uploader user ID |
+| `uploaded_at` | `datetime.datetime` | No | No | Upload timestamp |
+| `change_note` | `Optional[str]` | No | No | Why this version was created |
+
+### `hr_document_requests`
+
+#### Model: `HRDocumentRequest`
+
+Indexes: `[(company_id, employee_id, status)]`, `[(company_id, status)]`, `[(company_id, employee_id, document_type_id)]`, `[(company_id, due_date)]`, `[(employee_id, status)]`
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `id` | `Optional[ObjectId]` | No | Yes | Primary key |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `employee_id` | `str` | Yes | Yes | Target employee ID |
+| `document_type_id` | `Optional[str]` | No | Yes | FK to `hr_document_types` (null for free-form) |
+| `document_type_name` | `str` | Yes | No | Display name for the requested document |
+| `requirement_level` | `str` | No | No | `mandatory` / `optional` |
+| `priority` | `str` | No | No | `low` / `normal` / `high` / `urgent` |
+| `instructions` | `Optional[str]` | No | No | HR instructions for the employee |
+| `due_date` | `Optional[datetime]` | No | Yes | Deadline for document submission |
+| `status` | `str` | No | Yes | `pending` → `submitted` → `approved` / `rejected` / `cancelled` |
+| `requested_by` | `str` | Yes | No | HR/Admin user ID who created the request |
+| `requested_at` | `datetime.datetime` | No | No | Request creation timestamp |
+| `submitted_at` | `Optional[datetime]` | No | No | When employee uploaded the document |
+| `reviewed_at` | `Optional[datetime]` | No | No | When HR reviewed the linked document |
+| `fulfilled_document_id` | `Optional[str]` | No | No | FK to `hr_documents` after upload |
 | `created_at` | `datetime.datetime` | No | No | Creation timestamp |
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 

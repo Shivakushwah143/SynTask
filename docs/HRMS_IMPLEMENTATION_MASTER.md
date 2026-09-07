@@ -1204,6 +1204,8 @@ My HR
 
 Reuse existing attendance and leave UI/API logic.
 
+My Documents: employees submit or resubmit their own documents for HR review. `expiry_date` is an **optional** field used to declare the expiry of the particular document being submitted; it is accepted for any employee-visible type (not gated by the type's `expiry_supported` flag), and resubmitting refreshes the stored expiry (an empty value clears it). Required-document cards and the document table both offer Preview (and Download in the table) for stored employee-visible documents; `hr_only` documents are never previewable by the employee.
+
 ## Security
 
 Employee may access own resources only unless explicitly authorized otherwise.
@@ -1997,7 +1999,7 @@ Never create duplicate HR systems when SynTask already has an equivalent foundat
   - Attendance donut chart (Recharts PieChart)
   - Headcount by Department bar chart (Recharts BarChart)
   - Leave Usage by Type bar chart
-  - Attention Items panel with severity colors and navigation links
+  - Attention Items panel with severity colors and navigation links — includes a `document_review_pending` item counting employee document submissions awaiting HR review (routed to HR Documents) so new employee uploads surface immediately
   - Payroll summary card (authorized users only)
   - Quick Actions navigation
   - Loading skeletons, empty states, error boundary, section-level error handling (partial failure doesn't blank entire dashboard)

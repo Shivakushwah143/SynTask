@@ -241,3 +241,75 @@ class HRDocumentReplaceMetadata(BaseModel):
     expiry_date: Optional[str] = None
     description: Optional[str] = None
     visibility: Optional[str] = None
+
+
+# =============================================================================
+# Document Requests (HR-initiated requests for employee to provide documents)
+# =============================================================================
+
+
+class HRDocumentRequestCreate(BaseModel):
+    """HR creates a request for an employee to provide a document."""
+
+    employee_id: str = Field(min_length=1)
+    document_type_id: Optional[str] = None
+    document_type_name: str = Field(min_length=1, max_length=200)
+    requirement_level: str = Field(default="mandatory", pattern="^(mandatory|optional)$")
+    priority: str = Field(default="normal", pattern="^(low|normal|high|urgent)$")
+    instructions: Optional[str] = Field(default=None, max_length=2000)
+    due_date: Optional[str] = None  # YYYY-MM-DD
+
+
+class HRDocumentRequestUpdate(BaseModel):
+    """HR updates a pending request (status, instructions, due date, priority)."""
+
+    status: Optional[str] = Field(default=None, pattern="^(cancelled)$")
+    instructions: Optional[str] = Field(default=None, max_length=2000)
+    due_date: Optional[str] = None
+    priority: Optional[str] = Field(default=None, pattern="^(low|normal|high|urgent)$")
+
+
+class HRDocumentRequestResponse(BaseModel):
+    """Frontend-ready document request DTO."""
+
+    id: str
+    company_id: str
+    employee_id: str
+    employee_name: Optional[str] = None
+    employee_code: Optional[str] = None
+
+    document_type_id: Optional[str] = None
+    document_type_name: str
+
+    requirement_level: str  # mandatory | optional
+    priority: str  # low | normal | high | urgent
+    instructions: Optional[str] = None
+    due_date: Optional[datetime] = None
+
+    status: str  # pending | submitted | approved | rejected | cancelled
+
+    requested_by: str
+    requested_by_name: Optional[str] = None
+    requested_at: datetime
+
+    submitted_at: Optional[datetime] = None
+    reviewed_at: Optional[datetime] = None
+
+    fulfilled_document_id: Optional[str] = None
+
+    # Overdue status is derived, not stored
+    is_overdue: bool = False
+
+    created_at: datetime
+    updated_at: datetime
+
+    can_cancel: bool = False
+    can_upload: bool = False  # Employee can upload against this request
+
+
+class HRDocumentRequestListResponse(BaseModel):
+    items: list[HRDocumentRequestResponse]
+    total: int
+    page: int
+    page_size: int
+    has_next: bool
