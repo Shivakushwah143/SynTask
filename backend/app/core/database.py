@@ -25,8 +25,11 @@ from app.models.feature_flag import FeatureFlag
 from app.models.task import Task, TaskComment, TaskExtensionRequest
 from app.models.ticket import Ticket, TicketComment
 from app.models.notification import Notification
-from app.models.project import Project, Epic, Sprint
-from app.models.time_tracking import TimeLog, TimeTrackingSummary
+from app.models.project import Project, Epic, Sprint, ProjectTypeConfiguration
+from app.models.scheduled_job import ScheduledJob, ScheduledJobOccurrence
+from app.models.work_request import WorkRequest
+from app.models.project_template import ProjectTemplate, TemplateTask, TemplateTaskChecklistItem
+from app.models.time_tracking import ActiveTimeSession, TimeLog, TimeTrackingSummary
 from app.models.workflow import Workflow, WorkflowStatus, WorkflowTransition
 from app.models.automation import AutomationRule, AutomationExecution
 from app.models.webhook import Webhook, WebhookDelivery
@@ -109,7 +112,6 @@ from app.models.lifecycle import (
     EmployeeOffboarding,
 )
 from app.models.eod import EODReport
-from app.models.scheduled_job import ScheduledJob
 from app.models.capability import seed_default_capabilities
 from app.integrations.meta.models import (
     MetaIntegrationSettings,
@@ -149,6 +151,121 @@ logger = logging.getLogger(__name__)
 # Global MongoDB client
 client: AsyncIOMotorClient = None
 MONGODB_TIMEOUT_MS = 5000
+
+
+async def _migrate_employee_profile_candidate_index(database) -> None:
+    """
+    Migrate historical EmployeeProfile candidate indexes to the current
+    canonical unique partial-index definition before Beanie initializes models.
+    """
+    collection = database["employee_profiles"]
+    index_name = "company_id_1_candidate_id_1"
+    expected_keys = [("company_id", 1), ("candidate_id", 1)]
+    expected_partial_filter = {"candidate_id": {"$type": "string"}}
+
+    indexes = await collection.index_information()
+    existing = indexes.get(index_name)
+
+    if not existing:
+        logger.info(
+            "EmployeeProfile candidate index does not exist; "
+            "Beanie will create the canonical index."
+        )
+        return
+
+    current_keys = list(existing.get("key", []))
+    is_correct = (
+        current_keys == expected_keys
+        and existing.get("unique") is True
+        and existing.get("partialFilterExpression") == expected_partial_filter
+        and existing.get("sparse") is not True
+    )
+
+    if is_correct:
+        logger.info("EmployeeProfile candidate index is already canonical.")
+        return
+
+    if current_keys != expected_keys:
+        logger.warning(
+            "Index %s exists with unexpected keys %s; leaving it untouched.",
+            index_name,
+            current_keys,
+        )
+        return
+
+    logger.warning(
+        "Dropping legacy EmployeeProfile candidate index %s. Existing definition: %s",
+        index_name,
+        existing,
+    )
+    await collection.drop_index(index_name)
+    logger.info(
+        "Legacy EmployeeProfile candidate index removed. "
+        "Beanie will recreate the canonical index."
+    )
+
+
+async def _migrate_task_source_marker_index(database) -> None:
+    """
+    Migrate the tasks_template_and_schedule_source_marker index.
+
+    The old definition used ``sparse=True, unique=True`` which does NOT
+    exclude documents where the indexed fields are explicitly set to
+    ``null`` (sparse only skips documents where the field is *absent*).
+    Since Beanie sets all Optional[str] fields to null by default, every
+    normal task was indexed, causing E11000 duplicate-key errors.
+
+    The new definition uses a partial filter for generated project-template
+    and recurring scheduled-work markers only. Sales follow-ups can create
+    multiple tasks for the same lead over time and are intentionally excluded.
+    """
+    collection = database["tasks"]
+    old_index_name = "tasks_template_and_schedule_source_marker"
+
+    indexes = await collection.index_information()
+    existing = indexes.get(old_index_name)
+
+    if not existing:
+        logger.info(
+            "Task source-marker index does not exist; Beanie will create "
+            "the canonical partial index."
+        )
+        return
+
+    # Check if the existing index is already the new partial definition.
+    current_keys = list(existing.get("key", []))
+    expected_keys = [
+        ("company_id", 1),
+        ("source_type", 1),
+        ("related_entity_type", 1),
+        ("related_entity_id", 1),
+    ]
+    expected_partial_filter = {
+        "source_type": {"$in": ["project_template", "scheduled_work"]},
+        "related_entity_id": {"$type": "string"},
+    }
+    is_canonical = (
+        current_keys == expected_keys
+        and existing.get("unique") is True
+        and existing.get("partialFilterExpression") == expected_partial_filter
+        and existing.get("sparse") is not True
+    )
+
+    if is_canonical:
+        logger.info("Task source-marker partial index is already canonical.")
+        return
+
+    # Old sparse+unique index must be dropped so Beanie can create the
+    # new partial unique index without a conflict.
+    logger.warning(
+        "Dropping legacy task source-marker index %s (keys=%s, partial=%s). "
+        "Beanie will recreate the canonical partial unique index.",
+        old_index_name,
+        current_keys,
+        existing.get("partialFilterExpression"),
+    )
+    await collection.drop_index(old_index_name)
+    logger.info("Legacy task source-marker index removed.")
 
 
 async def init_db():
@@ -193,28 +310,8 @@ async def init_db():
         # different spec (e.g. unique added) but the database already has
         # an index with the same auto-generated name.  Drop stale indexes
         # so Beanie can recreate them with the correct spec.
-        try:
-            for coll_name in (
-                "employee_profiles",
-                "employeeprofiles",
-                "employeeprofile",
-            ):
-                if coll_name not in await database.list_collection_names():
-                    continue
-                coll = database[coll_name]
-                existing = await coll.index_information()
-                for idx_name, idx_info in existing.items():
-                    keys = idx_info.get("key", [])
-                    key_names = [k[0] for k in keys]
-                    if key_names == ["company_id", "candidate_id"]:
-                        logger.info(
-                            "Dropping index '%s' on %s for clean recreation.",
-                            idx_name,
-                            coll.name,
-                        )
-                        await coll.drop_index(idx_name)
-        except Exception as exc:
-            logger.warning("Stale-index cleanup skipped: %s", exc)
+        await _migrate_employee_profile_candidate_index(database)
+        await _migrate_task_source_marker_index(database)
 
         # Initialize Beanie with document models
         await init_beanie(
@@ -254,9 +351,14 @@ async def init_db():
                 TicketComment,
                 Notification,
                 Project,
+                ProjectTypeConfiguration,
+                ScheduledJob,
+                ScheduledJobOccurrence,
+                WorkRequest,
                 Epic,
                 Sprint,
                 TimeLog,
+                ActiveTimeSession,
                 TimeTrackingSummary,
                 Workflow,
                 WorkflowStatus,
@@ -313,6 +415,9 @@ async def init_db():
                 CreativeSuggestion,
                 CreativeReviewHistory,
                 ReviewPolicy,
+                ProjectTemplate,
+                TemplateTask,
+                TemplateTaskChecklistItem,
                 Invoice,
                 MSA,
                 Meeting,
@@ -362,6 +467,8 @@ async def init_db():
                 EmployeeOffboarding,
                 EODReport,
                 ScheduledJob,
+                ScheduledJobOccurrence,
+                WorkRequest,
                 MetaIntegrationSettings,
                 MetaWebhookEvent,
                 MetaSyncRun,

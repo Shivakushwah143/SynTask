@@ -3,21 +3,29 @@ import { timeService } from '@/services/timeService'
 const STATUS_PROGRESS = {
   todo: 12,
   open: 12,
+  assigned: 18,
   in_progress: 45,
   in_review: 75,
   review: 75,
+  revision_required: 55,
+  approved: 90,
   completed: 100,
   done: 100,
+  cancelled: 100,
 }
 
 const STATUS_LABELS = {
   todo: 'To Do',
   open: 'Open',
+  assigned: 'Assigned',
   in_progress: 'In Progress',
-  in_review: 'Review',
+  in_review: 'In Review',
   review: 'Review',
+  revision_required: 'Revision Required',
+  approved: 'Approved',
   completed: 'Completed',
   done: 'Completed',
+  cancelled: 'Cancelled',
   scheduled: 'Scheduled',
 }
 

@@ -4,8 +4,11 @@ import { timeService } from '@/services/timeService'
 
 const statuses = [
   { id: 'todo', label: 'To Do' },
+  { id: 'assigned', label: 'Assigned' },
   { id: 'in_progress', label: 'In Progress' },
   { id: 'in_review', label: 'In Review' },
+  { id: 'revision_required', label: 'Revision' },
+  { id: 'approved', label: 'Approved' },
   { id: 'completed', label: 'Completed' },
   { id: 'cancelled', label: 'Cancelled' },
 ]
@@ -17,7 +20,7 @@ export default function BoardView() {
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {statuses.map((status) => (
           <div key={status.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
             <div className="mb-3 h-4 w-20 animate-pulse rounded bg-gray-200" />
@@ -32,7 +35,7 @@ export default function BoardView() {
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       {statuses.map((status) => {
         const statusTasks = tasks.filter((task) => task.status === status.id)
 

@@ -42,6 +42,7 @@ const getOwner = (project) => (
   project.assigned_to_name
   || project.lead_name
   || project.owner_name
+  || project.owner?.name
   || project.manager_name
   || project.created_by_name
   || 'Unassigned'

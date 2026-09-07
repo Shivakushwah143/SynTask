@@ -17,23 +17,16 @@ import {
   FolderKanban,
   CheckSquare,
   X,
-  ChevronRight,
-  Zap,
   Activity,
-  BarChart3,
-  TrendingUp,
-  Users,
-  Timer,
   AlertTriangle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { formatDistanceToNow } from 'date-fns'
 import { useQueryClient } from 'react-query'
 import { scheduledJobsAPI } from '../api/scheduledJobs'
 import { invalidateWorkspaceCalendar } from '../api/calendar'
 import { useAuthStore } from '../store/authStore'
 import { normalizeRole, ROLE } from '../utils/roles'
-import { PageHeader, EmptyState, Badge, Button, Modal, FormField } from '../components/ui'
+import { Button, Modal, FormField } from '../components/ui'
 import { inputClassName } from '../components/ui'
 import { timeService } from '../services/timeService'
 
@@ -184,7 +177,6 @@ function StatCard({ label, value, icon: Icon, color = 'indigo', subtitle }) {
 /* ─── Detail Drawer ───────────────────────────────────────────── */
 function JobDetailDrawer({ job, onClose }) {
   if (!job) return null
-  const cfg = statusConfig(job.status)
   const payloadEntries = Object.entries(job.payload || {}).filter(([, v]) => v !== null && v !== undefined && v !== '')
 
   return (
@@ -335,7 +327,7 @@ function EditScheduleModal({ job, onClose, onSaved }) {
 }
 
 /* ─── Row Menu ────────────────────────────────────────────────── */
-function JobRowMenu({ job, onView, onEdit, onCancel, onRetry, onDelete }) {
+function JobRowMenu({ job, onView, onEdit, onCancel, onRetry, onDelete, onPause, onResume }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -349,6 +341,8 @@ function JobRowMenu({ job, onView, onEdit, onCancel, onRetry, onDelete }) {
   const items = [
     { label: 'View details', icon: Eye, action: onView, always: true },
     { label: 'Edit schedule', icon: Edit2, action: onEdit, show: job.status === 'PENDING' },
+    { label: 'Pause', icon: Ban, action: onPause, show: job.schedule_type === 'recurring' && job.enabled !== false },
+    { label: 'Resume', icon: RotateCcw, action: onResume, show: job.schedule_type === 'recurring' && job.enabled === false },
     { label: 'Cancel', icon: XCircle, action: onCancel, show: ['PENDING', 'FAILED'].includes(job.status), danger: true },
     { label: 'Retry', icon: RotateCcw, action: onRetry, show: ['FAILED', 'CANCELLED'].includes(job.status) },
     { label: 'Delete', icon: Trash2, action: onDelete, show: ['COMPLETED', 'CANCELLED', 'FAILED'].includes(job.status), danger: true },
@@ -476,6 +470,28 @@ export default function ScheduledJobs() {
       invalidateWorkspaceCalendar(queryClient)
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Failed to delete job')
+    }
+  }
+
+  const handlePause = async (job) => {
+    try {
+      await scheduledJobsAPI.pauseSchedule(job.id)
+      toast.success('Schedule paused')
+      loadJobs({ silent: true })
+      invalidateWorkspaceCalendar(queryClient)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Failed to pause schedule')
+    }
+  }
+
+  const handleResume = async (job) => {
+    try {
+      await scheduledJobsAPI.resumeSchedule(job.id)
+      toast.success('Schedule resumed')
+      loadJobs({ silent: true })
+      invalidateWorkspaceCalendar(queryClient)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Failed to resume schedule')
     }
   }
 
@@ -674,6 +690,11 @@ export default function ScheduledJobs() {
                     </td>
                     <td className="px-4 py-3.5">
                       <span className="font-medium text-gray-900 dark:text-white">{payloadSummary(job)}</span>
+                      {job.schedule_type === 'recurring' && (
+                        <p className="mt-0.5 text-xs text-indigo-600 dark:text-indigo-300">
+                          Recurring - {job.enabled === false ? 'Paused' : 'Active'} - {job.timezone || 'UTC'}
+                        </p>
+                      )}
                       {job.notes && (
                         <p className="mt-0.5 truncate text-xs text-gray-400 max-w-[200px]">{job.notes}</p>
                       )}
@@ -706,6 +727,8 @@ export default function ScheduledJobs() {
                         onCancel={() => handleCancel(job)}
                         onRetry={() => handleRetry(job)}
                         onDelete={() => handleDelete(job)}
+                        onPause={() => handlePause(job)}
+                        onResume={() => handleResume(job)}
                       />
                     </td>
                   </tr>

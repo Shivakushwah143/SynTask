@@ -10,16 +10,21 @@ from app.models.user import User
 from app.core.clock import utc_now
 
 PROJECT_ALLOWED_TRANSITIONS: Dict[ProjectStatus, set[ProjectStatus]] = {
-    ProjectStatus.CREATED: {ProjectStatus.KICKOFF, ProjectStatus.ON_HOLD},
-    ProjectStatus.KICKOFF: {ProjectStatus.EXECUTION, ProjectStatus.ON_HOLD},
-    ProjectStatus.EXECUTION: {ProjectStatus.REVIEW, ProjectStatus.ON_HOLD},
-    ProjectStatus.REVIEW: {ProjectStatus.COMPLETED, ProjectStatus.ON_HOLD},
+    ProjectStatus.CREATED: {ProjectStatus.KICKOFF, ProjectStatus.ON_HOLD, ProjectStatus.CANCELLED},
+    ProjectStatus.KICKOFF: {ProjectStatus.EXECUTION, ProjectStatus.ON_HOLD, ProjectStatus.CANCELLED},
+    ProjectStatus.EXECUTION: {ProjectStatus.REVIEW, ProjectStatus.ON_HOLD, ProjectStatus.CANCELLED},
+    ProjectStatus.REVIEW: {ProjectStatus.COMPLETED, ProjectStatus.ON_HOLD, ProjectStatus.CANCELLED},
     ProjectStatus.COMPLETED: {ProjectStatus.REPORTING},
     ProjectStatus.REPORTING: {ProjectStatus.ARCHIVED},
     ProjectStatus.ARCHIVED: set(),
+    ProjectStatus.CANCELLED: set(),
     ProjectStatus.ON_HOLD: {ProjectStatus.CREATED, ProjectStatus.KICKOFF, ProjectStatus.EXECUTION, ProjectStatus.REVIEW},
-    ProjectStatus.ACTIVE: {ProjectStatus.CREATED, ProjectStatus.KICKOFF, ProjectStatus.EXECUTION, ProjectStatus.REVIEW, ProjectStatus.ON_HOLD},
+    ProjectStatus.ACTIVE: {ProjectStatus.CREATED, ProjectStatus.KICKOFF, ProjectStatus.EXECUTION, ProjectStatus.REVIEW, ProjectStatus.ON_HOLD, ProjectStatus.CANCELLED},
 }
+
+
+PROJECT_TERMINAL_STATUSES = {ProjectStatus.COMPLETED, ProjectStatus.ARCHIVED, ProjectStatus.CANCELLED}
+PROJECT_ACTIVE_EXECUTION_STATUSES = {ProjectStatus.ACTIVE, ProjectStatus.KICKOFF, ProjectStatus.EXECUTION, ProjectStatus.REVIEW}
 
 
 def _normalize_status(value: Optional[str]) -> ProjectStatus:
@@ -53,9 +58,14 @@ async def advance_project(
         )
 
     if next_status == ProjectStatus.COMPLETED:
+        from app.services.project_completion_service import assert_ready_for_completion
+
+        await assert_ready_for_completion(project, current_user)
         project.completed_at = utc_now()
+        project.completed_by = str(current_user.id)
     elif next_status != ProjectStatus.COMPLETED:
         project.completed_at = None
+        project.completed_by = None
 
     project.status = next_status
     project.updated_at = utc_now()

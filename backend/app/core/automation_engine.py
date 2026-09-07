@@ -145,19 +145,24 @@ class AutomationEngine:
     
     @staticmethod
     async def _assign_task(action: Dict[str, Any], trigger_data: Dict[str, Any]):
-        """Assign task to a user"""
+        """Assign task to a user through the unified authoritative assign_task service."""
         task_id = trigger_data.get("entity_id")
         assignee_id = action.get("assignee_id")
-        
+
         if not task_id or not assignee_id:
             return
-        
-        task = await Task.get(task_id)
-        if task:
-            task.assigned_to = assignee_id
-            task.assigned_by = trigger_data.get("user_id")
-            task.updated_at = utc_now()
-            await task.save()
+
+        actor_id = trigger_data.get("user_id")
+        actor = await User.get(actor_id) if actor_id else None
+        if not actor:
+            raise ValueError("Automation assignment requires the triggering user")
+
+        from app.services.task_workflow import assign_task
+        await assign_task(
+            task_id=task_id,
+            assignee_id=assignee_id,
+            actor=actor,
+        )
     
     @staticmethod
     async def _change_status(action: Dict[str, Any], trigger_data: Dict[str, Any]):
@@ -168,16 +173,24 @@ class AutomationEngine:
         if not task_id or not new_status:
             return
         
-        try:
-            task = await Task.get(task_id)
-            if task:
-                task.status = TaskStatus(new_status.lower())
-                task.updated_at = utc_now()
-                if new_status.lower() == "completed":
-                    task.completed_at = utc_now()
-                await task.save()
-        except:
-            pass
+        task = await Task.get(task_id)
+        if not task:
+            raise ValueError(f"Task {task_id} not found")
+        actor_id = trigger_data.get("user_id")
+        actor = await User.get(actor_id) if actor_id else None
+        if not actor:
+            raise ValueError("Automation status changes require the triggering user")
+        if str(actor.company_id) != str(task.company_id):
+            raise PermissionError("Automation actor cannot change a task outside its company")
+        from app.services.task_workflow import action_for_status_transition, transition_task
+
+        target = TaskStatus(new_status.lower())
+        await transition_task(
+            task=task,
+            actor=actor,
+            action=action_for_status_transition(task.status, target),
+            target_status=target.value,
+        )
     
     @staticmethod
     async def _set_priority(action: Dict[str, Any], trigger_data: Dict[str, Any]):
@@ -188,14 +201,12 @@ class AutomationEngine:
         if not task_id or not priority:
             return
         
-        try:
-            task = await Task.get(task_id)
-            if task:
-                task.priority = TaskPriority(priority.lower())
-                task.updated_at = utc_now()
-                await task.save()
-        except:
-            pass
+        task = await Task.get(task_id)
+        if not task:
+            raise ValueError(f"Task {task_id} not found")
+        task.priority = TaskPriority(priority.lower())
+        task.updated_at = utc_now()
+        await task.save()
     
     @staticmethod
     async def _add_comment(action: Dict[str, Any], trigger_data: Dict[str, Any]):
@@ -250,6 +261,23 @@ class AutomationEngine:
         
         if not task_id or not field:
             return
+
+        if field in {
+            "status",
+            "completed_at",
+            "completed_by",
+            "reviewer_id",
+            "review_required",
+            "approved_at",
+            "approved_by",
+            "submitted_for_review_at",
+            "submitted_for_review_by",
+            "revision_requested_at",
+            "revision_requested_by",
+            "latest_revision_reason",
+            "status_changed_at",
+        }:
+            raise ValueError(f"Automation cannot directly mutate workflow field: {field}")
         
         task = await Task.get(task_id)
         if task and hasattr(task, field):

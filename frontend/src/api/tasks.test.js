@@ -34,6 +34,48 @@ describe('tasksAPI contract', () => {
     expect(apiMock.get).toHaveBeenCalledWith('/tasks/?status_filter=todo&priority=high&assigned_to=user-1&department_id=dept-1&skip=40&limit=20')
   })
 
+  test('lists tasks with attention filters, search, due range, project, and follow-up exclusion', async () => {
+    apiMock.get.mockResolvedValueOnce({ data: { tasks: [], total: 0, skip: 0, limit: 20 } })
+
+    await tasksAPI.listTasks({
+      status: 'in_progress',
+      priority: 'high',
+      blocked: true,
+      overdue: true,
+      due_today: false,
+      critical: false,
+      project_id: 'PROJ-001',
+      search: 'api',
+      due_from: '2026-07-01',
+      due_to: '2026-07-31',
+      exclude_follow_up: true,
+      skip: 0,
+      limit: 20,
+    })
+
+    expect(apiMock.get).toHaveBeenCalledWith(
+      '/tasks/?status_filter=in_progress&priority=high&project_id=PROJ-001&blocked=true&overdue=true&due_today=false&critical=false&exclude_follow_up=true&search=api&due_from=2026-07-01&due_to=2026-07-31&limit=20'
+    )
+  })
+
+  test('fetches the global status summary from the backend', async () => {
+    apiMock.get.mockResolvedValueOnce({ data: { all: 10, todo: 2, blocked: 1 } })
+
+    const summary = await tasksAPI.getStatusSummary()
+
+    expect(apiMock.get).toHaveBeenCalledWith('/tasks/status-summary')
+    expect(summary).toEqual({ all: 10, todo: 2, blocked: 1 })
+  })
+
+  test('scopes the status summary to a project workspace', async () => {
+    apiMock.get.mockResolvedValueOnce({ data: { all: 28, todo: 3, blocked: 2 } })
+
+    const summary = await tasksAPI.getStatusSummary({ project_id: 'PROJ-123' })
+
+    expect(apiMock.get).toHaveBeenCalledWith('/tasks/status-summary?project_id=PROJ-123')
+    expect(summary.all).toBe(28)
+  })
+
   test('creates, updates, and transitions tasks through form encoded payloads', async () => {
     apiMock.post.mockResolvedValueOnce({ data: { id: 'task-1' } })
     apiMock.put.mockResolvedValueOnce({ data: { id: 'task-1' } })

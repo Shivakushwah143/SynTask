@@ -51,7 +51,12 @@ import {
   Globe,
   Command,
 } from "lucide-react";
-import { ROLE, isManagerRole, isSuperAdminRole, normalizeRole } from "../utils/roles";
+import {
+  ROLE,
+  isManagerRole,
+  isSuperAdminRole,
+  normalizeRole,
+} from "../utils/roles";
 import { hasModuleAccess as hasModuleAccessFromRbac } from "../utils/rbac";
 import { HR_MODULES } from "./hrModules";
 
@@ -86,49 +91,176 @@ export const SECTION_ICONS = {
 // Role groups. NOTE: SECTIONS below no longer carry a `roles` field — a section
 // is only a grouping; it renders when at least one of its items passes the shared
 // RBAC gates (utils/rbac.js). Per-item `roles` is the single role whitelist.
-export const STANDARD_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.EMPLOYEE];
+export const STANDARD_ROLES = [
+  ROLE.SUPER_ADMIN,
+  ROLE.ADMIN,
+  ROLE.SUB_ADMIN,
+  ROLE.MANAGER,
+  ROLE.LEAD,
+  ROLE.EMPLOYEE,
+];
 // Everyone except plain Employees (leads/managers/admins/super admins).
-const TEAM_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD];
+const TEAM_ROLES = [
+  ROLE.SUPER_ADMIN,
+  ROLE.ADMIN,
+  ROLE.SUB_ADMIN,
+  ROLE.MANAGER,
+  ROLE.LEAD,
+];
 // Company admins only.
 const ADMIN_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN];
 // Roles allowed in CRM settings (mirrors CRMSettingsGuard: company admin + manager).
-const CRM_SETTINGS_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER];
+const CRM_SETTINGS_ROLES = [
+  ROLE.SUPER_ADMIN,
+  ROLE.ADMIN,
+  ROLE.SUB_ADMIN,
+  ROLE.MANAGER,
+];
 
 // Guided sales journey stages (Overview | Acquire | Qualify | Discovery | Proposal |
 // Negotiation | Agreement | Won). The in-page Sales section tabs render exactly these
 // stages (SectionTabs prepends Overview); the sidebar keeps its unchanged section links.
 export const CRM_PIPELINE_STAGE_ITEMS = [
-  { name: "Acquire", href: "/crm/pipeline/acquire", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_pipeline" },
-  { name: "Qualify", href: "/crm/pipeline/qualify", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_pipeline" },
-  { name: "Discovery", href: "/crm/pipeline/discovery", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_pipeline" },
-  { name: "Proposal", href: "/crm/pipeline/proposal", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_pipeline" },
-  { name: "Negotiation", href: "/crm/pipeline/negotiation", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_pipeline" },
-  { name: "Agreement", href: "/crm/pipeline/agreement", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_pipeline" },
-  { name: "Won", href: "/crm/pipeline/won", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_pipeline" },
-  { name: "Lost", href: "/crm/pipeline/lost", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_pipeline" },
+  {
+    name: "Acquire",
+    href: "/crm/pipeline/acquire",
+    icon: GitBranch,
+    roles: STANDARD_ROLES,
+    module: "sales_pipeline",
+  },
+  {
+    name: "Qualify",
+    href: "/crm/pipeline/qualify",
+    icon: GitBranch,
+    roles: STANDARD_ROLES,
+    module: "sales_pipeline",
+  },
+  {
+    name: "Discovery",
+    href: "/crm/pipeline/discovery",
+    icon: GitBranch,
+    roles: STANDARD_ROLES,
+    module: "sales_pipeline",
+  },
+  {
+    name: "Proposal",
+    href: "/crm/pipeline/proposal",
+    icon: GitBranch,
+    roles: STANDARD_ROLES,
+    module: "sales_pipeline",
+  },
+  {
+    name: "Negotiation",
+    href: "/crm/pipeline/negotiation",
+    icon: GitBranch,
+    roles: STANDARD_ROLES,
+    module: "sales_pipeline",
+  },
+  {
+    name: "Agreement",
+    href: "/crm/pipeline/agreement",
+    icon: GitBranch,
+    roles: STANDARD_ROLES,
+    module: "sales_pipeline",
+  },
+  {
+    name: "Won",
+    href: "/crm/pipeline/won",
+    icon: GitBranch,
+    roles: STANDARD_ROLES,
+    module: "sales_pipeline",
+  },
+  {
+    name: "Lost",
+    href: "/crm/pipeline/lost",
+    icon: GitBranch,
+    roles: STANDARD_ROLES,
+    module: "sales_pipeline",
+  },
 ];
 
 // Exactly the journey tabs shown in the in-page Sales section bar (Overview is
 // prepended by SectionTabs). "Clients" remains the destination after a Won lead
 // is transferred to the existing Clients module.
-export const SALES_JOURNEY_TAB_ITEMS = ["Acquire", "Qualify", "Discovery", "Proposal", "Negotiation", "Agreement", "Won"];
+export const SALES_JOURNEY_TAB_ITEMS = [
+  "Acquire",
+  "Qualify",
+  "Discovery",
+  "Proposal",
+  "Negotiation",
+  "Agreement",
+  "Won",
+];
 
 // Legacy routes kept inside the sales section so /crm/pipeline and /crm/leads
 // still resolve to the Sales section (tab bar + sidebar highlight). SectionTabs
 // hides them from the in-page bar, so the visible tabs stay exactly the journey.
 // Import Leads stays in the sidebar config (favorites/landing) but is hidden from
 // the tab bar too — it is not part of the guided journey.
-export const SALES_HIDDEN_TAB_ITEMS = ["Leads", "All Leads", "Pipeline", "Import Leads"];
+export const SALES_HIDDEN_TAB_ITEMS = [
+  "Leads",
+  "All Leads",
+  "Pipeline",
+  "Import Leads",
+];
 
 export const CLIENT_STAGE_ITEMS = [
-  { name: "New", href: "/clients/new", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
-  { name: "Onboarding", href: "/clients/onboarding", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
-  { name: "Active", href: "/clients/active", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
-  { name: "At Risk", href: "/clients/at-risk", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
-  { name: "On Hold", href: "/clients/on-hold", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
-  { name: "Renewal Due", href: "/clients/renewal-due", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
-  { name: "Churned", href: "/clients/churned", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
-  { name: "Archived", href: "/clients/archived", icon: Briefcase, roles: ADMIN_ROLES, module: "clients" },
+  {
+    name: "New",
+    href: "/clients/new",
+    icon: Briefcase,
+    roles: ADMIN_ROLES,
+    module: "clients",
+  },
+  {
+    name: "Onboarding",
+    href: "/clients/onboarding",
+    icon: Briefcase,
+    roles: ADMIN_ROLES,
+    module: "clients",
+  },
+  {
+    name: "Active",
+    href: "/clients/active",
+    icon: Briefcase,
+    roles: ADMIN_ROLES,
+    module: "clients",
+  },
+  {
+    name: "At Risk",
+    href: "/clients/at-risk",
+    icon: Briefcase,
+    roles: ADMIN_ROLES,
+    module: "clients",
+  },
+  {
+    name: "On Hold",
+    href: "/clients/on-hold",
+    icon: Briefcase,
+    roles: ADMIN_ROLES,
+    module: "clients",
+  },
+  {
+    name: "Renewal Due",
+    href: "/clients/renewal-due",
+    icon: Briefcase,
+    roles: ADMIN_ROLES,
+    module: "clients",
+  },
+  {
+    name: "Churned",
+    href: "/clients/churned",
+    icon: Briefcase,
+    roles: ADMIN_ROLES,
+    module: "clients",
+  },
+  {
+    name: "Archived",
+    href: "/clients/archived",
+    icon: Briefcase,
+    roles: ADMIN_ROLES,
+    module: "clients",
+  },
 ];
 
 // Route for the dedicated Sales Overview dashboard. Used as the Sales section's default
@@ -145,7 +277,13 @@ export const SALES_OVERVIEW_HREF = "/sales-overview";
 // is built) — see the Phase 0 hide/link/build decision table.
 // A section renders iff at least one of its items passes canAccessNavItem().
 export const SECTIONS = [
-  { key: "home", label: "Home", items: ["Home", "Calendar"], overviewHref: "/dashboard", hideOverviewTab: true },
+  {
+    key: "home",
+    label: "Home",
+    items: ["Home", "Calendar"],
+    overviewHref: "/dashboard",
+    hideOverviewTab: true,
+  },
   {
     key: "sales",
     label: "Sales",
@@ -155,96 +293,444 @@ export const SECTIONS = [
     items: [...SALES_JOURNEY_TAB_ITEMS, ...SALES_HIDDEN_TAB_ITEMS],
     overviewHref: SALES_OVERVIEW_HREF,
   },
-  { key: "clients", label: "Clients", items: ["All Clients", ...CLIENT_STAGE_ITEMS.map((item) => item.name), "Companies", "Contacts", "Client Calendar", "Client Insights"], overviewHref: "/clients", hideOverviewTab: true },
-  { key: "work", label: "Work", items: ["Projects", "Tasks", "Requests", "Scheduled Work", "Time Tracking", "Daily Updates"] },
-  { key: "content", label: "Content", items: ["Content Calendar", "Content Studio"] },
-  { key: "publishing", label: "Publishing", items: ["Publishing Centre", "Social Accounts", "Publishing Analytics", "Integrations"] },
-  { key: "inbox", label: "Inbox", items: ["WhatsApp", "Instagram", "Messenger", "Meta Messages", "Notifications", "Activity Feed", "AI Replies", "Approval Queue"] },
-  { key: "ai", label: "AI Workspace", items: ["AI Assistant", "AI Content Assistant"] },
-  { key: "people", label: "People", items: ["User Accounts", "Employees", "My People", "Attendance", "Live Attendance", "Attendance Reports", "Leave Management", "Departments", "Company Directory"] },
-  { key: "recruitment", label: "Recruitment", items: ["Hiring Dashboard", "Job Openings", "Applications", "Candidates", "Employees", "Talent Pool", "Interviews", "Offers", "Hiring Reports"], overviewHref: "/hr/recruitment", hideOverviewTab: true },
-  { key: "finance", label: "Finance", items: ["Invoices", "Transactions", "Subscriptions"] },
-  { key: "insights", label: "Insights", items: ["Workspace Reports", "Sales Reports"] },
-  { key: "settings", label: "Settings", items: ["System Settings", "Roles & Permissions", "Automation Rules", "Connected Accounts", "Google Workspace", "Activity Logs", "Client Settings"] },
+  {
+    key: "clients",
+    label: "Clients",
+    items: [
+      "All Clients",
+      ...CLIENT_STAGE_ITEMS.map((item) => item.name),
+      "Companies",
+      "Contacts",
+      "Client Calendar",
+      "Client Insights",
+    ],
+    overviewHref: "/clients",
+    hideOverviewTab: true,
+  },
+
+  {
+    key: "work",
+    label: "Work",
+    items: [
+      "Overview",
+      "Projects",
+      "Tasks",
+      "Requests",
+      "Scheduled Work",
+      "Time Tracking",
+      "Daily Updates",
+      "Work Reports",
+      "Project Templates",
+    ],
+    overviewHref: "/work/overview",
+  },
+
+  {
+    key: "content",
+    label: "Content",
+    items: ["Content Calendar", "Content Studio"],
+  },
+  {
+    key: "publishing",
+    label: "Publishing",
+    items: [
+      "Publishing Centre",
+      "Social Accounts",
+      "Publishing Analytics",
+      "Integrations",
+    ],
+  },
+  {
+    key: "inbox",
+    label: "Inbox",
+    items: [
+      "WhatsApp",
+      "Instagram",
+      "Messenger",
+      "Meta Messages",
+      "Notifications",
+      "Activity Feed",
+      "AI Replies",
+      "Approval Queue",
+    ],
+  },
+  {
+    key: "ai",
+    label: "AI Workspace",
+    items: ["AI Assistant", "AI Content Assistant"],
+  },
+  {
+    key: "people",
+    label: "People",
+    items: [
+      "User Accounts",
+      "Employees",
+      "My People",
+      "Attendance",
+      "Live Attendance",
+      "Attendance Reports",
+      "Leave Management",
+      "Departments",
+      "Company Directory",
+    ],
+  },
+  {
+    key: "recruitment",
+    label: "Recruitment",
+    items: [
+      "Hiring Dashboard",
+      "Job Openings",
+      "Applications",
+      "Candidates",
+      "Employees",
+      "Talent Pool",
+      "Interviews",
+      "Offers",
+      "Hiring Reports",
+      "Settings",
+    ],
+    overviewHref: "/hr/recruitment",
+    hideOverviewTab: true,
+  },
+  {
+    key: "finance",
+    label: "Finance",
+    items: ["Invoices", "Transactions", "Subscriptions"],
+  },
+  {
+    key: "insights",
+    label: "Insights",
+    items: ["Workspace Reports", "Sales Reports"],
+  },
+  {
+    key: "settings",
+    label: "Settings",
+    items: [
+      "System Settings",
+      "Roles & Permissions",
+      "Automation Rules",
+      "Connected Accounts",
+      "Google Workspace",
+      "Activity Logs",
+      "Client Settings",
+    ],
+  },
   // Phase 8 — My HR (Employee Self-Service): the employee's own HR workspace.
   // Visible to every authenticated company user with an Employee Profile; the
   // layout itself shows the graceful "profile not set up" state otherwise.
-  { key: "me", label: "My HR", items: ["My Profile", "My Attendance", "My Leave", "My Documents", "My Payslips"], overviewHref: "/hr/me" },
-  { key: "sop", label: "SOP Library", items: ["SOP Library"], overviewHref: "/sop-library", hideOverviewTab: true },
+  {
+    key: "me",
+    label: "My HR",
+    items: ["My Profile", "My Attendance", "My Leave", "My Documents", "My Payslips"],
+    overviewHref: "/hr/me",
+  },
+  {
+    key: "sop",
+    label: "SOP Library",
+    items: ["SOP Library"],
+    overviewHref: "/sop-library",
+    hideOverviewTab: true,
+  },
 ];
 
 // ── Flat navigation items (renamed per spec §4, routes corrected to App.jsx) ──────────────────
 export const navigation = [
   // Home
-  { name: "Home", href: "/dashboard", icon: LayoutDashboard, roles: STANDARD_ROLES },
+  {
+    name: "Home",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    roles: STANDARD_ROLES,
+  },
   // /calendar has no backend router module gate → no module field (roles only).
-  { name: "Calendar", href: "/calendar", icon: CalendarDays, roles: STANDARD_ROLES },
+  {
+    name: "Calendar",
+    href: "/calendar",
+    icon: CalendarDays,
+    roles: STANDARD_ROLES,
+  },
 
   // Sales (Pipeline/Leads/All Leads live in crmNavigation; kept gated by sales_crm like the old "CRM" item)
   // Import Leads is open to every role (anyone may bulk-import leads); it stays hidden from the
   // in-page tab bar — SectionTabs filters it out for the sales section (tab bar only).
-  { name: "Import Leads", href: "/bulk-leads", icon: Megaphone, roles: STANDARD_ROLES, module: "import_leads" },
+  {
+    name: "Import Leads",
+    href: "/bulk-leads",
+    icon: Megaphone,
+    roles: STANDARD_ROLES,
+    module: "import_leads",
+  },
 
   // Clients — /clients has no backend module gate; company admins only.
-  { name: "All Clients", href: "/clients", icon: Briefcase, roles: ADMIN_ROLES },
+  {
+    name: "All Clients",
+    href: "/clients",
+    icon: Briefcase,
+    roles: ADMIN_ROLES,
+  },
   ...CLIENT_STAGE_ITEMS,
 
   // Work
-  { name: "Projects", href: "/projects", icon: FolderKanban, roles: STANDARD_ROLES, module: "projects" },
-  { name: "Tasks", href: "/tasks", icon: CheckSquare, roles: STANDARD_ROLES, module: "tasks" },
+  {
+    name: "Overview",
+    href: "/work/overview",
+    icon: Gauge,
+    roles: STANDARD_ROLES,
+    module: "tasks",
+  },
+  {
+    name: "Projects",
+    href: "/projects",
+    icon: FolderKanban,
+    roles: STANDARD_ROLES,
+    module: "projects",
+  },
+  {
+    name: "Tasks",
+    href: "/tasks",
+    icon: CheckSquare,
+    roles: STANDARD_ROLES,
+    module: "tasks",
+  },
   // /tickets is auto-granted to Manager/Lead/Employee in backend require_module → all roles.
-  { name: "Requests", href: "/tickets", icon: ClipboardList, roles: STANDARD_ROLES, module: "tickets" },
+  {
+    name: "Requests",
+    href: "/work-requests",
+    icon: ClipboardList,
+    roles: STANDARD_ROLES,
+    module: "tasks",
+  },
+  {
+    name: "Work Reports",
+    href: "/work/reports",
+    icon: FileBarChart2,
+    roles: STANDARD_ROLES,
+    module: "projects",
+  },
+  {
+    name: "Project Templates",
+    href: "/project-templates",
+    icon: ClipboardCheck,
+    roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD],
+    module: "projects",
+  },
+  {
+    name: "Support Tickets",
+    href: "/tickets",
+    icon: ClipboardList,
+    roles: STANDARD_ROLES,
+    module: "tickets",
+  },
   // /scheduled-jobs has no backend module gate; team roles only.
-  { name: "Scheduled Work", href: "/scheduled-jobs", icon: CalendarClock, roles: TEAM_ROLES, module: "scheduled_work" },
-  { name: "Time Tracking", href: "/timesheet", icon: TimerReset, roles: STANDARD_ROLES, module: "time_tracking" },
+  {
+    name: "Scheduled Work",
+    href: "/scheduled-jobs",
+    icon: CalendarClock,
+    roles: TEAM_ROLES,
+    module: "scheduled_work",
+  },
+  {
+    name: "Time Tracking",
+    href: "/timesheet",
+    icon: TimerReset,
+    roles: STANDARD_ROLES,
+    module: "time_tracking",
+  },
 
   // Content — /content-calendar is gated by the task module on the backend.
-  { name: "Content Calendar", href: "/content-calendar", icon: CalendarCheck2, roles: STANDARD_ROLES, module: "content_calendar" },
-  { name: "Content Studio", href: "/creative-director", icon: Palette, roles: STANDARD_ROLES, module: "ai_content_assistant" },
+  {
+    name: "Content Calendar",
+    href: "/content-calendar",
+    icon: CalendarCheck2,
+    roles: STANDARD_ROLES,
+    module: "content_calendar",
+  },
+  {
+    name: "Content Studio",
+    href: "/creative-director",
+    icon: Palette,
+    roles: STANDARD_ROLES,
+    module: "ai_content_assistant",
+  },
 
   // Inbox (core items; channel items live in metaNavigation)
-  { name: "Notifications", href: "/notifications", icon: BellRing, roles: STANDARD_ROLES },
+  {
+    name: "Notifications",
+    href: "/notifications",
+    icon: BellRing,
+    roles: STANDARD_ROLES,
+  },
   // /timeline has no backend module gate → roles only.
-  { name: "Activity Feed", href: "/timeline", icon: CalendarClock, roles: STANDARD_ROLES },
+  {
+    name: "Activity Feed",
+    href: "/timeline",
+    icon: CalendarClock,
+    roles: STANDARD_ROLES,
+  },
 
   // AI Workspace — /ai-hub and /marketing-support are gated by ai_agents on the backend.
-  { name: "AI Assistant", href: "/ai-hub", icon: Bot, roles: STANDARD_ROLES, module: "ai_assistant" },
-  { name: "Executive Operations", href: "/executive-assistant", icon: Command, roles: STANDARD_ROLES },
-  { name: "AI Content Assistant", href: "/marketing-support", icon: Headphones, roles: STANDARD_ROLES, module: "ai_content_assistant" },
+  {
+    name: "AI Assistant",
+    href: "/ai-hub",
+    icon: Bot,
+    roles: STANDARD_ROLES,
+    module: "ai_assistant",
+  },
+  {
+    name: "Executive Operations",
+    href: "/executive-assistant",
+    icon: Command,
+    roles: STANDARD_ROLES,
+  },
+  {
+    name: "AI Content Assistant",
+    href: "/marketing-support",
+    icon: Headphones,
+    roles: STANDARD_ROLES,
+    module: "ai_content_assistant",
+  },
 
-  // People
-  // HR Employee Profiles (Phase 1) are the canonical People → Employees surface
-  // and live in HR_MODULES (People → Employees → /hr/employees). The legacy
-  // /users screen is account administration, so it is renamed "User Accounts".
+  // People. Employee Profiles are supplied by HR_MODULES; /users remains
+  // account administration and is intentionally labelled separately.
   { name: "User Accounts", href: "/users", icon: UserCog, roles: TEAM_ROLES },
-  { name: "My People", href: "/my-team", icon: HeartHandshake, roles: [ROLE.LEAD] },
+  {
+    name: "My People",
+    href: "/my-team",
+    icon: HeartHandshake,
+    roles: [ROLE.LEAD],
+  },
   // /attendance has no backend module gate — Attendance must be visible to every role.
-  { name: "Attendance", href: "/attendance", icon: UserCheck, roles: STANDARD_ROLES, module: "attendance" },
-  { name: "Live Attendance", href: "/live-monitor", icon: MonitorCheck, roles: TEAM_ROLES, module: "live_attendance" },
-  { name: "Attendance Reports", href: "/attendance-reports", icon: FileBarChart2, roles: STANDARD_ROLES, module: "attendance_reports" },
-  { name: "Attendance Corrections", href: "/attendance/corrections", icon: FileWarning, roles: TEAM_ROLES },
-  { name: "Leave Management", href: "/leaves", icon: CalendarCheck2, roles: STANDARD_ROLES, module: "leave_management" },
+  {
+    name: "Attendance",
+    href: "/attendance",
+    icon: UserCheck,
+    roles: STANDARD_ROLES,
+    module: "attendance",
+  },
+  {
+    name: "Live Attendance",
+    href: "/live-monitor",
+    icon: MonitorCheck,
+    roles: TEAM_ROLES,
+    module: "live_attendance",
+  },
+  {
+    name: "Attendance Reports",
+    href: "/attendance-reports",
+    icon: FileBarChart2,
+    roles: STANDARD_ROLES,
+    module: "attendance_reports",
+  },
+  {
+    name: "Attendance Corrections",
+    href: "/attendance/corrections",
+    icon: FileWarning,
+    roles: TEAM_ROLES,
+  },
+  {
+    name: "Leave Management",
+    href: "/leaves",
+    icon: CalendarCheck2,
+    roles: STANDARD_ROLES,
+    module: "leave_management",
+  },
   // Backend _can_read_departments: admin, sub_admin, manager, lead, super_admin.
-  { name: "Departments", href: "/departments", icon: Network, roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD] },
-  { name: "Company Directory", href: "/companies", icon: Landmark, roles: [ROLE.SUPER_ADMIN] },
-  { name: "Daily Updates", href: "/eod", icon: ClipboardCheck, roles: STANDARD_ROLES, module: "daily_updates" },
+  {
+    name: "Departments",
+    href: "/departments",
+    icon: Network,
+    roles: [
+      ROLE.SUPER_ADMIN,
+      ROLE.ADMIN,
+      ROLE.SUB_ADMIN,
+      ROLE.MANAGER,
+      ROLE.LEAD,
+    ],
+  },
+  {
+    name: "Company Directory",
+    href: "/companies",
+    icon: Landmark,
+    roles: [ROLE.SUPER_ADMIN],
+  },
+  {
+    name: "Daily Updates",
+    href: "/eod",
+    icon: ClipboardCheck,
+    roles: STANDARD_ROLES,
+    module: "daily_updates",
+  },
 
   // Finance — /invoices and /ledger are gated by invoicing_ledger on the backend.
-  { name: "Invoices", href: "/invoices", icon: Receipt, roles: ADMIN_ROLES, module: "invoices" },
-  { name: "Transactions", href: "/ledger", icon: DollarSign, roles: ADMIN_ROLES, module: "transactions" },
-  { name: "Subscriptions", href: "/subscriptions", icon: CreditCard, roles: ADMIN_ROLES },
+  {
+    name: "Invoices",
+    href: "/invoices",
+    icon: Receipt,
+    roles: ADMIN_ROLES,
+    module: "invoices",
+  },
+  {
+    name: "Transactions",
+    href: "/ledger",
+    icon: DollarSign,
+    roles: ADMIN_ROLES,
+    module: "transactions",
+  },
+  {
+    name: "Subscriptions",
+    href: "/subscriptions",
+    icon: CreditCard,
+    roles: ADMIN_ROLES,
+  },
 
   // Insights — /reports has no backend module gate; /sales/reports is gated by sales_crm.
-  { name: "Workspace Reports", href: "/reports", icon: LineChart, roles: STANDARD_ROLES },
-  { name: "Sales Reports", href: "/sales/reports", icon: TrendingUp, roles: STANDARD_ROLES, module: "sales_reports" },
+  {
+    name: "Workspace Reports",
+    href: "/reports",
+    icon: LineChart,
+    roles: STANDARD_ROLES,
+  },
+  {
+    name: "Sales Reports",
+    href: "/sales/reports",
+    icon: TrendingUp,
+    roles: STANDARD_ROLES,
+    module: "sales_reports",
+  },
 
   // Settings
-  { name: "System Settings", href: "/settings", icon: Settings, roles: STANDARD_ROLES },
-  { name: "Roles & Permissions", href: "/admin-permissions", icon: ShieldCheck, roles: ADMIN_ROLES },
-  { name: "Automation Rules", href: "/workflows", icon: GitBranch, roles: ADMIN_ROLES, module: "automation_rules" },
-  { name: "Google Workspace", href: "/google-workspace", icon: Globe, roles: STANDARD_ROLES },
-  { name: "Activity Logs", href: "/activity", icon: AlarmClockCheck, roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD], module: "activity_logs" },
-
+  {
+    name: "System Settings",
+    href: "/settings",
+    icon: Settings,
+    roles: STANDARD_ROLES,
+  },
+  {
+    name: "Roles & Permissions",
+    href: "/admin-permissions",
+    icon: ShieldCheck,
+    roles: ADMIN_ROLES,
+  },
+  {
+    name: "Automation Rules",
+    href: "/workflows",
+    icon: GitBranch,
+    roles: ADMIN_ROLES,
+    module: "automation_rules",
+  },
+  {
+    name: "Google Workspace",
+    href: "/google-workspace",
+    icon: Globe,
+    roles: STANDARD_ROLES,
+  },
+  {
+    name: "Activity Logs",
+    href: "/activity",
+    icon: AlarmClockCheck,
+    roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD],
+    module: "activity_logs",
+  },
   // Phase 8 — My HR (Employee Self-Service) sub-pages. The section link itself
   // opens /hr/me (the Overview); the SectionTabs bar renders these as tabs.
   { name: "My Profile", href: "/hr/me/profile", icon: UserRound, roles: STANDARD_ROLES },
@@ -259,32 +745,150 @@ export const navigation = [
 // Client pages sit under the sales_crm module (auto-granted to Manager/Lead/Employee by backend
 // require_module); roles limit them to the team. Client Settings matches CRMSettingsGuard.
 export const crmNavigation = [
-  { name: "Leads", href: "/crm/leads", icon: UserRoundSearch, roles: STANDARD_ROLES, module: "leads" },
-  { name: "All Leads", href: "/crm/leads/all", icon: Users, roles: STANDARD_ROLES, module: "leads" },
+  {
+    name: "Leads",
+    href: "/crm/leads",
+    icon: UserRoundSearch,
+    roles: STANDARD_ROLES,
+    module: "leads",
+  },
+  {
+    name: "All Leads",
+    href: "/crm/leads/all",
+    icon: Users,
+    roles: STANDARD_ROLES,
+    module: "leads",
+  },
   ...CRM_PIPELINE_STAGE_ITEMS,
-  { name: "Pipeline", href: "/crm/pipeline", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_pipeline" },
-  { name: "Companies", href: "/crm/companies", icon: Factory, roles: TEAM_ROLES, module: "companies" },
-  { name: "Contacts", href: "/crm/contacts", icon: UserCheck, roles: TEAM_ROLES, module: "contacts" },
-  { name: "Meta Messages", href: "/crm/inbox", icon: MessageSquareText, roles: STANDARD_ROLES, module: "meta_messages" },
-  { name: "Client Calendar", href: "/crm/calendar", icon: CalendarRange, roles: TEAM_ROLES, module: "client_calendar" },
-  { name: "Client Insights", href: "/crm/reports", icon: LineChart, roles: TEAM_ROLES, module: "client_insights" },
-  { name: "Client Settings", href: "/crm/settings", icon: Settings, roles: CRM_SETTINGS_ROLES, module: "meta_settings" },
+  {
+    name: "Pipeline",
+    href: "/crm/pipeline",
+    icon: GitBranch,
+    roles: STANDARD_ROLES,
+    module: "sales_pipeline",
+  },
+  {
+    name: "Companies",
+    href: "/crm/companies",
+    icon: Factory,
+    roles: TEAM_ROLES,
+    module: "companies",
+  },
+  {
+    name: "Contacts",
+    href: "/crm/contacts",
+    icon: UserCheck,
+    roles: TEAM_ROLES,
+    module: "contacts",
+  },
+  {
+    name: "Meta Messages",
+    href: "/crm/inbox",
+    icon: MessageSquareText,
+    roles: STANDARD_ROLES,
+    module: "meta_messages",
+  },
+  {
+    name: "Client Calendar",
+    href: "/crm/calendar",
+    icon: CalendarRange,
+    roles: TEAM_ROLES,
+    module: "client_calendar",
+  },
+  {
+    name: "Client Insights",
+    href: "/crm/reports",
+    icon: LineChart,
+    roles: TEAM_ROLES,
+    module: "client_insights",
+  },
+  {
+    name: "Client Settings",
+    href: "/crm/settings",
+    icon: Settings,
+    roles: CRM_SETTINGS_ROLES,
+    module: "meta_settings",
+  },
 ];
 
 // ── Meta omnichannel items (Inbox + Publishing + Settings). Routes stay as the real panels. ─────
 // Every meta panel lives behind /crm/settings, which is guarded by CRMSettingsGuard
 // (company admin + manager) — so all of them share CRM_SETTINGS_ROLES.
 export const metaNavigation = [
-  { name: "Publishing Centre", href: "/crm/settings?meta=command-center", icon: Gauge, roles: CRM_SETTINGS_ROLES, module: "publishing_centre" },
-  { name: "WhatsApp", href: "/crm/settings?meta=whatsapp", icon: Headphones, roles: CRM_SETTINGS_ROLES, module: "meta_settings" },
-  { name: "Instagram", href: "/crm/settings?meta=instagram", icon: Megaphone, roles: CRM_SETTINGS_ROLES, module: "meta_settings" },
-  { name: "Messenger", href: "/crm/settings?meta=messenger", icon: BellRing, roles: CRM_SETTINGS_ROLES, module: "meta_settings" },
-  { name: "AI Replies", href: "/crm/settings?meta=ai-drafts", icon: Bot, roles: CRM_SETTINGS_ROLES, module: "meta_settings" },
-  { name: "Approval Queue", href: "/crm/settings?meta=approval-queue", icon: ShieldCheck, badge: "Soon", roles: CRM_SETTINGS_ROLES, module: "meta_settings" },
-  { name: "Connected Accounts", href: "/crm/settings?meta=identity", icon: Network, roles: CRM_SETTINGS_ROLES, module: "meta_settings" },
-  { name: "Publishing Analytics", href: "/crm/settings?meta=analytics", icon: LineChart, badge: "Soon", roles: CRM_SETTINGS_ROLES, module: "publishing_analytics" },
-  { name: "Integrations", href: "/crm/settings?meta=readiness", icon: ClipboardCheck, badge: "Soon", roles: CRM_SETTINGS_ROLES, module: "integrations" },
-  { name: "Social Accounts", href: "/crm/settings?meta=connect", icon: Settings, badge: "Soon", roles: CRM_SETTINGS_ROLES, module: "social_accounts" },
+  {
+    name: "Publishing Centre",
+    href: "/crm/settings?meta=command-center",
+    icon: Gauge,
+    roles: CRM_SETTINGS_ROLES,
+    module: "publishing_centre",
+  },
+  {
+    name: "WhatsApp",
+    href: "/crm/settings?meta=whatsapp",
+    icon: Headphones,
+    roles: CRM_SETTINGS_ROLES,
+    module: "meta_settings",
+  },
+  {
+    name: "Instagram",
+    href: "/crm/settings?meta=instagram",
+    icon: Megaphone,
+    roles: CRM_SETTINGS_ROLES,
+    module: "meta_settings",
+  },
+  {
+    name: "Messenger",
+    href: "/crm/settings?meta=messenger",
+    icon: BellRing,
+    roles: CRM_SETTINGS_ROLES,
+    module: "meta_settings",
+  },
+  {
+    name: "AI Replies",
+    href: "/crm/settings?meta=ai-drafts",
+    icon: Bot,
+    roles: CRM_SETTINGS_ROLES,
+    module: "meta_settings",
+  },
+  {
+    name: "Approval Queue",
+    href: "/crm/settings?meta=approval-queue",
+    icon: ShieldCheck,
+    badge: "Soon",
+    roles: CRM_SETTINGS_ROLES,
+    module: "meta_settings",
+  },
+  {
+    name: "Connected Accounts",
+    href: "/crm/settings?meta=identity",
+    icon: Network,
+    roles: CRM_SETTINGS_ROLES,
+    module: "meta_settings",
+  },
+  {
+    name: "Publishing Analytics",
+    href: "/crm/settings?meta=analytics",
+    icon: LineChart,
+    badge: "Soon",
+    roles: CRM_SETTINGS_ROLES,
+    module: "publishing_analytics",
+  },
+  {
+    name: "Integrations",
+    href: "/crm/settings?meta=readiness",
+    icon: ClipboardCheck,
+    badge: "Soon",
+    roles: CRM_SETTINGS_ROLES,
+    module: "integrations",
+  },
+  {
+    name: "Social Accounts",
+    href: "/crm/settings?meta=connect",
+    icon: Settings,
+    badge: "Soon",
+    roles: CRM_SETTINGS_ROLES,
+    module: "social_accounts",
+  },
 ];
 
 // ── HR items: rename for plain business English (spec §8 People) and drop merged/hidden ones ───
@@ -292,10 +896,10 @@ export const HR_ITEM_RENAMES = {
   "HR Dashboard": "HR Dashboard",
   "HR Reports": "HR Reports",
   "Recruitment Dashboard": "Hiring Dashboard",
-  "Jobs": "Job Openings",
-  "Inbox": "Applications",
+  Jobs: "Job Openings",
+  Inbox: "Applications",
   "Resume Pool": "Talent Pool",
-  "Reports": "Hiring Reports",
+  Reports: "Hiring Reports",
   // Employees / Documents are HR-wide modules surfaced under People — the
   // recruitment module no longer owns them, so no renames are needed.
 };
@@ -445,16 +1049,25 @@ const hrNavItemsByName = HR_MODULES.flatMap((mod) =>
         name: displayName,
         match: item.href === mod.basePath ? mod.basePath : undefined,
       };
-    })
-).reduce((acc, item) => { acc[item.name] = item; return acc; }, {});
-
-const NAV_ITEM_BY_NAME = { ...[...navigation, ...crmNavigation, ...metaNavigation].reduce((acc, item) => {
+    }),
+).reduce((acc, item) => {
   acc[item.name] = item;
   return acc;
-}, {}), ...hrNavItemsByName };
+}, {});
+
+const NAV_ITEM_BY_NAME = {
+  ...[...navigation, ...crmNavigation, ...metaNavigation].reduce(
+    (acc, item) => {
+      acc[item.name] = item;
+      return acc;
+    },
+    {},
+  ),
+  ...hrNavItemsByName,
+};
 
 const SECTION_ITEM_PAIRS = SECTIONS.flatMap((section) =>
-  section.items.map((name) => ({ section, item: NAV_ITEM_BY_NAME[name] }))
+  section.items.map((name) => ({ section, item: NAV_ITEM_BY_NAME[name] })),
 ).filter((pair) => pair.item);
 
 // HR paths that should NOT render the tab bar (workflow-only screens).
@@ -477,14 +1090,38 @@ export const getNavContextForPath = (pathname, search = "") => {
     if (itemSearch) {
       const expected = new URLSearchParams(itemSearch);
       const actual = new URLSearchParams(search);
-      if (pathname === itemPath && [...expected].every(([key, value]) => actual.get(key) === value)) {
-        return { sectionKey: section.key, sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: true };
+      if (
+        pathname === itemPath &&
+        [...expected].every(([key, value]) => actual.get(key) === value)
+      ) {
+        return {
+          sectionKey: section.key,
+          sectionLabel: section.label,
+          itemName: item.name,
+          itemPath,
+          matchedExact: true,
+        };
       }
     } else if (pathname === itemPath) {
-      return { sectionKey: section.key, sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: true };
-    } else if (pathname.startsWith(`${itemPath}/`) && itemPath.length > maxPrefixLen) {
+      return {
+        sectionKey: section.key,
+        sectionLabel: section.label,
+        itemName: item.name,
+        itemPath,
+        matchedExact: true,
+      };
+    } else if (
+      pathname.startsWith(`${itemPath}/`) &&
+      itemPath.length > maxPrefixLen
+    ) {
       maxPrefixLen = itemPath.length;
-      prefixMatch = { sectionKey: section.key, sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: false };
+      prefixMatch = {
+        sectionKey: section.key,
+        sectionLabel: section.label,
+        itemName: item.name,
+        itemPath,
+        matchedExact: false,
+      };
     }
   }
   return prefixMatch;
@@ -519,7 +1156,9 @@ export const hasDepartmentAccess = (user, department) => {
   if (!department) return true;
   const role = normalizeRole(user?.role);
   if (isSuperAdminRole(role)) return true;
-  const userDepartment = String(user?.department || user?.department_key || "").toLowerCase();
+  const userDepartment = String(
+    user?.department || user?.department_key || "",
+  ).toLowerCase();
   if (!userDepartment) return true;
   return String(department).toLowerCase() === userDepartment;
 };
@@ -542,15 +1181,20 @@ export const isSectionVisible = (section, user) => {
   if (!section.roles) return true;
   const role = normalizeRole(user?.role);
   if (!STANDARD_ROLES.includes(role)) return true;
-  return section.roles.includes(role) || (role === ROLE.SUB_ADMIN && section.roles.includes(ROLE.ADMIN));
+  return (
+    section.roles.includes(role) ||
+    (role === ROLE.SUB_ADMIN && section.roles.includes(ROLE.ADMIN))
+  );
 };
 
 // HR items (renamed for People, merged/hidden items skipped) — same rules as the old Sidebar.
 const getHrNavItems = (user) => {
   const role = normalizeRole(user?.role);
-  const userDepartment = String(user?.department || user?.department_key || "").toLowerCase();
   // Company admins (incl. SUB_ADMIN) + managers + HR-department staff. Super
   // admins are granted too — the backend treats them as full HR access.
+  const userDepartment = String(
+    user?.department || user?.department_key || "",
+  ).toLowerCase();
   const canSeeHr =
     isManagerRole(role) ||
     userDepartment === "hr" ||
@@ -566,7 +1210,7 @@ const getHrNavItems = (user) => {
       // `recruitment` module, so the sidebar must not hide them by module.
       (hasModuleAccess(user, module.module) || module.key === "recruitment") &&
       hasCapabilityAccess(user, module.capability) &&
-      hasDepartmentAccess(user, module.department)
+      hasDepartmentAccess(user, module.department),
   ).flatMap((module) =>
     module.navigation
       .filter((item) => !HR_ITEM_SKIP.has(item.name))
@@ -574,7 +1218,7 @@ const getHrNavItems = (user) => {
         ...item,
         name: HR_ITEM_RENAMES[item.name] || item.name,
         match: item.href === module.basePath ? module.basePath : undefined,
-      }))
+      })),
   );
 };
 
@@ -618,7 +1262,11 @@ export const isNavItemActive = (item, location) => {
       [...expected].every(([key, value]) => actual.get(key) === value)
     );
   }
-  if (item.key === "qualification" && new URLSearchParams(location.search).has("stage")) return false;
+  if (
+    item.key === "qualification" &&
+    new URLSearchParams(location.search).has("stage")
+  )
+    return false;
   return (
     location.pathname === itemPath ||
     (item.match && location.pathname.startsWith(item.match)) ||

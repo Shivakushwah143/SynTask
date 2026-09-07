@@ -13,9 +13,13 @@ from pymongo import ASCENDING, DESCENDING, IndexModel
 class TimelineEventType(str, Enum):
     TASK_ASSIGNED = "task_assigned"
     TASK_STARTED = "task_started"
+    TASK_SUBMITTED_FOR_REVIEW = "task_submitted_for_review"
+    TASK_REVISION_REQUESTED = "task_revision_requested"
+    TASK_APPROVED = "task_approved"
     TASK_COMPLETED = "task_completed"
     TASK_UPDATED = "task_updated"
     TASK_REOPENED = "task_reopened"
+    TASK_CANCELLED = "task_cancelled"
     TASK_DELETED = "task_deleted"
     TASK_DUE_TODAY = "task_due_today"
     TASK_OVERDUE = "task_overdue"
