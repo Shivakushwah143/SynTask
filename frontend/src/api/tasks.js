@@ -215,11 +215,22 @@ export const tasksAPI = {
     return response.data
   },
 
-  submitForReview: async (taskId, reviewerId = null) => {
-    const formData = toFormData({ reviewer_id: reviewerId })
+  submitForReview: async (taskId, reviewerId = null, proof = null) => {
+    const formData = toFormData({ reviewer_id: reviewerId, proof_name: proof?.name, proof_value: proof?.value })
     const response = await api.post(`/tasks/${taskId}/submit-review`, formData, {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     })
+    return response.data
+  },
+
+  getProofs: async (taskId) => {
+    const response = await api.get(`/tasks/${taskId}/proofs`)
+    return response.data
+  },
+
+  createProof: async (taskId, { name, value, category = 'text', context = 'progress_update' }) => {
+    const formData = toFormData({ name, value, context, category })
+    const response = await api.post(`/tasks/${taskId}/proofs`, formData, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
     return response.data
   },
 

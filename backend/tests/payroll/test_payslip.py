@@ -1070,7 +1070,7 @@ class TestPayslipFileAccess:
         )
         calls = []
 
-        def fake_download_content(public_id, *, resource_type, delivery_type, storage_url=None):
+        def fake_download_content(public_id, *, resource_type, delivery_type, storage_url=None, mime_type=None):
             calls.append((public_id, resource_type, delivery_type, storage_url))
             return b"%PDF-1.4\nprivate payslip bytes"
 

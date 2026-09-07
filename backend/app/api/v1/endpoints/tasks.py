@@ -12,6 +12,7 @@ from app.models.scheduled_job import ScheduledJob, ScheduledJobActionType, Sched
 from app.schemas.tasks import UpdateProductionProgressRequest, ProductionDashboardResponse, ProductionEmployeeMetric
 from app.models.department import Department
 from app.models.user import User, UserRole
+from app.models.work_evidence import TaskProof, TaskProofContext
 from app.events import publish_event
 from app.events.factories import build_domain_event
 from app.api.dependencies import (
@@ -58,6 +59,24 @@ from app.services.task_workflow import (
 )
 
 router = APIRouter()
+
+
+def _serialize_task_proof(proof: TaskProof, submitter=None) -> dict:
+    return {"id": str(proof.id), "name": proof.name, "value": proof.value,
+            "category": getattr(proof, "category", "text"),
+            "context": getattr(proof.context, "value", proof.context),
+            "submitted_by": proof.submitted_by,
+            "submitted_by_name": submitter.full_name() if submitter else None,
+            "created_at": proof.created_at}
+
+
+async def _save_optional_proof(task: Task, actor: User, name: str | None, value: str | None, context: TaskProofContext, category: str = "text"):
+    if not (name and name.strip() and value and value.strip()):
+        return None
+    proof = TaskProof(company_id=str(task.company_id), task_id=str(task.id), submitted_by=str(actor.id),
+                      name=name.strip(), value=value.strip(), category=category, context=context)
+    await proof.insert()
+    return proof
 
 
 def enum_or_string_value(value, default=None):
@@ -128,7 +147,7 @@ async def _assert_task_view(current_user: User, task: Task) -> None:
     if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN}:
         return
     current_user_id = str(current_user.id)
-    if task.created_by == current_user_id or task.assigned_to == current_user_id:
+    if task.created_by == current_user_id or task.assigned_to == current_user_id or task.reviewer_id == current_user_id:
         return
     try:
         from app.models.watchers import Watcher
@@ -1354,9 +1373,19 @@ async def submit_task_for_review(
     task_id: str,
     reviewer_id: Optional[str] = Form(None),
     comment: Optional[str] = Form(None),
+    proof_name: Optional[str] = Form(None),
+    proof_value: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
 ):
-    return await _run_task_action(task_id, current_user, "submit_review", reviewer_id=reviewer_id, comment=comment)
+    result = await _run_task_action(task_id, current_user, "submit_review", reviewer_id=reviewer_id, comment=comment)
+    task = await Task.get(task_id)
+    try:
+        proof = await _save_optional_proof(task, current_user, proof_name, proof_value, TaskProofContext.REVIEW_SUBMISSION)
+        result["proof_saved"] = bool(proof)
+    except Exception:
+        result["proof_saved"] = False
+        result["proof_error"] = "Task entered review, but proof could not be saved"
+    return result
 
 
 @router.post("/{task_id}/request-revision")
@@ -1980,6 +2009,8 @@ async def update_task_production_progress(
     if task.target_quantity is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quantitative task has no target quantity set")
 
+    if body.completed_quantity > task.target_quantity:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Completed quantity cannot exceed target quantity")
     task.completed_quantity = body.completed_quantity
     task.updated_at = utc_now()
     await task.save()
@@ -2007,12 +2038,48 @@ async def update_task_production_progress(
         )
     )
 
-    return {
+    response = {
         "id": str(task.id),
         "completed_quantity": task.completed_quantity,
         "remaining_quantity": remaining,
         "completion_percentage": completion_pct,
     }
+    try:
+        proofs = []
+        for index, entry in enumerate(body.proof_entries):
+            if entry.value and entry.value.strip():
+                proofs.append(await _save_optional_proof(task, current_user, f"Item {index + 1}", entry.value, TaskProofContext.PROGRESS_UPDATE, entry.category))
+        proof = await _save_optional_proof(task, current_user, body.proof_name, body.proof_value, TaskProofContext.PROGRESS_UPDATE)
+        response["proof_saved"] = bool(proof or any(proofs))
+    except Exception:
+        response["proof_saved"] = False
+        response["proof_error"] = "Progress was saved, but proof could not be saved"
+    return response
+
+
+@router.get("/{task_id}/proofs")
+async def list_task_proofs(task_id: str, current_user: User = Depends(get_current_user)):
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    proofs = await TaskProof.find({"company_id": str(task.company_id), "task_id": str(task.id)}).sort("created_at").to_list()
+    submitters = {proof.submitted_by: await User.get(proof.submitted_by) for proof in proofs}
+    return {"proofs": [_serialize_task_proof(proof, submitters.get(proof.submitted_by)) for proof in proofs]}
+
+
+@router.post("/{task_id}/proofs", status_code=201)
+async def create_task_proof(task_id: str, name: str = Form(...), value: str = Form(...), context: TaskProofContext = Form(...), category: str = Form("text"), current_user: User = Depends(get_current_user)):
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await _assert_task_view(current_user, task)
+    if str(task.assigned_to or "") != str(current_user.id) and current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the assigned worker or task manager can add proof")
+    proof = await _save_optional_proof(task, current_user, name, value, context, category)
+    if not proof:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Proof name and value are required")
+    return {"proof": _serialize_task_proof(proof, current_user)}
 
 
 # ── Phase 2: Semantic Workflow Action Endpoints ─────────────────────────────

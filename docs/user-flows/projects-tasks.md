@@ -111,4 +111,33 @@ Time Tracking supports one backend-authoritative active timer per employee. The 
 
 Manual time entry remains available and creates `source=manual` TimeLogs. Manual entries require positive duration, reject excessive duration, and validate task/project/company scope. Deleting a time log now voids it for audit instead of hard-removing history.
 
+The main Project Workspace overview includes a compact Resources section with
+up to four previews and a View All modal; it is visible inside the overview
+hero before the workspace tabs rather than inside the Tasks/Overview tab.
+The full modal filters resources by All, Links, Media, or Text. Project managers can add/edit/delete dynamic name/value pairs;
+resource creation supports Link, Media file, and Text types with multiple
+compact fields added in one form submission.
+other authorized members can open safe HTTP(S) links. For quantitative tasks,
+`+/-` changes an unsaved draft and Update opens an optional proof dialog. The
+dialog shows one optional proof row per newly added item, with Media upload,
+Link, or Text category choices. Existing completed items are not requested
+again. Subtract-only updates require no proof fields. Empty rows are ignored, so partially filled proof
+does not block saving. Skip saves quantity alone. Send for Review similarly
+opens optional proof; Skip still sends the task. During either submission, both
+modal actions are disabled and show an inline loading indicator until the
+request completes. Reviewers can open View Proof without proof becoming a
+separate approval workflow. Quantitative
+employees submitting a task for review from Task Detail also receive this
+optional proof dialog, which starts with one row and supports adding more rows.
+Skip submits the task without proof; both Skip and Submit update the status.
+After a task reaches In Review, Add Proof in Production Progress opens the same
+optional proof form, and View Proofs lists all uploaded entries.
+tasks cannot be moved to In Review until the target quantity is complete; the
+status selector shows a clear message with the remaining quantity and leaves
+the task in its current status. Same-company Managers and Leads can also move
+an in-progress task to In Review, subject to the same checklist, dependency,
+quantity, and backend workflow validations. Standalone tasks use this review
+workflow by default as well; only tasks explicitly configured with
+`review_required=false` (and Sales follow-ups) bypass review.
+
 Project pages can request completion readiness from `/api/v1/projects/{project_id}/completion-readiness`. A project is not ready while required tasks are incomplete, review/revision/approved-not-completed tasks remain, dependency blockers exist, blocker Work Requests are open, active project timers exist, or the project lifecycle is not eligible. Direct status completion and semantic completion both use this backend readiness gate. Archiving is allowed only after the project reaches reporting and preserves historical tasks, time, requests, scheduled work, and activity.

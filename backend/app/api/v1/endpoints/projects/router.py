@@ -15,6 +15,7 @@ from . import (
     project_list,
     project_task_creation,
     project_update,
+    resources,
     project_status_summary,
     sprints,
     team,
@@ -38,5 +39,6 @@ router.include_router(project_board_view.router)
 router.include_router(project_summary.router)
 router.include_router(board_columns.router)
 router.include_router(project_files.router)
+router.include_router(resources.router)
 router.include_router(pages.router)
 router.include_router(team.router)

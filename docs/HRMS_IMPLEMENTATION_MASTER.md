@@ -1204,6 +1204,8 @@ My HR
 
 Reuse existing attendance and leave UI/API logic.
 
+My Documents: employees submit or resubmit their own documents for HR review. `expiry_date` is an **optional** field used to declare the expiry of the particular document being submitted; it is accepted for any employee-visible type (not gated by the type's `expiry_supported` flag), and resubmitting refreshes the stored expiry (an empty value clears it). Required-document cards and the document table both offer Preview (and Download in the table) for stored employee-visible documents; `hr_only` documents are never previewable by the employee.
+
 ## Security
 
 Employee may access own resources only unless explicitly authorized otherwise.
@@ -1674,8 +1676,8 @@ Copy this section under the currently active phase after each implementation ite
 
 - **Phase 6 Payroll** — `PayrollPeriod` (company-scoped monthly run, `PROCESSED` terminal status), `PayrollRecord` (employee-level calculation with full snapshots: employee name/number, department id, designation, currency, `attendance_snapshot`, `earnings`/`deductions` items, `gross_salary`, `total_deductions`, `net_salary`, `processed_at`). Confirmed payslip values must come from these stored snapshots only.
 - **Existing PDF infrastructure** — `backend/app/services/invoice_pdf.py` (ReportLab A4 renderer with safe text/currency helpers, `Rs.` INR prefix because Helvetica has no ₹ glyph), `backend/app/recruitment/advanced_services.py` + `backend/app/crm/documents.py` (ReportLab offer/CRM PDFs). ReportLab 4.1.0 already in `requirements.txt` → reused, no new PDF library added.
-- **Existing file storage** — `FileService.store_uploaded_file` (local `UPLOAD_DIR` + Cloudinary authenticated upload), `CloudinaryStorage.signed_url` for short-lived signed preview/download of `authenticated` resources, and the Phase 2 HR document pattern (`storage_provider`/`storage_reference`/`storage_url`/`storage_resource_type`/`storage_delivery_type`, `build_file_response`) reused verbatim for payslips. No second storage system created.
-- **Existing secure file download patterns** — HR documents fetch authorized blob endpoints from the frontend (`hrDocumentFiles.preview/download` + `URL.createObjectURL`) instead of raw URLs; payslip frontend will follow the same pattern.
+- **Existing file storage** — `FileService.store_uploaded_file` (local `UPLOAD_DIR` + Cloudinary authenticated upload), `CloudinaryStorage.signed_url`/`download_response` for signed Cloudinary access, and the Phase 2 HR document pattern (`storage_provider`/`storage_reference`/`storage_url`/`storage_resource_type`/`storage_delivery_type`, `build_file_response`) reused verbatim for payslips. No second storage system created. HR document preview/download is **backend-controlled**: local files are served via `FileResponse` and Cloudinary files are fetched server-side and streamed back with correct `Content-Type`/`Content-Disposition` — the browser never follows a cross-origin redirect to a Cloudinary delivery URL (that was breaking authorized blob previews/downloads), and signed URLs are never exposed to clients.
+- **Existing secure file download patterns** — HR documents fetch authorized blob endpoints from the frontend (`hrDocumentFiles.preview/download` + `URL.createObjectURL`) instead of raw URLs; payslip frontend follows the same pattern.
 - **Company branding** — `Company` model has name/address/city/state/zip/country/phone/email/website/registration_number but **no per-company logo field**; the invoice PDF uses the backend-owned `assets/syntask-logo.png`, which the payslip reuses (graceful fallback when missing).
 - **Permissions** — `require_capability("payroll.view"/"payroll.manage"/"payroll.approve")` (company admins pass through; HR-department capability otherwise); `/auth/me` already returns `capabilities` for frontend mirrors.
 - **Timeline/audit** — `TimelineEventType`/`TimelineModule` extended with `payslip_generated` / `payslip_regenerated` + `payroll` module (additive, existing values untouched).
@@ -1997,7 +1999,7 @@ Never create duplicate HR systems when SynTask already has an equivalent foundat
   - Attendance donut chart (Recharts PieChart)
   - Headcount by Department bar chart (Recharts BarChart)
   - Leave Usage by Type bar chart
-  - Attention Items panel with severity colors and navigation links
+  - Attention Items panel with severity colors and navigation links — includes a `document_review_pending` item counting employee document submissions awaiting HR review (routed to HR Documents) so new employee uploads surface immediately
   - Payroll summary card (authorized users only)
   - Quick Actions navigation
   - Loading skeletons, empty states, error boundary, section-level error handling (partial failure doesn't blank entire dashboard)
@@ -2407,7 +2409,7 @@ attached biometric punches to the wrong people, so the inference was removed:
 - Mapping management endpoints under `/attendance/integrations/etimeoffice`:
   `GET /mappings` (directory + status + suggestion), `PUT /mappings/{code}`
   (confirm/change), `DELETE /mappings/{code}` (remove) — company admin /
-  sub-admin only, tenant-scoped by `company_id`.
+  sub-admin / manager only, tenant-scoped by `company_id`.
 - UI: HR → Attendance Reports → Biometric Attendance (eTimeOffice) card now has
   an **Employee Mapping** panel (Map / Change Mapping / Remove Mapping) plus a
   **Biometric Code** column on HR attendance rows.

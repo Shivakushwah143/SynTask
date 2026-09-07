@@ -473,6 +473,7 @@ Identity & permission model:
 |---|---|---|---|
 | GET | `/api/v1/employees/me` | `my_employee_profile` | The current user's own Employee Profile detail DTO (Phase 1). Any authenticated user with a profile. |
 | PATCH | `/api/v1/employees/me` | `update_my_employee_profile` | Self-edit of the whitelisted personal fields only (see above); HR-controlled fields rejected with `400`. |
+| GET | `/api/v1/employees/{employee_id}` | `get_employee_endpoint` | Normalized detail DTO for one employee. Requires employee-directory access (same rule as the list endpoint): company admins, managers, and HR-department staff holding `employee_management.view` may open any employee's profile; other roles may only open their own (`403` otherwise). Company-scoped — cross-company ids return `404`. This is how managers/HR open an employee's Documents tab to see pending submissions. |
 | GET | `/api/v1/attendance/me/today` | `get_my_today_attendance` | Today's attendance for the caller (Phase 4). |
 | GET | `/api/v1/attendance/me/today-enhanced` | `get_my_today_enhanced` | Today's attendance with policy-aware HR status, expected hours, late flags (Phase 4). |
 | GET | `/api/v1/attendance/me/history` | `get_my_attendance_history` | The caller's own attendance history — **strictly self-scoped for every role** (managers/admins never receive team/company rows here), one row per date (Phase 4). |
@@ -508,15 +509,29 @@ The HR document system stores metadata over the existing file service; every row
 | POST | `/api/v1/hr/documents/{document_id}/replace` | `replace_document_endpoint` | HR file replacement — new version keeps the current review state. Manage required. |
 | POST | `/api/v1/hr/documents/{document_id}/review` | `review_document_endpoint` | HR approves (`action=approve`) or rejects (`action=reject` + required `note`) a **pending employee submission** only. Rejection reason is stored on the document and current version and shown to the employee. Manage required — normal employees (including the owner) can never approve/reject. |
 | GET | `/api/v1/hr/documents/{document_id}/versions` | `list_document_versions_endpoint` | Version history with each version's review outcome (`review_status`, `review_note`, reviewer). |
-| GET | `/api/v1/hr/documents/{document_id}/preview` `/download`, `/versions/{version_id}/download` | — | Authorized blob/signed file access (re-authorizes company + ownership + visibility on every call). |
+| GET | `/api/v1/hr/documents/{document_id}/preview` `/download`, `/versions/{version_id}/download` | — | Authorized file access with backend-controlled delivery (re-authorizes company + ownership + visibility on every call). The stored bytes are streamed back through SynTask — local files via `FileResponse`, Cloudinary files are fetched server-side and streamed with correct `Content-Type` and `Content-Disposition` (`inline` for preview, `attachment; filename=…` for download). The browser never follows a cross-origin redirect to Cloudinary, and signed Cloudinary URLs/credentials are never exposed. Missing storage returns a controlled `404` with a clear detail message. |
 
 **Employee self-service endpoints (My HR → My Documents)** — identity is resolved from the authenticated user; **no `employee_id` is accepted**, so an employee can only ever touch their own documents and can never act as HR:
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | GET | `/api/v1/hr/me/documents` | `list_my_documents_endpoint` | The authenticated employee's own ACTIVE + `EMPLOYEE_VISIBLE` documents at any review state (a new submission is visible immediately). No HR permission required. |
-| GET | `/api/v1/hr/me/documents/status` | `my_document_status_endpoint` | Per-type overview: `required` rows (Missing / Pending Review / Approved / Rejected with rejection note) and `uploadable` rows (only types with `employee_upload_allowed`, employee scope + employee-visible), each with `can_upload`. |
-| POST | `/api/v1/hr/me/documents` | `submit_employee_document_endpoint` | Submit a new document (creates V1 `pending`) or resubmit a rejected one (creates the next version on the **same** document, `pending`). Document type must be active + `employee_upload_allowed` + employee-visible; `visibility`/review fields are never client-supplied. A type already pending/approved returns `409`. |
+| GET | `/api/v1/hr/me/documents/status` | `my_document_status_endpoint` | Per-type overview: `required` rows (Missing / Pending Review / Approved / Rejected with rejection note) and `uploadable` rows (only types with `employee_upload_allowed`, employee scope + employee-visible), each with `can_upload` and, when a stored employee-visible document exists, `can_preview`/`can_download` (never for `hr_only` documents). |
+| POST | `/api/v1/hr/me/documents` | `submit_employee_document_endpoint` | Submit a new document (creates V1 `pending`) or resubmit a rejected one (creates the next version on the **same** document, `pending`). Document type must be active + `employee_upload_allowed` + employee-visible; `visibility`/review fields are never client-supplied. A type already pending/approved returns `409`. `expiry_date` is an optional field the employee uses to declare the expiry of the particular document being submitted — it is accepted for any employee-visible type (not gated by the type's `expiry_supported` flag), and resubmitting refreshes the stored expiry (an empty value clears it). |
+
+**Document Request Lifecycle** — HR requests specific documents from employees. Each request links to an employee and document type (or free-form name); the employee uploads against the request, advancing its status through the lifecycle:
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/hr/document-requests` | `list_document_requests_endpoint` | List all document requests for the company. HR sees all; employees see only their own. Filters: `employee_id`, `status`, `page`, `page_size`. Requires HR document view (for HR) or is employee self-service. |
+| POST | `/api/v1/hr/document-requests` | `create_document_request_endpoint` | HR creates a request for an employee to provide a document. Fields: `employee_id` (required), `document_type_id` (optional), `document_type_name` (required), `requirement_level` (`mandatory`/`optional`), `priority` (`low`/`normal`/`high`/`urgent`), `instructions` (optional), `due_date` (optional). Duplicate prevention: same employee + same type + active request returns `409`. Notifies the employee. Requires HR document manage. |
+| GET | `/api/v1/hr/document-requests/{request_id}` | `get_document_request_endpoint` | Single request detail. HR sees any; employee only their own (`403` otherwise). |
+| POST | `/api/v1/hr/document-requests/{request_id}/cancel` | `cancel_document_request_endpoint` | HR cancels a pending or submitted request. Returns `400` for approved/rejected/cancelled requests. Notifies the employee. Requires HR document manage. |
+| PATCH | `/api/v1/hr/document-requests/{request_id}` | `cancel_document_request_endpoint` | Alias for cancel (PATCH method). |
+| GET | `/api/v1/hr/me/document-requests` | `list_my_document_requests_endpoint` | Employee self-service list of their own document requests at any status. No HR permission required. |
+| POST | `/api/v1/hr/me/document-requests/{request_id}/upload` | `upload_for_document_request_endpoint` | Employee uploads a document against a specific request. The request must be `pending` or `rejected`. Creates (or resubmits to) an `HRDocument` and links it via `fulfilled_document_id`. Request status advances to `submitted`. Notifies the requesting HR person. |
+
+**Request lifecycle statuses:** `pending` → `submitted` (employee uploaded) → `approved` (HR approved linked document) / `rejected` (HR rejected) / `cancelled` (HR cancelled). Rejection returns to a state where the employee can re-upload.
 
 ### eTimeOffice Biometric Attendance Integration (Attendance module)
 
@@ -568,9 +583,15 @@ tokens, or session ids.
 |---|---|---|---|
 | POST | `/api/v1/attendance/integrations/etimeoffice/sync` | `etimeoffice_sync` | Manual sync for the caller's company. Optional `from_date`/`to_date` (`YYYY-MM-DD`, window ≤ 62 days, default: last 7 days). Company admin / sub-admin only. Returns only safe metadata: `success`, `employees_received`, `mapped`, `unmapped`, `attendance_updated`, `duplicates_skipped`, `skipped_app_attendance`, `errors`, `last_sync` — never credentials. `409` while another sync runs; `502` with "eTimeOffice synchronization failed. Existing attendance data remains available." on provider failure. |
 | GET | `/api/v1/attendance/integrations/etimeoffice/status` | `etimeoffice_status` | Company-scoped integration status for the Attendance UI: `enabled`, `configured`, `connected`, `syncing`, `last_attempted_at`, `last_successful_at`, `last_error`, `last_summary`, cadence settings. Safe metadata only. Any authenticated company user. |
-| GET | `/api/v1/attendance/integrations/etimeoffice/mappings?refresh=` | `etimeoffice_mappings` | List the company's eTimeOffice directory with mapping status: `rows` (code, provider name, mapped SynTask employee, `status` mapped/unmapped, `suggestion`), plus `employees` (selectable company employees) and counts. `refresh=true` first downloads the current directory from the provider (read-only). Company admin / sub-admin only. Provider outage → `502` with the safe sync message. |
-| PUT | `/api/v1/attendance/integrations/etimeoffice/mappings/{code}` | `etimeoffice_upsert_mapping` | Confirm/change which SynTask employee (`employee_id`) owns an eTimeOffice code; `employee_id: null` removes the mapping (code stays listed unmapped). Tenancy + active-role validated; a SynTask employee already mapped to another code → `400`. Company admin / sub-admin only. |
-| DELETE | `/api/v1/attendance/integrations/etimeoffice/mappings/{code}` | `etimeoffice_remove_mapping` | Remove the mapping for a code (row remains listed). Company admin / sub-admin only. |
+| GET | `/api/v1/attendance/integrations/etimeoffice/mappings?refresh=` | `etimeoffice_mappings` | List the company's eTimeOffice directory with mapping status: `rows` (code, provider name, mapped SynTask employee, `status` mapped/unmapped, `suggestion`), plus `employees` (selectable company employees) and counts. `refresh=true` first downloads the current directory from the provider (read-only). Company admin / sub-admin / manager only. Provider outage → `502` with the safe sync message. |
+| PUT | `/api/v1/attendance/integrations/etimeoffice/mappings/{code}` | `etimeoffice_upsert_mapping` | Confirm/change which SynTask employee (`employee_id`) owns an eTimeOffice code; `employee_id: null` removes the mapping (code stays listed unmapped). Tenancy + active-role validated; a SynTask employee already mapped to another code → `400`. Company admin / sub-admin / manager only. |
+| DELETE | `/api/v1/attendance/integrations/etimeoffice/mappings/{code}` | `etimeoffice_remove_mapping` | Remove the mapping for a code (row remains listed). Company admin / sub-admin / manager only. |
+
+**Mapping access:** Company Admins, Sub Admins, Super Admins, and Managers may
+list, create, change, or remove mappings for their own `company_id`. Managers
+cannot run an eTimeOffice sync. Leads and Employees are denied mapping access;
+the mapping service validates that every selected employee belongs to the same
+company, including when a caller supplies an employee id from another tenant.
 
 A leader-gated background loop (default every 3 minutes) re-runs the same sync
 when `ETIMEOFFICE_ENABLED=true`; overlapping sync jobs are prevented both by
@@ -593,7 +614,7 @@ Permission model:
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/hr/dashboard` | `get_hr_dashboard` | Aggregated HR dashboard: employee summary, attendance today, leave summary, document summary, lifecycle summary, recruitment summary (if authorized), payroll summary (if authorized), attention items. |
+| GET | `/api/v1/hr/dashboard` | `get_hr_dashboard` | Aggregated HR dashboard: employee summary, attendance today, leave summary, document summary, lifecycle summary, recruitment summary (if authorized), payroll summary (if authorized), attention items (incl. `document_review_pending` — employee uploads awaiting HR review, routed to `/hr/documents`). |
 | GET | `/api/v1/hr/reports/employees/directory` | `employee_directory_report` | Paginated employee directory with department/status/type filters. |
 | GET | `/api/v1/hr/reports/employees/headcount` | `headcount_report` | Headcount aggregated by department with overall summary. |
 | GET | `/api/v1/hr/reports/employees/joining-exit` | `joining_exit_report` | Joining/exit trend data for chart visualization (configurable months). |
@@ -1048,3 +1069,16 @@ Project APIs now treat `Project.client_id` as the canonical Client -> Project li
 `GET /api/v1/projects/` and `GET /api/v1/projects/{project_id}` include `client`, `owner`, `priority`, `deadline_urgency`, `project_health`, `progress_percentage`, `completed_task_count`, and overdue/open task counts. `PUT /api/v1/projects/{project_id}` updates project details but status changes continue to be validated by the lifecycle workflow.
 
 Company-scoped project types are available through `GET /api/v1/projects/types` and can be created with `POST /api/v1/projects/types`.
+# Project Resources and Optional Task Proof
+
+- `GET/POST /api/v1/projects/{project_id}/resources` lists or creates dynamic
+  resources. Read requires project view; create requires project management.
+- `PUT/DELETE /api/v1/projects/{project_id}/resources/{resource_id}` updates or
+  deletes a same-company resource belonging to that project.
+- `GET/POST /api/v1/tasks/{task_id}/proofs` lists or adds optional task proof.
+  The server derives `submitted_by`; all reads include task authorization and
+  company isolation.
+- `POST /api/v1/tasks/{task_id}/production-progress` accepts optional
+  `proof_name`/`proof_value`; quantity succeeds without proof.
+- `POST /api/v1/tasks/{task_id}/submit-review` accepts optional proof fields;
+  review submission succeeds when proof is skipped.

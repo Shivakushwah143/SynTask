@@ -266,6 +266,9 @@ def test_get_attention_items_builds_actionable_items(monkeypatch):
 
     assert by_type["leave_pending"]["count"] == 2
     assert by_type["correction_pending"]["count"] == 1
+    # Both HRDocument probes use the same patched collection (count_result=3).
+    assert by_type["document_review_pending"]["count"] == 3
+    assert by_type["document_review_pending"]["route"] == "/hr/documents"
     assert by_type["document_expiring"]["count"] == 3
     assert by_type["probation_due"]["count"] == 1
     assert by_type["payroll_blocked"]["count"] == 4

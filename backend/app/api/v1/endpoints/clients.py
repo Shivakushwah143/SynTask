@@ -76,7 +76,7 @@ from app.crm.client_workspace import ClientWorkspaceService
 from app.api.dependencies import (
     get_current_user,
     get_current_company_admin_or_lead,
-    get_current_company_admin,
+    get_current_company_admin_or_manager,
     check_company_access,
 )
 
@@ -2142,9 +2142,9 @@ async def delete_client_document(
 @router.delete("/{client_id}")
 async def delete_client(
     client_id: str,
-    current_user: User = Depends(get_current_company_admin),
+    current_user: User = Depends(get_current_company_admin_or_manager),
 ):
-    """Delete a client (Company Admin only)"""
+    """Delete a client for the caller's company (admin or manager)."""
     try:
         client = await Client.get(client_id)
     except:

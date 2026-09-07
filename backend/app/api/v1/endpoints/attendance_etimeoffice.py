@@ -8,10 +8,10 @@ credentials, cookies, or session identifiers.
 RBAC:
 - POST /sync       — company admin/sub-admin only (triggers a provider read).
 - GET /status      — any authenticated user of the company (safe metadata only).
-- GET /mappings    — company admin/sub-admin only (directory + mapping list,
+- GET /mappings    — company admin/sub-admin/manager only (directory + mapping list,
                       employee PII; suggestions are never assignments).
-- PUT /mappings/x  — company admin/sub-admin only (confirm/change mapping).
-- DELETE /mappings/x — company admin/sub-admin only (remove mapping).
+- PUT /mappings/x  — company admin/sub-admin/manager only (confirm/change mapping).
+- DELETE /mappings/x — company admin/sub-admin/manager only (remove mapping).
 """
 from __future__ import annotations
 
@@ -22,7 +22,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 from pydantic import BaseModel, Field
 
-from app.api.dependencies import get_current_company_admin, get_current_user
+from app.api.dependencies import (
+    get_current_company_admin,
+    get_current_company_admin_or_manager,
+    get_current_user,
+)
 from app.integrations.etimeoffice.client import ETimeOfficeError
 from app.models.user import User
 from app.services.etimeoffice_mapping_service import (
@@ -113,7 +117,7 @@ async def etimeoffice_status(current_user: User = Depends(get_current_user)):
 @router.get("/mappings")
 async def etimeoffice_mappings(
     refresh: bool = Query(False, description="Download the current eTimeOffice directory before listing"),
-    current_user: User = Depends(get_current_company_admin),
+    current_user: User = Depends(get_current_company_admin_or_manager),
 ):
     """List the company's eTimeOffice directory with mapping status.
 
@@ -136,7 +140,7 @@ async def etimeoffice_mappings(
 async def etimeoffice_upsert_mapping(
     external_code: str,
     payload: MappingUpdateRequest,
-    current_user: User = Depends(get_current_company_admin),
+    current_user: User = Depends(get_current_company_admin_or_manager),
 ):
     """Confirm or change which SynTask employee owns an eTimeOffice code."""
     company_id = _require_company(current_user)
@@ -155,7 +159,7 @@ async def etimeoffice_upsert_mapping(
 @router.delete("/mappings/{external_code}")
 async def etimeoffice_remove_mapping(
     external_code: str,
-    current_user: User = Depends(get_current_company_admin),
+    current_user: User = Depends(get_current_company_admin_or_manager),
 ):
     """Remove the mapping for an eTimeOffice code (row stays listed)."""
     company_id = _require_company(current_user)

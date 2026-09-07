@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import base64
 import logging
+import re
 import time
 import uuid
 from pathlib import Path
@@ -158,18 +159,39 @@ class CloudinaryStorage:
                 return f"https://res.cloudinary.com/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/upload/{public_id}"
             return storage_url
 
-        delivery_tail = None
+        # Cloudinary signed delivery URL format (matches the SDK output and the
+        # docs at cloudinary.com/documentation/delivery_url_signatures):
+        #   /{cloud}/{resource_type}/{delivery_type}/s--{sig}--/{transformations}/{public_id}
+        # The signed string is exactly what follows the s--{sig}-- component:
+        # any transformations (e.g. fl_attachment), then the versioned public_id.
+        #
+        # storage_url (captured at upload time) can already be a signed URL for
+        # legacy/affected rows, so before re-signing we repeatedly strip stale
+        # signature components (s--XXXXXXXX--/) and fl_attachment/ wrappers that
+        # may have been nested into the stored path by earlier code. Leaving any
+        # of them in place makes Cloudinary reject the URL with 400 Bad Request.
+        delivery_tail = public_id.lstrip("/")
         parsed = urlparse(storage_url or "")
         marker = f"/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/{delivery_type}/"
         if parsed.scheme and marker in parsed.path:
-            delivery_tail = parsed.path.split(marker, 1)[1].lstrip("/")
-        if not delivery_tail:
-            delivery_tail = public_id.lstrip("/")
+            tail = parsed.path.split(marker, 1)[1].lstrip("/")
+            if tail:
+                delivery_tail = tail
 
-        if attachment and not delivery_tail.startswith("fl_attachment/"):
-            delivery_tail = f"fl_attachment/{delivery_tail}"
-        signature = _delivery_signature(delivery_tail)
-        signed_path = f"/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/{delivery_type}/s--{signature}--/{delivery_tail}"
+        previous = None
+        while previous != delivery_tail:
+            previous = delivery_tail
+            delivery_tail = re.sub(
+                r"^(?:s--[A-Za-z0-9_-]+--|fl_attachment)/", "", delivery_tail
+            )
+
+        transformation = "fl_attachment/" if attachment else ""
+        signature = _delivery_signature(f"{transformation}{delivery_tail}")
+        signed_path = (
+            f"/{settings.CLOUDINARY_CLOUD_NAME}/{resource_type}/{delivery_type}/"
+            f"s--{signature}--/{transformation}{delivery_tail}"
+        )
+
         if parsed.scheme:
             return urlunparse((parsed.scheme, parsed.netloc, signed_path, "", "", ""))
         return f"https://res.cloudinary.com{signed_path}"
@@ -181,6 +203,7 @@ class CloudinaryStorage:
         resource_type: str = "image",
         delivery_type: str = "authenticated",
         storage_url: str | None = None,
+        mime_type: str | None = None,
     ) -> bytes | None:
         """Download raw bytes from a Cloudinary-stored file.
 
@@ -204,9 +227,25 @@ class CloudinaryStorage:
             )
             return None
 
-        # Determine the file format from the public_id extension.
-        file_format = Path(public_id).suffix.lstrip(".") or "pdf"
-        # Strip the extension from public_id for the SDK call (it re-appends it).
+        # Determine format from mime_type (preferred) or filename extension.
+        # Never guess from public_id — it has no extension after upload.
+        file_format = None
+        if mime_type:
+            _MIME_TO_FORMAT = {
+                "application/pdf": "pdf",
+                "image/jpeg": "jpg",
+                "image/png": "png",
+                "image/gif": "gif",
+                "image/webp": "webp",
+                "application/msword": "doc",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+            }
+            file_format = _MIME_TO_FORMAT.get(mime_type)
+        if not file_format:
+            file_format = Path(public_id).suffix.lstrip(".")
+
+        # Strip any trailing format extension from public_id for the SDK call
+        # (the SDK re-appends it via the ``format`` parameter).
         id_without_ext = public_id
         if file_format and public_id.endswith(f".{file_format}"):
             id_without_ext = public_id[: -(len(file_format) + 1)]
@@ -214,7 +253,7 @@ class CloudinaryStorage:
         try:
             url = cloudinary.utils.private_download_url(
                 public_id=id_without_ext,
-                format=file_format,
+                format=file_format or "bin",
                 resource_type=resource_type,
                 type=delivery_type,
             )
@@ -249,17 +288,106 @@ class CloudinaryStorage:
             )
             return None
 
-        content = resp.content
-        if not content or not content.startswith(b"%PDF"):
+        return resp.content
+
+    @staticmethod
+    def download_response(
+        public_id: str,
+        *,
+        resource_type: str = "image",
+        delivery_type: str = "authenticated",
+        storage_url: str | None = None,
+        attachment: bool = False,
+        mime_type: str | None = None,
+    ) -> requests.Response | None:
+        """Open a streaming HTTP response to a stored Cloudinary file (server-side).
+
+        Used by backend-controlled file delivery so sensitive HR documents are
+        proxied through the SynTask backend instead of redirecting the browser
+        cross-origin to Cloudinary.  Uses the official Cloudinary SDK download
+        endpoint (``/download`` API) rather than signed delivery URLs, because
+        Cloudinary blocks PDF delivery via signed URLs on free accounts
+        (``401 deny or ACL failure``) while the download API works for all
+        file types.
+
+        The caller is responsible for closing the returned response once the
+        stream has been consumed. Returns ``None`` (with structured logs) when
+        Cloudinary is not configured, the URL cannot be built, the request
+        fails, or the resource is not retrievable.
+        """
+        if not CloudinaryStorage.enabled() or not public_id:
+            return None
+
+        _ensure_cloudinary_sdk_configured()
+        cfg = cloudinary.config()
+        if not cfg.api_key or not cfg.api_secret:
             logger.error(
-                "Cloudinary returned non-PDF content | public_id=%s content_len=%d starts_with=%r",
+                "Cloudinary SDK not configured — cannot build delivery response | public_id=%s",
                 public_id,
-                len(content),
-                content[:8] if content else b"",
             )
             return None
 
-        return content
+        # Determine format from mime_type (preferred) or filename extension.
+        file_format = None
+        if mime_type:
+            _MIME_TO_FORMAT = {
+                "application/pdf": "pdf",
+                "image/jpeg": "jpg",
+                "image/png": "png",
+                "image/gif": "gif",
+                "image/webp": "webp",
+                "application/msword": "doc",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+            }
+            file_format = _MIME_TO_FORMAT.get(mime_type)
+        if not file_format:
+            file_format = Path(public_id).suffix.lstrip(".")
+
+        # Strip any trailing format extension from public_id for the SDK call.
+        id_without_ext = public_id
+        if file_format and public_id.endswith(f".{file_format}"):
+            id_without_ext = public_id[: -(len(file_format) + 1)]
+
+        try:
+            url = cloudinary.utils.private_download_url(
+                public_id=id_without_ext,
+                format=file_format or "bin",
+                resource_type=resource_type,
+                type=delivery_type,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to generate Cloudinary SDK download URL | public_id=%s resource_type=%s",
+                public_id,
+                resource_type,
+            )
+            return None
+
+        try:
+            resp = requests.get(url, stream=True, timeout=30)
+        except requests.RequestException:
+            logger.exception(
+                "Cloudinary download request failed | public_id=%s resource_type=%s",
+                public_id,
+                resource_type,
+            )
+            return None
+
+        if resp.status_code != 200:
+            cld_error = resp.headers.get("X-Cld-Error") or ""
+            logger.error(
+                "Cloudinary download failed | status=%s public_id=%s resource_type=%s "
+                "delivery_type=%s X-Cld-Error=%s body_prefix=%s",
+                resp.status_code,
+                public_id,
+                resource_type,
+                delivery_type,
+                cld_error,
+                (resp.text[:200] if resp.text else ""),
+            )
+            resp.close()
+            return None
+        return resp
 
     @staticmethod
     def delete(public_id: str, resource_type: str = "image", delivery_type: str = "upload") -> None:

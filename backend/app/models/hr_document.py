@@ -221,6 +221,71 @@ class HRDocumentVersion(Document):
         ]
 
 
+class HRRequestRequirementLevel(str, Enum):
+    """Whether the employee must eventually provide the document."""
+    MANDATORY = "mandatory"
+    OPTIONAL = "optional"
+
+
+class HRRequestPriority(str, Enum):
+    """Operational urgency — separate from mandatory/optional."""
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
+class HRRequestStatus(str, Enum):
+    """Lifecycle status of a document request."""
+    PENDING = "pending"
+    SUBMITTED = "submitted"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
+class HRDocumentRequest(Document):
+    """HR-initiated request for an employee to provide a specific document.
+
+    A request is NOT a document — it is a distinct entity that may later be
+    fulfilled by an employee upload (linked via ``fulfilled_document_id``).
+    """
+
+    company_id: Indexed(str)
+    employee_id: Indexed(str)
+
+    document_type_id: Optional[str] = None
+    document_type_name: str
+
+    requirement_level: HRRequestRequirementLevel = HRRequestRequirementLevel.MANDATORY
+    priority: HRRequestPriority = HRRequestPriority.NORMAL
+    instructions: Optional[str] = None
+    due_date: Optional[datetime] = None
+
+    status: HRRequestStatus = HRRequestStatus.PENDING
+
+    requested_by: str  # User ID of the HR/Admin who made the request
+    requested_at: datetime = Field(default_factory=utc_now)
+
+    submitted_at: Optional[datetime] = None
+    reviewed_at: Optional[datetime] = None
+
+    fulfilled_document_id: Optional[str] = None  # HRDocument.id once uploaded
+
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+    class Settings:
+        name = "hr_document_requests"
+        indexes = [
+            IndexModel([("company_id", ASCENDING), ("employee_id", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("employee_id", ASCENDING), ("document_type_id", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("due_date", ASCENDING)]),
+            IndexModel([("employee_id", ASCENDING), ("status", ASCENDING)]),
+        ]
+
+
 def build_owner_key(employee_id: Optional[str] = None, candidate_id: Optional[str] = None) -> Optional[str]:
     """Build the canonical owner key for exactly-one-owner documents."""
     if employee_id and candidate_id:

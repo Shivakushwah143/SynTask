@@ -35,14 +35,14 @@ import { normalizeRole } from '../utils/roles'
 // ── Status/Priority Colors ─────────────────────────────────────────────────
 
 const STATUS_COLORS = {
-  todo: 'bg-gray-100 text-gray-700',
-  assigned: 'bg-indigo-100 text-indigo-700',
-  in_progress: 'bg-blue-100 text-blue-700',
-  in_review: 'bg-yellow-100 text-yellow-700',
-  revision_required: 'bg-red-100 text-red-700',
-  approved: 'bg-emerald-100 text-emerald-700',
-  completed: 'bg-green-100 text-green-700',
-  cancelled: 'bg-gray-100 text-gray-500',
+  todo: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200',
+  assigned: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-200',
+  in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-200',
+  in_review: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/60 dark:text-yellow-200',
+  revision_required: 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-200',
+  approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-200',
+  completed: 'bg-green-100 text-green-700 dark:bg-green-950/60 dark:text-green-200',
+  cancelled: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
 }
 
 const PRIORITY_COLORS = {
@@ -53,22 +53,22 @@ const PRIORITY_COLORS = {
 }
 
 const WORKLOAD_COLORS = {
-  normal: 'bg-emerald-100 text-emerald-700',
-  high: 'bg-orange-100 text-orange-700',
-  overloaded: 'bg-red-100 text-red-700',
+  normal: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-200',
+  high: 'bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-200',
+  overloaded: 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-200',
 }
 
 const SEVERITY_COLORS = {
-  high: 'border-l-red-500 bg-red-50/50',
-  medium: 'border-l-amber-500 bg-amber-50/50',
-  low: 'border-l-blue-500 bg-blue-50/50',
+  high: 'border-l-red-500 bg-red-50/50 dark:border-[var(--color-app-border)] dark:bg-red-950/25',
+  medium: 'border-l-amber-500 bg-amber-50/50 dark:border-[var(--color-app-border)] dark:bg-amber-950/25',
+  low: 'border-l-blue-500 bg-blue-50/50 dark:border-[var(--color-app-border)] dark:bg-blue-950/25',
 }
 
 // ── Helper Components ──────────────────────────────────────────────────────
 
 function SummaryCard({ label, value, icon: Icon, color = 'text-primary-600', link }) {
   const content = (
-    <div className="rounded-lg border border-surface-border bg-surface p-3 shadow-sm transition hover:border-primary-300">
+    <div className="rounded-lg border border-surface-border bg-surface p-3 shadow-sm transition hover:border-primary-300 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:hover:border-primary-400">
       <div className="flex items-center gap-3">
         <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500/10 ${color}`}>
           <Icon className="h-4 w-4" aria-hidden="true" />
@@ -92,13 +92,13 @@ function TaskRow({ task, actionLabel, actionHref, showAssignee = false }) {
     : null
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-surface-border bg-surface px-3 py-2.5 shadow-sm transition hover:border-primary-300">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-surface-border bg-surface px-3 py-2.5 shadow-sm transition hover:border-primary-300 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:hover:border-primary-400">
       <div className="min-w-0 flex-1">
         <Link to={actionHref || `/tasks/${task.id}`} className="text-sm font-medium text-text-primary hover:text-primary-600 line-clamp-1">
           {task.title}
         </Link>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-text-muted">
-          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${STATUS_COLORS[task.status] || 'bg-gray-100 text-gray-600'}`}>
+          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${STATUS_COLORS[task.status] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
             {(task.status || '').replace(/_/g, ' ')}
           </span>
           <span className={`font-medium ${PRIORITY_COLORS[task.priority] || 'text-gray-500'}`}>
@@ -136,7 +136,7 @@ function SectionHeader({ title, count, viewAllLink }) {
 
 function EmptyState({ message }) {
   return (
-    <div className="rounded-lg border border-dashed border-surface-border bg-surface-muted p-6 text-center">
+    <div className="rounded-lg border border-dashed border-surface-border bg-surface-muted p-6 text-center dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-muted)]">
       <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
       <p className="mt-2 text-sm font-medium text-text-primary">{message}</p>
     </div>
@@ -176,7 +176,7 @@ function NextActionCard({ nextAction }) {
       <Link to={`/tasks/${nextAction.task_id}`} className="group block">
         <p className="text-base font-bold text-text-primary group-hover:text-primary-600">{nextAction.title}</p>
         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-text-muted">
-          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${STATUS_COLORS[nextAction.status] || 'bg-gray-100 text-gray-600'}`}>
+          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${STATUS_COLORS[nextAction.status] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
             {(nextAction.status || '').replace(/_/g, ' ')}
           </span>
           <span className={`font-medium ${PRIORITY_COLORS[nextAction.priority] || 'text-gray-500'}`}>
@@ -208,7 +208,7 @@ function AttentionItem({ item }) {
   return (
     <Link
       to={route}
-      className={`block rounded-lg border border-surface-border border-l-4 p-3 shadow-sm transition hover:border-primary-300 ${SEVERITY_COLORS[item.severity] || 'border-l-gray-300'}`}
+      className={`block rounded-lg border border-surface-border border-l-4 p-3 shadow-sm transition hover:border-primary-300 dark:border-[var(--color-app-border)] dark:hover:border-primary-400 ${SEVERITY_COLORS[item.severity] || 'border-l-gray-300 dark:bg-[var(--color-app-surface-muted)]'}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -225,7 +225,7 @@ function AttentionItem({ item }) {
 
 function WorkloadRow({ member }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-surface-border bg-surface px-3 py-2.5 shadow-sm">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-surface-border bg-surface px-3 py-2.5 shadow-sm dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-text-primary">{member.user_name}</p>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-text-muted">
@@ -236,7 +236,7 @@ function WorkloadRow({ member }) {
           {member.blocked > 0 && <span className="font-medium text-orange-600">{member.blocked} blocked</span>}
         </div>
       </div>
-      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${WORKLOAD_COLORS[member.workload_level] || 'bg-gray-100 text-gray-600'}`}>
+      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${WORKLOAD_COLORS[member.workload_level] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
         {member.workload_level}
       </span>
     </div>
@@ -444,7 +444,7 @@ function ManagerWorkOverview({ data }) {
               <Link
                 key={project.id}
                 to={`/projects/${project.project_id}/board`}
-                className="block rounded-lg border border-surface-border border-l-4 border-l-red-500 bg-red-50/50 p-3 shadow-sm transition hover:border-primary-300"
+                className="block rounded-lg border border-surface-border border-l-4 border-l-red-500 bg-red-50/50 p-3 shadow-sm transition hover:border-primary-300 dark:border-[var(--color-app-border)] dark:bg-red-950/25 dark:hover:border-primary-400"
               >
                 <p className="text-sm font-medium text-text-primary">{project.name}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-text-muted">
@@ -467,7 +467,7 @@ function ManagerWorkOverview({ data }) {
           <SectionHeader title="Pending Extensions" count={data.pending_extensions.length} />
           <div className="space-y-2">
             {data.pending_extensions.map((ext) => (
-              <div key={ext.id} className="rounded-lg border border-surface-border bg-surface p-3 shadow-sm">
+              <div key={ext.id} className="rounded-lg border border-surface-border bg-surface p-3 shadow-sm dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-text-primary">{ext.task_title}</p>
@@ -493,7 +493,7 @@ function ManagerWorkOverview({ data }) {
 
         {/* Management Attention - compact right side panel */}
         {data.management_attention?.length > 0 && (
-          <aside className="rounded-2xl border border-surface-border bg-surface p-3 shadow-sm lg:sticky lg:top-4 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto">
+          <aside className="rounded-2xl border border-surface-border bg-surface p-3 shadow-sm dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] lg:sticky lg:top-4 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto">
             <SectionHeader title="Management Attention" count={data.management_attention.length} />
             <div className="space-y-2">
               {data.management_attention.map((item, i) => (

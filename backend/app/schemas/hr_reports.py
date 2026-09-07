@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 class AttentionItem(BaseModel):
     """One actionable attention item on the dashboard."""
-    type: str  # e.g. "leave_pending", "correction_pending", "document_expiring", "probation_due", "payroll_blocked"
+    type: str  # e.g. "leave_pending", "correction_pending", "document_review_pending", "document_expiring", "probation_due", "payroll_blocked"
     label: str
     count: int
     severity: str = "info"  # info | warning | critical

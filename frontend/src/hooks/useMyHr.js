@@ -19,6 +19,7 @@ export const MY_HR_KEYS = {
   leaveBalances: ['my-hr', 'leave', 'balances'],
   leaveRequests: ['my-hr', 'leave', 'requests'],
   documents: ['my-hr', 'documents'],
+  documentRequests: ['my-hr', 'document-requests'],
   payslips: ['my-hr', 'payslips'],
   lifecycle: ['my-hr', 'lifecycle'],
 }
@@ -63,6 +64,10 @@ export const useMyDocuments = (options) =>
 export const useMyDocumentStatus = (options) =>
   useQuery(['my-hr', 'documents', 'status'], () => hrDocumentsApi.myDocumentStatus(), options)
 
+/** Employee's own document requests. */
+export const useMyDocumentRequests = (options) =>
+  useQuery(MY_HR_KEYS.documentRequests, () => hrDocumentsApi.listMyDocumentRequests(), options)
+
 export function useMyDocumentActions() {
   const queryClient = useQueryClient()
   return useMutation((formData) => hrDocumentsApi.uploadMyDocument(formData), {
@@ -70,9 +75,26 @@ export function useMyDocumentActions() {
       // The new pending submission must be visible immediately.
       queryClient.invalidateQueries(MY_HR_KEYS.documents)
       queryClient.invalidateQueries(['my-hr', 'documents', 'status'])
+      queryClient.invalidateQueries(MY_HR_KEYS.documentRequests)
       queryClient.invalidateQueries(MY_HR_KEYS.summary)
     },
   })
+}
+
+/** Upload a document against a specific document request. */
+export function useUploadForDocumentRequest() {
+  const queryClient = useQueryClient()
+  return useMutation(
+    ({ requestId, formData }) => hrDocumentsApi.uploadForDocumentRequest(requestId, formData),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(MY_HR_KEYS.documentRequests)
+        queryClient.invalidateQueries(MY_HR_KEYS.documents)
+        queryClient.invalidateQueries(['my-hr', 'documents', 'status'])
+        queryClient.invalidateQueries(MY_HR_KEYS.summary)
+      },
+    },
+  )
 }
 
 export const useMyPayslips = (options) =>

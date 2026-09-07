@@ -26,6 +26,7 @@ from app.schemas.employee_profile import (
     EmployeeProfileUpdate,
 )
 from app.services.employee_profile_service import (
+    can_view_employee_directory,
     create_profile,
     get_employee,
     list_employees,
@@ -40,20 +41,13 @@ def _role(user: User) -> UserRole:
 
 
 async def require_employee_view(current_user: User = Depends(get_current_user)) -> User:
-    """View access: company admins/managers + HR department staff."""
-    if _role(current_user) in (UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER):
-        return current_user
-    if not current_user.company_id or not current_user.department_id:
+    """View access: company admins/managers + HR department staff.
+
+    Delegates to the shared service check so the employee-detail service and
+    this dependency can never disagree about who may open a profile.
+    """
+    if not await can_view_employee_directory(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Employee directory access required")
-    department = await Department.get(current_user.department_id)
-    if (
-        not department
-        or department.company_id != current_user.company_id
-        or department.deleted_at is not None
-        or department.department_type != DepartmentType.HR
-    ):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Employee directory access required")
-    await require_capability("employee_management.view")(current_user)
     return current_user
 
 

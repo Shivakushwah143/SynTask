@@ -1108,7 +1108,8 @@ async def _attendance_history_records(
     user's own rows for every role, so a manager/admin's personal Attendance
     page can never leak other employees' records into their self view. The
     company-wide/team /history endpoint passes ``self_only=False`` and keeps
-    the existing role-based scoping for HR Reports.
+    role-based scoping for HR Reports. Managers can review their company's
+    attendance records; Leads remain limited to their reporting hierarchy.
     """
     company_id = current_user.company_id
 
@@ -1122,10 +1123,10 @@ async def _attendance_history_records(
         employee = await User.get(employee_id)
         if not employee or (current_user.role != UserRole.SUPER_ADMIN and employee.company_id != company_id):
             raise HTTPException(status_code=404, detail="Employee not found")
-        if current_user.role in [UserRole.MANAGER, UserRole.LEAD] and not await user_can_monitor(current_user, employee):
+        if current_user.role == UserRole.LEAD and not await user_can_monitor(current_user, employee):
             raise HTTPException(status_code=403, detail="You are not allowed to view this employee")
         query["employee_id"] = employee_id
-    elif current_user.role in [UserRole.MANAGER, UserRole.LEAD]:
+    elif current_user.role == UserRole.LEAD:
         query["employee_id"] = {"$in": [str(user.id) for user in await get_monitorable_users(current_user)]}
 
     if status:
@@ -1186,7 +1187,7 @@ async def get_attendance_history(
     status: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user)
 ):
-    """Fetch attendance record history logs (HR/company or team scoped)."""
+    """Fetch attendance history (company-scoped for managers, team-scoped for leads)."""
     records = await _attendance_history_records(
         current_user,
         start_date,

@@ -416,6 +416,14 @@ class TestRealPermissions:
                 await assert_actor_for_action(action, actor, task, None)
 
     @pytest.mark.asyncio
+    async def test_manager_can_submit_task_for_review(self):
+        from app.services.task_workflow import assert_actor_for_action
+        task = _make_task(assigned_to="user-1", reviewer_id="user-2")
+        actor = _make_user(id="manager-1", role=UserRole.MANAGER)
+        with patch("app.services.task_workflow.load_task_project", new_callable=AsyncMock, return_value=None):
+            await assert_actor_for_action("submit_review", actor, task, None)
+
+    @pytest.mark.asyncio
     async def test_cross_company_user_denied(self):
         from app.services.task_workflow import transition_task
         from fastapi import HTTPException
@@ -723,8 +731,12 @@ class TestEffectiveReviewRequired:
         assert effective_review_required(task) is True
 
     def test_explicit_false(self):
-        task = _make_task(review_required=False)
+        task = _make_task(review_required=False, project_id="PROJ-001")
         assert effective_review_required(task) is False
+
+    def test_legacy_standalone_explicit_false_still_requires_review(self):
+        task = _make_task(review_required=False, project_id=None)
+        assert effective_review_required(task) is True
 
     def test_sales_followup_bypasses(self):
         task = _make_task(review_required=None, source_type="sales_follow_up")
@@ -734,9 +746,13 @@ class TestEffectiveReviewRequired:
         task = _make_task(review_required=None, project_id="PROJ-001")
         assert effective_review_required(task) is True
 
-    def test_no_project_no_review_required(self):
+    def test_standalone_task_requires_review_by_default(self):
         task = _make_task(review_required=None, project_id=None, source_type=None)
-        assert effective_review_required(task) is False
+        assert effective_review_required(task) is True
+
+    def test_standalone_in_progress_can_submit_for_review(self):
+        task = _make_task(status=TaskStatus.IN_PROGRESS, review_required=None, project_id=None)
+        assert allowed_transition(TaskStatus.IN_PROGRESS, TaskStatus.IN_REVIEW, task, review_required=effective_review_required(task))
 
 
 # ===========================================================================

@@ -161,7 +161,7 @@ export const attendanceAPI = {
     return response.data
   },
 
-  // ── eTimeOffice employee mapping (HR-admin only) ────────────────────────
+  // ── eTimeOffice employee mapping (company admins and managers) ──────────
   getEtimeOfficeMappings: async (refreshDirectory = false) => {
     const params = new URLSearchParams()
     if (refreshDirectory) params.append('refresh', 'true')

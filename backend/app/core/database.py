@@ -8,7 +8,7 @@ import logging
 from app.core.config import settings
 from app.models.user import User, SuperAdmin, CompanyAdmin, Admin, Manager, Lead, Employee
 from app.models.employee_profile import EmployeeProfile
-from app.models.hr_document import HRDocument, HRDocumentType, HRDocumentVersion
+from app.models.hr_document import HRDocument, HRDocumentRequest, HRDocumentType, HRDocumentVersion
 from app.models.company import Company, Subscription
 from app.models.crm_company import CRMCompany
 from app.models.crm_activity import CRMActivity
@@ -26,6 +26,7 @@ from app.models.task import Task, TaskComment, TaskExtensionRequest
 from app.models.ticket import Ticket, TicketComment
 from app.models.notification import Notification
 from app.models.project import Project, Epic, Sprint, ProjectTypeConfiguration
+from app.models.work_evidence import ProjectResource, TaskProof
 from app.models.scheduled_job import ScheduledJob, ScheduledJobOccurrence
 from app.models.work_request import WorkRequest
 from app.models.project_template import ProjectTemplate, TemplateTask, TemplateTaskChecklistItem
@@ -328,6 +329,7 @@ async def init_db():
                 HRDocumentType,
                 HRDocument,
                 HRDocumentVersion,
+                HRDocumentRequest,
                 Company,
                 CRMCompany,
                 CRMActivity,
@@ -352,6 +354,8 @@ async def init_db():
                 Notification,
                 Project,
                 ProjectTypeConfiguration,
+                ProjectResource,
+                TaskProof,
                 ScheduledJob,
                 ScheduledJobOccurrence,
                 WorkRequest,

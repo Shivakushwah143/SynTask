@@ -140,6 +140,10 @@ export default function Leaves() {
     return item ? `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email : 'All employees'
   }, [filters.employee_id, users])
 
+  const leaveTypeOptions = useMemo(() => leaveTypes
+    .map((type) => [type.id || type.code || type.key, type.name || type.label || type.title])
+    .filter(([value, label]) => value && label), [leaveTypes])
+
   const forwardTargets = useMemo(() => {
     const currentUserId = String(user?.id || '')
     const requesterId = String(actionState.leave?.employee_id || '')
@@ -688,7 +692,7 @@ export default function Leaves() {
                   value={form.leave_type} 
                   onChange={(event) => setForm({ ...form, leave_type: event.target.value })}
                 >
-                  {LEAVE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  {leaveTypeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
               </FormField>
               <div className="grid gap-2.5 sm:grid-cols-2">
@@ -743,7 +747,7 @@ export default function Leaves() {
                 <h3 className="text-sm font-bold text-gray-900 dark:text-white">Leave Types</h3>
               </div>
               <div className="mt-2.5 grid grid-cols-2 gap-1.5">
-                {LEAVE_TYPES.map(([value, label]) => (
+                {leaveTypeOptions.map(([value, label]) => (
                   <div key={value} className="flex items-center justify-between gap-1 rounded-lg bg-white/70 px-2 py-1.5 text-xs dark:bg-gray-900/40">
                     <span className="font-medium text-gray-800 dark:text-gray-200">{label}</span>
                     <span className="truncate text-[10px] text-gray-400 dark:text-gray-500">{value.replace(/_/g, ' ')}</span>
