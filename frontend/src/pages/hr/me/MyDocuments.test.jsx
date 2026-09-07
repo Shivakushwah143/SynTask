@@ -7,7 +7,9 @@ vi.mock('../../../hooks/useMyHr', () => ({
   useMyProfile: vi.fn(),
   useMyDocuments: vi.fn(),
   useMyDocumentStatus: vi.fn(),
+  useMyDocumentRequests: vi.fn(),
   useMyDocumentActions: vi.fn(),
+  useUploadForDocumentRequest: vi.fn(),
 }))
 
 vi.mock('react-hot-toast', () => ({
@@ -22,9 +24,11 @@ import toast from 'react-hot-toast'
 import { hrDocumentFiles } from '../../../api/hrDocuments'
 import {
   useMyDocumentActions,
+  useMyDocumentRequests,
   useMyDocumentStatus,
   useMyDocuments,
   useMyProfile,
+  useUploadForDocumentRequest,
 } from '../../../hooks/useMyHr'
 
 const profile = { id: 'p-1', full_name: 'Jane Doe' }
@@ -95,6 +99,16 @@ beforeEach(() => {
   useMyDocumentActions.mockReturnValue({
     isLoading: false,
     mutateAsync: vi.fn().mockResolvedValue({ id: 'doc-new' }),
+  })
+  useMyDocumentRequests.mockReturnValue({
+    data: { items: [], total: 0 },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  })
+  useUploadForDocumentRequest.mockReturnValue({
+    isLoading: false,
+    mutateAsync: vi.fn().mockResolvedValue({ id: 'doc-req' }),
   })
 })
 

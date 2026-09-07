@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
   AlertCircle,
@@ -20,7 +20,7 @@ import { useMyDocumentActions, useMyDocumentRequests, useMyDocumentStatus, useMy
 import { Button, EmptyState, Modal, Skeleton, inputClassName } from '../../../components/ui'
 import { downloadBlob, getDownloadFilename } from '../../../utils/download'
 import { EXPIRY_STATE_META, formatDate } from './myHrUtils'
-import { REVIEW_STATUS_META, formatFileSize, isPreviewable } from '../../../modules/hr/recruitment/utils/documents'
+import { REVIEW_STATUS_META, documentFileErrorMessage, formatFileSize, isPreviewable } from '../../../modules/hr/recruitment/utils/documents'
 
 const reviewBadge = (status) => {
   const conf = REVIEW_STATUS_META[status] || REVIEW_STATUS_META.missing
@@ -173,7 +173,8 @@ const MyDocuments = () => {
       setPreviewMime(mime)
       setPreviewUrl(window.URL.createObjectURL(response.data))
     } catch (err) {
-      setPreviewError(err?.response?.data?.detail || 'Unable to preview this document. You may not have permission.')
+      // Blob responses hide the backend detail; decode it for a useful message.
+      setPreviewError(await documentFileErrorMessage(err, 'Unable to preview this document. You may not have permission.'))
     } finally {
       setPreviewLoading(false)
     }
@@ -188,9 +189,17 @@ const MyDocuments = () => {
       )
       downloadBlob(response.data, filename)
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Failed to download document')
+      toast.error(await documentFileErrorMessage(err, 'Failed to download document'))
     }
   }
+
+  // Revoke the preview object URL when the modal closes or this page unmounts.
+  useEffect(() => {
+    return () => {
+      if (previewUrl) window.URL.revokeObjectURL(previewUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewUrl])
 
   const refetchAll = () => {
     refetchDocs()
@@ -554,7 +563,13 @@ const MyDocuments = () => {
       {/* ── Preview modal ────────────────────────────────────────────────── */}
       <Modal
         isOpen={Boolean(preview)}
-        onClose={() => setPreview(null)}
+        onClose={() => {
+          setPreview(null)
+          // Dropping the URL triggers the effect cleanup that revokes it.
+          setPreviewUrl(null)
+          setPreviewMime(null)
+          setPreviewError(null)
+        }}
         title="Document Preview"
         description={preview?.filename}
         size="xl"

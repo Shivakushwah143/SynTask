@@ -57,11 +57,14 @@ export const hrDocumentsApi = {
 }
 
 /** Authorized file access — fetched as blobs so previews/downloads carry the
- *  auth headers and confidential files are never exposed through raw URLs. */
+ *  auth headers and confidential files are never exposed through raw URLs.
+ *  The backend streams the stored bytes through SynTask (no cross-origin
+ *  redirect), so failures arrive as JSON error bodies inside the Blob.
+ *  suppressGlobalToast lets each page surface one contextual message. */
 export const hrDocumentFiles = {
-  preview: (id) => api.get(`/hr/documents/${id}/preview`, { responseType: 'blob' }),
-  download: (id) => api.get(`/hr/documents/${id}/download`, { responseType: 'blob' }),
-  downloadVersion: (id, versionId) => api.get(`/hr/documents/${id}/versions/${versionId}/download`, { responseType: 'blob' }),
+  preview: (id) => api.get(`/hr/documents/${id}/preview`, { responseType: 'blob', suppressGlobalToast: true }),
+  download: (id) => api.get(`/hr/documents/${id}/download`, { responseType: 'blob', suppressGlobalToast: true }),
+  downloadVersion: (id, versionId) => api.get(`/hr/documents/${id}/versions/${versionId}/download`, { responseType: 'blob', suppressGlobalToast: true }),
 }
 
 /** Build a multipart FormData body for uploads/replacements. */

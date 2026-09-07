@@ -31,6 +31,7 @@ import {
   REVIEW_STATUS_META,
   SUBMISSION_SOURCE_LABELS,
   VISIBILITY_OPTIONS,
+  documentFileErrorMessage,
   formatFileSize,
   isPreviewable,
   previewBlobUrl,
@@ -196,7 +197,8 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
       const response = await hrDocumentFiles.preview(document.id)
       setPreviewUrl(previewBlobUrl(response.data))
     } catch (error) {
-      setPreviewError(error?.response?.data?.detail || 'Unable to preview this document. You may not have permission.')
+      // Blob responses hide the backend detail; decode it for a useful message.
+      setPreviewError(await documentFileErrorMessage(error, 'Unable to preview this document. You may not have permission.'))
     } finally {
       setPreviewLoading(false)
     }
@@ -222,7 +224,7 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
       link.remove()
       window.URL.revokeObjectURL(url)
     } catch (error) {
-      toast.error(error?.response?.data?.detail || 'Failed to download document')
+      toast.error(await documentFileErrorMessage(error, 'Failed to download document'))
     }
   }
 
@@ -246,7 +248,7 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
       link.remove()
       window.URL.revokeObjectURL(url)
     } catch (error) {
-      toast.error(error?.response?.data?.detail || 'Failed to download this version')
+      toast.error(await documentFileErrorMessage(error, 'Failed to download this version'))
     }
   }
 
@@ -797,7 +799,12 @@ export default function DocumentsTab({ employeeId, candidateId, ownerName, canMa
       {/* ── Preview modal ─────────────────────────────────────────────────── */}
       <Modal
         isOpen={Boolean(previewDoc)}
-        onClose={() => setPreviewDoc(null)}
+        onClose={() => {
+          setPreviewDoc(null)
+          // Dropping the URL triggers the effect cleanup that revokes it.
+          setPreviewUrl(null)
+          setPreviewError(null)
+        }}
         title={previewDoc?.filename || 'Preview'}
         description={previewDoc ? `${previewDoc.document_type || ''} · V${previewDoc.current_version || 1}` : undefined}
         size="xl"

@@ -28,6 +28,7 @@ from typing import Optional
 from bson import ObjectId
 from fastapi import HTTPException, UploadFile, status
 from pymongo import ReturnDocument
+from urllib.parse import quote
 
 from app.api.v1.endpoints.files import resolve_upload_path
 from app.core.clock import utc_now
@@ -1331,11 +1332,11 @@ async def submit_employee_document(
             ),
         )
 
-    stored = await _store_hr_file(file)
-
     if existing:
         # Resubmission: next version, reset review to pending. Previous versions
-        # (including the rejected one with its reason) stay in history.
+        # (including the rejected one with its reason) stay in history. The file
+        # is stored exactly once here (inside _store_and_increment_version) — a
+        # second read of the same UploadFile would see an empty stream.
         document = existing[0]
         version = await _store_and_increment_version(company_id, document, actor, file)
         _set_review_state(version, submission_source=HRSubmissionSource.EMPLOYEE, review_status=HRReviewStatus.PENDING)
@@ -1354,6 +1355,7 @@ async def submit_employee_document(
         return await serialize_document(document, context=context, can_manage=False)
 
     # Brand-new submission → V1 document created pending review.
+    stored = await _store_hr_file(file)
     version = _build_version_from_stored(
         stored,
         company_id=company_id,
@@ -1736,46 +1738,116 @@ async def get_version_for_download(company_id: str, document_id: str, version_id
     return version
 
 
-def build_file_response(version: HRDocumentVersion, *, download: bool = False):
-    """Return a secure file response (stream/redirect) for a stored version.
+def _file_content_disposition(filename: str, *, download: bool) -> str:
+    """Build a Content-Disposition header (same encoding rules as Starlette's
+    ``FileResponse``): ASCII filenames are quoted; anything else (spaces, non-
+    ASCII, ...) is percent-encoded behind ``filename*=utf-8''...``."""
+    quoted = quote(filename or "document")
+    disposition = "attachment" if download else "inline"
+    if quoted != (filename or "document"):
+        return f"{disposition}; filename*=utf-8''{quoted}"
+    return f'{disposition}; filename="{filename or "document"}"'
 
-    - Local storage: FileResponse (inline for preview, attachment for download).
-    - Cloudinary authenticated: redirect to a short-lived signed URL.
-    - Cloudinary public: redirect to the stored secure URL.
+
+async def build_file_response(version: HRDocumentVersion, *, download: bool = False):
+    """Return a secure file response for a stored version (backend-controlled).
+
+    - Local storage: ``FileResponse`` (inline for preview, attachment for
+      download).
+    - Cloudinary: the file bytes are fetched SERVER-SIDE and streamed back to
+      the client. The browser never follows a cross-origin redirect to
+      Cloudinary (that broke preview/download when the blob request was
+      redirected to a signed delivery URL), and signed URLs / credentials are
+      never exposed to the client.
+
     Authorization is enforced BEFORE this function is reached.
     """
-    from fastapi.responses import FileResponse, RedirectResponse
+    from fastapi.responses import FileResponse, StreamingResponse
+
+    filename = version.original_filename or "document"
+    media_type = version.mime_type or "application/octet-stream"
 
     if version.storage_provider == "cloudinary" and version.storage_reference:
-        if CloudinaryStorage.enabled():
-            if version.storage_delivery_type == "authenticated":
-                url = CloudinaryStorage.signed_url(
-                    version.storage_reference,
-                    resource_type=version.storage_resource_type or "image",
-                    delivery_type=version.storage_delivery_type or "authenticated",
-                    attachment=download,
-                    storage_url=version.storage_url,
-                )
-                if url:
-                    return RedirectResponse(url)
-            if version.storage_url:
-                separator = "&" if "?" in version.storage_url else "?"
-                suffix = "fl_attachment" if download else None
-                return RedirectResponse(version.storage_url + (f"{separator}{suffix}" if suffix else ""))
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stored file is not available")
+        resource_type = version.storage_resource_type or "image"
+        delivery_type = version.storage_delivery_type or "authenticated"
+        if not CloudinaryStorage.enabled():
+            logger.error(
+                "HR document storage provider is not configured | document_id=%s "
+                "version_id=%s provider=cloudinary resource_type=%s delivery_type=%s",
+                version.document_id,
+                version.id,
+                resource_type,
+                delivery_type,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="The stored file could not be found. Please contact your HR administrator.",
+            )
+
+        resp = CloudinaryStorage.download_response(
+            version.storage_reference,
+            resource_type=resource_type,
+            delivery_type=delivery_type,
+            storage_url=version.storage_url,
+        )
+        if resp is None:
+            logger.error(
+                "HR document cloudinary delivery unavailable | document_id=%s "
+                "version_id=%s provider=cloudinary resource_type=%s delivery_type=%s",
+                version.document_id,
+                version.id,
+                resource_type,
+                delivery_type,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="The stored file could not be found. Please contact your HR administrator.",
+            )
+
+        def _iter_cloudinary_chunks():
+            try:
+                for chunk in resp.iter_content(chunk_size=64 * 1024):
+                    if chunk:
+                        yield chunk
+            finally:
+                resp.close()
+
+        return StreamingResponse(
+            _iter_cloudinary_chunks(),
+            media_type=media_type,
+            headers={"Content-Disposition": _file_content_disposition(filename, download=download)},
+        )
 
     if not version.storage_reference:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stored file is not available")
+        logger.warning(
+            "HR document version has no stored file reference | document_id=%s version_id=%s provider=%s",
+            version.document_id,
+            version.id,
+            version.storage_provider,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="The stored file could not be found. Please contact your HR administrator.",
+        )
     try:
         path = resolve_upload_path(FileService.resolve_upload_dir(), version.storage_reference)
     except HTTPException as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stored file is not available") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid stored file path") from exc
     if not path.exists() or not path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stored file is not available")
+        logger.error(
+            "HR document stored file missing on disk | document_id=%s version_id=%s provider=local path=%s",
+            version.document_id,
+            version.id,
+            path,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="The stored file could not be found. Please contact your HR administrator.",
+        )
     return FileResponse(
         path=path,
-        media_type=version.mime_type or "application/octet-stream",
-        filename=version.original_filename or Path(path).name,
+        media_type=media_type,
+        filename=filename,
         content_disposition_type="attachment" if download else "inline",
     )
 

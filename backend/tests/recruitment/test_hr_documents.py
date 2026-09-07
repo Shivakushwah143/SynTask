@@ -308,6 +308,22 @@ class FakeHRDocumentVersion(FakeModel):
     change_note = None
 
 
+class FakeHRDocumentRequest(FakeModel):
+    _all = []
+    _by_id = {}
+    company_id = None
+    employee_id = None
+    document_type_name = None
+    document_type_id = None
+    fulfilled_document_id = None
+    status = None
+    requested_by = None
+    submitted_at = None
+    reviewed_at = None
+    priority = None
+    requirement_level = None
+
+
 class FakeUser(FakeModel):
     _all = []
     _by_id = {}
@@ -357,7 +373,7 @@ class FakeUploadFile:
 
 
 def _install_models(monkeypatch, tmp_path):
-    for cls in (FakeHRDocumentType, FakeHRDocument, FakeHRDocumentVersion, FakeUser, FakeEmployeeProfile, FakeCandidate, FakeDepartment):
+    for cls in (FakeHRDocumentType, FakeHRDocument, FakeHRDocumentVersion, FakeHRDocumentRequest, FakeUser, FakeEmployeeProfile, FakeCandidate, FakeDepartment):
         cls._all = []
         cls._by_id = {}
     FakeHRDocument.collection = FakeCollection(FakeHRDocument)
@@ -366,6 +382,7 @@ def _install_models(monkeypatch, tmp_path):
     monkeypatch.setattr(svc, "HRDocumentType", FakeHRDocumentType)
     monkeypatch.setattr(svc, "HRDocument", FakeHRDocument)
     monkeypatch.setattr(svc, "HRDocumentVersion", FakeHRDocumentVersion)
+    monkeypatch.setattr(svc, "HRDocumentRequest", FakeHRDocumentRequest)
     monkeypatch.setattr(svc, "User", FakeUser)
     monkeypatch.setattr(svc, "EmployeeProfile", FakeEmployeeProfile)
     monkeypatch.setattr(svc, "Candidate", FakeCandidate)
@@ -1298,6 +1315,59 @@ async def test_employee_submit_accepts_optional_expiry_for_any_type(monkeypatch,
 
 
 @pytest.mark.asyncio
+async def test_employee_resubmit_reads_uploaded_file_only_once(monkeypatch, tmp_path):
+    """Resubmitting a rejected document must not fail with 'Uploaded file is empty'.
+
+    A real UploadFile stream moves to EOF after the first read. The resubmit
+    path used to store the file twice (an unused probe upload followed by the
+    new version), so the second read saw an empty stream and raised HTTP 400.
+    The fake below models that stream behavior — it only yields content once.
+    """
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(profile_id="p-1")
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+
+    submitted = await svc.submit_employee_document(
+        "company-1", employee,
+        document_type_id=pan.id,
+        file=FakeUploadFile(b"%PDF-1.4 v1", "pan-v1.pdf"),
+    )
+    await svc.review_document(
+        "company-1", _make_admin(), submitted["id"], action="reject", note="Blurry scan — please resubmit"
+    )
+
+    class SpentAfterFirstRead:
+        """Mirrors a real UploadFile: reading past the first call returns b''."""
+
+        def __init__(self, content: bytes, filename: str):
+            self.content = content
+            self.filename = filename
+            self._consumed = False
+
+        async def read(self):
+            if self._consumed:
+                return b""
+            self._consumed = True
+            return self.content
+
+    resubmitted = await svc.submit_employee_document(
+        "company-1", employee,
+        document_type_id=pan.id,
+        file=SpentAfterFirstRead(b"%PDF-1.4 v2", "pan-v2.pdf"),
+    )
+
+    # Same document gets V2 pending review — no 400, previous version kept.
+    assert resubmitted["id"] == submitted["id"]
+    assert resubmitted["current_version"] == 2
+    assert resubmitted["review_status"] == "pending"
+    versions = await svc.list_versions("company-1", submitted["id"], _make_admin())
+    assert [v["version_number"] for v in versions] == [2, 1]
+    assert versions[1]["review_status"] == "rejected"
+
+
+@pytest.mark.asyncio
 async def test_employee_submit_requires_employee_profile(monkeypatch, tmp_path):
     """Self endpoints resolve identity server-side: an actor with no Employee
     Profile (or acting outside their own company) can never upload for someone
@@ -1716,3 +1786,225 @@ async def test_review_cross_company_and_missing_document_denied(monkeypatch, tmp
     with pytest.raises(HTTPException) as exc:
         await svc.review_document("company-1", admin, "does-not-exist", action="approve")
     assert exc.value.status_code == 404
+
+
+# =============================================================================
+# File delivery (preview/download) — the actual stored bytes must stream back
+# through the SynTask backend (no cross-origin redirect to Cloudinary).
+# =============================================================================
+
+
+async def _read_response_body(response):
+    """Read the full body of a streaming (or local FileResponse) response.
+
+    ``StreamingResponse`` exposes ``body_iterator``; ``FileResponse`` streams
+    inside its own ``__call__``, so read its file directly instead.
+    """
+    from fastapi.responses import FileResponse
+
+    if hasattr(response, "body_iterator"):
+        return b"".join([chunk async for chunk in response.body_iterator])
+    if isinstance(response, FileResponse):
+        return Path(response.path).read_bytes()
+    return b""
+
+
+@pytest.mark.asyncio
+async def test_pdf_preview_inline_and_download_attachment_stream_stored_bytes(monkeypatch, tmp_path):
+    """Preview returns the exact uploaded bytes inline; download returns the
+    same bytes with an attachment disposition carrying the original filename."""
+    from fastapi.responses import FileResponse
+
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(user_id="u-1", profile_id="p-1")
+    admin = _make_admin()
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+    content = b"%PDF-1.4\n%%EOF my-pan-card"
+    submitted = await svc.submit_employee_document(
+        "company-1", employee, document_type_id=pan.id, file=FakeUploadFile(content, "my-pan.pdf")
+    )
+
+    # Employee previews their own submission inline.
+    version = await svc.get_current_version("company-1", submitted["id"], employee)
+    preview = await svc.build_file_response(version, download=False)
+    assert isinstance(preview, FileResponse)
+    assert preview.media_type == "application/pdf"
+    assert "inline" in preview.headers["content-disposition"]
+    assert "my-pan.pdf" in preview.headers["content-disposition"]
+    assert await _read_response_body(preview) == content
+
+    # HR/admin downloads the same current version as an attachment.
+    version = await svc.get_current_version("company-1", submitted["id"], admin)
+    download = await svc.build_file_response(version, download=True)
+    assert isinstance(download, FileResponse)
+    assert "attachment" in download.headers["content-disposition"]
+    assert "my-pan.pdf" in download.headers["content-disposition"]
+    assert await _read_response_body(download) == content
+
+
+@pytest.mark.asyncio
+async def test_image_preview_streams_stored_bytes(monkeypatch, tmp_path):
+    """Image uploads preview inline with the correct content type."""
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(user_id="u-1", profile_id="p-1")
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+    png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR-fake-png-bytes"
+    submitted = await svc.submit_employee_document(
+        "company-1", employee, document_type_id=pan.id, file=FakeUploadFile(png, "pan-card.png")
+    )
+    version = await svc.get_current_version("company-1", submitted["id"], employee)
+    response = await svc.build_file_response(version, download=False)
+    assert response.media_type == "image/png"
+    assert "inline" in response.headers["content-disposition"]
+    assert await _read_response_body(response) == png
+
+
+@pytest.mark.asyncio
+async def test_docx_is_not_previewable_but_downloads_with_correct_type(monkeypatch, tmp_path):
+    """DOCX is never offered for browser preview but downloads as an attachment
+    with the stored MIME type and the original filename."""
+    from fastapi.responses import FileResponse
+
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(user_id="u-1", profile_id="p-1")
+    admin = _make_admin()
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+    # DOCX content with the real Office Open XML MIME type.
+    svc.FileService.detect_mime_type = staticmethod(
+        lambda content, filename: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        if Path(filename).suffix.lower() == ".docx"
+        else ("application/pdf" if Path(filename).suffix.lower() in (".pdf", ".doc") else "image/png")
+    )
+    docx = b"PK\x03\x04 fake-docx-package"
+    submitted = await svc.submit_employee_document(
+        "company-1", employee, document_type_id=pan.id, file=FakeUploadFile(docx, "experience-letter.docx")
+    )
+
+    # Serialized document: no preview offered, download allowed.
+    detail = await svc.get_document("company-1", submitted["id"], admin)
+    assert detail["can_preview"] is False
+    assert detail["can_download"] is True
+    assert detail["mime_type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+    version = await svc.get_current_version("company-1", submitted["id"], admin)
+    download = await svc.build_file_response(version, download=True)
+    assert isinstance(download, FileResponse)
+    assert download.media_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    assert "attachment" in download.headers["content-disposition"]
+    assert "experience-letter.docx" in download.headers["content-disposition"]
+    assert await _read_response_body(download) == docx
+
+
+@pytest.mark.asyncio
+async def test_missing_stored_file_returns_clear_404(monkeypatch, tmp_path):
+    """When the physical file is gone, preview/download fail with a controlled
+    404 and a helpful message instead of an unhandled 500."""
+    _install_models(monkeypatch, tmp_path)
+    _install_storage(monkeypatch, tmp_path)
+    _install_permissions(monkeypatch)
+    employee, profile = _make_employee(user_id="u-1", profile_id="p-1")
+    pan = await FakeHRDocumentType.find_one({"code": "pan"})
+    submitted = await svc.submit_employee_document(
+        "company-1", employee, document_type_id=pan.id, file=FakeUploadFile(b"%PDF-1.4 gone", "gone.pdf")
+    )
+    version = await svc.get_current_version("company-1", submitted["id"], employee)
+
+    # Delete the physical file behind the version's back.
+    from app.api.v1.endpoints.files import resolve_upload_path
+
+    path = resolve_upload_path(svc.FileService.resolve_upload_dir(), version.storage_reference)
+    assert path.is_file()
+    path.unlink()
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.build_file_response(version, download=True)
+    assert exc.value.status_code == 404
+    assert "could not be found" in exc.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_cloudinary_documents_are_streamed_through_the_backend(monkeypatch):
+    """Cloudinary-stored HR documents are fetched server-side and streamed back
+    (never a browser redirect), with correct content type + disposition."""
+    from types import SimpleNamespace
+
+    from fastapi.responses import StreamingResponse
+
+    version = SimpleNamespace(
+        document_id="doc-1",
+        id="ver-1",
+        storage_provider="cloudinary",
+        storage_reference="syntask/hr/documents/abc123-cloud-pan",
+        storage_url="https://res.cloudinary.com/demo/image/authenticated/s--old--/v1788772577/syntask/hr/documents/abc123-cloud-pan.jpg",
+        storage_resource_type="image",
+        storage_delivery_type="authenticated",
+        mime_type="application/pdf",
+        original_filename="cloud-pan.pdf",
+    )
+
+    captured = {}
+
+    class _FakeUpstream:
+        def __init__(self, chunks):
+            self.chunks = chunks
+            self.closed = False
+
+        def iter_content(self, chunk_size=65536):
+            yield from self.chunks
+
+        def close(self):
+            self.closed = True
+
+    fake_upstream = _FakeUpstream([b"%PDF-1.4 ", b"part-two"])
+
+    def _fake_download_response(public_id, **kwargs):
+        captured["public_id"] = public_id
+        captured.update(kwargs)
+        return fake_upstream
+
+    monkeypatch.setattr(svc.CloudinaryStorage, "enabled", staticmethod(lambda: True))
+    monkeypatch.setattr(svc.CloudinaryStorage, "download_response", staticmethod(_fake_download_response))
+
+    response = await svc.build_file_response(version, download=False)
+    assert isinstance(response, StreamingResponse)
+    assert response.media_type == "application/pdf"
+    assert response.headers["content-disposition"].startswith("inline")
+    assert "cloud-pan.pdf" in response.headers["content-disposition"]
+    assert await _read_response_body(response) == b"%PDF-1.4 part-two"
+    assert fake_upstream.closed is True
+    assert captured["public_id"] == "syntask/hr/documents/abc123-cloud-pan"
+    assert captured["resource_type"] == "image"
+    assert captured["delivery_type"] == "authenticated"
+    assert captured["storage_url"] == version.storage_url
+
+
+@pytest.mark.asyncio
+async def test_cloudinary_document_unavailable_returns_clear_404(monkeypatch):
+    """If the Cloudinary fetch fails server-side, the caller gets a controlled
+    404 with a useful message (never an unhandled 500)."""
+    from types import SimpleNamespace
+
+    version = SimpleNamespace(
+        document_id="doc-1",
+        id="ver-1",
+        storage_provider="cloudinary",
+        storage_reference="syntask/hr/documents/missing-doc",
+        storage_url=None,
+        storage_resource_type="image",
+        storage_delivery_type="authenticated",
+        mime_type="application/pdf",
+        original_filename="missing.pdf",
+    )
+    monkeypatch.setattr(svc.CloudinaryStorage, "enabled", staticmethod(lambda: True))
+    monkeypatch.setattr(svc.CloudinaryStorage, "download_response", staticmethod(lambda *a, **k: None))
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.build_file_response(version, download=True)
+    assert exc.value.status_code == 404
+    assert "could not be found" in exc.value.detail.lower()

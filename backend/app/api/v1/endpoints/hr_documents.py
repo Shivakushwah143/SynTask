@@ -476,7 +476,7 @@ async def preview_document_endpoint(
 ):
     """Authorized inline file access for browser-native preview."""
     version = await get_current_version(_company_id(current_user), document_id, current_user)
-    return build_file_response(version, download=False)
+    return await build_file_response(version, download=False)
 
 
 @router.get("/documents/{document_id}/download")
@@ -486,7 +486,7 @@ async def download_document_endpoint(
 ):
     """Authorized current-version download with a safe filename header."""
     version = await get_current_version(_company_id(current_user), document_id, current_user)
-    return build_file_response(version, download=True)
+    return await build_file_response(version, download=True)
 
 
 @router.get("/documents/{document_id}/versions/{version_id}/download")
@@ -497,7 +497,7 @@ async def download_document_version_endpoint(
 ):
     """Authorized download of a specific historical version."""
     version = await get_version_for_download(_company_id(current_user), document_id, version_id, current_user)
-    return build_file_response(version, download=True)
+    return await build_file_response(version, download=True)
 
 
 # =============================================================================
