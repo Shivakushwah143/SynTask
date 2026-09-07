@@ -321,6 +321,49 @@ class QueryGate:
         conversation_history: list[dict[str, str]] | None = None,
     ) -> QueryGateResult:
         """Classify the query and return the execution path."""
+        from app.ai.observability import tracer as ai_tracer
+
+        trace = ai_tracer.get_current_trace()
+        span = None
+        if trace is not None:
+            span = ai_tracer.start_span("QUERY_GATE", "query_gate.classify")
+        try:
+            result = await self._classify_impl(
+                message=message,
+                company_id=company_id,
+                user_role=user_role,
+                conversation_history=conversation_history,
+            )
+        except Exception as exc:
+            if span is not None:
+                ai_tracer.end_span(
+                    span,
+                    status="FAILED",
+                    error_type=type(exc).__name__,
+                    error_message=f"{type(exc).__name__}: {exc}",
+                )
+            raise
+        if span is not None:
+            ai_tracer.end_span(
+                span,
+                attrs={
+                    "path": result.path.value,
+                    "confidence": round(float(result.confidence), 3),
+                    "reason": result.reason,
+                    "fast_fact_handler": result.fast_fact_handler,
+                },
+            )
+        return result
+
+    async def _classify_impl(
+        self,
+        message: str,
+        *,
+        company_id: str,
+        user_role: str,
+        conversation_history: list[dict[str, str]] | None = None,
+    ) -> QueryGateResult:
+        """Classification body (deterministic tier, then semantic tier)."""
         text = (message or "").strip()
         if not text:
             return QueryGateResult(

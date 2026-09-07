@@ -2112,18 +2112,43 @@ async def execute_executive_tool(
     - RBAC policy enforcement for sensitive tools
     - Module availability gates (when the company module list is supplied)
     - Redis-backed result caching for expensive reads
+
+    Observability: records a TOOL span when a trace is active (tool name,
+    duration, status, safe cache/error metadata only — never payloads).
     """
+    from app.ai.observability import tracer as _ai_tracer
+
+    _trace = _ai_tracer.get_current_trace()
+    _span = None
+    if _trace is not None:
+        _span = _ai_tracer.start_span("TOOL", tool_name, attrs={"tool": tool_name})
+    _cache_hit = False
+
+    def _finish(result: dict[str, Any]) -> dict[str, Any]:
+        """Close the TOOL span with safe status metadata."""
+        if _span is not None:
+            if isinstance(result, dict) and result.get("error"):
+                _ai_tracer.end_span(
+                    _span,
+                    status="FAILED",
+                    error_type="TOOL_ERROR",
+                    error_message=f"tool {tool_name}: {str(result['error'])[:300]}",
+                )
+            else:
+                _ai_tracer.end_span(_span, attrs={"cache_hit": _cache_hit})
+        return result
+
     if tool_name not in TOOL_DISPATCH:
-        return {"error": f"Unknown tool: {tool_name}"}
+        return _finish({"error": f"Unknown tool: {tool_name}"})
 
     # ── RBAC check ──────────────────────────────────────────────────────────
     allowed_roles = _SENSITIVE_TOOLS.get(tool_name)
     if allowed_roles and user_role not in allowed_roles:
-        return {
+        return _finish({
             "error": f"Access denied: '{tool_name}' requires role in {sorted(allowed_roles)}.",
             "rbac_denied": True,
             "required_roles": sorted(allowed_roles),
-        }
+        })
 
     # ── Module gate ─────────────────────────────────────────────────────────
     # Enforced only when the caller explicitly supplies a non-empty module
@@ -2131,11 +2156,11 @@ async def execute_executive_tool(
     module_gate = TOOL_MODULE_GATES.get(tool_name)
     enabled_modules = {str(m).lower() for m in modules} if modules else None
     if module_gate and enabled_modules and module_gate not in enabled_modules:
-        return {
+        return _finish({
             "error": f"Access denied: '{tool_name}' requires the '{module_gate}' module.",
             "module_denied": True,
             "required_module": module_gate,
-        }
+        })
 
     # ── Validate arguments ──────────────────────────────────────────────────
     schema = ARG_SCHEMAS.get(tool_name)
@@ -2143,7 +2168,7 @@ async def execute_executive_tool(
         try:
             validated = schema(**arguments)
         except Exception as exc:
-            return {"error": f"Invalid arguments for {tool_name}: {exc}"}
+            return _finish({"error": f"Invalid arguments for {tool_name}: {exc}"})
     else:
         validated = arguments
 
@@ -2151,16 +2176,17 @@ async def execute_executive_tool(
     cache_key = _cache_key(tool_name, company_id, arguments)
     cached = await _get_cached(cache_key, tool_name)
     if cached is not None:
-        return cached
+        _cache_hit = True
+        return _finish(cached)
 
     # ── Execute ─────────────────────────────────────────────────────────────
     try:
         result = await TOOL_DISPATCH[tool_name](company_id, validated)
         await _set_cached(cache_key, tool_name, result)
-        return result
+        return _finish(result)
     except Exception as exc:
         logger.exception("Executive tool %s failed", tool_name)
-        return {"error": f"Tool execution failed: {exc}"}
+        return _finish({"error": f"Tool execution failed: {exc}"})
 
 
 # ---------------------------------------------------------------------------

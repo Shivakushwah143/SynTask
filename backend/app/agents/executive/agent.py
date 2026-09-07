@@ -130,8 +130,14 @@ class ExecutiveOperationsAgent:
         conversation_history: list[dict[str, str]] | None = None,
         entity_context: dict[str, Any] | None = None,
         modules: list[str] | None = None,
+        evaluation_mode: bool = False,
     ) -> AgentLoopResult:
-        """Execute the executive agent loop."""
+        """Execute the executive agent loop.
+
+        ``evaluation_mode`` disables Redis entity-context persistence so
+        evaluation traffic never pollutes the demo actor's normal session
+        context between cases.
+        """
         if not settings.EXECUTIVE_AGENT_ENABLED:
             return AgentLoopResult(
                 answer="The Executive Operations Agent is currently disabled.",
@@ -151,7 +157,8 @@ class ExecutiveOperationsAgent:
         entity_ctx = dict(entity_context or {})
 
         # ── Load persisted entity context from Redis ──────────────────────────
-        entity_ctx = await self._load_redis_entity_context(company_id, user_id, entity_ctx)
+        if not evaluation_mode:
+            entity_ctx = await self._load_redis_entity_context(company_id, user_id, entity_ctx)
 
         # ── Determine step budget ─────────────────────────────────────────────
         cross_domain = is_cross_domain(message, entity_ctx)
@@ -222,7 +229,8 @@ class ExecutiveOperationsAgent:
             # No tool calls → final answer
             if not result.tool_calls:
                 answer = result.content or "I was unable to generate a response."
-                await self._save_redis_entity_context(company_id, user_id, entity_ctx)
+                if not evaluation_mode:
+                    await self._save_redis_entity_context(company_id, user_id, entity_ctx)
                 return AgentLoopResult(
                     answer=answer,
                     tool_executions=tool_executions,
@@ -293,7 +301,8 @@ class ExecutiveOperationsAgent:
                 })
 
         # Max steps reached
-        await self._save_redis_entity_context(company_id, user_id, entity_ctx)
+        if not evaluation_mode:
+            await self._save_redis_entity_context(company_id, user_id, entity_ctx)
         return AgentLoopResult(
             answer="I was unable to fully complete your request within the allowed processing steps. Please try a more specific question.",
             tool_executions=tool_executions,

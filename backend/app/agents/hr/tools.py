@@ -1439,9 +1439,33 @@ async def execute_hr_tool(
     """Execute an HR tool by name with validated arguments.
 
     Returns structured JSON result suitable for feeding back into the LLM context.
+
+    Observability: records a TOOL span when a trace is active (tool name,
+    duration, status, error metadata only — never HR/payroll payloads).
     """
+    from app.ai.observability import tracer as _ai_tracer
+
+    _trace = _ai_tracer.get_current_trace()
+    _span = None
+    if _trace is not None:
+        _span = _ai_tracer.start_span("TOOL", tool_name, attrs={"tool": tool_name})
+
+    def _finish(result: dict[str, Any]) -> dict[str, Any]:
+        """Close the TOOL span with safe status metadata."""
+        if _span is not None:
+            if isinstance(result, dict) and result.get("error"):
+                _ai_tracer.end_span(
+                    _span,
+                    status="FAILED",
+                    error_type="TOOL_ERROR",
+                    error_message=f"tool {tool_name}: {str(result['error'])[:300]}",
+                )
+            else:
+                _ai_tracer.end_span(_span)
+        return result
+
     if tool_name not in TOOL_DISPATCH:
-        return {"error": f"Unknown tool: {tool_name}"}
+        return _finish({"error": f"Unknown tool: {tool_name}"})
 
     # Validate arguments with Pydantic
     schema = ARG_SCHEMAS.get(tool_name)
@@ -1449,14 +1473,14 @@ async def execute_hr_tool(
         try:
             validated = schema(**arguments)
         except Exception as exc:
-            return {"error": f"Invalid arguments for {tool_name}: {exc}"}
+            return _finish({"error": f"Invalid arguments for {tool_name}: {exc}"})
     else:
         validated = arguments
 
     # Execute
     try:
         result = await TOOL_DISPATCH[tool_name](company_id, validated)
-        return result
+        return _finish(result)
     except Exception as exc:
         logger.exception("HR tool %s failed", tool_name)
-        return {"error": f"Tool execution failed: {exc}"}
+        return _finish({"error": f"Tool execution failed: {exc}"})

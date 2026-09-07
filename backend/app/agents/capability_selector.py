@@ -142,6 +142,16 @@ def select_tools(
     2. For each top-scoring pack, select the most relevant tools (not all).
     3. Clamp to ``min_tools``..``max_tools``.
     """
+    from app.ai.observability import tracer as _ai_tracer
+
+    _span = None
+    if _ai_tracer.get_current_trace() is not None:
+        _span = _ai_tracer.start_span(
+            "CAPABILITY_SELECTION",
+            "capability_selector.select_tools",
+            attrs={"max_tools": max_tools, "min_tools": min_tools},
+        )
+
     scores = _score_packs(message, entity_context)
 
     # Token budget: 2-5 tools for normal requests, up to 6 for cross-domain
@@ -191,6 +201,15 @@ def select_tools(
                 if len(selected) >= min_tools:
                     break
 
+    if _span is not None:
+        _ai_tracer.end_span(
+            _span,
+            attrs={
+                "packs_used": packs_used,
+                "selected_tool_count": len(selected),
+                "selected_tools": [t["function"]["name"] for t in selected],
+            },
+        )
     return selected, packs_used  # type: ignore[return-value]
 
 

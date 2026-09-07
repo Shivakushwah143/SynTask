@@ -16,10 +16,14 @@ from typing import Any, Optional
 from uuid import uuid4
 
 from app.agents.hr.agent import HROperationsAgent, AgentLoopResult
+from app.ai.observability import tracer as ai_tracer
 from app.core.clock import utc_now
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
+
+# Observable agent identity used in trace/span metadata.
+AGENT_TRACE_NAME = "hr_operations_agent"
 
 
 class HRAgentService:
@@ -37,10 +41,16 @@ class HRAgentService:
         session_id: str | None = None,
         entity_context: dict[str, Any] | None = None,
         conversation_history: list[dict[str, str]] | None = None,
+        evaluation_mode: bool = False,
     ) -> dict[str, Any]:
         """Process an HR agent chat request.
 
         Returns a structured response dict suitable for the API response model.
+
+        ``evaluation_mode`` (internal-only) executes the exact same agent path
+        but skips audit pollution and attaches an internal ``_eval_trace`` with
+        tool names, arguments, and results for the in-memory evaluation runner.
+        The trace is never exposed through normal AI APIs.
         """
         company_id = getattr(current_user, "company_id", None)
         if not company_id:
@@ -52,7 +62,16 @@ class HRAgentService:
 
         user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
 
+        start_time = time.perf_counter()
+        # Observability: enrich the active trace (agent identity + sanitized query).
+        _trace_ctx = ai_tracer.get_current_trace()
+        if _trace_ctx is not None:
+            ai_tracer.enrich_trace(_trace_ctx, agent=AGENT_TRACE_NAME, query=message)
+
         # Run the agent loop
+        _agent_span = None
+        if _trace_ctx is not None:
+            _agent_span = ai_tracer.start_span("AGENT", AGENT_TRACE_NAME)
         result: AgentLoopResult = await self.agent.run(
             company_id=str(company_id),
             user_id=str(current_user.id),
@@ -61,6 +80,34 @@ class HRAgentService:
             conversation_history=conversation_history,
             entity_context=entity_context,
         )
+        if _agent_span is not None:
+            ai_tracer.end_span(
+                _agent_span,
+                status="SUCCESS" if result.success else "FAILED",
+                attrs={
+                    "steps_used": result.steps_used,
+                    "max_steps": result.max_steps,
+                    "model": result.model,
+                    "groq_calls": result.steps_used,
+                    "tool_calls": len(result.tool_executions),
+                },
+                error_type=None if result.success else (result.error or "AGENT_ERROR"),
+                error_message=None if result.success else result.error,
+            )
+            if not result.success:
+                ai_tracer.record_error(
+                    _trace_ctx,
+                    error_type=result.error or "AGENT_ERROR",
+                    message=result.error,
+                )
+            else:
+                ai_tracer.enrich_trace(
+                    _trace_ctx,
+                    agent=AGENT_TRACE_NAME,
+                    path="HR",
+                    model=result.model,
+                    conversation_id=conversation_id,
+                )
 
         # Build response
         response = {
@@ -90,6 +137,31 @@ class HRAgentService:
 
         if not result.success and result.error:
             response["error_detail"] = result.error
+
+        if evaluation_mode:
+            response["_eval_trace"] = {
+                "path": None,
+                "groq_calls": result.steps_used,
+                "steps": result.steps_used,
+                "max_steps": result.max_steps,
+                "latency_ms": round((time.perf_counter() - start_time) * 1000, 1),
+                "model": result.model,
+                "total_tokens": result.total_tokens,
+                "success": result.success,
+                "error": result.error,
+                "selected_tools": [te.tool_name for te in result.tool_executions],
+                "tool_calls": [
+                    {
+                        "tool": te.tool_name,
+                        "arguments": te.arguments,
+                        "result": te.result,
+                        "step": te.step,
+                        "duration_ms": round(te.duration_ms, 1),
+                    }
+                    for te in result.tool_executions
+                ],
+            }
+            return response
 
         # Audit log (non-blocking)
         try:
@@ -150,6 +222,14 @@ class HRAgentService:
         yield status_event("accepted", STATUS_UNDERSTANDING)
         timings["routing_done"] = round((time.perf_counter() - t0) * 1000, 1)
 
+        # Observability: enrich the active trace (agent identity + sanitized query).
+        _trace_ctx = ai_tracer.get_current_trace()
+        if _trace_ctx is not None:
+            ai_tracer.enrich_trace(_trace_ctx, agent=AGENT_TRACE_NAME, query=message)
+        _agent_span = None
+        if _trace_ctx is not None:
+            _agent_span = ai_tracer.start_span("AGENT", AGENT_TRACE_NAME)
+
         async for ev in self.agent.run_stream(
             company_id=str(company_id),
             user_id=str(current_user.id),
@@ -186,6 +266,35 @@ class HRAgentService:
                     )
                 except Exception:
                     logger.exception("HR Agent audit log failed")
+                if _agent_span is not None:
+                    _success = bool(payload.get("success"))
+                    ai_tracer.end_span(
+                        _agent_span,
+                        status="SUCCESS" if _success else "FAILED",
+                        attrs={
+                            "steps_used": payload.get("usage", {}).get("steps_used"),
+                            "max_steps": payload.get("usage", {}).get("max_steps"),
+                            "model": payload.get("usage", {}).get("model"),
+                            "groq_calls": payload.get("usage", {}).get("groq_calls"),
+                            "tool_calls": len(payload.get("tool_calls_summary") or []),
+                        },
+                        error_type=None if _success else (payload.get("error_detail") or "AGENT_ERROR"),
+                        error_message=None if _success else payload.get("error_detail"),
+                    )
+                    if not _success:
+                        ai_tracer.record_error(
+                            _trace_ctx,
+                            error_type=payload.get("error_detail") or "AGENT_ERROR",
+                            message=payload.get("error_detail"),
+                        )
+                    else:
+                        ai_tracer.enrich_trace(
+                            _trace_ctx,
+                            agent=AGENT_TRACE_NAME,
+                            path="HR",
+                            model=payload.get("usage", {}).get("model"),
+                            conversation_id=conv_id,
+                        )
                 yield {"type": "done", "data": payload}
             elif ev["type"] == "error":
                 payload = self._finalize_stream_payload(
@@ -195,6 +304,18 @@ class HRAgentService:
                     conversation_id=conv_id,
                     session_id=sess_id,
                 )
+                if _agent_span is not None:
+                    ai_tracer.end_span(
+                        _agent_span,
+                        status="FAILED",
+                        error_type=payload.get("error_detail") or ev.get("message") or "AGENT_ERROR",
+                        error_message=payload.get("error_detail") or ev.get("message"),
+                    )
+                    ai_tracer.record_error(
+                        _trace_ctx,
+                        error_type=payload.get("error_detail") or "AGENT_ERROR",
+                        message=payload.get("error_detail") or ev.get("message"),
+                    )
                 yield {"type": "error", "message": ev.get("message", "Request failed"), "data": payload}
             else:
                 yield ev

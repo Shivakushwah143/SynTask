@@ -15,6 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.executive.service import ExecutiveAgentService
 from app.agents.streaming import DEFAULT_SSE_HEADERS, sse_frame, with_heartbeat
+from app.ai.observability import tracer as ai_tracer
+from app.ai.observability.fastapi_trace import ai_request_trace
 from app.api.dependencies import get_current_user
 from app.core.config import settings
 from app.models.user import User
@@ -86,6 +88,7 @@ class ExecutiveQuickActionsResponse(BaseModel):
 async def executive_agent_chat(
     payload: ExecutiveChatRequest,
     current_user: User = Depends(get_current_user),
+    _trace: dict = Depends(ai_request_trace),
 ) -> ExecutiveChatResponse:
     """Chat with the Executive Operations Agent.
 
@@ -123,6 +126,7 @@ async def executive_agent_chat(
 async def executive_agent_chat_stream(
     payload: ExecutiveChatRequest,
     current_user: User = Depends(get_current_user),
+    _trace: dict = Depends(ai_request_trace),
 ) -> StreamingResponse:
     """Stream a chat with the Executive Operations Agent (SSE).
 
@@ -157,6 +161,13 @@ async def executive_agent_chat_stream(
             async for ev in with_heartbeat(source):
                 yield sse_frame(ev)
         except Exception as exc:  # never break the SSE channel silently
+            ctx = ai_tracer.get_current_trace()
+            if ctx is not None:
+                ai_tracer.record_error(
+                    ctx,
+                    error_type="STREAM_ERROR",
+                    message=f"STREAM_ERROR: {exc}",
+                )
             yield sse_frame({
                 "type": "error",
                 "message": "The request failed on the server. Please try again.",
@@ -164,7 +175,7 @@ async def executive_agent_chat_stream(
             })
 
     return StreamingResponse(
-        _event_stream(),
+        ai_tracer.stream_trace_guard(_trace.get("ctx"), _event_stream()),
         media_type="text/event-stream",
         headers=DEFAULT_SSE_HEADERS,
     )
