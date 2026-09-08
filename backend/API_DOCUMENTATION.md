@@ -471,7 +471,7 @@ Identity & permission model:
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/employees/me` | `my_employee_profile` | The current user's own Employee Profile detail DTO (Phase 1). Any authenticated user with a profile. |
+| GET | `/api/v1/employees/me` | `my_employee_profile` | The current user's own Employee Profile detail DTO (Phase 1); legacy company `ADMIN`/`SUB_ADMIN` accounts are provisioned a minimal profile shell first. |
 | PATCH | `/api/v1/employees/me` | `update_my_employee_profile` | Self-edit of the whitelisted personal fields only (see above); HR-controlled fields rejected with `400`. |
 | GET | `/api/v1/employees/{employee_id}` | `get_employee_endpoint` | Normalized detail DTO for one employee. Requires employee-directory access (same rule as the list endpoint): company admins, managers, and HR-department staff holding `employee_management.view` may open any employee's profile; other roles may only open their own (`403` otherwise). Company-scoped — cross-company ids return `404`. This is how managers/HR open an employee's Documents tab to see pending submissions. |
 | GET | `/api/v1/attendance/me/today` | `get_my_today_attendance` | Today's attendance for the caller (Phase 4). |
@@ -484,6 +484,30 @@ Identity & permission model:
 | GET | `/api/v1/salary/me` | `get_my_salary` | The caller's own current + upcoming Salary Structure (Phase 5 data, ownership by construction — keyed by user). |
 | GET | `/api/v1/payroll/me/payslips` | `my_payslips` | The caller's own generated payslips (Phase 7; see Payroll & Payslips above). |
 | GET | `/api/v1/hr/me/summary` | `my_hr_summary` | Lightweight My HR overview aggregate (profile essentials, today's attendance, leave balance summary + pending count, employee-visible document alerts incl. `pending_review`/`rejected` counts, latest payslip, ESS capability flags incl. `can_upload_document: true`). Summaries only — module pages use their own APIs for full histories. `404` when the caller has no Employee Profile. |
+
+### Employee Detail Change Requests
+
+Non-admin employees (Manager, Lead, Employee) cannot directly edit HR-controlled fields on their profile. Instead they submit **change requests** that go through an approval queue. Admin and SubAdmin roles can bypass this and edit directly via the existing PATCH endpoints.
+
+**Permission model:**
+- **Create / list own / cancel** — any authenticated user with an Employee Profile (self only).
+- **Review queue / approve / reject** — Admin, SubAdmin, Manager, and Lead roles only (`_can_review` gate).
+- **Self-approval blocked** — a user cannot approve their own change request.
+- **Atomic approval** — approval uses `find_one` with `status: pending` as the filter (compare-and-swap) to prevent double-approval races.
+- **Stale-data detection** — on approval, `original_values` are compared against current snapshot; mismatches auto-reject with `409 Conflict`.
+- **Protected fields** — `employment_status`, `exit_info`, `role`, `status`, `company_id` cannot be changed via this workflow.
+
+**Lifecycle:** `pending` → `approved` (applies changes atomically via the canonical mutation service) / `rejected` (with reason) / `cancelled` (requester only).
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| POST | `/api/v1/employees/me/change-requests` | `create_my_change_request` | Submit a change request for the caller's own profile. Body: `{ "changes": { ... }, "reason": "..." }`. Rejects if a pending request already exists (`409`). Rejects protected/unknown fields (`400`). Any authenticated user with a profile. |
+| GET | `/api/v1/employees/me/change-requests` | `list_my_change_requests` | The caller's own change requests. Query params: `status`, `page`, `page_size`. Any authenticated user with a profile. |
+| POST | `/api/v1/employees/me/change-requests/{request_id}/cancel` | `cancel_change_request_endpoint` | Cancel a pending request. Only the requester can cancel (`403`). Returns `400` if not pending. |
+| GET | `/api/v1/employees/change-requests` | `list_change_requests_for_review` | Review queue. Admin/SubAdmin/Manager/Lead see company-wide requests; Employees get `403`. Query params: `status`, `page`, `page_size`. |
+| GET | `/api/v1/employees/change-requests/{request_id}` | `get_change_request` | Full detail of a single change request. Requesters see their own; reviewers see company-wide. |
+| POST | `/api/v1/employees/change-requests/{request_id}/approve` | `approve_change_request_endpoint` | Approve a pending request. Atomic claim prevents double-approval. Stale-data check auto-rejects if fields changed (`409`). Self-approval blocked (`403`). Body: `{ "comment": "..." }`. |
+| POST | `/api/v1/employees/change-requests/{request_id}/reject` | `reject_change_request_endpoint` | Reject a pending request with a reason. Self-rejection of own request blocked (`403`). Body: `{ "reason": "...", "comment": "..." }`. |
 
 ### HR Documents (Phase 2) & Employee Submissions
 

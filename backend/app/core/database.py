@@ -8,6 +8,7 @@ import logging
 from app.core.config import settings
 from app.models.user import User, SuperAdmin, CompanyAdmin, Admin, Manager, Lead, Employee
 from app.models.employee_profile import EmployeeProfile
+from app.models.employee_detail_change_request import EmployeeDetailChangeRequest
 from app.models.hr_document import HRDocument, HRDocumentRequest, HRDocumentType, HRDocumentVersion
 from app.models.company import Company, Subscription
 from app.models.crm_company import CRMCompany
@@ -324,6 +325,7 @@ async def init_db():
                 Lead,
                 Employee,
                 EmployeeProfile,
+                EmployeeDetailChangeRequest,
                 HRDocumentType,
                 HRDocument,
                 HRDocumentVersion,

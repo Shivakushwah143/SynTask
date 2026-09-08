@@ -1795,6 +1795,8 @@ frontend: npx vitest run src/pages/payroll (18 passed — PayrollRecordDetail + 
 
 - My HR availability is driven by **Employee Profile existence** (`resolve_employee_profile`), not role string — MANAGER/LEAD/HR/ADMIN users who are also employees get My HR alongside their admin surfaces; platform/non-employee accounts get the graceful "Employee profile is not available for this account." state (404 on self endpoints, friendly UI copy).
 - Self-service rights are separate from management rights: viewing own attendance needs no `attendance.manage`; viewing own payslips needs no company `payroll.view`; own-salary access is ownership-scoped. My HR never grants company-wide HR/payroll access.
+- System Settings → Profile reuses the My HR self-profile form and canonical `/employees/me` update service: only `ADMIN` and `SUB_ADMIN` may save the whitelisted personal fields directly; `MANAGER`, `LEAD`, and `EMPLOYEE` receive only the existing employee detail change-request workflow. Role, permissions, module, company, account-status, password, and lifecycle fields remain unavailable, with backend authorization authoritative and all access self-scoped to the tenant.
+- Legacy company `ADMIN`/`SUB_ADMIN` accounts without an `EmployeeProfile` are idempotently provisioned with a minimal tenant-scoped profile shell when they open their own `/employees/me` record, enabling the same Settings/My HR self-edit path without exposing management fields.
 
 ### Security
 

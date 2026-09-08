@@ -110,6 +110,8 @@ export function useUpdateMyProfile() {
     onSuccess: () => {
       queryClient.invalidateQueries(MY_HR_KEYS.profile)
       queryClient.invalidateQueries(MY_HR_KEYS.summary)
+      // Keep Settings, My HR, and the People employee directory consistent.
+      queryClient.invalidateQueries(['employees'])
     },
   })
 }

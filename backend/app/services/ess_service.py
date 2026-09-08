@@ -37,7 +37,7 @@ from app.models.department import Department
 from app.models.employee_profile import Address, EmergencyContact, EmployeeProfile
 from app.models.hr_document import HRDocument, HRDocumentStatus, HRDocumentVisibility
 from app.models.leave import LeaveRequest, LeaveStatus
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.services.attendance_holiday_service import is_holiday
 from app.services.attendance_policy_service import get_active_policy
 from app.services.attendance_status_resolver import (
@@ -45,7 +45,7 @@ from app.services.attendance_status_resolver import (
     is_working_day,
     resolve_attendance_status,
 )
-from app.services.employee_profile_service import build_detail
+from app.services.employee_profile_service import build_detail, ensure_employee_profile
 from app.services.hr_document_service import compute_expiry_state
 from app.services.leave_service import get_balances
 from app.services.payslip_service import get_my_payslips
@@ -102,6 +102,8 @@ async def resolve_employee_profile(user: User) -> Optional[EmployeeProfile]:
 
 async def require_employee_profile(user: User) -> EmployeeProfile:
     profile = await resolve_employee_profile(user)
+    if not profile and user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
+        profile = await ensure_employee_profile(user)
     if not profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
