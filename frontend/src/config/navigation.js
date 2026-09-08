@@ -1192,12 +1192,11 @@ export const resolveHrSection = (pathname) => {
 // canonical mirror of backend `require_module`). That version honors the member's
 // explicit `modules` list — a deselected module (e.g. sales_crm) is truly hidden
 // for non-admin roles, while legacy (pre-permission-system) lists keep the role
-// auto-grants. HR nav entries use the legacy `module: "hr"` id; the catalog id
-// is `recruitment`, so map it for the check.
+// auto-grants. People/HR modules use `module: "hr"`, Recruitment uses
+// `module: "recruitment"` — the two permission domains are independent.
 export const hasModuleAccess = (user, module) => {
   if (!module) return true;
-  const canonicalModule = module === "hr" ? "recruitment" : module;
-  return hasModuleAccessFromRbac(user?.role, user?.modules, canonicalModule);
+  return hasModuleAccessFromRbac(user?.role, user?.modules, module);
 };
 
 export const hasCapabilityAccess = (user, capability) => {
@@ -1264,10 +1263,9 @@ const getHrNavItems = (user, ownerFilter) => {
       module.roles.includes(role) &&
       // Filter by owner section if specified
       (!ownerFilter || module.owner === ownerFilter) &&
-      // People/HR visibility keeps its pre-permission-system rules: the backend
-      // gates HR recruitment routes by role (require_job_view, ...), NOT by the
-      // `recruitment` module, so the sidebar must not hide them by module.
-      (hasModuleAccess(user, module.module) || module.key === "recruitment") &&
+      // Each module is gated by its own permission domain:
+      // People/HR modules use `module: "hr"`, Recruitment uses `module: "recruitment"`.
+      hasModuleAccess(user, module.module) &&
       hasCapabilityAccess(user, module.capability) &&
       hasDepartmentAccess(user, module.department),
   ).flatMap((module) =>

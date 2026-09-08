@@ -38,6 +38,7 @@ MODULE_CATALOG = [
     {"id": "live_attendance", "label": "Live Attendance", "core": False},
     {"id": "attendance_reports", "label": "Attendance Reports", "core": False},
     {"id": "leave_management", "label": "Leave Management", "core": False},
+    {"id": "hr", "label": "People / HR", "core": False},
     {"id": "recruitment", "label": "Recruitment", "core": False},
     {"id": "reports", "label": "Reports", "core": False},
     {"id": "activity_logs", "label": "Activity Logs", "core": False},
@@ -68,7 +69,7 @@ ROLE_MODULE_DEFAULTS = {
     "super_admin": [entry["id"] for entry in MODULE_CATALOG],
     "admin": [entry["id"] for entry in MODULE_CATALOG],
     "sub_admin": [entry["id"] for entry in MODULE_CATALOG],
-    "manager": ["projects", "tasks", "scheduled_work", "time_tracking", "daily_updates", "content_calendar", "chat", "meetings_calendar", "clients", "attendance", "live_attendance", "attendance_reports", "leave_management", "ai_assistant", "ai_content_assistant"],
+    "manager": ["projects", "tasks", "scheduled_work", "time_tracking", "daily_updates", "content_calendar", "chat", "meetings_calendar", "clients", "attendance", "live_attendance", "attendance_reports", "leave_management", "hr", "ai_assistant", "ai_content_assistant"],
     "lead": ["projects", "tasks", "scheduled_work", "time_tracking", "daily_updates", "content_calendar", "chat", "meetings_calendar", "attendance", "attendance_reports", "leave_management"],
     "employee": ["projects", "tasks", "time_tracking", "daily_updates", "content_calendar", "chat", "meetings_calendar", "attendance", "leave_management"],
 }

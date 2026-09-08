@@ -39,6 +39,7 @@ CRM_MODULES = {
 }
 
 WORKFORCE_MODULES = {
+    "hr",
     "attendance",
     "live_attendance",
     "attendance_reports",
@@ -209,7 +210,7 @@ def require_module(module_name: str):
         legacy_config = _is_legacy_module_config(getattr(current_user, "modules", []) or [])
         if (
             legacy_config
-            and module_name in {"sales", "sales_crm", "tickets", "task", "tasks_projects", *WORK_MODULES, *CRM_MODULES}
+            and module_name in {"sales", "sales_crm", "tickets", "task", "tasks_projects", "hr", *WORK_MODULES, *CRM_MODULES}
             and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}
         ):
             return current_user
