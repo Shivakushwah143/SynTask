@@ -672,6 +672,7 @@ const Settings = () => {
                   setSavingEmployeeProfile(true)
                   try {
                     await updateMyProfile.mutateAsync(payload)
+                    updateUser({ ...user, first_name: payload.first_name, last_name: payload.last_name })
                     toast.success('Personal details updated')
                     setProfileEditorOpen(false)
                   } catch (error) {

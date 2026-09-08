@@ -59,6 +59,8 @@ logger = logging.getLogger(__name__)
 # Employee-editable fields (self-service). Everything else on the profile is
 # HR-controlled and explicitly rejected, never silently ignored.
 EMPLOYEE_EDITABLE_FIELDS = {
+    "first_name",
+    "last_name",
     "personal_email",
     "personal_phone",
     "address",
@@ -152,6 +154,15 @@ async def update_my_profile(user: User, data: dict) -> dict:
 
     changes: dict = {}
 
+    for field in ("first_name", "last_name"):
+        if field in data:
+            value = str(data.get(field) or "").strip()
+            if not value:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field.replace('_', ' ').title()} cannot be empty.")
+            if value != getattr(user, field):
+                setattr(user, field, value)
+                changes[field] = value
+
     if "personal_email" in data:
         value = (data.get("personal_email") or "").strip() or None
         if value and "@" not in value:
@@ -180,6 +191,7 @@ async def update_my_profile(user: User, data: dict) -> dict:
         profile.emergency_contact = new_contact
 
     if changes:
+        await user.save()
         profile.updated_at = utc_now()
         await profile.save()
         await _record_self_update_event(user, profile, changes)

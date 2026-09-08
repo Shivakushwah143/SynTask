@@ -423,6 +423,8 @@ export function ChangeRequestModal({ isOpen, onClose, profile, submitting, onSub
   }, [isOpen])
 
   const current = form || {
+    first_name: profile?.first_name || '',
+    last_name: profile?.last_name || '',
     personal_email: profile?.personal_email || '',
     personal_phone: profile?.personal_phone || '',
     address_line1: address.line1 || '',
@@ -444,6 +446,8 @@ export function ChangeRequestModal({ isOpen, onClose, profile, submitting, onSub
     setError(null)
     // Build changes — only send fields that differ from the current profile
     const changes = {}
+    if (current.first_name.trim() !== (profile?.first_name || '')) changes.first_name = current.first_name.trim()
+    if (current.last_name.trim() !== (profile?.last_name || '')) changes.last_name = current.last_name.trim()
     if (current.personal_email !== (profile?.personal_email || '')) changes.personal_email = current.personal_email?.trim() || null
     if (current.personal_phone !== (profile?.personal_phone || '')) changes.personal_phone = current.personal_phone?.trim() || null
 
@@ -513,9 +517,11 @@ export function ChangeRequestModal({ isOpen, onClose, profile, submitting, onSub
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Existing account details</p>
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="Full name"><input className={inputClassName} value={profile?.full_name || `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim()} disabled /></FormField>
+            <FormField label="First name"><input className={inputClassName} value={profile?.first_name || ''} disabled /></FormField>
+            <FormField label="Last name"><input className={inputClassName} value={profile?.last_name || ''} disabled /></FormField>
             <FormField label="Work email"><input className={inputClassName} value={profile?.email || ''} disabled /></FormField>
-            <FormField label="Role"><input className={inputClassName} value={profile?.role ? profile.role.replace(/_/g, ' ') : ''} disabled /></FormField>
+            <FormField label="Work phone"><input className={inputClassName} value={profile?.phone || 'Not provided'} disabled /></FormField>
+            <FormField label="Department"><input className={inputClassName} value={profile?.department_name || profile?.department || 'Not assigned'} disabled /></FormField>
             <FormField label="Employee number"><input className={inputClassName} value={profile?.employee_number || ''} disabled /></FormField>
           </div>
           <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">These fields are shown for reference and cannot be changed through a detail request.</p>
@@ -655,6 +661,8 @@ export function EditProfileModal({ isOpen, onClose, profile, saving, onSave }) {
   }, [isOpen])
   const open = Boolean(isOpen)
   const current = form || {
+    first_name: profile.first_name || '',
+    last_name: profile.last_name || '',
     personal_email: profile.personal_email || '',
     personal_phone: profile.personal_phone || '',
     address: { ...address },
@@ -668,6 +676,8 @@ export function EditProfileModal({ isOpen, onClose, profile, saving, onSave }) {
   const handleSubmit = (event) => {
     event.preventDefault()
     const payload = {
+      first_name: current.first_name?.trim(),
+      last_name: current.last_name?.trim(),
       personal_email: current.personal_email?.trim() || null,
       personal_phone: current.personal_phone?.trim() || null,
       address: {
@@ -709,9 +719,11 @@ export function EditProfileModal({ isOpen, onClose, profile, saving, onSave }) {
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Existing account details</p>
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="Full name"><input className={inputClassName} value={profile.full_name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim()} disabled /></FormField>
+            <FormField label="First name"><input className={inputClassName} name="first_name" value={current.first_name} onChange={(event) => set('first_name', event.target.value)} /></FormField>
+            <FormField label="Last name"><input className={inputClassName} name="last_name" value={current.last_name} onChange={(event) => set('last_name', event.target.value)} /></FormField>
             <FormField label="Work email"><input className={inputClassName} value={profile.email || ''} disabled /></FormField>
-            <FormField label="Role"><input className={inputClassName} value={profile.role ? profile.role.replace(/_/g, ' ') : ''} disabled /></FormField>
+            <FormField label="Work phone"><input className={inputClassName} value={profile.phone || 'Not provided'} disabled /></FormField>
+            <FormField label="Department"><input className={inputClassName} value={profile.department_name || profile.department || 'Not assigned'} disabled /></FormField>
             <FormField label="Employee number"><input className={inputClassName} value={profile.employee_number || ''} disabled /></FormField>
           </div>
           <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">These account and employment fields are managed by HR and are not included in the update.</p>
