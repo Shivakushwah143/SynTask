@@ -38,6 +38,7 @@ export const HR_MODULES = [
     name: "HR Dashboard",
     basePath: "/hr/dashboard",
     module: "hr",
+    owner: "people",
     roles: HR_ROLES,
     icon: LayoutDashboard,
     navigation: [
@@ -53,6 +54,7 @@ export const HR_MODULES = [
     name: "HR Reports",
     basePath: "/hr/reports",
     module: "hr",
+    owner: "people",
     roles: HR_ROLES,
     icon: BarChart3,
     navigation: [
@@ -68,6 +70,7 @@ export const HR_MODULES = [
     name: "Employees",
     basePath: "/hr/employees",
     module: "hr",
+    owner: "people",
     roles: HR_ROLES,
     icon: UserCheck,
     navigation: [
@@ -84,6 +87,7 @@ export const HR_MODULES = [
     name: "Payroll",
     basePath: "/hr/payroll",
     module: "hr",
+    owner: "people",
     roles: HR_ROLES,
     icon: DollarSign,
     navigation: [
@@ -99,6 +103,7 @@ export const HR_MODULES = [
     name: "Documents",
     basePath: "/hr/documents",
     module: "hr",
+    owner: "people",
     roles: HR_ROLES,
     icon: FileText,
     navigation: [
@@ -115,6 +120,7 @@ export const HR_MODULES = [
     name: "HR Settings",
     basePath: "/hr/settings",
     module: "hr",
+    owner: "people",
     roles: HR_ROLES,
     icon: Settings,
     navigation: [
@@ -160,6 +166,7 @@ export const HR_MODULES = [
     name: "Recruitment",
     basePath: "/hr/recruitment",
     module: "hr",
+    owner: "recruitment",
     roles: HR_ROLES,
     icon: Briefcase,
     navigation: [
@@ -202,11 +209,6 @@ export const HR_MODULES = [
         name: "Reports",
         href: "/hr/recruitment/reports",
         icon: FileBarChart2,
-      },
-      {
-        name: "Settings",
-        href: "/hr/recruitment/settings/document-types",
-        icon: ClipboardList,
       },
       {
         name: "Candidate Interview Screen",

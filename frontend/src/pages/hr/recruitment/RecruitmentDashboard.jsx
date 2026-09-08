@@ -49,7 +49,7 @@ const recruitmentModules = [
   { name: "Interviews", href: "/hr/recruitment/interviews", icon: CalendarClock, color: "from-blue-500 to-cyan-500", description: "Schedule, conduct and manage interviews" },
   { name: "Offers", href: "/hr/recruitment/offers", icon: FileText, color: "from-violet-500 to-purple-500", description: "Create, approve, send and track offer letters" },
   { name: "Talent Pool", href: "/hr/recruitment/resume-pool", icon: Database, color: "from-cyan-500 to-sky-500", description: "Browse all uploaded resumes and parsed profiles" },
-  { name: "Applications", href: "/hr/recruitment/inbox", icon: Inbox, color: "from-emerald-500 to-green-500", description: "Email resume imports, sync and duplicate detection" },
+  { name: "Recruitment Inbox", href: "/hr/recruitment/inbox", icon: Inbox, color: "from-emerald-500 to-green-500", description: "Email resume imports, sync and duplicate detection" },
   { name: "Hiring Reports", href: "/hr/recruitment/reports", icon: BarChart3, color: "from-rose-500 to-pink-500", description: "Funnel, trends, recruiter and department analytics" },
 ];
 
