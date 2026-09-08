@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import {
   Briefcase,
   Contact,
+  FileEdit,
   GitBranch,
   Lock,
   MapPin,
@@ -13,6 +14,8 @@ import {
   XCircle,
 } from 'lucide-react'
 import { useMyLifecycle, useMyLifecycleActions, useMyProfile, useUpdateMyProfile } from '../../../hooks/useMyHr'
+import { useCreateChangeRequest, useMyChangeRequests } from '../../../hooks/useChangeRequests'
+import { hasCompanyAdminAccess } from '../../../utils/roles'
 import { Button, EmptyState, FormField, LoadingSpinner, Modal, Skeleton, inputClassName } from '../../../components/ui'
 import {
   EMPLOYMENT_STATUS_BADGES,
@@ -55,9 +58,16 @@ const MyProfile = () => {
   const { data: lifecycle, isLoading: lifecycleLoading } = useMyLifecycle()
   const lifecycleActions = useMyLifecycleActions()
   const [editOpen, setEditOpen] = useState(false)
+  const [changeReqOpen, setChangeReqOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [resignOpen, setResignOpen] = useState(false)
   const updateProfile = useUpdateMyProfile()
+  const createChangeRequest = useCreateChangeRequest()
+  const { data: myRequests } = useMyChangeRequests({ page_size: 5 })
+
+  // Role check: Admin/SubAdmin/SuperAdmin can edit directly
+  const canDirectEdit = hasCompanyAdminAccess(profile?.role)
+  const hasPendingRequest = myRequests?.items?.some((r) => r.status === 'pending') || false
 
   if (isLoading) {
     return (
@@ -98,7 +108,7 @@ const MyProfile = () => {
 
   return (
     <div className="space-y-5">
-      {/* Employment information — HR managed, read-only */}
+      {/* Employment information — HR managed, read-only for non-admins */}
       <section className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -107,9 +117,15 @@ const MyProfile = () => {
             </div>
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Employment Information</h3>
           </div>
-          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-700/50 dark:text-gray-400">
-            <Lock className="h-3 w-3" /> Managed by HR
-          </span>
+          {canDirectEdit ? (
+            <Button variant="secondary" size="sm" onClick={() => toast('Use the Employee Management page to edit employment details', { icon: 'ℹ️' })}>
+              <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit Employment
+            </Button>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-700/50 dark:text-gray-400">
+              <Lock className="h-3 w-3" /> Managed by HR
+            </span>
+          )}
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Employee Number" value={profile.employee_number} />
@@ -133,7 +149,7 @@ const MyProfile = () => {
         </div>
       </section>
 
-      {/* Contact & address — employee editable */}
+      {/* Contact & address — employee editable (direct or via change request) */}
       <section className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -142,9 +158,21 @@ const MyProfile = () => {
             </div>
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Contact & Address</h3>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
-            <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit Personal Details
-          </Button>
+          {canDirectEdit ? (
+            <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
+              <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit Personal Details
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setChangeReqOpen(true)}
+              disabled={hasPendingRequest}
+            >
+              <FileEdit className="mr-1.5 h-3.5 w-3.5" />
+              {hasPendingRequest ? 'Request Pending…' : 'Request Detail Change'}
+            </Button>
+          )}
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Phone" value={profile.phone || '-'} />
@@ -172,12 +200,33 @@ const MyProfile = () => {
         }}
       />
 
+      {/* Change request history — non-admin users */}
+      {!canDirectEdit && myRequests?.items?.length > 0 && (
+        <ChangeRequestHistory requests={myRequests.items} />
+      )}
+
       <EditProfileModal
         isOpen={editOpen}
         onClose={() => setEditOpen(false)}
         profile={profile}
         saving={saving}
         onSave={handleSave}
+      />
+
+      <ChangeRequestModal
+        isOpen={changeReqOpen}
+        onClose={() => setChangeReqOpen(false)}
+        profile={profile}
+        submitting={createChangeRequest.isLoading}
+        onSubmit={async (payload) => {
+          try {
+            await createChangeRequest.mutateAsync(payload)
+            toast.success('Change request submitted. Your manager will review it.')
+            setChangeReqOpen(false)
+          } catch (err) {
+            toast.error(err?.response?.data?.detail || 'Failed to submit change request')
+          }
+        }}
       />
 
       <ResignationModal
@@ -359,7 +408,250 @@ function Field({ label, value }) {
   )
 }
 
-function EditProfileModal({ isOpen, onClose, profile, saving, onSave }) {
+export function ChangeRequestModal({ isOpen, onClose, profile, submitting, onSubmit }) {
+  const address = profile?.address || {}
+  const emergency = profile?.emergency_contact || {}
+  const [form, setForm] = useState(null)
+  const [reason, setReason] = useState('')
+  const [error, setError] = useState(null)
+  useEffect(() => {
+    if (isOpen) {
+      setForm(null)
+      setReason('')
+      setError(null)
+    }
+  }, [isOpen])
+
+  const current = form || {
+    first_name: profile?.first_name || '',
+    last_name: profile?.last_name || '',
+    personal_email: profile?.personal_email || '',
+    personal_phone: profile?.personal_phone || '',
+    address_line1: address.line1 || '',
+    address_line2: address.line2 || '',
+    address_city: address.city || '',
+    address_state: address.state || '',
+    address_postal_code: address.postal_code || '',
+    address_country: address.country || '',
+    emergency_name: emergency.name || '',
+    emergency_relationship: emergency.relationship || '',
+    emergency_phone: emergency.phone || '',
+    emergency_alternate_phone: emergency.alternate_phone || '',
+  }
+
+  const set = (key, value) => setForm((prev) => ({ ...(prev || current), [key]: value }))
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    setError(null)
+    // Build changes — only send fields that differ from the current profile
+    const changes = {}
+    if (current.first_name.trim() !== (profile?.first_name || '')) changes.first_name = current.first_name.trim()
+    if (current.last_name.trim() !== (profile?.last_name || '')) changes.last_name = current.last_name.trim()
+    if (current.personal_email !== (profile?.personal_email || '')) changes.personal_email = current.personal_email?.trim() || null
+    if (current.personal_phone !== (profile?.personal_phone || '')) changes.personal_phone = current.personal_phone?.trim() || null
+
+    const currentAddress = {
+      line1: current.address_line1 || null,
+      line2: current.address_line2 || null,
+      city: current.address_city || null,
+      state: current.address_state || null,
+      postal_code: current.address_postal_code || null,
+      country: current.address_country || null,
+    }
+    const origAddress = address || {}
+    const addressChanged = Object.keys(currentAddress).some(
+      (k) => (currentAddress[k] || '') !== (origAddress[k] || ''),
+    )
+    if (addressChanged) changes.address = currentAddress
+
+    const currentEc = {
+      name: current.emergency_name?.trim() || null,
+      relationship: current.emergency_relationship?.trim() || null,
+      phone: current.emergency_phone?.trim() || null,
+      alternate_phone: current.emergency_alternate_phone?.trim() || null,
+    }
+    const origEc = emergency || {}
+    const ecChanged = Object.keys(currentEc).some(
+      (k) => (currentEc[k] || '') !== (origEc[k] || ''),
+    )
+    if (ecChanged) changes.emergency_contact = currentEc
+
+    if (Object.keys(changes).length === 0) {
+      setError('No changes detected. Please modify at least one field.')
+      return
+    }
+
+    await onSubmit({ changes, reason: reason.trim() || undefined })
+  }
+
+  return (
+    <Modal
+      isOpen={Boolean(isOpen)}
+      onClose={() => { onClose(); setError(null) }}
+      title="Request Detail Change"
+      description="Submit a change request for your personal details. Your manager will review and approve or reject it."
+      size="lg"
+      bodyClassName="max-h-[70vh] overflow-y-auto"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button type="submit" form="change-request-form" loading={submitting} loadingText="Submitting…">
+            <Send className="mr-2 h-4 w-4" /> Submit Request
+          </Button>
+        </div>
+      }
+    >
+      <form id="change-request-form" onSubmit={handleSubmit} className="space-y-5">
+        {error ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300">
+            {error}
+          </div>
+        ) : null}
+
+        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+          <p className="font-medium">How it works:</p>
+          <p className="mt-1">Modify the fields you need changed below. Only fields that differ from your current values will be submitted. Your manager or HR will review and approve or reject the request.</p>
+        </div>
+
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Existing account details</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="First name"><input className={inputClassName} value={profile?.first_name || ''} disabled /></FormField>
+            <FormField label="Last name"><input className={inputClassName} value={profile?.last_name || ''} disabled /></FormField>
+            <FormField label="Work email"><input className={inputClassName} value={profile?.email || ''} disabled /></FormField>
+            <FormField label="Work phone"><input className={inputClassName} value={profile?.phone || 'Not provided'} disabled /></FormField>
+            <FormField label="Department"><input className={inputClassName} value={profile?.department_name || profile?.department || 'Not assigned'} disabled /></FormField>
+            <FormField label="Employee number"><input className={inputClassName} value={profile?.employee_number || ''} disabled /></FormField>
+          </div>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">These fields are shown for reference and cannot be changed through a detail request.</p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label="Personal email">
+            <input
+              type="email"
+              className={inputClassName}
+              value={current.personal_email}
+              onChange={(event) => set('personal_email', event.target.value)}
+              placeholder="personal@example.com"
+            />
+          </FormField>
+          <FormField label="Personal phone">
+            <input
+              type="tel"
+              className={inputClassName}
+              value={current.personal_phone}
+              onChange={(event) => set('personal_phone', event.target.value)}
+              placeholder="+91 98765 43210"
+            />
+          </FormField>
+        </div>
+
+        <div>
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            <MapPin className="h-3.5 w-3.5" /> Address
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Address line 1">
+              <input className={inputClassName} value={current.address_line1} onChange={(event) => set('address_line1', event.target.value)} />
+            </FormField>
+            <FormField label="Address line 2">
+              <input className={inputClassName} value={current.address_line2} onChange={(event) => set('address_line2', event.target.value)} />
+            </FormField>
+            <FormField label="City">
+              <input className={inputClassName} value={current.address_city} onChange={(event) => set('address_city', event.target.value)} />
+            </FormField>
+            <FormField label="State">
+              <input className={inputClassName} value={current.address_state} onChange={(event) => set('address_state', event.target.value)} />
+            </FormField>
+            <FormField label="Postal code">
+              <input className={inputClassName} value={current.address_postal_code} onChange={(event) => set('address_postal_code', event.target.value)} />
+            </FormField>
+            <FormField label="Country">
+              <input className={inputClassName} value={current.address_country} onChange={(event) => set('address_country', event.target.value)} />
+            </FormField>
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            <ShieldCheck className="h-3.5 w-3.5" /> Emergency Contact
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Name">
+              <input className={inputClassName} value={current.emergency_name} onChange={(event) => set('emergency_name', event.target.value)} />
+            </FormField>
+            <FormField label="Relationship">
+              <input className={inputClassName} value={current.emergency_relationship} onChange={(event) => set('emergency_relationship', event.target.value)} />
+            </FormField>
+            <FormField label="Phone">
+              <input className={inputClassName} value={current.emergency_phone} onChange={(event) => set('emergency_phone', event.target.value)} />
+            </FormField>
+            <FormField label="Alternate phone">
+              <input className={inputClassName} value={current.emergency_alternate_phone} onChange={(event) => set('emergency_alternate_phone', event.target.value)} />
+            </FormField>
+          </div>
+        </div>
+
+        <FormField label="Reason for change (optional)">
+          <textarea
+            className={inputClassName}
+            rows={2}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="e.g. Updated phone number, new address after relocation"
+          />
+        </FormField>
+      </form>
+    </Modal>
+  )
+}
+
+
+function ChangeRequestHistory({ requests }) {
+  const statusBadge = (status) => {
+    const map = {
+      pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+      approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+      rejected: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+      cancelled: 'bg-gray-100 text-gray-700 dark:bg-gray-700/40 dark:text-gray-300',
+    }
+    return map[status] || map.pending
+  }
+
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+      <div className="mb-4 flex items-center gap-2">
+        <div className="rounded-lg bg-orange-50 p-1.5 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400">
+          <FileEdit className="h-4 w-4" />
+        </div>
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Recent Change Requests</h3>
+      </div>
+      <div className="space-y-3">
+        {requests.map((req) => (
+          <div key={req.id} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-700/20">
+            <div>
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                {req.changed_fields?.map((f) => f.replace(/_/g, ' ')).join(', ')}
+              </p>
+              <p className="text-xs text-gray-400">
+                {formatDate(req.created_at)}
+                {req.review_comment ? ` · ${req.review_comment}` : ''}
+                {req.rejection_reason ? ` · ${req.rejection_reason}` : ''}
+              </p>
+            </div>
+            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${statusBadge(req.status)}`}>
+              {req.status}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+export function EditProfileModal({ isOpen, onClose, profile, saving, onSave }) {
   const address = profile.address || {}
   const emergency = profile.emergency_contact || {}
   const [form, setForm] = useState(null)
@@ -369,6 +661,8 @@ function EditProfileModal({ isOpen, onClose, profile, saving, onSave }) {
   }, [isOpen])
   const open = Boolean(isOpen)
   const current = form || {
+    first_name: profile.first_name || '',
+    last_name: profile.last_name || '',
     personal_email: profile.personal_email || '',
     personal_phone: profile.personal_phone || '',
     address: { ...address },
@@ -382,6 +676,8 @@ function EditProfileModal({ isOpen, onClose, profile, saving, onSave }) {
   const handleSubmit = (event) => {
     event.preventDefault()
     const payload = {
+      first_name: current.first_name?.trim(),
+      last_name: current.last_name?.trim(),
       personal_email: current.personal_email?.trim() || null,
       personal_phone: current.personal_phone?.trim() || null,
       address: {
@@ -420,6 +716,18 @@ function EditProfileModal({ isOpen, onClose, profile, saving, onSave }) {
       }
     >
       <form id="my-hr-profile-form" onSubmit={handleSubmit} className="space-y-5">
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Existing account details</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="First name"><input className={inputClassName} name="first_name" value={current.first_name} onChange={(event) => set('first_name', event.target.value)} /></FormField>
+            <FormField label="Last name"><input className={inputClassName} name="last_name" value={current.last_name} onChange={(event) => set('last_name', event.target.value)} /></FormField>
+            <FormField label="Work email"><input className={inputClassName} value={profile.email || ''} disabled /></FormField>
+            <FormField label="Work phone"><input className={inputClassName} value={profile.phone || 'Not provided'} disabled /></FormField>
+            <FormField label="Department"><input className={inputClassName} value={profile.department_name || profile.department || 'Not assigned'} disabled /></FormField>
+            <FormField label="Employee number"><input className={inputClassName} value={profile.employee_number || ''} disabled /></FormField>
+          </div>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">These account and employment fields are managed by HR and are not included in the update.</p>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField label="Personal email">
             <input

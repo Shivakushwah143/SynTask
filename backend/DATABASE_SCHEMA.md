@@ -2,7 +2,7 @@
 
 Database: `alphanexis_task_management`
 
-This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **62 unique MongoDB collection names** across **67 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
+This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **63 unique MongoDB collection names** across **68 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
 
 Recruitment models under `backend/app/recruitment/models.py` also define tenant-scoped collections. `recruitment_candidates` stores public applicant profile data including `date_of_birth` when submitted. `recruitment_applications` stores candidate job applications with `company_id`, `candidate_id`, `job_id`, `status`, globally unique `tracking_code`, hashed `tracking_secret_hash`, `tracking_secret_created_at`, `applied_at`, `updated_at`, and `deleted_at`. `recruitment_candidate_portal_credentials` is a temporary public tracking credential collection keyed by `company_id`, `candidate_id`, `application_id`, `job_id`, and `tracking_code`; it stores only `secret_hash`, never the temporary password. Public candidate tracking verifies `tracking_code` plus PIN against a temporary credential hash and never exposes the hash or MongoDB id. `recruitment_offer_access_tokens` stores tenant-scoped offer access records with a token hash and optional encrypted raw token used to render public offer links in candidate tracking; public offer routes still verify the token hash and expiry before exposing offer details. Terminal candidate states remove temporary credential documents while retaining recruitment audit/application records.
 
@@ -32,6 +32,7 @@ Recruitment models under `backend/app/recruitment/models.py` also define tenant-
 | `hr_document_types` | HRDocumentType | Company-scoped document type catalog (Resume, Aadhaar, PAN, etc.) with `required`, `employee_upload_allowed`, and `default_visibility` flags. |
 | `hr_document_versions` | HRDocumentVersion | Stored file references and per-version review history for HR documents. Links to `hr_documents` via `document_id` (stored as str). |
 | `hr_document_requests` | HRDocumentRequest | HR-initiated document requests to employees: request lifecycle (`pending` → `submitted` → `approved`/`rejected`/`cancelled`), priority, due date, and linkage to fulfilled document. |
+| `employee_detail_change_requests` | EmployeeDetailChangeRequest | Employee self-service profile change requests: lifecycle (`pending` → `approved`/`rejected`/`cancelled`), atomic stale-data detection on approval, canonical mutation path. |
 | `invoices` | Invoice | Client invoice records, payments, tax, and PDF generation data. |
 | `issue_links` | IssueLink | IssueLink persistence collection. |
 | `issue_types` | IssueType | IssueType persistence collection. |
@@ -648,6 +649,34 @@ Indexes: `[(company_id, employee_id, status)]`, `[(company_id, status)]`, `[(com
 | `fulfilled_document_id` | `Optional[str]` | No | No | FK to `hr_documents` after upload |
 | `created_at` | `datetime.datetime` | No | No | Creation timestamp |
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
+
+### `employee_detail_change_requests`
+
+#### Model: `EmployeeDetailChangeRequest`
+
+Indexes: `[(company_id, status, created_at)]`, `[(company_id, employee_id, created_at)]`, `[(company_id, employee_id, status)]`, `[(company_id, requested_by, created_at)]`
+
+Employee self-service change request workflow. Manager/Lead/Employee roles submit change requests for their own profile fields. Admin/SubAdmin can edit directly (bypassing this workflow). Approval uses atomic stale-data detection: the original snapshot is compared against the current profile state before applying.
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `id` | `Optional[ObjectId]` | No | Yes | Primary key |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `employee_id` | `str` | Yes | Yes | FK to `employee_profiles` |
+| `user_id` | `str` | Yes | No | FK to `users` |
+| `requested_by` | `str` | Yes | Yes | User ID who created the request |
+| `request_type` | `str` | No | No | `personal_info` / `employment_info` / `mixed` |
+| `original_values` | `Dict[str, Any]` | No | No | Snapshot of field values when the request was created |
+| `requested_changes` | `Dict[str, Any]` | No | No | The new values requested |
+| `changed_fields` | `List[str]` | No | No | Field names being changed |
+| `reason` | `Optional[str]` | No | No | Employee-provided reason |
+| `status` | `str` | No | Yes | `pending` → `approved` / `rejected` / `cancelled` |
+| `reviewed_by` | `Optional[str]` | No | No | Reviewer user ID |
+| `reviewed_at` | `Optional[datetime]` | No | No | Review timestamp |
+| `review_comment` | `Optional[str]` | No | No | Reviewer comment |
+| `rejection_reason` | `Optional[str]` | No | No | Rejection reason (including auto-rejection) |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `updated_at` | `datetime.datetime` | No | No | Last update timestamp |
 
 ### `invoices`
 

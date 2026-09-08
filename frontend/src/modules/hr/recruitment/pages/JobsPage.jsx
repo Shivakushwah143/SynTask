@@ -14,6 +14,8 @@ import {
   MapPin,
   Plus,
   RefreshCw,
+  Send,
+  Clock,
   XCircle,
 } from "lucide-react";
 
@@ -326,7 +328,7 @@ export default function JobsPage() {
               onClick={() => actionMutation.mutate({ id: idOf(job), action: "pauseJob" })}
               title="Pause job"
             >
-              <ClockIcon className="h-4 w-4" />
+              <Clock className="h-4 w-4" />
               <span className="sr-only">Pause</span>
             </Button>
           )}

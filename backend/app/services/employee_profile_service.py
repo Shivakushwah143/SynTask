@@ -293,7 +293,7 @@ async def build_detail(
         "employment_type": profile.employment_type.value if profile.employment_type else None,
         "joining_date": profile.joining_date,
         "department_id": profile.department_id,
-        "department_name": department_name,
+        "department_name": department_name or getattr(user, "department", None),
         "designation": profile.designation,
         "manager_id": profile.reports_to,
         "manager_name": manager_name,

@@ -365,15 +365,17 @@ export const SECTIONS = [
     key: "people",
     label: "People",
     items: [
-      "User Accounts",
+      "HR Dashboard",
       "Employees",
       "My People",
       "Attendance",
       "Live Attendance",
       "Attendance Reports",
       "Leave Management",
+      "HR Documents",
+      "Payroll",
       "Departments",
-      "Company Directory",
+      "HR Reports",
     ],
   },
   {
@@ -382,14 +384,12 @@ export const SECTIONS = [
     items: [
       "Hiring Dashboard",
       "Job Openings",
-      "Applications",
+      "Recruitment Inbox",
       "Candidates",
-      "Employees",
       "Talent Pool",
       "Interviews",
       "Offers",
       "Hiring Reports",
-      "Settings",
     ],
     overviewHref: "/hr/recruitment",
     hideOverviewTab: true,
@@ -899,11 +899,10 @@ export const HR_ITEM_RENAMES = {
   "HR Reports": "HR Reports",
   "Recruitment Dashboard": "Hiring Dashboard",
   Jobs: "Job Openings",
-  Inbox: "Applications",
+  Inbox: "Recruitment Inbox",
   "Resume Pool": "Talent Pool",
   Reports: "Hiring Reports",
-  // Employees / Documents are HR-wide modules surfaced under People — the
-  // recruitment module no longer owns them, so no renames are needed.
+  Documents: "HR Documents",
 };
 // "Candidate Interview Screen" is a workflow screen, not a navigation item —
 // hidden per the exact-structure rule.
@@ -1190,7 +1189,8 @@ export const isSectionVisible = (section, user) => {
 };
 
 // HR items (renamed for People, merged/hidden items skipped) — same rules as the old Sidebar.
-const getHrNavItems = (user) => {
+// ownerFilter: "people" | "recruitment" | undefined (all)
+const getHrNavItems = (user, ownerFilter) => {
   const role = normalizeRole(user?.role);
   // Company admins (incl. SUB_ADMIN) + managers + HR-department staff. Super
   // admins are granted too — the backend treats them as full HR access.
@@ -1207,6 +1207,8 @@ const getHrNavItems = (user) => {
   return HR_MODULES.filter(
     (module) =>
       module.roles.includes(role) &&
+      // Filter by owner section if specified
+      (!ownerFilter || module.owner === ownerFilter) &&
       // People/HR visibility keeps its pre-permission-system rules: the backend
       // gates HR recruitment routes by role (require_job_view, ...), NOT by the
       // `recruitment` module, so the sidebar must not hide them by module.
@@ -1220,6 +1222,7 @@ const getHrNavItems = (user) => {
         ...item,
         name: HR_ITEM_RENAMES[item.name] || item.name,
         match: item.href === module.basePath ? module.basePath : undefined,
+        moduleKey: module.key,
       })),
   );
 };
@@ -1229,18 +1232,29 @@ const getHrNavItems = (user) => {
 export const getSectionItems = (sectionKey, user, orgDepartments = []) => {
   const section = SECTIONS.find((s) => s.key === sectionKey);
   if (!section || !isSectionVisible(section, user)) return [];
-  // Recruitment section uses the shared HR gating helper directly.
+
   if (sectionKey === "recruitment") {
-    return getHrNavItems(user);
+    // Only return Recruitment-owned HR modules.
+    return getHrNavItems(user, "recruitment");
   }
+
   const items = section.items
     .map((name) => NAV_ITEM_BY_NAME[name])
     .filter((item) => item && gateNavItem(user, item));
+
   if (sectionKey === "people") {
+    // Append People-owned HR items from HR_MODULES (employees, documents,
+    // payroll, attendance, leave, settings). These use HR gating logic.
+    const hrPeopleItems = getHrNavItems(user, "people");
+    // Deduplicate: only add HR items not already in the static list
+    const existingHrefs = new Set(items.map((i) => i.href));
+    for (const item of hrPeopleItems) {
+      if (!existingHrefs.has(item.href)) {
+        items.push(item);
+      }
+    }
+    // Dynamic department sub-items
     const deptIndex = items.findIndex((item) => item.name === "Departments");
-    // Marked departmentItem: these are quick links to each department's
-    // permission view. They stay in the sidebar, but the in-page SectionTabs
-    // bar filters them out so company departments don't appear as tabs.
     const departmentItems = orgDepartments.map((department) => ({
       name: department.name,
       href: `/admin-permissions?department=${encodeURIComponent(department.id)}`,
@@ -1248,7 +1262,6 @@ export const getSectionItems = (sectionKey, user, orgDepartments = []) => {
       departmentItem: true,
     }));
     if (deptIndex !== -1) items.splice(deptIndex + 1, 0, ...departmentItems);
-    // HR items are no longer appended here — they live under the Recruitment section.
   }
   return items;
 };

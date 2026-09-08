@@ -78,7 +78,7 @@ const isDateString = (value) => {
   return !Number.isNaN(date.getTime())
 }
 
-const toApiPayload = (form) => {
+const toApiPayload = (form, mode = 'create') => {
   const payload = {
     employee_number: form.employee_number?.trim() || null,
     date_of_birth: form.date_of_birth || null,
@@ -106,20 +106,25 @@ const toApiPayload = (form) => {
     reports_to: form.reports_to || null,
     work_location: form.work_location?.trim() || null,
     work_mode: form.work_mode || null,
-    employment_status: form.employment_status || 'onboarding',
-    probation: {
+  }
+
+  // Only include lifecycle fields on create — they are rejected by update_profile()
+  if (mode === 'create') {
+    payload.employment_status = form.employment_status || 'onboarding'
+    payload.probation = {
       applicable: Boolean(form.probation_applicable),
       start_date: form.probation_start_date || null,
       end_date: form.probation_end_date || null,
       confirmation_date: form.confirmation_date || null,
-    },
-    exit_info: {
+    }
+    payload.exit_info = {
       resignation_date: form.exit_resignation_date || null,
       last_working_day: form.exit_last_working_day || null,
       exit_date: form.exit_exit_date || null,
       exit_reason: form.exit_exit_reason?.trim() || null,
-    },
+    }
   }
+
   return payload
 }
 
@@ -211,16 +216,11 @@ export default function EmployeeFormModal({
     if (isCreate && !form.user_id) {
       nextErrors.user_id = 'Please select a user'
     }
-    for (const field of [
-      'date_of_birth',
-      'joining_date',
-      'probation_start_date',
-      'probation_end_date',
-      'confirmation_date',
-      'exit_resignation_date',
-      'exit_last_working_day',
-      'exit_exit_date',
-    ]) {
+    const dateFieldsToCheck = ['date_of_birth', 'joining_date']
+    if (isCreate) {
+      dateFieldsToCheck.push('probation_start_date', 'probation_end_date', 'confirmation_date', 'exit_resignation_date', 'exit_last_working_day', 'exit_exit_date')
+    }
+    for (const field of dateFieldsToCheck) {
       if (!isDateString(form[field])) {
         nextErrors[field] = 'Enter a valid date'
       }
@@ -239,7 +239,7 @@ export default function EmployeeFormModal({
 
     setSubmitting(true)
     try {
-      const payload = toApiPayload(form)
+      const payload = toApiPayload(form, isCreate ? 'create' : 'edit')
       if (isCreate) {
         payload.user_id = form.user_id
       }

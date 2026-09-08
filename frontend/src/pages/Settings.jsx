@@ -25,6 +25,11 @@ import { timeService } from '@/services/timeService'
 import { aiAPI } from '../api/ai'
 import toast from 'react-hot-toast'
 import { Badge, Button, FormField, inputClassName } from '../components/ui'
+import { useCreateChangeRequest } from '../hooks/useChangeRequests'
+import { useMyChangeRequests } from '../hooks/useChangeRequests'
+import { useMyProfile, useUpdateMyProfile } from '../hooks/useMyHr'
+import { ChangeRequestModal, EditProfileModal } from './hr/me/MyProfile'
+import { isAdminRole, isSubAdminRole } from '../utils/roles'
 
 // ============================================================
 // SECTION HEADER COMPONENT
@@ -154,6 +159,13 @@ const getInitials = (user) => `${user?.first_name?.[0] || ''}${user?.last_name?.
 // ============================================================
 const Settings = () => {
   const { user, updateUser } = useAuthStore()
+  const { data: employeeProfile } = useMyProfile()
+  const updateMyProfile = useUpdateMyProfile()
+  const createChangeRequest = useCreateChangeRequest()
+  const { data: myChangeRequests } = useMyChangeRequests({ page_size: 5 })
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false)
+  const [changeRequestOpen, setChangeRequestOpen] = useState(false)
+  const [savingEmployeeProfile, setSavingEmployeeProfile] = useState(false)
   const [activeTab, setActiveTab] = useState('profile')
   const fileInputRef = useRef(null)
   const [avatarFile, setAvatarFile] = useState(null)
@@ -205,6 +217,8 @@ const Settings = () => {
   }, [avatarPreview, avatarRemoved, currentAvatarUrl, imageError]);
 
   const profileChanged = Boolean(avatarFile || avatarRemoved)
+  const canEditEmployeeDetails = isAdminRole(user?.role) || isSubAdminRole(user?.role)
+  const hasPendingDetailRequest = myChangeRequests?.items?.some((request) => request.status === 'pending') || false
 
   // Clean up object URLs on unmount
   useEffect(() => {
@@ -518,7 +532,27 @@ const Settings = () => {
           <SectionHeader 
             icon={UserCog}
             title="Profile Information"
-            description="Manage your profile photo and view account details"
+            description="Manage your profile photo and personal details"
+            action={(
+              canEditEmployeeDetails ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => employeeProfile ? setProfileEditorOpen(true) : toast.error('No employee profile is linked to this account')}
+                >
+                  Edit Profile
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => employeeProfile ? setChangeRequestOpen(true) : toast.error('No employee profile is linked to this account')}
+                  disabled={hasPendingDetailRequest}
+                >
+                  {hasPendingDetailRequest ? 'Request Pending…' : 'Request Detail Change'}
+                </Button>
+              )
+            )}
           />
           <div className="space-y-4 p-3">
             <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-4 dark:border-indigo-900/50 dark:from-indigo-950/20 dark:to-gray-900/30">
@@ -627,6 +661,44 @@ const Settings = () => {
               </Button>
             </div>
           </div>
+          {employeeProfile ? (
+            <>
+              <EditProfileModal
+                isOpen={profileEditorOpen}
+                onClose={() => setProfileEditorOpen(false)}
+                profile={employeeProfile}
+                saving={savingEmployeeProfile}
+                onSave={async (payload) => {
+                  setSavingEmployeeProfile(true)
+                  try {
+                    await updateMyProfile.mutateAsync(payload)
+                    updateUser({ ...user, first_name: payload.first_name, last_name: payload.last_name })
+                    toast.success('Personal details updated')
+                    setProfileEditorOpen(false)
+                  } catch (error) {
+                    toast.error(error?.response?.data?.detail || 'Failed to update your details')
+                  } finally {
+                    setSavingEmployeeProfile(false)
+                  }
+                }}
+              />
+              <ChangeRequestModal
+                isOpen={changeRequestOpen}
+                onClose={() => setChangeRequestOpen(false)}
+                profile={employeeProfile}
+                submitting={createChangeRequest.isLoading}
+                onSubmit={async (payload) => {
+                  try {
+                    await createChangeRequest.mutateAsync(payload)
+                    toast.success('Change request submitted. Your manager will review it.')
+                    setChangeRequestOpen(false)
+                  } catch (error) {
+                    toast.error(error?.response?.data?.detail || 'Failed to submit change request')
+                  }
+                }}
+              />
+            </>
+          ) : null}
         </SettingsCard>
       )}
 
