@@ -51,6 +51,11 @@ class ModuleUpdateRequest(BaseModel):
     modules: List[str] = Field(default_factory=list)
 
 
+class CapabilityGrantUpdateRequest(BaseModel):
+    """Explicit company-scoped grants for one member."""
+    capabilities: List[str] = Field(default_factory=list)
+
+
 # Role-level default module selections, used by the member creation forms to
 # pre-populate the Permissions selector (frontend mirrors this in
 # src/config/modulePermissions.js - keep both in sync).

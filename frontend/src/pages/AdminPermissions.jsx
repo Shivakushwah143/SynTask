@@ -25,6 +25,19 @@ const ROLE_COLORS = {
   employee: 'bg-slate-100 text-slate-600 ring-slate-200',
 }
 
+const CAPABILITY_CATALOG = [
+  ['employee_management.view', 'View employee profiles'],
+  ['employee_management.manage', 'Manage employee profiles'],
+  ['leave_management.view', 'View leave'],
+  ['leave_management.manage', 'Manage leave'],
+  ['attendance_policy.view', 'View attendance'],
+  ['attendance_policy.manage', 'Manage attendance'],
+  ['salary_management.view', 'View salary'],
+  ['salary_management.manage', 'Manage salary'],
+  ['employee_lifecycle.view', 'View lifecycle'],
+  ['employee_lifecycle.manage', 'Manage lifecycle'],
+]
+
 // ─── Helper components ─────────────────────────────────────────────────────────
 
 function RoleBadge({ role }) {
@@ -95,6 +108,7 @@ const AdminPermissions = () => {
 
   // Local edits before saving — keyed by userId / departmentId
   const [pendingUserModules, setPendingUserModules] = useState({})
+  const [pendingUserCapabilities, setPendingUserCapabilities] = useState({})
   const [pendingDeptModules, setPendingDeptModules] = useState({})
 
   const toastTimerRef = useRef(null)
@@ -136,6 +150,7 @@ const AdminPermissions = () => {
 
       // Reset pending edits on full reload
       setPendingUserModules({})
+      setPendingUserCapabilities({})
       setPendingDeptModules({})
     } catch (err) {
       showError(err?.response?.data?.detail || 'Unable to load permissions overview.')
@@ -163,13 +178,16 @@ const AdminPermissions = () => {
   const selectedUserModules = pendingUserModules[selectedUserId]
     ?? selectedUser?.modules
     ?? []
+  const selectedUserCapabilities = pendingUserCapabilities[selectedUserId]
+    ?? selectedUser?.capability_grants
+    ?? []
 
   const selectedDeptMembers = (overview?.employees || []).filter(
     (e) => e.department_id === selectedDepartmentId
   )
 
   const hasPendingDeptChanges = Boolean(pendingDeptModules[selectedDepartmentId])
-  const hasPendingUserChanges = Boolean(pendingUserModules[selectedUserId])
+  const hasPendingUserChanges = Boolean(pendingUserModules[selectedUserId] || pendingUserCapabilities[selectedUserId])
 
   // ─── Toggle helpers ────────────────────────────────────────────────────────
 
@@ -188,6 +206,10 @@ const AdminPermissions = () => {
     const next = toggleSet(selectedUserModules, moduleId)
     setPendingUserModules((prev) => ({ ...prev, [selectedUserId]: next }))
   }
+  const handleToggleUserCapability = (capability) => {
+    const next = toggleSet(selectedUserCapabilities, capability)
+    setPendingUserCapabilities((prev) => ({ ...prev, [selectedUserId]: next }))
+  }
 
   // ─── Save handlers ─────────────────────────────────────────────────────────
 
@@ -199,6 +221,7 @@ const AdminPermissions = () => {
         `/admin/permissions/departments/${selectedDepartment.id}/modules`,
         { modules: selectedDeptModules }
       )
+      await api.put(`/admin/permissions/users/${selectedUser.id}/capabilities`, { capabilities: selectedUserCapabilities })
       const data = res.data ?? res
       showSuccess(`Department "${selectedDepartment.name}" defaults saved with ${data.modules?.length ?? 0} module(s).`)
       await loadOverview(true)
@@ -344,7 +367,7 @@ const AdminPermissions = () => {
             Department Defaults
           </div>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-            Set which modules are enabled by default for a department. Use "Apply to members" to push defaults to all current members.
+            Set which modules are enabled by default for a department. Use &quot;Apply to members&quot; to push defaults to all current members.
           </p>
 
           <div className="mt-3 space-y-4">
@@ -572,6 +595,17 @@ const AdminPermissions = () => {
                 })}
               </div>
 
+              <div className="mt-5 border-t border-primary-200 pt-4 dark:border-primary-800">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Action permissions</h3>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">These grants control API actions. They do not expand company scope.</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {CAPABILITY_CATALOG.map(([capability, label]) => {
+                    const enabled = selectedUserCapabilities.includes(capability)
+                    return <button key={capability} type="button" onClick={() => handleToggleUserCapability(capability)} disabled={saving} className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs font-medium transition disabled:opacity-50 ${enabled ? 'border-primary-200 bg-primary-100 text-primary-800 dark:border-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'}`}><span>{label}</span><span>{enabled ? 'Granted' : 'Off'}</span></button>
+                  })}
+                </div>
+              </div>
+
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <button
                   type="button"
@@ -589,6 +623,11 @@ const AdminPermissions = () => {
                   type="button"
                   onClick={() => {
                     setPendingUserModules((prev) => {
+                      const next = { ...prev }
+                      delete next[selectedUserId]
+                      return next
+                    })
+                    setPendingUserCapabilities((prev) => {
                       const next = { ...prev }
                       delete next[selectedUserId]
                       return next

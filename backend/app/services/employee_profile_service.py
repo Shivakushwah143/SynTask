@@ -474,6 +474,11 @@ async def can_view_employee_directory(user: User) -> bool:
     role = user.role if isinstance(user.role, UserRole) else UserRole.from_legacy(str(user.role))
     if role in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER}:
         return True
+    # Explicit grants are additive and already constrained to the actor's
+    # company by endpoint/resource lookup. Keep the existing department-role
+    # default evaluation here for compatibility with service callers.
+    if "employee_management.view" in (getattr(user, "capability_grants", []) or []):
+        return bool(user.company_id)
     if not user.company_id or not user.department_id:
         return False
     department = await Department.get(user.department_id)

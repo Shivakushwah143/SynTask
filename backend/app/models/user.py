@@ -54,6 +54,11 @@ class User(Document):
     status: UserStatus = UserStatus.PENDING
     # Modules the user can access (e.g., task management, sales tracker)
     modules: List[str] = Field(default_factory=lambda: ["task"])
+    # Explicit action grants are additive to role/department defaults.  They
+    # are intentionally separate from modules: a module controls workspace
+    # visibility, while a capability controls an API action.  Grants are
+    # always evaluated with the user's company scope by the RBAC helpers.
+    capability_grants: List[str] = Field(default_factory=list)
     previous_role: Optional[UserRole] = None
     # Preferred/last active module for UI landing
     active_module: Optional[str] = Field(default="task")
