@@ -1128,6 +1128,61 @@ export const getNavContextForPath = (pathname, search = "") => {
   return prefixMatch;
 };
 
+// ── Centralized HR route ownership resolver ─────────────────────────────────
+// Single source of truth for "which section owns this /hr/* path?".
+// Used by SectionTabs, breadcrumbs, and any other consumer that needs to map
+// an HR route to its owning section ("people" or "recruitment").
+//
+// Returns { sectionKey, itemName, matchedExact } or null for excluded/unknown paths.
+//   sectionKey   — "people" | "recruitment"
+//   itemName     — The display name of the matched nav item (e.g. "Employees")
+//   matchedExact — true when pathname equals the item's href exactly
+//
+// Pre-computed once from HR_MODULES so every call is O(n) with a small constant.
+const _HR_ROUTE_LIST = HR_MODULES.flatMap((mod) =>
+  mod.navigation
+    .filter((item) => !HR_ITEM_SKIP.has(item.name))
+    .map((item) => ({
+      name: HR_ITEM_RENAMES[item.name] || item.name,
+      href: (item.href || "").split("?")[0],
+      basePath: mod.basePath,
+      moduleKey: mod.key,
+    })),
+);
+
+export const resolveHrSection = (pathname) => {
+  if (!pathname?.startsWith("/hr")) return null;
+
+  const hrPath = (item) => (item.href || "").split("?")[0];
+
+  // Excluded paths — intentionally return null so the caller shows no section context.
+  if (pathname === "/hr" || pathname === "/hr/recruitment/interview-screen") return null;
+
+  // Exact match — the pathname equals an HR nav item's href.
+  const hrExact = _HR_ROUTE_LIST.find((item) => pathname === item.href);
+  if (hrExact) {
+    const sectionKey = hrExact.moduleKey === "recruitment" ? "recruitment" : "people";
+    return { sectionKey, itemName: hrExact.name, matchedExact: true };
+  }
+
+  // Longest prefix match — /hr/employees/:id → "Employees", /hr/recruitment/jobs/123 → "Job Openings".
+  let bestMatch = null;
+  let bestLen = 0;
+  for (const item of _HR_ROUTE_LIST) {
+    const base = item.href;
+    if (pathname.startsWith(`${base}/`) && base.length > bestLen) {
+      bestLen = base.length;
+      bestMatch = item;
+    }
+  }
+  if (bestMatch) {
+    const sectionKey = bestMatch.moduleKey === "recruitment" ? "recruitment" : "people";
+    return { sectionKey, itemName: bestMatch.name, matchedExact: false };
+  }
+
+  return null;
+};
+
 // ── Shared gating helpers (Phase A of the tab sub-nav plan) ──────────────────
 // One source of truth for "which items does section X show for user U", used by BOTH the
 // Sidebar (section visibility + favorites pool) and the SectionTabs bar, so the two can never
