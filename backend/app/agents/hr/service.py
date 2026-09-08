@@ -62,6 +62,10 @@ class HRAgentService:
 
         user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
 
+        # ── Build trusted security context ──────────────────────────────────
+        from app.ai.security.context import build_security_context
+        security_ctx = await build_security_context(current_user, trace_id=str(uuid4()))
+
         start_time = time.perf_counter()
         # Observability: enrich the active trace (agent identity + sanitized query).
         _trace_ctx = ai_tracer.get_current_trace()
@@ -79,6 +83,7 @@ class HRAgentService:
             message=message,
             conversation_history=conversation_history,
             entity_context=entity_context,
+            security_context=security_ctx,
         )
         if _agent_span is not None:
             ai_tracer.end_span(
@@ -213,6 +218,10 @@ class HRAgentService:
 
         user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
 
+        # ── Build trusted security context ──────────────────────────────────
+        from app.ai.security.context import build_security_context
+        security_ctx = await build_security_context(current_user, trace_id=str(uuid4()))
+
         t0 = time.perf_counter()
         timings: dict[str, Any] = {"_t0": t0, "request_received": 0.0}
         conv_id = conversation_id or str(uuid4())
@@ -238,6 +247,7 @@ class HRAgentService:
             conversation_history=conversation_history,
             entity_context=entity_context,
             timings=timings,
+            security_context=security_ctx,
         ):
             if ev["type"] == "done":
                 payload = self._finalize_stream_payload(

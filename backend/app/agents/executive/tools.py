@@ -2050,8 +2050,38 @@ _MEM_CACHE_TTL: dict[str, float] = {
     "get_recruitment_overview": 60.0,
 }
 
-def _cache_key(tool_name: str, company_id: str, arguments: dict[str, Any]) -> str:
-    return f"exec:tool:{tool_name}:{company_id}:{json.dumps(arguments, sort_keys=True, default=str)}"
+def _cache_key(
+    tool_name: str,
+    company_id: str,
+    arguments: dict[str, Any],
+    scope_fingerprint: str | None = None,
+) -> str:
+    """Build a cache key that includes security scope for sensitive tools.
+
+    ``scope_fingerprint`` is a short hash of the user's effective
+    capabilities + role.  When supplied, it prevents cache leakage
+    across users with different authorization levels.  Tools that
+    return only non-sensitive aggregate data may omit it for better
+    hit rates.
+    """
+    base = f"exec:tool:{tool_name}:{company_id}:{json.dumps(arguments, sort_keys=True, default=str)}"
+    if scope_fingerprint:
+        base += f":{scope_fingerprint}"
+    return base
+
+
+# Tools whose cached results can contain sensitive data and therefore
+# require a scope-aware cache key to prevent cross-role leakage.
+_SENSITIVE_CACHE_TOOLS: set[str] = {
+    "get_finance_summary",
+    "get_overdue_invoices",
+    "list_invoices",
+    "get_invoice_detail",
+    "get_employee_salary",
+    "get_payroll_status",
+    "get_payroll_blockers",
+    "get_employee_payslip_status",
+}
 
 
 async def _get_cached(key: str, tool_name: str) -> dict[str, Any] | None:
@@ -2104,19 +2134,25 @@ async def execute_executive_tool(
     company_id: str,
     user_role: str = "employee",
     modules: Optional[list[str]] = None,
+    security_context: Any = None,
 ) -> dict[str, Any]:
     """Execute an executive tool by name with validated arguments.
 
     Includes:
+    - Governance authorization (when security_context provided)
     - Pydantic argument validation
     - RBAC policy enforcement for sensitive tools
     - Module availability gates (when the company module list is supplied)
     - Redis-backed result caching for expensive reads
+    - Sensitive data projection
 
     Observability: records a TOOL span when a trace is active (tool name,
     duration, status, safe cache/error metadata only — never payloads).
     """
     from app.ai.observability import tracer as _ai_tracer
+    from app.ai.security.governance import authorize_tool_execution, GovernanceDecision
+    from app.ai.security.audit import record_security_event
+    from app.ai.security.result_projection import project_tool_result
 
     _trace = _ai_tracer.get_current_trace()
     _span = None
@@ -2141,7 +2177,41 @@ async def execute_executive_tool(
     if tool_name not in TOOL_DISPATCH:
         return _finish({"error": f"Unknown tool: {tool_name}"})
 
-    # ── RBAC check ──────────────────────────────────────────────────────────
+    # ── Governance authorization (defense in depth) ──────────────────────────
+    if security_context is not None:
+        auth_result = authorize_tool_execution(
+            context=security_context,
+            tool_name=tool_name,
+            agent_id="executive_operations",
+            arguments=arguments,
+            company_id_from_args=company_id,
+        )
+
+        if not auth_result.allowed:
+            logger.info(
+                "Executive tool '%s' denied by governance: %s — %s",
+                tool_name,
+                auth_result.reason.value if auth_result.reason else "unknown",
+                auth_result.details,
+            )
+            await record_security_event(
+                company_id=security_context.company_id,
+                user_id=security_context.user_id,
+                role=security_context.role,
+                agent="executive_operations",
+                capability=tool_name,
+                decision=auth_result.decision.value,
+                decision_code=auth_result.reason.value if auth_result.reason else None,
+                decision_details=auth_result.details,
+                trace_id=security_context.trace_id,
+            )
+            return _finish({
+                "error": f"Access denied: {auth_result.details}",
+                "governance_denied": True,
+                "decision": auth_result.decision.value,
+            })
+
+    # ── Legacy RBAC check (kept for backward compatibility) ──────────────────
     allowed_roles = _SENSITIVE_TOOLS.get(tool_name)
     if allowed_roles and user_role not in allowed_roles:
         return _finish({
@@ -2151,8 +2221,6 @@ async def execute_executive_tool(
         })
 
     # ── Module gate ─────────────────────────────────────────────────────────
-    # Enforced only when the caller explicitly supplies a non-empty module
-    # list (companies without module metadata stay permissive).
     module_gate = TOOL_MODULE_GATES.get(tool_name)
     enabled_modules = {str(m).lower() for m in modules} if modules else None
     if module_gate and enabled_modules and module_gate not in enabled_modules:
@@ -2173,7 +2241,14 @@ async def execute_executive_tool(
         validated = arguments
 
     # ── Check cache ─────────────────────────────────────────────────────────
-    cache_key = _cache_key(tool_name, company_id, arguments)
+    # Build scope-aware cache key for sensitive tools to prevent cross-role leakage
+    _scope_fp: str | None = None
+    if tool_name in _SENSITIVE_CACHE_TOOLS and security_context is not None:
+        # Compact fingerprint: sorted capabilities + role + policy version
+        import hashlib
+        scope_seed = f"{sorted(security_context.effective_capabilities)}:{security_context.role}:{security_context.is_admin}"
+        _scope_fp = hashlib.sha256(scope_seed.encode()).hexdigest()[:12]
+    cache_key = _cache_key(tool_name, company_id, arguments, scope_fingerprint=_scope_fp)
     cached = await _get_cached(cache_key, tool_name)
     if cached is not None:
         _cache_hit = True
@@ -2182,6 +2257,9 @@ async def execute_executive_tool(
     # ── Execute ─────────────────────────────────────────────────────────────
     try:
         result = await TOOL_DISPATCH[tool_name](company_id, validated)
+        # ── Sensitive data projection ───────────────────────────────────────
+        if security_context is not None:
+            result = project_tool_result(security_context, tool_name, result)
         await _set_cached(cache_key, tool_name, result)
         return _finish(result)
     except Exception as exc:

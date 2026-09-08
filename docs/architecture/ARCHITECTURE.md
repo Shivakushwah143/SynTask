@@ -128,6 +128,32 @@ Project completion control lives in `project_completion_service.py` and is calle
 ### Background Tasks
 Startup launches the deadline checker from `app.core.deadline_checker`, the centralized reminder scheduler from `app.services.reminder_service`, and the one-minute scheduled-job runner from `app.services.scheduling_service`. The reminder scheduler runs hourly in-process, scans incomplete assigned tasks and unpublished assigned content with due dates up to three days ahead plus overdue records, and writes company-scoped notifications with duplicate keys in notification metadata. The scheduled-job runner locks due `scheduled_jobs` records atomically before invoking the existing project/task creation services, records one-time or recurring occurrence history in `scheduled_job_occurrences`, calculates the next recurring run from recurrence and timezone settings, and records notifications and timeline events. Paused recurring jobs are skipped; resumed recurring jobs advance missed times to the next future occurrence. Celery and Redis dependencies are present, but Celery workers are not yet wired as the primary background execution path.
 
+## AI Security & Governance
+
+Every AI-originated business-data access passes through a deterministic authorization boundary. The core rule: **LLM decides WHAT → Backend determines WHETHER → Existing application logic determines HOW → Database**. The LLM is treated as an untrusted reasoning component.
+
+```mermaid
+flowchart LR
+    LLM[LLM Reasoning] -->|tool call + args| GOV[Governance Gate]
+    GOV -->|ALLOW| DISPATCH[Tool Dispatcher]
+    GOV -->|DENY| BLOCK[DENY Response]
+    DISPATCH -->|execute| APP[Existing App Logic]
+    APP -->|query| DB[(MongoDB)]
+    DB -->|result| PROJ[Result Projection]
+    PROJ -->|filtered data| LLM
+```
+
+Key components:
+- **AISecurityContext** — trusted, immutable context built from the authenticated user's JWT and RBAC (never from LLM-supplied arguments).
+- **CapabilityPolicyRegistry** — single source of truth for tool governance metadata (required capabilities, modules, risk levels, sensitive data classes).
+- **Governance engine** — 7-check sequence: context exists → policy exists → agent authorized → modules → capabilities → writes → approval.
+- **Schema filter** — authorization-filtered schemas are sent to the LLM (unauthorized tools are invisible).
+- **Result projection** — independent capability-based filtering of composite results (e.g., employee_360 hides payroll from non-payroll users).
+- **Injection detection** — regex-based prompt injection signal analysis before tool execution.
+- **Audit trail** — `AISecurityEvent` records all ALLOW/DENY decisions with safe metadata.
+
+Three AI execution paths are governed: HR Agent (Groq LLM), Executive Agent (Groq LLM + FAST_FACT deterministic handlers), and Capability Selector (schema filtering).
+
 ## Current Architecture Limitations
 - Phase 3 introduced a service layer for users, projects, tasks, sprints, epics, files, notifications, email, and automation. Some legacy endpoint modules still contain business logic and should continue moving behind services incrementally.
 - The legacy monolithic `projects.py` endpoint has been decomposed into a package under `backend/app/api/v1/endpoints/projects/`. Other large modules such as chat, users, tickets, MSA, and sales reports remain candidates for future decomposition.

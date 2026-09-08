@@ -85,6 +85,10 @@ class ExecutiveAgentService:
 
         user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
 
+        # ── Build trusted security context ──────────────────────────────────
+        from app.ai.security.context import build_security_context
+        security_ctx = await build_security_context(current_user, trace_id=str(uuid4()))
+
         start_time = time.perf_counter()
 
         # Observability: enrich the active trace (agent identity + sanitized query).
@@ -124,6 +128,40 @@ class ExecutiveAgentService:
                     message[:80], gate_result.fast_fact_handler, gate_result.confidence,
                     _scope_summary(fast_fact_scope),
                 )
+                # ── FAST_FACT governance (must not bypass authorization) ──────
+                from app.ai.security.governance import authorize_capability
+                fast_fact_cap = f"fast_fact:{gate_result.fast_fact_handler}"
+                fast_auth = authorize_capability(security_ctx, fast_fact_cap, "fast_fact")
+                if not fast_auth.allowed:
+                    logger.info(
+                        "FAST_FACT '%s' denied by governance: %s",
+                        gate_result.fast_fact_handler,
+                        fast_auth.reason.value if fast_auth.reason else "unknown",
+                    )
+                    from app.ai.security.audit import record_security_event
+                    await record_security_event(
+                        company_id=security_ctx.company_id,
+                        user_id=security_ctx.user_id,
+                        role=security_ctx.role,
+                        agent="fast_fact",
+                        capability=fast_fact_cap,
+                        decision=fast_auth.decision.value,
+                        decision_code=fast_auth.reason.value if fast_auth.reason else None,
+                        decision_details=fast_auth.details,
+                        trace_id=security_ctx.trace_id,
+                    )
+                    latency_ms = (time.perf_counter() - start_time) * 1000
+                    return {
+                        "success": False,
+                        "answer": "Access denied: you don't have permission to access this information.",
+                        "error": "GOVERNANCE_DENIED",
+                        "conversation_id": conversation_id or str(uuid4()),
+                        "session_id": session_id or str(uuid4()),
+                        "entity_context": entity_context or {},
+                        "usage": {"model": "deterministic", "latency_ms": round(latency_ms, 1), "path": "FAST_FACT"},
+                        "tool_calls_summary": [],
+                    }
+
                 fast_result = await execute_fast_fact(
                     gate_result.fast_fact_handler,
                     str(company_id),
@@ -207,6 +245,7 @@ class ExecutiveAgentService:
             entity_context=entity_context,
             modules=company_modules,
             evaluation_mode=evaluation_mode,
+            security_context=security_ctx,
         )
         if _agent_span is not None:
             ai_tracer.end_span(
@@ -381,6 +420,10 @@ class ExecutiveAgentService:
 
         user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
 
+        # ── Build trusted security context ──────────────────────────────────
+        from app.ai.security.context import build_security_context
+        security_ctx = await build_security_context(current_user, trace_id=str(uuid4()))
+
         t0 = time.perf_counter()
         timings: dict[str, Any] = {"_t0": t0, "request_received": 0.0}
         conv_id = conversation_id or str(uuid4())
@@ -414,6 +457,39 @@ class ExecutiveAgentService:
                     reason="fast_fact_entity_unresolved",
                 )
             else:
+                # ── FAST_FACT governance (streaming path) ────────────────────
+                from app.ai.security.governance import authorize_capability
+                fast_fact_cap = f"fast_fact:{gate_result.fast_fact_handler}"
+                fast_auth = authorize_capability(security_ctx, fast_fact_cap, "fast_fact")
+                if not fast_auth.allowed:
+                    logger.info(
+                        "FAST_FACT '%s' denied by governance (stream): %s",
+                        gate_result.fast_fact_handler,
+                        fast_auth.reason.value if fast_auth.reason else "unknown",
+                    )
+                    from app.ai.security.audit import record_security_event
+                    await record_security_event(
+                        company_id=security_ctx.company_id,
+                        user_id=security_ctx.user_id,
+                        role=security_ctx.role,
+                        agent="fast_fact",
+                        capability=fast_fact_cap,
+                        decision=fast_auth.decision.value,
+                        decision_code=fast_auth.reason.value if fast_auth.reason else None,
+                        decision_details=fast_auth.details,
+                        trace_id=security_ctx.trace_id,
+                    )
+                    yield status_event("answer", "Access denied.")
+                    yield token_event("Access denied: you don't have permission to access this information.")
+                    yield {"type": "done", "data": {
+                        "success": False,
+                        "answer": "Access denied: you don't have permission to access this information.",
+                        "error": "GOVERNANCE_DENIED",
+                        "conversation_id": conv_id,
+                        "session_id": sess_id,
+                    }}
+                    return
+
                 fast_result = await execute_fast_fact(
                     gate_result.fast_fact_handler,
                     str(company_id),
@@ -496,6 +572,7 @@ class ExecutiveAgentService:
             entity_context=entity_context,
             modules=company_modules,
             timings=timings,
+            security_context=security_ctx,
         ):
             if ev["type"] == "done":
                 payload = self._finalize_stream_payload(

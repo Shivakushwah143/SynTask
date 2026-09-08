@@ -58,6 +58,7 @@ from app.models.knowledge import KnowledgeRecord
 from app.models.agent import AgentDefinition, AgentRun, AgentRunEvent, ActionProposal, SpecialistDefinition
 from app.models.ai_evaluation import AIEvalCaseResult, AIEvalRun
 from app.models.ai_observability import AITrace, AISpan
+from app.ai.security.audit import AISecurityEvent
 from app.rag.models import (
     RAGCitation,
     RAGKnowledgeChunk,
@@ -406,6 +407,7 @@ async def init_db():
                 AIEvalCaseResult,
                 AITrace,
                 AISpan,
+                AISecurityEvent,
                 RAGKnowledgeSource,
                 RAGKnowledgeSourceVersion,
                 RAGKnowledgeChunk,

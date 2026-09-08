@@ -131,6 +131,7 @@ class ExecutiveOperationsAgent:
         entity_context: dict[str, Any] | None = None,
         modules: list[str] | None = None,
         evaluation_mode: bool = False,
+        security_context: Any = None,
     ) -> AgentLoopResult:
         """Execute the executive agent loop.
 
@@ -164,11 +165,13 @@ class ExecutiveOperationsAgent:
         cross_domain = is_cross_domain(message, entity_ctx)
         effective_max_steps = 3 if cross_domain else 2
 
-        # ── Dynamic tool selection (entity-context-aware) ─────────────────────
+        # ── Dynamic tool selection (entity-context-aware, authorization-filtered) ─
         selected_schemas, packs_used = select_tools(
             message, EXECUTIVE_TOOL_SCHEMAS,
             entity_context=entity_ctx,
             max_tools=6, min_tools=2,
+            security_context=security_context,
+            agent_id="executive_operations",
         )
 
         # Build initial messages
@@ -274,6 +277,7 @@ class ExecutiveOperationsAgent:
                     company_id=company_id,
                     user_role=user_role,
                     modules=modules,
+                    security_context=security_context,
                 )
                 tc_duration = (time.perf_counter() - tc_start) * 1000
                 return tc, res, tc_duration
@@ -331,6 +335,7 @@ class ExecutiveOperationsAgent:
         entity_context: dict[str, Any] | None = None,
         modules: list[str] | None = None,
         timings: dict[str, Any] | None = None,
+        security_context: Any = None,
     ) -> Any:
         """Async-generator variant of ``run`` with live token streaming.
 
@@ -390,11 +395,13 @@ class ExecutiveOperationsAgent:
         cross_domain = is_cross_domain(message, entity_ctx)
         effective_max_steps = 3 if cross_domain else 2
 
-        # ── Dynamic tool selection (entity-context-aware) ─────────────────────
+        # ── Dynamic tool selection (entity-context-aware, authorization-filtered) ─
         selected_schemas, packs_used = select_tools(
             message, EXECUTIVE_TOOL_SCHEMAS,
             entity_context=entity_ctx,
             max_tools=6, min_tools=2,
+            security_context=security_context,
+            agent_id="executive_operations",
         )
 
         messages = self._build_initial_messages(
@@ -575,6 +582,7 @@ class ExecutiveOperationsAgent:
                     company_id=company_id,
                     user_role=user_role,
                     modules=modules,
+                    security_context=security_context,
                 )
                 tc_duration = (time.perf_counter() - tc_start) * 1000
                 return tc, res, tc_duration
