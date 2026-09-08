@@ -536,7 +536,9 @@ export default function CandidatesPage() {
         }
         setAssignJobOpen(false);
         invalidate();
-        qc.invalidateQueries(["recruitment", "employees"]);
+        // Employees list lives in People section — use canonical ['employees'] key
+        // that matches EmployeesPage.jsx queryClient usage.
+        qc.invalidateQueries(['employees']);
         qc.invalidateQueries(["recruitment", "candidate", selectedId]);
       },
       onError: (error) => {
@@ -1097,7 +1099,7 @@ export default function CandidatesPage() {
                       await recruitmentApi.convertCandidate(idOf(candidate), { department_id: candidate.department_id || "", designation: candidate.designation || "" });
                       toast.success("Candidate converted to employee!");
                       qc.invalidateQueries(["recruitment", "candidates"]);
-                      qc.invalidateQueries(["recruitment", "employees"]);
+                      qc.invalidateQueries(['employees']);
                       setSelected(null);
                     } catch (err) {
                       toast.error(err?.response?.data?.detail || "Failed to convert candidate");

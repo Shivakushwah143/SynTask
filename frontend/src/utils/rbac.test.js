@@ -11,7 +11,8 @@ import { describe, expect, it } from 'vitest'
 import { hasModuleAccess, hasCapability, hasDepartment } from './rbac'
 import { ROLE } from './roles'
 import { isLegacyModules } from '../config/modulePermissions'
-import { resolveHrSection } from '../config/navigation'
+import { resolveHrSection, getSectionItems } from '../config/navigation'
+import { HR_MODULES } from '../config/hrModules'
 
 // ── Test users (explicit module lists, NOT legacy) ─────────────────────────
 const recruitmentOnlyUser = {
@@ -291,4 +292,115 @@ describe('Permission domain isolation — no cross-contamination', () => {
       expect(hasModuleAccess(ROLE.MANAGER, [modB], modA)).toBe(false)
     })
   }
+})
+
+// ── Section ownership regression tests ─────────────────────────────────────
+// These verify that People and Recruitment sections contain only their own
+// items after the domain separation. They protect against items creeping into
+// the wrong section in future changes.
+describe('Section ownership regression', () => {
+  // Import the HR module definitions to verify ownership assignments.
+  // This is a structural test — if someone moves a module to the wrong owner,
+  // these tests will fail.
+  it('People section items all have owner "people" and module "hr"', () => {
+    const peopleModules = HR_MODULES.filter(m => m.owner === 'people')
+    expect(peopleModules.length).toBeGreaterThan(0)
+
+    for (const mod of peopleModules) {
+      expect(mod.module).toBe('hr')
+      expect(mod.owner).toBe('people')
+    }
+  })
+
+  it('Recruitment section items all have owner "recruitment"', () => {
+    const recruitmentModules = HR_MODULES.filter(m => m.owner === 'recruitment')
+    expect(recruitmentModules.length).toBeGreaterThan(0)
+
+    for (const mod of recruitmentModules) {
+      // Note: the recruitment module still gates via module:"hr" in the
+      // permission system. The owner field is what determines section placement.
+      expect(mod.owner).toBe('recruitment')
+    }
+  })
+
+  it('no HR module has both owners assigned simultaneously', () => {
+    for (const mod of HR_MODULES) {
+      expect(['people', 'recruitment']).toContain(mod.owner)
+      // Ensure owner is exactly one of the two
+      expect(typeof mod.owner).toBe('string')
+    }
+  })
+
+  it('Employees module is owned by People, not Recruitment', () => {
+    const employees = HR_MODULES.find(m => m.key === 'employees' || m.basePath === '/hr/employees')
+    expect(employees).toBeDefined()
+    expect(employees.owner).toBe('people')
+    expect(employees.module).toBe('hr')
+  })
+
+  it('Recruitment Inbox navigation is owned by Recruitment section', () => {
+    // The Inbox nav item lives inside the "recruitment" module block
+    const recruitment = HR_MODULES.find(m => m.key === 'recruitment')
+    expect(recruitment).toBeDefined()
+    expect(recruitment.owner).toBe('recruitment')
+    // The Inbox item is one of its navigation items
+    const inboxItem = recruitment.navigation.find(n => n.name === 'Inbox')
+    expect(inboxItem).toBeDefined()
+    expect(inboxItem.href).toBe('/hr/recruitment/inbox')
+  })
+
+  it('getSectionItems with "people" excludes recruitment modules', () => {
+    // Build a mock user with both hr and recruitment access
+    const user = { role: ROLE.ADMIN, modules: ['hr', 'recruitment'] }
+    const peopleItems = getSectionItems('people', user)
+    const recruitmentItems = getSectionItems('recruitment', user)
+
+    // People items should not contain any recruitment-owned modules
+    for (const item of peopleItems) {
+      expect(item.moduleKey).not.toBe('recruitment')
+    }
+    // Recruitment items should all have moduleKey === 'recruitment'
+    for (const item of recruitmentItems) {
+      expect(item.moduleKey).toBe('recruitment')
+    }
+  })
+})
+
+// ── One-route-one-owner tests ──────────────────────────────────────────────
+describe('One-route-one-owner', () => {
+  it('every HR route resolves to exactly one section (people or recruitment)', () => {
+    for (const mod of HR_MODULES) {
+      if (!mod.href) continue
+      const result = resolveHrSection(mod.href)
+      expect(result).not.toBeNull()
+      expect(['people', 'recruitment']).toContain(result.sectionKey)
+      // The resolved section must match the module's declared owner
+      expect(result.sectionKey).toBe(mod.owner)
+    }
+  })
+
+  it('no route resolves to both people and recruitment', () => {
+    const seenHrefs = new Map()
+    for (const mod of HR_MODULES) {
+      if (!mod.href) continue
+      const prev = seenHrefs.get(mod.href)
+      if (prev) {
+        // Same href registered under different owners — that's a conflict
+        fail(`Route ${mod.href} is registered under both "${prev}" and "${mod.owner}"`)
+      }
+      seenHrefs.set(mod.href, mod.owner)
+    }
+  })
+
+  it('employee detail routes resolve to "people"', () => {
+    expect(resolveHrSection('/hr/employees/emp-123').sectionKey).toBe('people')
+  })
+
+  it('recruitment job detail routes resolve to "recruitment"', () => {
+    expect(resolveHrSection('/hr/recruitment/jobs/job-456').sectionKey).toBe('recruitment')
+  })
+
+  it('recruitment candidate detail routes resolve to "recruitment"', () => {
+    expect(resolveHrSection('/hr/recruitment/candidates/c-789').sectionKey).toBe('recruitment')
+  })
 })

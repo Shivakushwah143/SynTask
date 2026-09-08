@@ -128,7 +128,10 @@ const RecruitmentJobDetailPage = lazy(() => import('./modules/hr/recruitment/pag
 const RecruitmentInboxPage = lazy(() => import('./modules/hr/recruitment/pages/InboxPage'))
 const RecruitmentCandidatesPage = lazy(() => import('./modules/hr/recruitment/pages/CandidatesPage'))
 const RecruitmentResumePoolPage = lazy(() => import('./modules/hr/recruitment/pages/ResumePoolPage'))
-const RecruitmentEmployeesPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeesPage'))
+// People/HR — Employee directory lives at /hr/employees (People section).
+// The component physically resides in modules/hr/recruitment/ due to shared
+// utilities; the file is documented as misplaced debt (see completion report).
+const HrEmployeesPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeesPage'))
 const EmployeeDetailPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeeDetailPage'))
 const HRDocumentsPage = lazy(() => import('./pages/hr/HRDocumentsPage'))
 const RecruitmentInterviewsPage = lazy(() => import('./modules/hr/recruitment/pages/InterviewsPage'))
@@ -392,7 +395,7 @@ function App() {
             </Route>
             {/* Canonical HR-wide routes: Employee Profiles and HR Documents are
                 People/HR features, not Recruitment features. */}
-            <Route path="employees" element={withBoundary(<RecruitmentEmployeesPage />)} />
+            <Route path="employees" element={withBoundary(<HrEmployeesPage />)} />
             <Route path="employees/:employeeId" element={withBoundary(<EmployeeDetailPage />)} />
             <Route path="documents" element={withBoundary(<HRDocumentsPage />)} />
             <Route path="settings/document-types" element={withBoundary(<DocumentTypesSettingsPage />)} />

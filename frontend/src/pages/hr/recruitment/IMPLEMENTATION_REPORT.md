@@ -319,7 +319,7 @@ The Candidates workspace is fully wired to the backend **workspace** endpoint (`
 
 ## 12. Assign Job → Convert to Employee + Employees Page (new)
 
-When a job is assigned to a candidate, they are now **moved out of the candidates list** and shown on a new **Recruitment → Employees** page. This makes "assign a job" a full hire workflow in just a few clicks.
+When a job is assigned to a candidate, they are now **moved out of the candidates list** and shown on the **People → Employees** page (`/hr/employees`). This makes "assign a job" a full hire workflow in just a few clicks.
 
 ### 12.1 How it works
 
@@ -335,8 +335,8 @@ When a job is assigned to a candidate, they are now **moved out of the candidate
 
 - **Interview Screen "Assign Job" modal** — new "Move to Employees (Hire)" checkbox (enabled by default). On success the toast says the person was hired and moved to Employees.
 - **Candidates drawer** — the **Assignment** tab now has an **Assign Job & Hire** button, and the sidebar has an **Assign Job & Hire** quick action that opens the new `AssignJobDialog`.
-- **New Employees page** (`/hr/recruitment/employees`) — stat cards (total/active/pending), search by name/email/phone, employee cards with initials avatar, designation, department, job, email, status badge, skills, hire date, and pagination.
-- **Navigation** — "Employees" added to the Recruitment module sidebar (`hrModules.js`) and a **View Employees** button on the Candidates hero.
+- **Employees page** (`/hr/employees`) — stat cards (total/active/pending), search by name/email/phone, employee cards with initials avatar, designation, department, job, email, status badge, skills, hire date, and pagination. (Note: as of the People vs Recruitment separation, this page lives under the People section, not Recruitment.)
+- **Navigation** — "Employees" is a People section item. Legacy `/hr/recruitment/employees` redirects to `/hr/employees`.
 
 ### 12.3 Files changed
 
@@ -361,7 +361,7 @@ When a job is assigned to a candidate, they are now **moved out of the candidate
 5. Click a candidate name to open the workspace drawer — every tab shows live data from the workspace endpoint.
 6. Use **Assign Recruiter** (dropdown), **Add Attachment** (file picker), **Share Profile** (clipboard), and **Archive** from the sidebar or table actions.
 7. To hire a candidate: open the candidate drawer → **Assignment** tab (or sidebar) → **Assign Job & Hire** → pick a job → submit. The candidate leaves the candidates list.
-8. See all hired people under **HR → Recruitment → Employees** (or `http://localhost:3000/hr/recruitment/employees`).
+8. See all hired people under **People → Employees** (or `http://localhost:3000/hr/employees`). Legacy URL `/hr/recruitment/employees` redirects automatically.
 
 ---
 
