@@ -116,6 +116,7 @@ export default function ContentCalendar() {
     {
       onSuccess: () => {
         queryClient.invalidateQueries(['content-calendar-items'])
+        queryClient.invalidateQueries(['content-workspace'])
         toast.success('Event scheduled successfully')
         setShowEditModal(false)
       },
@@ -128,6 +129,7 @@ export default function ContentCalendar() {
     {
       onSuccess: () => {
         queryClient.invalidateQueries(['content-calendar-items'])
+        queryClient.invalidateQueries(['content-workspace'])
         toast.success('Event updated successfully')
         setShowEditModal(false)
       },
@@ -140,6 +142,7 @@ export default function ContentCalendar() {
     {
       onSuccess: () => {
         queryClient.invalidateQueries(['content-calendar-items'])
+        queryClient.invalidateQueries(['content-workspace'])
         toast.success('Event removed')
         setShowEditModal(false)
       },
@@ -609,8 +612,30 @@ export default function ContentCalendar() {
   )
 }
 
-/* Month view manual calendar subcomponent */
+/* Month view manual calendar subcomponent — shows items on both start_date & due_date */
 function ContentMonthView({ days, items, onOpen, onDayClick, onDuplicate, parseEventDate }) {
+  // Build calendar entries: each item can appear on up to 2 dates
+  const buildEntries = (allItems) => {
+    const entries = []
+    for (const item of allItems) {
+      const dueDate = parseEventDate(item.due_date || item.end_date || item.publish_date)
+      const startDate = parseEventDate(item.start_date)
+      if (dueDate) entries.push({ item, date: dueDate, type: 'due' })
+      // Only add start_date entry if it's a different date from due
+      if (startDate && (!dueDate || !isSameDay(startDate, dueDate))) {
+        entries.push({ item, date: startDate, type: 'start' })
+      }
+      // If no dates at all, skip (shouldn't happen but be safe)
+      if (!dueDate && !startDate) entries.push({ item, date: null, type: 'due' })
+    }
+    return entries
+  }
+
+  const allEntries = useMemo(() => buildEntries(items), [items])
+
+  const DUE_COLORS = 'border-l-red-400 bg-red-50/50 dark:border-l-red-500 dark:bg-red-950/25'
+  const START_COLORS = 'border-l-emerald-400 bg-emerald-50/50 dark:border-l-emerald-500 dark:bg-emerald-950/25'
+
   return (
     <div>
       <div className="grid grid-cols-7 border-b border-surface-border bg-slate-50/50 text-center text-xs font-semibold uppercase text-gray-500 dark:border-gray-800 dark:bg-black dark:text-gray-400">
@@ -619,11 +644,10 @@ function ContentMonthView({ days, items, onOpen, onDayClick, onDuplicate, parseE
 
       <div className="grid grid-cols-7 divide-x divide-y divide-surface-border dark:divide-gray-800">
         {days.map((day) => {
-          const dayItems = items.filter((item) => {
-            const date = parseEventDate(item.due_date || item.end_date || item.publish_date || item.start_date)
-            return date && isSameDay(date, day)
-          })
-          
+          const dayEntries = allEntries.filter((e) => e.date && isSameDay(e.date, day))
+          // Deduplicate: if same item appears twice on same day (shouldn't with our logic), keep both
+          const sortedEntries = dayEntries.sort((a, b) => (a.type === 'start' ? -1 : 1))
+
           return (
             <div
               key={timeService.toUtcISOString(day)}
@@ -636,29 +660,37 @@ function ContentMonthView({ days, items, onOpen, onDayClick, onDuplicate, parseE
               </div>
 
               <div className="mt-2 flex-1 space-y-1 overflow-y-auto">
-                {dayItems.slice(0, 3).map((item) => (
+                {sortedEntries.slice(0, 4).map((entry) => (
                   <div
-                    key={item.id}
+                    key={`${entry.item.id}-${entry.type}`}
                     onClick={(e) => {
                       e.stopPropagation()
-                      onOpen(item)
+                      onOpen(entry.item)
                     }}
-                    style={{ borderLeftColor: item.color || '#3B82F6' }}
-                    className="w-full text-left truncate rounded-lg p-1 text-[10px] font-semibold border border-l-4 border-surface-border bg-white shadow-xs dark:bg-gray-950 dark:border-gray-800 hover:brightness-95 flex items-center justify-between group/card"
+                    style={entry.type === 'due' ? { borderLeftColor: entry.item.color || '#EF4444' } : undefined}
+                    className={`w-full text-left truncate rounded-lg p-1 text-[10px] font-semibold border border-l-4 ${
+                      entry.type === 'due'
+                        ? `border-surface-border dark:border-gray-800 ${DUE_COLORS.split(' ').filter(c => c.startsWith('border-l-')).join(' ')}`
+                        : START_COLORS.split(' ').filter(c => c.startsWith('border-l-')).join(' ')
+                    } bg-white shadow-xs dark:bg-gray-950 dark:border-gray-800 hover:brightness-95 flex items-center justify-between group/card`}
                   >
-                    <span className="truncate flex-1">{item.title}</span>
+                    <span className="truncate flex-1">
+                      {entry.type === 'start' && <span className="text-emerald-500 mr-0.5">▶</span>}
+                      {entry.type === 'due' && <span className="text-red-400 mr-0.5">⏰</span>}
+                      {entry.item.title}
+                    </span>
                     <button
                       type="button"
                       title="Duplicate"
-                      onClick={(e) => onDuplicate(e, item)}
+                      onClick={(e) => onDuplicate(e, entry.item)}
                       className="hidden group-hover/card:inline-flex h-4 w-4 items-center justify-center text-slate-400 hover:text-slate-600 rounded"
                     >
                       <Copy className="h-2.5 w-2.5" />
                     </button>
                   </div>
                 ))}
-                {dayItems.length > 3 && (
-                  <span className="text-[9px] font-bold text-primary-600 pl-1">+{dayItems.length - 3} more</span>
+                {sortedEntries.length > 4 && (
+                  <span className="text-[9px] font-bold text-primary-600 pl-1">+{sortedEntries.length - 4} more</span>
                 )}
               </div>
             </div>
@@ -809,13 +841,23 @@ function ContentDayView({ day, items, onOpen, onDuplicate, parseEventDate }) {
   )
 }
 
-/* Day Detail Side Panel — shows all items for a selected date */
+/* Day Detail Side Panel — shows all items for a selected date (both start & due) */
 function DayDetailPanel({ day, items, parseEventDate, onViewItem, onEditItem, onDuplicateItem }) {
-  const dayItems = useMemo(() => {
-    return items.filter((item) => {
-      const d = parseEventDate(item.due_date || item.end_date || item.publish_date || item.start_date)
-      return d && isSameDay(d, day)
-    })
+  // Build entries for this day: items matching as start_date OR due_date
+  const dayEntries = useMemo(() => {
+    const entries = []
+    for (const item of items) {
+      const dueDate = parseEventDate(item.due_date || item.end_date || item.publish_date)
+      const startDate = parseEventDate(item.start_date)
+      if (dueDate && isSameDay(dueDate, day)) entries.push({ item, type: 'due' })
+      if (startDate && isSameDay(startDate, day)) {
+        // Avoid duplicate if same date
+        if (!dueDate || !isSameDay(startDate, dueDate)) {
+          entries.push({ item, type: 'start' })
+        }
+      }
+    }
+    return entries
   }, [items, day, parseEventDate])
 
   const STATUS_COLORS = {
@@ -833,7 +875,7 @@ function DayDetailPanel({ day, items, parseEventDate, onViewItem, onEditItem, on
 
   return (
     <div className="flex-1 overflow-y-auto p-5 space-y-3">
-      {dayItems.length === 0 ? (
+      {dayEntries.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800 mb-4">
             <CalendarIcon className="h-7 w-7 text-gray-400 dark:text-gray-500" />
@@ -842,17 +884,30 @@ function DayDetailPanel({ day, items, parseEventDate, onViewItem, onEditItem, on
           <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Nothing planned for {format(day, 'MMMM d, yyyy')}</p>
         </div>
       ) : (
-        dayItems.map((item) => {
+        dayEntries.map((entry) => {
+          const { item, type } = entry
           const statusClass = STATUS_COLORS[item.status] || STATUS_COLORS.draft
+          const isStart = type === 'start'
           return (
             <div
-              key={item.id}
+              key={`${item.id}-${type}`}
               onClick={() => onViewItem(item)}
-              className="group cursor-pointer rounded-2xl border border-surface-border bg-surface p-4 transition-all hover:border-primary-300 hover:shadow-md dark:border-gray-800 dark:bg-black dark:hover:border-primary-600"
+              className={`group cursor-pointer rounded-2xl border p-4 transition-all hover:shadow-md dark:hover:border-primary-600 ${
+                isStart
+                  ? 'border-emerald-200 bg-emerald-50/30 dark:border-emerald-900/30 dark:bg-emerald-950/10 hover:border-emerald-300'
+                  : 'border-surface-border bg-surface dark:border-gray-800 dark:bg-black hover:border-primary-300'
+              }`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1.5">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      isStart
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                    }`}>
+                      {isStart ? '▶ Start Date' : '⏰ Due Date'}
+                    </span>
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${statusClass}`}>
                       {(item.status || 'draft').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                     </span>

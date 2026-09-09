@@ -77,6 +77,7 @@ export default function ContentItemDetail() {
         queryClient.invalidateQueries(['content-item', itemId])
         queryClient.invalidateQueries(['content-transitions', itemId])
         queryClient.invalidateQueries(['content-workspace'])
+        queryClient.invalidateQueries(['content-calendar-items'])
         toast.success('Status updated')
         setShowTransitionModal(false)
         setTransitionFeedback('')
@@ -92,6 +93,7 @@ export default function ContentItemDetail() {
         queryClient.invalidateQueries(['content-item', itemId])
         queryClient.invalidateQueries(['content-transitions', itemId])
         queryClient.invalidateQueries(['content-workspace'])
+        queryClient.invalidateQueries(['content-calendar-items'])
         toast.success('Review recorded')
         setShowReviewModal(false)
         setReviewFeedback('')
@@ -107,6 +109,7 @@ export default function ContentItemDetail() {
         queryClient.invalidateQueries(['content-item', itemId])
         queryClient.invalidateQueries(['content-transitions', itemId])
         queryClient.invalidateQueries(['content-workspace'])
+        queryClient.invalidateQueries(['content-calendar-items'])
         toast.success('Client review recorded')
         setShowReviewModal(false)
         setReviewFeedback('')
@@ -120,6 +123,8 @@ export default function ContentItemDetail() {
     {
       onSuccess: () => {
         queryClient.invalidateQueries(['content-item', itemId])
+        queryClient.invalidateQueries(['content-workspace'])
+        queryClient.invalidateQueries(['content-calendar-items'])
         toast.success('Content updated')
         setShowEditModal(false)
       },

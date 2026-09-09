@@ -185,6 +185,7 @@ export default function ContentWorkspace() {
     {
       onSuccess: (res) => {
         queryClient.invalidateQueries(['content-workspace'])
+        queryClient.invalidateQueries(['content-calendar-items'])
         toast.success('Content item created')
         setShowCreateModal(false)
         // Navigate to the new item
