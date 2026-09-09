@@ -60,12 +60,13 @@ Idea → Briefing → Script → Production → Internal Review → Client Revie
 | `frontend/src/api/contentProduction.js` | API client for Content Production endpoints |
 | `frontend/src/pages/ContentWorkspace.jsx` | Main workspace with lifecycle tabs + overview |
 | `frontend/src/pages/ContentItemDetail.jsx` | Full content item detail page |
+| `frontend/src/pages/ContentOverview.jsx` | Work-style overview page: overall progress + today's queues |
 
 ### Frontend (Modified)
 | File | Change |
 |---|---|
-| `frontend/src/App.jsx` | Added `/content` and `/content/:itemId` routes |
-| `frontend/src/config/navigation.js` | Added "Content" nav item to Content section |
+| `frontend/src/App.jsx` | Added `/content/overview` route; `/sections/content` redirects to it |
+| `frontend/src/config/navigation.js` | Added "Content Overview" nav item + `overviewHref` for the Content section |
 
 ## API Endpoints
 
@@ -142,8 +143,16 @@ ALLOWED_TRANSITIONS = {
 The `/content` page shows:
 1. **Overview cards**: Due Today, Overdue, In Production, Internal Review, Client Review, Revision, Ready, Total
 2. **Lifecycle tabs**: All | Idea | Briefing | Script | Production | Internal Review | Client Review | Revision Required | Approved | Ready to Publish | Published
-3. **Filtered content list**: Table rows (status-color-coded left border) showing Content ID, title, status, priority, platform, assignee, deadline, next action
+3. **Filtered content list**: Table rows (status-color-coded left border) showing Content ID, title, status, priority, platform, assignee, deadline, next action; the list is paginated client-side (20 per page) since the workspace aggregate returns every item
 4. **Secondary filters**: Platform, Priority (narrow within selected lifecycle tab)
+
+### Content Overview (`/content/overview`)
+
+Section default page (the Content section link and in-page tab resolve here; `/sections/content` redirects to it). Modeled on the Work overview page and built from the same workspace aggregate (`GET /content`, no new backend surface):
+1. **Summary cards**: Total, Due Today, Overdue, In Production, Internal Review, Client Review, Ready to Publish, Revision
+2. **Overall progress**: weighted pipeline progress bar (stage position / published) plus a per-stage distribution bar and clickable legend (links to `/content?status=...`)
+3. **Today & queues**: Due Today, Overdue, Upcoming Deadlines (next 7 days), Awaiting Review — each row links to the item detail
+4. **Needs Attention sidebar**: overdue (red), revision-required (amber), and awaiting-review (cyan) items with severity accents
 
 ### Content Item Detail (`/content/:itemId`)
 - **Lifecycle progress bar**: Visual indicator of current position

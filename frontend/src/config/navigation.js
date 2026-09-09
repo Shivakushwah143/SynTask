@@ -331,7 +331,8 @@ export const SECTIONS = [
   {
     key: "content",
     label: "Content",
-    items: ["Content", "Content Calendar", "Content Studio"],
+    items: ["Content Overview", "Content", "Content Calendar", "Content Studio"],
+    overviewHref: "/content/overview",
   },
   {
     key: "publishing",
@@ -541,6 +542,15 @@ export const navigation = [
   },
 
   // Content — /content is gated by the content_calendar module on the backend.
+  // The section's default destination: a Work-style overview page showing
+  // overall lifecycle progress and today's queues.
+  {
+    name: "Content Overview",
+    href: "/content/overview",
+    icon: Gauge,
+    roles: STANDARD_ROLES,
+    module: "content_calendar",
+  },
   {
     name: "Content",
     href: "/content",
@@ -946,6 +956,7 @@ export const ITEM_COLORS = {
   "Scheduled Work": "text-amber-400",
   "Time Tracking": "text-amber-400",
 
+  "Content Overview": "text-rose-400",
   "Content": "text-pink-400",
   "Content Calendar": "text-indigo-300",
   "Content Studio": "text-pink-400",

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -13,7 +13,7 @@ import { formatDistanceToNow, isPast, parseISO } from 'date-fns'
 import { extractErrorMessage } from '../api/axios'
 import { contentProductionApi } from '../api/contentProduction'
 import { projectsApi } from '../api/projects'
-import { Button, FormField, Modal, Skeleton } from '../components/ui'
+import { Button, FormField, Modal } from '../components/ui'
 import { asArray } from './phase4Utils'
 
 // ── Lifecycle tabs ────────────────────────────────────────────────────────
@@ -122,6 +122,11 @@ export default function ContentWorkspace() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  // List pagination — the workspace aggregate returns every item, so the list
+  // is paged client-side (same pattern as the Tasks page) to keep the page
+  // tidy when large volumes of content are loaded.
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 20
   const [createForm, setCreateForm] = useState({
     title: '', project_id: '', client_id: '', platform: 'Instagram',
     content_type: 'custom', priority: 'medium', description: '',
@@ -157,6 +162,17 @@ export default function ContentWorkspace() {
   const lifecycleCounts = workspaceData?.data?.lifecycle_counts || {}
   const overview = workspaceData?.data?.overview || {}
   const projects = asArray(projectsData?.data, ['projects'])
+
+  // Paged slice of the current filtered list
+  const totalCount = items.length
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+  const safePage = Math.min(page, pageCount)
+  const pageItems = items.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+
+  // Return to the first page whenever the tab or filters change
+  useEffect(() => {
+    setPage(1)
+  }, [activeTab, search, clientFilter, platformFilter, priorityFilter])
 
   const hasActiveFilters = Boolean(search || clientFilter || platformFilter || priorityFilter)
 
@@ -240,8 +256,12 @@ export default function ContentWorkspace() {
     navigate(`/content/${item.id}`)
   }
 
+  if (isLoading) {
+    return <LoadingSkeleton />
+  }
+
   return (
-    <div className="flex h-full min-h-[calc(100vh-140px)] flex-col space-y-4">
+    <div className="flex h-full min-h-0 flex-col space-y-4">
       {/* Lifecycle Pipeline — stage color dots + arrows, active stage filled
           with its own color (mirrors Work's TaskLifecyclePipeline) */}
       <ContentLifecyclePipeline
@@ -405,50 +425,79 @@ export default function ContentWorkspace() {
         )}
       </div>
 
-      {/* Content Items List */}
-      <div className="flex-1">
-        {isLoading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-2xl" />)}
-          </div>
-        ) : isError ? (
-          <div className="rounded-2xl border border-red-500/20 bg-red-50/20 p-6 text-center text-red-800 dark:bg-red-950/20 dark:text-red-300">
-            <p className="font-semibold">Unable to load content items.</p>
-          </div>
-        ) : items.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-surface-border bg-surface p-12 text-center dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
-            <Palette className="mx-auto h-12 w-12 text-pink-300 dark:text-pink-800" />
-            <p className="mt-3 text-sm font-medium text-gray-500 dark:text-gray-400">No content items found</p>
-            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-              {activeTab !== 'all' ? 'Try a different lifecycle stage or clear filters' : 'Create your first content item to get started'}
-            </p>
-            <Button className="mt-4" onClick={() => setShowCreateModal(true)}>
-              <Plus className="h-4 w-4 mr-1.5" />
-              New Content
-            </Button>
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-2xl border border-surface-border bg-surface shadow-sm dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-surface-border text-sm dark:divide-[var(--color-app-border)]">
-                <thead className="bg-surface-muted dark:bg-[var(--color-app-surface-muted)]">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Content</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Platform</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Type</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Priority</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Deadline</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Assignee</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Next</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-surface-border dark:divide-[var(--color-app-border)]">
-                  {items.map((item) => (
-                    <ContentItemRow key={item.id} item={item} onClick={() => openItem(item)} />
-                  ))}
-                </tbody>
-              </table>
+      {/* Content Items List — scrolls internally so the heading, pipeline, and
+          stats keep their natural size no matter how many rows exist */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2">
+        <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
+          {isError ? (
+            <div className="rounded-2xl border border-red-500/20 bg-red-50/20 p-6 text-center text-red-800 dark:bg-red-950/20 dark:text-red-300">
+              <p className="font-semibold">Unable to load content items.</p>
+            </div>
+          ) : items.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-surface-border bg-surface p-12 text-center dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
+              <Palette className="mx-auto h-12 w-12 text-pink-300 dark:text-pink-800" />
+              <p className="mt-3 text-sm font-medium text-gray-500 dark:text-gray-400">No content items found</p>
+              <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                {activeTab !== 'all' ? 'Try a different lifecycle stage or clear filters' : 'Create your first content item to get started'}
+              </p>
+              <Button className="mt-4" onClick={() => setShowCreateModal(true)}>
+                <Plus className="h-4 w-4 mr-1.5" />
+                New Content
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-surface-border bg-surface shadow-sm dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-surface-border text-sm dark:divide-[var(--color-app-border)]">
+                  <thead className="bg-surface-muted dark:bg-[var(--color-app-surface-muted)]">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Content</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Platform</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Priority</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Deadline</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Assignee</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Next</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-surface-border dark:divide-[var(--color-app-border)]">
+                    {pageItems.map((item) => (
+                      <ContentItemRow key={item.id} item={item} onClick={() => openItem(item)} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Pagination — pinned below the scrollable list so it stays reachable */}
+        {!isError && items.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-surface-border bg-surface px-3 py-2 text-xs text-gray-500 shadow-sm dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-gray-400">
+            <span>
+              Showing {totalCount === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, totalCount)} of {totalCount}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={safePage <= 1}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+                className="rounded-lg border border-surface-border px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-surface-muted disabled:opacity-40 dark:border-[var(--color-app-border)] dark:text-gray-400 dark:hover:bg-[var(--color-app-surface-muted)]"
+              >
+                Previous
+              </button>
+              <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                {safePage} / {pageCount}
+              </span>
+              <button
+                type="button"
+                disabled={safePage >= pageCount}
+                onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
+                className="rounded-lg border border-surface-border px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-surface-muted disabled:opacity-40 dark:border-[var(--color-app-border)] dark:text-gray-400 dark:hover:bg-[var(--color-app-surface-muted)]"
+              >
+                Next
+              </button>
             </div>
           </div>
         )}
@@ -611,6 +660,51 @@ function StatCard({ label, value, icon: Icon, colorClass }) {
           <p className="truncate text-[11px] font-semibold uppercase text-text-muted">{label}</p>
           <p className="mt-0.5 text-lg font-bold leading-tight text-text-primary">{value || 0}</p>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// Full-page loading skeleton that mirrors the current page layout:
+// pipeline strip → hero → stat cards → filters → table (header + rows).
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-4">
+      {/* Lifecycle pipeline strip */}
+      <div className="flex items-center gap-2 overflow-hidden">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="h-9 w-28 shrink-0 animate-pulse rounded-lg bg-surface-muted dark:bg-[var(--color-app-surface-muted)]" />
+        ))}
+      </div>
+
+      {/* Hero */}
+      <div className="h-20 animate-pulse rounded-2xl bg-surface-muted dark:bg-[var(--color-app-surface-muted)]" />
+
+      {/* Overview stat cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="h-16 animate-pulse rounded-xl bg-surface-muted dark:bg-[var(--color-app-surface-muted)]" />
+        ))}
+      </div>
+
+      {/* Search & filters bar */}
+      <div className="h-12 animate-pulse rounded-2xl bg-surface-muted dark:bg-[var(--color-app-surface-muted)]" />
+
+      {/* Table */}
+      <div className="overflow-hidden rounded-2xl border border-surface-border bg-surface shadow-sm dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
+        <div className="h-10 animate-pulse bg-surface-muted dark:bg-[var(--color-app-surface-muted)]" />
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-4 border-t border-surface-border px-4 py-4 dark:border-[var(--color-app-border)]"
+          >
+            <div className="h-8 w-1.5 animate-pulse rounded-full bg-surface-muted dark:bg-[var(--color-app-surface-muted)]" />
+            <div className="h-3 w-44 animate-pulse rounded bg-surface-muted dark:bg-[var(--color-app-surface-muted)]" />
+            <div className="hidden h-3 w-24 animate-pulse rounded bg-surface-muted dark:bg-[var(--color-app-surface-muted)] sm:block" />
+            <div className="hidden h-3 w-20 animate-pulse rounded bg-surface-muted dark:bg-[var(--color-app-surface-muted)] md:block" />
+            <div className="ml-auto h-6 w-16 animate-pulse rounded-full bg-surface-muted dark:bg-[var(--color-app-surface-muted)]" />
+          </div>
+        ))}
       </div>
     </div>
   )
