@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import {
   addDays,
@@ -23,7 +24,13 @@ import {
   User,
   Bell,
   Sparkles,
-  X
+  X,
+  ExternalLink,
+  Clock,
+  FileText,
+  Flag,
+  Calendar as CalendarIcon,
+  Pencil
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { contentCalendarApi } from '../api/contentCalendar'
@@ -54,6 +61,7 @@ const COLORS = [
 
 export default function ContentCalendar() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { user } = useAuthStore()
 
   // Views & Dates
@@ -62,6 +70,9 @@ export default function ContentCalendar() {
   const [search, setSearch] = useState('')
   const [platformFilter, setPlatformFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+
+  // Day detail panel
+  const [selectedDay, setSelectedDay] = useState(null)
 
   // Edit/Create Modal States
   const [showEditModal, setShowEditModal] = useState(false)
@@ -188,8 +199,13 @@ export default function ContentCalendar() {
     setCurrentDate(timeService.now())
   }
 
-  // Open Create Form
-  const handleOpenCreate = (date = timeService.now()) => {
+  // Open day detail panel
+  const handleDayClick = (day) => {
+    setSelectedDay((prev) => (prev && isSameDay(prev, day) ? null : day))
+  }
+
+  // Open Create Form (from "Schedule Content" button only)
+  const handleOpenCreate = (date) => {
     setEditingItem(null)
     setForm({
       title: '',
@@ -198,10 +214,8 @@ export default function ContentCalendar() {
       platform: 'Instagram',
       priority: 'medium',
       status: 'draft',
-      // Start date defaults to today (when work begins / content goes live),
-      // while the clicked calendar date becomes the due date — both editable.
       start_date: timeService.toZonedDateOnly(timeService.now()),
-      end_date: timeService.toZonedDateOnly(date),
+      end_date: date ? timeService.toZonedDateOnly(date) : timeService.toZonedDateOnly(timeService.now()),
       time: '12:00',
       assigned_person: user ? `${user.first_name} ${user.last_name}` : '',
       reminder: 'none',
@@ -210,6 +224,11 @@ export default function ContentCalendar() {
       project_id: projects[0]?.id || ''
     })
     setShowEditModal(true)
+  }
+
+  // Navigate to content item detail
+  const handleViewItem = (item) => {
+    if (item.id) navigate(`/content/${item.id}`)
   }
 
   // Open Edit Form
@@ -416,7 +435,7 @@ export default function ContentCalendar() {
                   days={monthDays}
                   items={filteredItems}
                   onOpen={handleOpenEdit}
-                  onCreateAt={handleOpenCreate}
+                  onDayClick={handleDayClick}
                   onDuplicate={handleDuplicate}
                   parseEventDate={parseEventDate}
                 />
@@ -426,6 +445,7 @@ export default function ContentCalendar() {
                   days={weekDays}
                   items={filteredItems}
                   onOpen={handleOpenEdit}
+                  onDayClick={handleDayClick}
                   onDuplicate={handleDuplicate}
                   parseEventDate={parseEventDate}
                 />
@@ -443,6 +463,49 @@ export default function ContentCalendar() {
           )}
         </main>
       </div>
+
+      {/* Day Detail Side Panel */}
+      {selectedDay && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity" onClick={() => setSelectedDay(null)} />
+          <div className="relative flex h-full w-full max-w-md flex-col border-l border-surface-border bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 animate-slide-in-right">
+            {/* Panel Header */}
+            <div className="flex items-center justify-between border-b border-surface-border px-5 py-4 dark:border-gray-800">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 dark:bg-primary-950/30">
+                  <CalendarIcon className="h-5 w-5 text-primary-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">{format(selectedDay, 'EEEE, MMM d')}</h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {filteredItems.filter((item) => {
+                      const d = parseEventDate(item.due_date || item.end_date || item.publish_date || item.start_date)
+                      return d && isSameDay(d, selectedDay)
+                    }).length} item(s) scheduled
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDay(null)}
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Panel Body */}
+            <DayDetailPanel
+              day={selectedDay}
+              items={filteredItems}
+              parseEventDate={parseEventDate}
+              onViewItem={handleViewItem}
+              onEditItem={handleOpenEdit}
+              onDuplicateItem={handleDuplicate}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Editing / Creation Modal */}
       <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title={editingItem ? 'Edit Scheduled Content' : 'Schedule Content Item'}>
@@ -547,7 +610,7 @@ export default function ContentCalendar() {
 }
 
 /* Month view manual calendar subcomponent */
-function ContentMonthView({ days, items, onOpen, onCreateAt, onDuplicate, parseEventDate }) {
+function ContentMonthView({ days, items, onOpen, onDayClick, onDuplicate, parseEventDate }) {
   return (
     <div>
       <div className="grid grid-cols-7 border-b border-surface-border bg-slate-50/50 text-center text-xs font-semibold uppercase text-gray-500 dark:border-gray-800 dark:bg-black dark:text-gray-400">
@@ -564,7 +627,7 @@ function ContentMonthView({ days, items, onOpen, onCreateAt, onDuplicate, parseE
           return (
             <div
               key={timeService.toUtcISOString(day)}
-              onClick={() => onCreateAt(day)}
+              onClick={() => onDayClick(day)}
               className="min-h-32 p-1.5 text-left transition-colors flex flex-col justify-between hover:bg-slate-50 dark:hover:bg-gray-900/40 cursor-pointer"
             >
               <div className="flex items-center justify-between">
@@ -607,12 +670,12 @@ function ContentMonthView({ days, items, onOpen, onCreateAt, onDuplicate, parseE
 }
 
 /* Week view manual calendar subcomponent */
-function ContentWeekView({ days, items, onOpen, onDuplicate, parseEventDate }) {
+function ContentWeekView({ days, items, onOpen, onDayClick, onDuplicate, parseEventDate }) {
   return (
     <div className="overflow-x-auto">
       <div className="grid min-w-[700px] grid-cols-7 divide-x divide-surface-border bg-slate-50/50 border-b border-surface-border dark:divide-gray-800 dark:bg-black dark:border-gray-800 text-center">
         {days.map((day) => (
-          <div key={timeService.toUtcISOString(day)} className="p-4">
+          <div key={timeService.toUtcISOString(day)} className="p-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-gray-900/40 transition-colors" onClick={() => onDayClick(day)}>
             <p className="text-xs font-semibold text-gray-500 uppercase">{format(day, 'EEE')}</p>
             <p className="mt-1 text-lg font-bold text-gray-900 dark:text-gray-100">{format(day, 'd')}</p>
           </div>
@@ -742,6 +805,117 @@ function ContentDayView({ day, items, onOpen, onDuplicate, parseEventDate }) {
           ))
         )}
       </div>
+    </div>
+  )
+}
+
+/* Day Detail Side Panel — shows all items for a selected date */
+function DayDetailPanel({ day, items, parseEventDate, onViewItem, onEditItem, onDuplicateItem }) {
+  const dayItems = useMemo(() => {
+    return items.filter((item) => {
+      const d = parseEventDate(item.due_date || item.end_date || item.publish_date || item.start_date)
+      return d && isSameDay(d, day)
+    })
+  }, [items, day, parseEventDate])
+
+  const STATUS_COLORS = {
+    draft: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+    planned: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+    shoot_scheduled: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
+    shot: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    editing: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+    internal_review: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
+    client_review: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+    approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+    scheduled: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
+    published: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto p-5 space-y-3">
+      {dayItems.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800 mb-4">
+            <CalendarIcon className="h-7 w-7 text-gray-400 dark:text-gray-500" />
+          </div>
+          <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">No content scheduled</p>
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Nothing planned for {format(day, 'MMMM d, yyyy')}</p>
+        </div>
+      ) : (
+        dayItems.map((item) => {
+          const statusClass = STATUS_COLORS[item.status] || STATUS_COLORS.draft
+          return (
+            <div
+              key={item.id}
+              onClick={() => onViewItem(item)}
+              className="group cursor-pointer rounded-2xl border border-surface-border bg-surface p-4 transition-all hover:border-primary-300 hover:shadow-md dark:border-gray-800 dark:bg-black dark:hover:border-primary-600"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${statusClass}`}>
+                      {(item.status || 'draft').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                    </span>
+                    {item.priority && (
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        item.priority === 'urgent' ? 'bg-red-100 text-red-700' :
+                        item.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        <Flag className="h-3 w-3 mr-0.5" />
+                        {item.priority}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate group-hover:text-primary-600">
+                    {item.title}
+                  </h3>
+                  {item.description && (
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{item.description}</p>
+                  )}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                    {item.platform && (
+                      <span className="flex items-center gap-1"><ExternalLink className="h-3 w-3" />{item.platform}</span>
+                    )}
+                    {item.category && (
+                      <span className="flex items-center gap-1"><FileText className="h-3 w-3" />{item.category}</span>
+                    )}
+                    {item.assigned_person && (
+                      <span className="flex items-center gap-1"><User className="h-3 w-3" />{item.assigned_person}</span>
+                    )}
+                    {item.time && (
+                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{item.time}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <button
+                    type="button"
+                    title="Edit"
+                    onClick={(e) => { e.stopPropagation(); onEditItem(item); }}
+                    className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Duplicate"
+                    onClick={(e) => onDuplicateItem(e, item)}
+                    className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              {/* Open link hint */}
+              <div className="mt-2.5 flex items-center gap-1 text-xs text-primary-600 dark:text-primary-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                <ExternalLink className="h-3 w-3" />
+                Open in Content Workspace
+              </div>
+            </div>
+          )
+        })
+      )}
     </div>
   )
 }
