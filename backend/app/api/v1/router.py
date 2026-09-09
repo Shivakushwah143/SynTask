@@ -36,6 +36,8 @@ from app.api.v1.endpoints import crm_negotiation
 from app.api.v1.endpoints import crm_notes
 from app.api.v1.endpoints import crm_pipeline
 from app.api.v1.endpoints import content_calendar
+from app.api.v1.endpoints import content_production
+from app.api.v1.endpoints import content_templates
 from app.api.v1.endpoints import scheduled_jobs
 from app.api.v1.endpoints import sales_categories, sales_products, sales_contacts, sales_prospects, sales_masters, sales_reports, sales_followups
 from app.api.v1.endpoints import superadmin_plans, superadmin_tenants, superadmin_usage, superadmin_billing, superadmin_features
@@ -152,6 +154,8 @@ api_router.include_router(meetings.router, prefix="/meetings", tags=["Meetings"]
 api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar"])
 api_router.include_router(time.router, prefix="/time", tags=["Time"])
 api_router.include_router(content_calendar.router, prefix="/content-calendar", tags=["Content Calendar"], dependencies=[Depends(require_module("content_calendar"))])
+api_router.include_router(content_production.router, prefix="/content", tags=["Content Production"], dependencies=[Depends(require_module("content_calendar"))])
+api_router.include_router(content_templates.router, prefix="/content/templates", tags=["Content Templates"], dependencies=[Depends(require_module("content_calendar"))])
 api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=["Scheduled Jobs"], dependencies=[Depends(require_module("scheduled_work"))])
 api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("time_tracking"))])
 api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])

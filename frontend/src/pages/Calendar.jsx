@@ -6,6 +6,7 @@ import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock3, LayoutGrid
 import toast from 'react-hot-toast'
 import { calendarApi } from '../api/calendar'
 import { contentCalendarApi } from '../api/contentCalendar'
+import { extractErrorMessage } from '../api/axios'
 import { projectsApi } from '../api/projects'
 import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, Skeleton } from '../components/ui'
 import { QuickCreateProjectModal } from '../components/relatedRecords/QuickCreateModals'
@@ -102,7 +103,7 @@ export default function Calendar() {
       toast.success('Content item created')
       setShowCreate(false)
     },
-    onError: (error) => toast.error(error?.response?.data?.detail || 'Could not create content item'),
+    onError: (error) => toast.error(extractErrorMessage(error?.response?.data?.detail) || 'Could not create content item'),
   })
 
   const updateMutation = useMutation(({ id, payload }) => contentCalendarApi.updateItem(id, payload), {
@@ -111,7 +112,7 @@ export default function Calendar() {
       toast.success('Content item updated')
       setDetailItem(null)
     },
-    onError: (error) => toast.error(error?.response?.data?.detail || 'Could not update content item'),
+    onError: (error) => toast.error(extractErrorMessage(error?.response?.data?.detail) || 'Could not update content item'),
   })
 
   const deleteMutation = useMutation((id) => contentCalendarApi.deleteItem(id), {
@@ -120,7 +121,7 @@ export default function Calendar() {
       toast.success('Content item deleted')
       setDetailItem(null)
     },
-    onError: (error) => toast.error(error?.response?.data?.detail || 'Could not delete content item'),
+    onError: (error) => toast.error(extractErrorMessage(error?.response?.data?.detail) || 'Could not delete content item'),
   })
 
   const items = asArray(calendarQuery.data, ['items'])

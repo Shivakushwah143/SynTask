@@ -64,6 +64,8 @@ const Ledger = lazy(() => import('./pages/Ledger'))
 const Meetings = lazy(() => import('./pages/Meetings'))
 const WorkspaceCalendar = lazy(() => import('./pages/WorkspaceCalendar'))
 const ContentCalendar = lazy(() => import('./pages/ContentCalendar'))
+const ContentWorkspace = lazy(() => import('./pages/ContentWorkspace'))
+const ContentItemDetail = lazy(() => import('./pages/ContentItemDetail'))
 const Timesheet = lazy(() => import('./pages/Timesheet'))
 const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
@@ -340,6 +342,8 @@ function App() {
           <Route path="google-workspace" element={withBoundary(<GoogleWorkspace />)} />
           <Route path="content-calendar" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentCalendar />)}</ModuleGuard>} />
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
+          <Route path="content" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentWorkspace />)}</ModuleGuard>} />
+          <Route path="content/:itemId" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentItemDetail />)}</ModuleGuard>} />
           <Route path="timesheet" element={<ModuleGuard module="time_tracking">{withBoundary(<Timesheet />)}</ModuleGuard>} />
           <Route path="attendance" element={withBoundary(<Attendance />)} />
           <Route path="attendance/live" element={<Navigate to="/live-monitor" replace />} />

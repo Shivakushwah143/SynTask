@@ -38,6 +38,7 @@ import {
   MonitorCheck,
   Network,
   Palette,
+  Sparkles,
   Receipt,
   Settings,
   ShieldCheck,
@@ -330,7 +331,7 @@ export const SECTIONS = [
   {
     key: "content",
     label: "Content",
-    items: ["Content Calendar", "Content Studio"],
+    items: ["Content", "Content Calendar", "Content Studio"],
   },
   {
     key: "publishing",
@@ -539,7 +540,14 @@ export const navigation = [
     module: "time_tracking",
   },
 
-  // Content — /content-calendar is gated by the task module on the backend.
+  // Content — /content is gated by the content_calendar module on the backend.
+  {
+    name: "Content",
+    href: "/content",
+    icon: Palette,
+    roles: STANDARD_ROLES,
+    module: "content_calendar",
+  },
   {
     name: "Content Calendar",
     href: "/content-calendar",
@@ -550,7 +558,7 @@ export const navigation = [
   {
     name: "Content Studio",
     href: "/creative-director",
-    icon: Palette,
+    icon: Sparkles,
     roles: STANDARD_ROLES,
     module: "ai_content_assistant",
   },
@@ -938,6 +946,7 @@ export const ITEM_COLORS = {
   "Scheduled Work": "text-amber-400",
   "Time Tracking": "text-amber-400",
 
+  "Content": "text-pink-400",
   "Content Calendar": "text-indigo-300",
   "Content Studio": "text-pink-400",
 
