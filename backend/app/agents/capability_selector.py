@@ -135,13 +135,42 @@ def select_tools(
     entity_context: dict[str, Any] | None = None,
     max_tools: int = 6,
     min_tools: int = 2,
+    security_context: Any = None,
+    agent_id: str = "executive_operations",
 ) -> list[dict[str, Any]]:
     """Return the subset of tool schemas most relevant to the message.
 
-    1. Score packs by keyword overlap + entity context boost.
-    2. For each top-scoring pack, select the most relevant tools (not all).
-    3. Clamp to ``min_tools``..``max_tools``.
+    1. **Authorization filter** (when security_context provided): remove
+       unauthorized tools BEFORE relevance selection (defense in depth).
+    2. Score packs by keyword overlap + entity context boost.
+    3. For each top-scoring pack, select the most relevant tools (not all).
+    4. Clamp to ``min_tools``..``max_tools``.
     """
+    from app.ai.observability import tracer as _ai_tracer
+
+    _span = None
+    if _ai_tracer.get_current_trace() is not None:
+        _span = _ai_tracer.start_span(
+            "CAPABILITY_SELECTION",
+            "capability_selector.select_tools",
+            attrs={"max_tools": max_tools, "min_tools": min_tools},
+        )
+
+    # ── Step 0: Filter by authorization (before relevance selection) ──────────
+    # This is the FIRST authorization gate — unauthorized schemas never reach
+    # the relevance selector or the LLM.
+    if security_context is not None:
+        from app.ai.security.governance import authorize_capability
+        authorized_schemas = []
+        for schema in all_tool_schemas:
+            tool_name = schema.get("function", {}).get("name", "")
+            if not tool_name:
+                continue
+            auth = authorize_capability(security_context, tool_name, agent_id)
+            if auth.allowed:
+                authorized_schemas.append(schema)
+        all_tool_schemas = authorized_schemas
+
     scores = _score_packs(message, entity_context)
 
     # Token budget: 2-5 tools for normal requests, up to 6 for cross-domain
@@ -191,6 +220,15 @@ def select_tools(
                 if len(selected) >= min_tools:
                     break
 
+    if _span is not None:
+        _ai_tracer.end_span(
+            _span,
+            attrs={
+                "packs_used": packs_used,
+                "selected_tool_count": len(selected),
+                "selected_tools": [t["function"]["name"] for t in selected],
+            },
+        )
     return selected, packs_used  # type: ignore[return-value]
 
 

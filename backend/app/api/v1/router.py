@@ -18,7 +18,10 @@ from app.api.v1.endpoints import (
     project_templates, work_reports,
 )
 from app.api.v1.endpoints import ai
+from app.api.v1.endpoints import ai_evals
+from app.api.v1.endpoints import ai_operations
 from app.api.v1.endpoints import ai_assistant
+from app.api.v1.endpoints import ai_security
 from app.api.v1.endpoints import hr_agent
 from app.api.v1.endpoints import executive_agent
 from app.api.v1.endpoints import rag
@@ -190,6 +193,10 @@ api_router.include_router(google_workspace_router, prefix="/google-workspace", t
 
 api_router.include_router(ai.router, prefix="/ai", tags=["AI"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(ai_assistant.router, prefix="/ai-assistant", tags=["Unified AI Assistant"], dependencies=[Depends(require_module("ai_agents"))])
+# AI Evaluation & Regression — admin/super-admin only (enforced inside the router).
+api_router.include_router(ai_evals.router, prefix="/ai-evals", tags=["AI Evaluations"], dependencies=[Depends(require_module("ai_agents"))])
+api_router.include_router(ai_operations.router, prefix="/ai-operations", tags=["AI Operations"], dependencies=[Depends(require_module("ai_agents"))])
+api_router.include_router(ai_security.router, prefix="/ai-security", tags=["AI Security & Governance"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 api_router.include_router(agents.router, prefix="/agents", tags=["Agent Platform"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(hr_agent.router, prefix="/hr-agent", tags=["HR Operations Agent"], dependencies=[Depends(require_module("ai_agents"))])

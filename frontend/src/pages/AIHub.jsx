@@ -38,9 +38,12 @@ import {
   Download,
   Upload,
   Settings,
-  HelpCircle
+  HelpCircle,
+  ShieldCheck
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useAuthStore } from '../store/authStore'
+import { isAdminRole, isSuperAdminRole } from '../utils/roles'
 import { aiAPI } from '../api/ai'
 import { agentsAPI } from '../api/agents'
 import { Button, PageHeader, Badge, FormField, inputClassName } from '../components/ui'
@@ -269,6 +272,7 @@ const QuickActionCard = ({ action, onClick }) => {
     purple: 'from-purple-500 to-pink-500',
     green: 'from-emerald-500 to-teal-500',
     orange: 'from-amber-500 to-orange-500',
+    rose: 'from-rose-500 to-pink-500',
   }
 
   return (
@@ -319,6 +323,8 @@ const RecommendationCard = ({ suggestion, index }) => {
 // ============================================================
 export default function AIHub() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const canRunEvaluations = isAdminRole(user?.role) || isSuperAdminRole(user?.role)
   const [logs, setLogs] = useState([])
   const [refreshing, setRefreshing] = useState(false)
   const [projectAgentSubmitting, setProjectAgentSubmitting] = useState(false)
@@ -683,6 +689,18 @@ export default function AIHub() {
                   onClick={() => navigate(action.path)}
                 />
               ))}
+              {canRunEvaluations ? (
+                <>
+                  <QuickActionCard
+                    action={{ label: 'Evaluation & Regression', path: '/ai-evals', icon: ShieldCheck, color: 'rose' }}
+                    onClick={() => navigate('/ai-evals')}
+                  />
+                  <QuickActionCard
+                    action={{ label: 'AI Operations', path: '/ai-operations', icon: Activity, color: 'blue' }}
+                    onClick={() => navigate('/ai-operations')}
+                  />
+                </>
+              ) : null}
             </div>
           </div>
         </div>

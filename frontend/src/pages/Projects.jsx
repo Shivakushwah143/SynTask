@@ -1248,7 +1248,7 @@ function ProjectCard({ project, onOpen, canAssign, onAssign, canManage, onEdit, 
           <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white font-bold text-sm shadow-lg ${
             isScheduled ? 'bg-gradient-to-br from-cyan-600 to-amber-500 shadow-cyan-500/20' : 'bg-gradient-to-br from-indigo-500 to-purple-500 shadow-indigo-500/20'
           }`}>
-            {isScheduled ? <Timer className="h-5 w-5" /> : (project.name?.charAt(0)?.toUpperCase() || 'P')}
+            {isScheduled ? <Timer className="h-5 w-5" /> : (String(project.name || 'P').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'P')}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">

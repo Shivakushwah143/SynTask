@@ -20,6 +20,8 @@ celery_app = Celery(
         "app.worker.tasks.semantic_tasks",
         "app.worker.tasks.rag_tasks",
         "app.worker.tasks.recruitment_inbox_tasks",
+        "app.worker.tasks.ai_eval_tasks",
+        "app.worker.tasks.telemetry_tasks",
         "app.integrations.meta.tasks",
     ],
 )
@@ -49,6 +51,12 @@ celery_app.conf.update(
         "meta-dispatch-due-insights-sync-runs": {
             "task": "meta.dispatch_due_insights_sync_runs",
             "schedule": 60.0,
+        },
+        # Daily cleanup of expired AI observability records (retention window
+        # configured via AI_TELEMETRY_RETENTION_DAYS).
+        "ai-telemetry-purge-expired": {
+            "task": "ai_telemetry.purge_expired",
+            "schedule": 86400.0,
         },
     },
 )

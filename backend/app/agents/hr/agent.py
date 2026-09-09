@@ -126,6 +126,7 @@ class HROperationsAgent:
         message: str,
         conversation_history: list[dict[str, str]] | None = None,
         entity_context: dict[str, Any] | None = None,
+        security_context: Any = None,
     ) -> AgentLoopResult:
         """Execute the HR agent loop.
 
@@ -168,13 +169,20 @@ class HROperationsAgent:
             entity_context=entity_ctx,
         )
 
+        # ── Filter tool schemas by authorization (before sending to LLM) ──────
+        from app.ai.security.schema_filter import filter_hr_schemas_for_context
+        if security_context is not None:
+            hr_schemas = filter_hr_schemas_for_context(security_context, HR_TOOL_SCHEMAS)
+        else:
+            hr_schemas = HR_TOOL_SCHEMAS
+
         # Agent loop
         for step in range(1, self.max_steps + 1):
             try:
                 result = await self.provider.generate_with_tools(
                     prompt="",
                     context={"company_id": company_id, "user_id": user_id, "role": user_role},
-                    tools=HR_TOOL_SCHEMAS,
+                    tools=hr_schemas,
                     options={
                         "system_prompt": HR_AGENT_SYSTEM_PROMPT,
                         "messages": messages,
@@ -244,6 +252,7 @@ class HROperationsAgent:
                     tool_name=tool_call.name,
                     arguments=tool_call.arguments,
                     company_id=company_id,
+                    security_context=security_context,
                 )
 
                 tc_duration = (time.perf_counter() - tc_start) * 1000
@@ -299,6 +308,7 @@ class HROperationsAgent:
         conversation_history: list[dict[str, str]] | None = None,
         entity_context: dict[str, Any] | None = None,
         timings: dict[str, Any] | None = None,
+        security_context: Any = None,
     ) -> Any:
         """Async-generator variant of ``run`` with live token streaming.
 
@@ -356,6 +366,14 @@ class HROperationsAgent:
             conversation_history=conversation_history,
             entity_context=entity_ctx,
         )
+
+        # ── Filter tool schemas by authorization (before sending to LLM) ──────
+        from app.ai.security.schema_filter import filter_hr_schemas_for_context
+        if security_context is not None:
+            hr_schemas = filter_hr_schemas_for_context(security_context, HR_TOOL_SCHEMAS)
+        else:
+            hr_schemas = HR_TOOL_SCHEMAS
+
         yield status_event("routing", STATUS_UNDERSTANDING)
 
         tool_executions: list[ToolExecution] = []
@@ -376,7 +394,7 @@ class HROperationsAgent:
                 async for ev in self.provider.generate_with_tools_stream(
                     prompt="",
                     context={"company_id": company_id, "user_id": user_id, "role": user_role},
-                    tools=HR_TOOL_SCHEMAS,
+                    tools=hr_schemas,
                     options={
                         "system_prompt": HR_AGENT_SYSTEM_PROMPT,
                         "messages": messages,
@@ -491,6 +509,7 @@ class HROperationsAgent:
                     tool_name=tc.name,
                     arguments=tc.arguments,
                     company_id=company_id,
+                    security_context=security_context,
                 )
                 tc_duration = (time.perf_counter() - tc_start) * 1000
                 return tc, res, tc_duration

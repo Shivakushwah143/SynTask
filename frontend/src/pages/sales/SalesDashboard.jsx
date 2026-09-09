@@ -73,7 +73,7 @@ export default function SalesDashboard() {
           </div>
         </>
       ) : (
-        <EmptyState icon={TrendingUp} title="No sales activity yet" description="Add contacts and leads to start tracking the pipeline." />
+        <EmptyState icon={TrendingUp} image="/dashboard-preview.webp" imageAlt="SynTask sales pipeline preview" title="No sales activity yet" description="Add contacts and leads to start tracking the pipeline." />
       )}
     </div>
   )

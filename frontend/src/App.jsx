@@ -10,7 +10,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import ConfirmDialog from './components/ConfirmDialog';
 import UndoBar from './components/UndoBar';
 import { Agentation } from "agentation";
-import { hasCompanyAdminAccess, isManagerRole, isSuperAdminRole } from './utils/roles';
+import { hasCompanyAdminAccess, isAdminRole, isManagerRole, isSuperAdminRole } from './utils/roles';
 import { hasModuleAccess } from './utils/rbac';
 import { applySeoMeta, getSeoMeta } from './utils/seo';
 import DemoHome from './pages/DemoHome';
@@ -69,6 +69,8 @@ const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
 const ExecutiveAssistant = lazy(() => import('./pages/ExecutiveAssistant'))
 const AIHub = lazy(() => import('./pages/AIHub'))
+const AIEvaluations = lazy(() => import('./pages/AIEvaluations'))
+const AIOperations = lazy(() => import('./pages/AIOperations'))
 const CreativeDirector = lazy(() => import('./pages/CreativeDirector'))
 const MarketingChat = lazy(() => import('./pages/MarketingChat'))
 const MarketingCalendar = lazy(() => import('./pages/marketing/calendar/page'))
@@ -186,6 +188,14 @@ const CompanyAdminGuard = ({ children }) => {
   const { user } = useAuthStore()
   if (!hasCompanyAdminAccess(user?.role)) return <Navigate to="/dashboard" replace />
   return children
+}
+
+// AI Evaluations & Regression — Admin / Super Admin only (raw evaluation
+// details must never be visible to managers or employees).
+const AIEvalGuard = ({ children }) => {
+  const { user } = useAuthStore()
+  if (isAdminRole(user?.role) || isSuperAdminRole(user?.role)) return children
+  return <Navigate to="/dashboard" replace />
 }
 
 // Only admins and managers can access CRM settings
@@ -352,6 +362,8 @@ function App() {
         <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
         <Route path="executive-assistant" element={withBoundary(<ExecutiveAssistant />)} />
         <Route path="ai-hub" element={<ModuleGuard module="ai_assistant">{withBoundary(<AIHub />)}</ModuleGuard>} />
+        <Route path="ai-evals" element={<ModuleGuard module="ai_assistant"><AIEvalGuard>{withBoundary(<AIEvaluations />)}</AIEvalGuard></ModuleGuard>} />
+        <Route path="ai-operations" element={<ModuleGuard module="ai_assistant"><AIEvalGuard>{withBoundary(<AIOperations />)}</AIEvalGuard></ModuleGuard>} />
         <Route path="creative-director" element={<ModuleGuard module="ai_content_assistant">{withBoundary(<CreativeDirector />)}</ModuleGuard>} />
         <Route path="marketing-support" element={<ModuleGuard module="ai_content_assistant">{withBoundary(<MarketingChat />)}</ModuleGuard>} />
         <Route path="marketing/calendar" element={withBoundary(<MarketingCalendar />)} />
