@@ -261,7 +261,7 @@ export default function ContentWorkspace() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col space-y-4">
+    <div className="space-y-4">
       {/* Lifecycle Pipeline — stage color dots + arrows, active stage filled
           with its own color (mirrors Work's TaskLifecyclePipeline) */}
       <ContentLifecyclePipeline
@@ -425,11 +425,9 @@ export default function ContentWorkspace() {
         )}
       </div>
 
-      {/* Content Items List — scrolls internally so the heading, pipeline, and
-          stats keep their natural size no matter how many rows exist */}
-      <div className="flex min-h-0 flex-1 flex-col gap-2">
-        <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
-          {isError ? (
+      {/* Content Items List — the page scrolls naturally with the list */}
+      <div>
+        {isError ? (
             <div className="rounded-2xl border border-red-500/20 bg-red-50/20 p-6 text-center text-red-800 dark:bg-red-950/20 dark:text-red-300">
               <p className="font-semibold">Unable to load content items.</p>
             </div>
@@ -468,13 +466,8 @@ export default function ContentWorkspace() {
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* Pagination — pinned below the scrollable list so it stays reachable */}
-        {!isError && items.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-surface-border bg-surface px-3 py-2 text-xs text-gray-500 shadow-sm dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-gray-400">
+              <div className="border-t border-surface-border px-4 py-3 dark:border-[var(--color-app-border)]">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
             <span>
               Showing {totalCount === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, totalCount)} of {totalCount}
             </span>
@@ -498,8 +491,10 @@ export default function ContentWorkspace() {
               >
                 Next
               </button>
+              </div>
             </div>
           </div>
+        </div>
         )}
       </div>
 
