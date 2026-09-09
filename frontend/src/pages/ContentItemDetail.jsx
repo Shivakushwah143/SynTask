@@ -2,17 +2,17 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import {
-  ArrowLeft, Clock, User, Users, Calendar, AlertTriangle,
-  CheckCircle2, Send, Eye, RotateCcw, ExternalLink, Pencil,
-  Trash2, ChevronRight, FileText, Palette, Tag, Briefcase,
-  Globe, MessageSquare, History, BookOpen, Layers, Sparkles,
-  Save, X
+  ArrowLeft, Clock, User, AlertTriangle,
+  CheckCircle2, Eye, RotateCcw, Pencil,
+  ChevronRight, FileText, Tag,
+  Globe, History, BookOpen, Layers, Sparkles,
+  Save, X, MoveRight
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format, formatDistanceToNow, isPast, parseISO } from 'date-fns'
 import { extractErrorMessage } from '../api/axios'
 import { contentProductionApi } from '../api/contentProduction'
-import { Badge, Button, FormField, Modal, Skeleton } from '../components/ui'
+import { Button, FormField, Modal, Skeleton } from '../components/ui'
 
 const STATUS_COLORS = {
   idea: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
@@ -46,6 +46,7 @@ export default function ContentItemDetail() {
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [reviewType, setReviewType] = useState('internal') // 'internal' | 'client'
   const [showEditModal, setShowEditModal] = useState(false)
+  const [transitionTarget, setTransitionTarget] = useState(null)
   const [transitionFeedback, setTransitionFeedback] = useState('')
   const [reviewDecision, setReviewDecision] = useState('approve')
   const [reviewFeedback, setReviewFeedback] = useState('')
@@ -126,18 +127,6 @@ export default function ContentItemDetail() {
     }
   )
 
-  const deleteMutation = useMutation(
-    () => contentProductionApi.deleteItem(itemId),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['content-workspace'])
-        toast.success('Content deleted')
-        navigate('/content')
-      },
-      onError: (err) => toast.error(extractErrorMessage(err?.response?.data?.detail) || 'Failed to delete'),
-    }
-  )
-
   if (isLoading) {
     return (
       <div className="space-y-4 p-6">
@@ -160,7 +149,8 @@ export default function ContentItemDetail() {
   const statusClass = STATUS_COLORS[item.status] || STATUS_COLORS.idea
   const isOverdue = item.deadline && isPast(parseISO(item.deadline)) && !item.completed
 
-  const handleTransition = (status) => {
+  const handleTransition = () => {
+    setTransitionTarget(allowedTransitions[0] || null)
     setTransitionFeedback('')
     setShowTransitionModal(true)
   }
@@ -240,7 +230,7 @@ export default function ContentItemDetail() {
           </Button>
           {allowedTransitions.length > 0 && (
             <Button size="sm" onClick={() => handleTransition()}>
-              <ChevronRight className="h-3.5 w-3.5 mr-1" /> Advance
+              <MoveRight className="h-3.5 w-3.5 mr-1" /> Update Status
             </Button>
           )}
           {item.status === 'internal_review' && (
@@ -325,25 +315,50 @@ export default function ContentItemDetail() {
         )}
       </div>
 
-      {/* Transition Modal */}
-      <Modal isOpen={showTransitionModal} onClose={() => setShowTransitionModal(false)} title="Update Status">
+      {/* Transition Modal — pick the target stage, then confirm with the submit button */}
+      <Modal
+        isOpen={showTransitionModal}
+        onClose={() => setShowTransitionModal(false)}
+        title="Update Status"
+        footer={(
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setShowTransitionModal(false)}>Cancel</Button>
+            <Button
+              onClick={() => transitionMutation.mutate({ status: transitionTarget, feedback: transitionFeedback })}
+              disabled={!transitionTarget || transitionMutation.isLoading}
+            >
+              <MoveRight className="h-4 w-4 mr-1" />
+              {transitionMutation.isLoading ? 'Updating...' : `Move to ${formatLabel(transitionTarget)}`}
+            </Button>
+          </div>
+        )}
+      >
         <div className="space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Move from <strong>{formatLabel(item.status)}</strong> to:
           </p>
           <div className="flex flex-wrap gap-2">
-            {allowedTransitions.map((status) => (
-              <button
-                key={status}
-                onClick={() => transitionMutation.mutate({ status, feedback: transitionFeedback })}
-                className={`rounded-full px-3 py-1.5 text-sm font-medium border transition-colors hover:bg-primary-50 hover:border-primary-300 ${
-                  STATUS_COLORS[status] || 'bg-gray-100 text-gray-700'
-                }`}
-                disabled={transitionMutation.isLoading}
-              >
-                {formatLabel(status)}
-              </button>
-            ))}
+            {allowedTransitions.map((status) => {
+              const isSelected = transitionTarget === status
+              const colorClass = STATUS_COLORS[status] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setTransitionTarget(status)}
+                  aria-pressed={isSelected}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
+                    isSelected
+                      ? `border-transparent ring-2 ring-primary-500 ring-offset-1 ring-offset-white dark:ring-offset-gray-900 ${colorClass}`
+                      : `${colorClass} border-gray-200/70 opacity-80 hover:opacity-100 dark:border-gray-700`
+                  }`}
+                  disabled={transitionMutation.isLoading}
+                >
+                  {isSelected && <CheckCircle2 className="h-3.5 w-3.5" />}
+                  {formatLabel(status)}
+                </button>
+              )
+            })}
           </div>
           <FormField label="Notes (optional)">
             <textarea
@@ -591,7 +606,7 @@ function VersionsTab({ item }) {
                 <p className="text-xs text-gray-500">By {v.created_by_name}</p>
               )}
               {v.feedback && (
-                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 italic">"{v.feedback}"</p>
+                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 italic">&quot;{v.feedback}&quot;</p>
               )}
               {v.review_result && (
                 <span className="mt-1 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
@@ -710,7 +725,7 @@ function ReviewCard({ review }) {
         </span>
       </div>
       {review.feedback && (
-        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 italic">"{review.feedback}"</p>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 italic">&quot;{review.feedback}&quot;</p>
       )}
       {review.issues?.length > 0 && (
         <ul className="mt-2 list-disc list-inside text-xs text-red-600">

@@ -5,7 +5,7 @@ import {
   Search, Plus, Filter, X, Clock,
   AlertTriangle, CheckCircle2, Send, Eye,
   Palette, FileText, Layers, ExternalLink,
-  Sparkles, Users, Briefcase, ArrowRight, RotateCcw, RefreshCcw,
+  Sparkles, Users, ArrowRight, RotateCcw, RefreshCcw,
   LayoutList
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -428,10 +428,28 @@ export default function ContentWorkspace() {
             </Button>
           </div>
         ) : (
-          <div className="space-y-2">
-            {items.map((item) => (
-              <ContentItemCard key={item.id} item={item} onClick={() => openItem(item)} />
-            ))}
+          <div className="overflow-hidden rounded-2xl border border-surface-border bg-surface shadow-sm dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-surface-border text-sm dark:divide-[var(--color-app-border)]">
+                <thead className="bg-surface-muted dark:bg-[var(--color-app-surface-muted)]">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Content</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Platform</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Priority</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Deadline</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Assignee</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Next</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-border dark:divide-[var(--color-app-border)]">
+                  {items.map((item) => (
+                    <ContentItemRow key={item.id} item={item} onClick={() => openItem(item)} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
@@ -598,7 +616,10 @@ function StatCard({ label, value, icon: Icon, colorClass }) {
   )
 }
 
-function ContentItemCard({ item, onClick }) {
+// Sales-style list row — all details (platform, type, status, priority,
+// deadline, assignee, next action) align in one horizontal line per item,
+// with a status-colored left border + row tint for color coding.
+function ContentItemRow({ item, onClick }) {
   const statusClass = STATUS_COLORS[item.status] || STATUS_COLORS.idea
   const priorityClass = PRIORITY_COLORS[item.priority] || PRIORITY_COLORS.medium
   const accentClass = CARD_ACCENTS[item.status] || CARD_ACCENTS.idea
@@ -606,57 +627,66 @@ function ContentItemCard({ item, onClick }) {
   const isOverdue = item.due_date && isPast(parseISO(item.due_date)) && !item.completed
 
   return (
-    <div
+    <tr
       onClick={onClick}
-      className={`group cursor-pointer rounded-2xl border border-surface-border border-l-4 p-4 transition-all hover:shadow-md dark:border-[var(--color-app-border)] ${accentClass}`}
+      className={`group cursor-pointer border-l-4 transition-colors hover:bg-surface-muted/70 dark:hover:bg-[var(--color-app-surface-muted)] ${accentClass}`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="mb-1 flex flex-wrap items-center gap-2">
-            {item.content_id && (
-              <span className="text-xs font-mono text-gray-400 dark:text-gray-500">{item.content_id}</span>
-            )}
-            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${statusClass}`}>
-              {formatStatusLabel(item.status)}
-            </span>
-            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${priorityClass}`}>
-              {item.priority}
+      <td className="min-w-[220px] px-4 py-3">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onClick() }}
+          className="block w-full truncate text-left text-sm font-medium text-text-primary hover:text-primary-600 hover:underline dark:text-gray-100"
+          title={item.title}
+        >
+          {item.title}
+        </button>
+        <div className="mt-0.5 flex items-center gap-2">
+          {item.content_id && <span className="font-mono text-xs text-gray-400 dark:text-gray-500">{item.content_id}</span>}
+          {item.current_version > 1 && <span className="text-xs text-gray-400 dark:text-gray-500">{`v${item.current_version}`}</span>}
+        </div>
+      </td>
+      <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">
+        {item.platform ? <span className="inline-flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-gray-400" />{item.platform}</span> : <span className="text-gray-400 dark:text-gray-600">-</span>}
+      </td>
+      <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">
+        {item.content_type ? <span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-gray-400" />{item.content_type.replace(/_/g, ' ')}</span> : <span className="text-gray-400 dark:text-gray-600">-</span>}
+      </td>
+      <td className="whitespace-nowrap px-4 py-3">
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${statusClass}`}>
+          {formatStatusLabel(item.status)}
+        </span>
+      </td>
+      <td className="whitespace-nowrap px-4 py-3">
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${priorityClass}`}>
+          {item.priority}
+        </span>
+      </td>
+      <td className="whitespace-nowrap px-4 py-3">
+        {item.deadline ? (
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center gap-1.5 text-xs ${isOverdue ? 'font-semibold text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'}`}>
+              <Clock className="h-3.5 w-3.5" />
+              {formatDistanceToNow(parseISO(item.deadline), { addSuffix: true })}
             </span>
             {isOverdue && (
-              <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-900/30 dark:text-red-300">
                 <AlertTriangle className="h-3 w-3 mr-0.5" />
                 Overdue
               </span>
             )}
           </div>
-          <h3 className="truncate text-sm font-semibold text-gray-900 group-hover:text-primary-600 dark:text-gray-100">
-            {item.title}
-          </h3>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-            {item.platform && <span className="flex items-center gap-1"><Globe className="h-3 w-3" />{item.platform}</span>}
-            {item.content_type && <span className="flex items-center gap-1"><FileText className="h-3 w-3" />{item.content_type.replace(/_/g, ' ')}</span>}
-            {item.client_id && <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" />Client</span>}
-            {item.assignee_name && <span className="flex items-center gap-1"><Users className="h-3 w-3" />{item.assignee_name}</span>}
-            {item.deadline && (
-              <span className={`flex items-center gap-1 ${isOverdue ? 'font-semibold text-red-600' : ''}`}>
-                <Clock className="h-3 w-3" />
-                {formatDistanceToNow(parseISO(item.deadline), { addSuffix: true })}
-              </span>
-            )}
-          </div>
-          {/* Next action hint — tinted with the stage color */}
-          <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold" style={{ color: stageColor }}>
-            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: stageColor }} />
-            Next: {getNextAction(item.status)}
-          </div>
-        </div>
-        <div className="text-right">
-          {item.current_version > 1 && (
-            <span className="text-xs text-gray-400">{`v${item.current_version}`}</span>
-          )}
-        </div>
-      </div>
-    </div>
+        ) : <span className="text-gray-400 dark:text-gray-600">-</span>}
+      </td>
+      <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">
+        {item.assignee_name ? <span className="inline-flex items-center gap-1.5"><Users className="h-3.5 w-3.5 text-gray-400" />{item.assignee_name}</span> : <span className="text-gray-400 dark:text-gray-600">-</span>}
+      </td>
+      <td className="whitespace-nowrap px-4 py-3">
+        <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: stageColor }}>
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: stageColor }} />
+          {getNextAction(item.status)}
+        </span>
+      </td>
+    </tr>
   )
 }
 

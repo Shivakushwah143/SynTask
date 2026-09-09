@@ -142,13 +142,13 @@ ALLOWED_TRANSITIONS = {
 The `/content` page shows:
 1. **Overview cards**: Due Today, Overdue, In Production, Internal Review, Client Review, Revision, Ready, Total
 2. **Lifecycle tabs**: All | Idea | Briefing | Script | Production | Internal Review | Client Review | Revision Required | Approved | Ready to Publish | Published
-3. **Filtered content list**: Cards showing Content ID, title, status, priority, platform, assignee, deadline, next action
+3. **Filtered content list**: Table rows (status-color-coded left border) showing Content ID, title, status, priority, platform, assignee, deadline, next action
 4. **Secondary filters**: Platform, Priority (narrow within selected lifecycle tab)
 
 ### Content Item Detail (`/content/:itemId`)
 - **Lifecycle progress bar**: Visual indicator of current position
 - **Detail tabs**: Overview, Brief, Script/Copy, Versions, Reviews, History
-- **Actions**: Edit, Advance (transition), Review (internal/client)
+- **Actions**: Edit, Update Status (transition via target-stage picker + confirm button), Review (internal/client)
 - **Review modal**: Approve / Request Revision / Reject with feedback
 
 ## Backward Compatibility
