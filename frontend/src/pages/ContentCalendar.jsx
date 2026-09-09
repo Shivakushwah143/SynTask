@@ -9,29 +9,20 @@ import {
   endOfWeek,
   format,
   isSameDay,
-  isSameMonth,
   startOfMonth,
   startOfWeek,
-  parseISO,
   isValid
 } from 'date-fns'
 import {
-  Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
-  Clock,
-  Filter,
   Search,
   Plus,
   Trash2,
   Copy,
-  Pencil,
-  Paperclip,
   User,
   Bell,
-  Layers,
   Sparkles,
-  Columns,
   X
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -64,12 +55,10 @@ const COLORS = [
 export default function ContentCalendar() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
-  const companyId = user?.company_id
 
   // Views & Dates
   const [view, setView] = useState('month') // 'month' | 'week' | 'day'
   const [currentDate, setCurrentDate] = useState(timeService.now())
-  const [selectedDate, setSelectedDate] = useState(timeService.now())
   const [search, setSearch] = useState('')
   const [platformFilter, setPlatformFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -196,9 +185,7 @@ export default function ContentCalendar() {
   }
 
   const handleToday = () => {
-    const now = timeService.now()
-    setCurrentDate(now)
-    setSelectedDate(now)
+    setCurrentDate(timeService.now())
   }
 
   // Open Create Form
@@ -211,7 +198,9 @@ export default function ContentCalendar() {
       platform: 'Instagram',
       priority: 'medium',
       status: 'draft',
-      start_date: timeService.toZonedDateOnly(date),
+      // Start date defaults to today (when work begins / content goes live),
+      // while the clicked calendar date becomes the due date — both editable.
+      start_date: timeService.toZonedDateOnly(timeService.now()),
       end_date: timeService.toZonedDateOnly(date),
       time: '12:00',
       assigned_person: user ? `${user.first_name} ${user.last_name}` : '',
@@ -486,7 +475,7 @@ export default function ContentCalendar() {
               <input type="date" className="input" value={form.start_date} onChange={(e) => setForm(prev => ({ ...prev, start_date: e.target.value }))} />
             </FormField>
 
-            <FormField label="End Date">
+            <FormField label="Due Date">
               <input type="date" className="input" value={form.end_date} onChange={(e) => setForm(prev => ({ ...prev, end_date: e.target.value }))} />
             </FormField>
 
@@ -568,7 +557,7 @@ function ContentMonthView({ days, items, onOpen, onCreateAt, onDuplicate, parseE
       <div className="grid grid-cols-7 divide-x divide-y divide-surface-border dark:divide-gray-800">
         {days.map((day) => {
           const dayItems = items.filter((item) => {
-            const date = parseEventDate(item.start_date || item.publish_date || item.due_date)
+            const date = parseEventDate(item.due_date || item.end_date || item.publish_date || item.start_date)
             return date && isSameDay(date, day)
           })
           
@@ -633,7 +622,7 @@ function ContentWeekView({ days, items, onOpen, onDuplicate, parseEventDate }) {
       <div className="grid min-w-[700px] grid-cols-7 divide-x divide-surface-border dark:divide-gray-800 min-h-[450px]">
         {days.map((day) => {
           const dayItems = items.filter((item) => {
-            const date = parseEventDate(item.start_date || item.publish_date || item.due_date)
+            const date = parseEventDate(item.due_date || item.end_date || item.publish_date || item.start_date)
             return date && isSameDay(date, day)
           })
 
@@ -681,7 +670,7 @@ function ContentWeekView({ days, items, onOpen, onDuplicate, parseEventDate }) {
 /* Day view manual calendar subcomponent */
 function ContentDayView({ day, items, onOpen, onDuplicate, parseEventDate }) {
   const dayItems = items.filter((item) => {
-    const date = parseEventDate(item.start_date || item.publish_date || item.due_date)
+    const date = parseEventDate(item.due_date || item.end_date || item.publish_date || item.start_date)
     return date && isSameDay(date, day)
   })
 
