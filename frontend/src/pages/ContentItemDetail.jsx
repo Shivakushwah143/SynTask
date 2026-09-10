@@ -6,13 +6,16 @@ import {
   CheckCircle2, Eye, RotateCcw, Pencil,
   ChevronRight, FileText, Tag,
   Globe, History, BookOpen, Layers, Sparkles,
-  Save, X, MoveRight
+  Save, X, MoveRight, Send, MessageSquare, Trash2, ExternalLink,
+  Wand2, RefreshCcw, ListChecks
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format, formatDistanceToNow, isPast, parseISO } from 'date-fns'
 import { extractErrorMessage } from '../api/axios'
 import { contentProductionApi } from '../api/contentProduction'
 import { Button, FormField, Modal, Skeleton } from '../components/ui'
+import { useAuthStore } from '../store/authStore'
+import { hasCapability } from '../utils/rbac'
 
 const STATUS_COLORS = {
   idea: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
@@ -51,6 +54,17 @@ export default function ContentItemDetail() {
   const [reviewDecision, setReviewDecision] = useState('approve')
   const [reviewFeedback, setReviewFeedback] = useState('')
   const [editForm, setEditForm] = useState({})
+  const [commentText, setCommentText] = useState('')
+  const [showAIPanel, setShowAIPanel] = useState(false)
+  const [aiAction, setAiAction] = useState(null)
+  const [aiSuggestion, setAiSuggestion] = useState(null)
+  const [aiPreview, setAiPreview] = useState('')
+  const [aiGenerating, setAiGenerating] = useState(false)
+
+  // Permission truth comes from the backend-resolved capability list — the UI
+  // only hides actions the backend would reject anyway (defense in depth).
+  const user = useAuthStore((s) => s.user)
+  const can = (capability) => hasCapability(user, capability)
 
   // Fetch item
   const { data: itemData, isLoading } = useQuery(
@@ -66,8 +80,17 @@ export default function ContentItemDetail() {
     { staleTime: 30 * 1000 }
   )
 
+  // Contextual AI actions available at this stage (backend stage map is the
+  // single source of truth — the UI never guesses what AI can do here).
+  const { data: aiActionsData } = useQuery(
+    ['content-ai-actions', itemId],
+    () => contentProductionApi.getAIActions(itemId),
+    { enabled: showAIPanel, staleTime: 60 * 1000 }
+  )
+
   const item = itemData?.data?.item
   const allowedTransitions = transitionsData?.data?.allowed || []
+  const publishingRecord = item?.publishing_record || null
 
   // Mutations
   const transitionMutation = useMutation(
@@ -132,6 +155,34 @@ export default function ContentItemDetail() {
     }
   )
 
+  // Comments — belong to the canonical Content Item; they are discussion, not
+  // review decisions (those live in the Reviews tab).
+  const commentsQuery = useQuery(
+    ['content-comments', itemId],
+    () => contentProductionApi.getComments(itemId),
+    { enabled: activeTab === 'comments', staleTime: 15 * 1000 }
+  )
+
+  const addCommentMutation = useMutation(
+    (payload) => contentProductionApi.addComment(itemId, payload),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(['content-comments', itemId])
+        queryClient.invalidateQueries(['content-item', itemId])
+        setCommentText('')
+      },
+      onError: (err) => toast.error(extractErrorMessage(err?.response?.data?.detail) || 'Failed to add comment'),
+    }
+  )
+
+  const deleteCommentMutation = useMutation(
+    (commentId) => contentProductionApi.deleteComment(commentId),
+    {
+      onSuccess: () => queryClient.invalidateQueries(['content-comments', itemId]),
+      onError: (err) => toast.error(extractErrorMessage(err?.response?.data?.detail) || 'Failed to delete comment'),
+    }
+  )
+
   if (isLoading) {
     return (
       <div className="space-y-4 p-6">
@@ -149,6 +200,43 @@ export default function ContentItemDetail() {
         <Button className="mt-4" onClick={() => navigate('/content')}>Back to Content</Button>
       </div>
     )
+  }
+
+  // AI mutations (declared after the loading guard so `item` is defined for
+  // the accept path; hooks stay unconditional above).
+  const aiActionMutation = useMutation(
+    (action) => contentProductionApi.runAIAction(itemId, action),
+    {
+      onMutate: () => setAiGenerating(true),
+      onSettled: () => setAiGenerating(false),
+      onSuccess: (res) => {
+        setAiSuggestion(res?.data || null)
+        setAiPreview(res?.data?.suggestion || '')
+        toast.success('AI suggestion ready — review it, then Accept, Edit, or Discard.')
+      },
+      onError: (err) => toast.error(extractErrorMessage(err?.response?.data?.detail) || 'AI action failed'),
+    }
+  )
+
+  const acceptSuggestion = () => {
+    const field = aiSuggestion?.target_field
+    if (!field) {
+      toast.info('This is an advisory result — copy it wherever you need it.')
+      return
+    }
+    // Accept writes through the NORMAL update endpoint — the exact same path a
+    // human edit uses. AI itself never mutates lifecycle, reviews, or publishing.
+    updateMutation.mutate({ [field]: aiPreview })
+  }
+
+  const regenerateSuggestion = () => {
+    if (!aiAction) return
+    aiActionMutation.mutate(aiAction)
+  }
+
+  const discardSuggestion = () => {
+    setAiSuggestion(null)
+    setAiPreview('')
   }
 
   const statusClass = STATUS_COLORS[item.status] || STATUS_COLORS.idea
@@ -189,8 +277,12 @@ export default function ContentItemDetail() {
     { key: 'script', label: 'Script / Copy', icon: FileText },
     { key: 'versions', label: `Versions (v${item.current_version})`, icon: Layers },
     { key: 'reviews', label: 'Reviews', icon: Eye },
+    { key: 'publishing', label: 'Publishing', icon: Send },
+    { key: 'comments', label: 'Comments', icon: MessageSquare },
     { key: 'history', label: 'History', icon: History },
   ]
+
+  const aiActions = aiActionsData?.data?.actions || []
 
   return (
     <div className="flex h-full min-h-[calc(100vh-140px)] flex-col space-y-4">
@@ -230,26 +322,117 @@ export default function ContentItemDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={handleEdit}>
-            <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
-          </Button>
-          {allowedTransitions.length > 0 && (
+          {can('content.edit') && (
+            <Button variant="secondary" size="sm" onClick={() => setShowAIPanel((v) => !v)}>
+              <Wand2 className="h-3.5 w-3.5 mr-1" /> AI Assist
+            </Button>
+          )}
+          {can('content.edit') && (
+            <Button variant="secondary" size="sm" onClick={handleEdit}>
+              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+            </Button>
+          )}
+          {can('content.transition') && allowedTransitions.length > 0 && (
             <Button size="sm" onClick={() => handleTransition()}>
               <MoveRight className="h-3.5 w-3.5 mr-1" /> Update Status
             </Button>
           )}
-          {item.status === 'internal_review' && (
+          {can('content.internal_review') && item.status === 'internal_review' && (
             <Button size="sm" onClick={() => handleReview('internal')}>
               <Eye className="h-3.5 w-3.5 mr-1" /> Review
             </Button>
           )}
-          {item.status === 'client_review' && (
+          {can('content.client_review') && item.status === 'client_review' && (
             <Button size="sm" onClick={() => handleReview('client')}>
               <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Client Review
             </Button>
           )}
         </div>
       </div>
+
+      {/* Business Context Summary — the first screen answers: what is this,
+          for which client/project/service, who owns it, when is it due, and
+          what needs to happen next (backend-derived). Not buried in forms. */}
+      <div className="grid grid-cols-2 gap-3 rounded-2xl border border-surface-border bg-surface p-3 text-xs shadow-sm dark:border-gray-800 dark:bg-black md:grid-cols-4 lg:grid-cols-7">
+        <SummaryCell label="Client" value={item.client_name} />
+        <SummaryCell label="Service" value={item.service_name} />
+        <SummaryCell label="Project" value={item.project_name} />
+        <SummaryCell label="Deliverable" value={item.deliverable_name} />
+        <SummaryCell label="Owner" value={item.assignee_name} />
+        <SummaryCell label="Deadline" value={item.deadline ? format(parseISO(item.deadline), 'MMM d, yyyy') : null} valueClass={isOverdue ? 'text-red-600 dark:text-red-400 font-semibold' : ''} />
+        <div className="col-span-2 md:col-span-4 lg:col-span-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Next Action</p>
+          <p className="mt-0.5 text-sm font-bold text-primary-600 dark:text-primary-400">{item.next_action || formatLabel(item.status)}</p>
+        </div>
+      </div>
+
+      {/* Contextual AI Panel — stage-relevant actions from the backend.
+          Results are preview-first: Accept / Edit / Regenerate / Discard.
+          Accepting writes through the normal update endpoint only. */}
+      {showAIPanel && (
+        <div className="rounded-2xl border border-purple-200 bg-purple-50/40 p-4 dark:border-purple-900/40 dark:bg-purple-950/20">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold text-purple-700 dark:text-purple-300">
+              <Wand2 className="h-4 w-4" /> AI Assist — contextual to this item
+            </h3>
+            <button type="button" onClick={() => { setShowAIPanel(false); discardSuggestion() }} className="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {aiActions.length === 0 && !aiGenerating ? (
+            <p className="mt-2 text-xs text-gray-500">Loading available AI actions…</p>
+          ) : (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {aiActions.map((a) => (
+                <button
+                  key={a.action}
+                  type="button"
+                  disabled={aiGenerating}
+                  onClick={() => { setAiAction(a.action); setAiSuggestion(null); setAiPreview(''); aiActionMutation.mutate(a.action) }}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-white px-3 py-1.5 text-xs font-medium text-purple-700 transition hover:bg-purple-100 disabled:opacity-50 dark:border-purple-800 dark:bg-purple-950/40 dark:text-purple-300 dark:hover:bg-purple-900/50"
+                >
+                  <Wand2 className="h-3 w-3" /> {a.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {aiGenerating && (
+            <p className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+              <RefreshCcw className="h-3 w-3 animate-spin" /> Generating from this item's client, brief, and content context…
+            </p>
+          )}
+          {aiSuggestion && !aiGenerating && (
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <ListChecks className="h-3.5 w-3.5 text-purple-500" />
+                {aiSuggestion.target_field
+                  ? <>Suggestion for <strong className="font-semibold">{formatLabel(aiSuggestion.target_field)}</strong> — nothing is saved until you accept.</>
+                  : 'Advisory result — nothing is written to the item.'}
+              </div>
+              <textarea
+                className="input text-sm"
+                rows={8}
+                value={aiPreview}
+                onChange={(e) => setAiPreview(e.target.value)}
+                placeholder="AI suggestion…"
+              />
+              <div className="flex flex-wrap justify-end gap-2">
+                {aiSuggestion.target_field && (
+                  <Button size="sm" onClick={acceptSuggestion} disabled={updateMutation.isLoading || !aiPreview.trim()}>
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Accept — write into {formatLabel(aiSuggestion.target_field)}
+                  </Button>
+                )}
+                <Button size="sm" variant="secondary" onClick={regenerateSuggestion} disabled={aiGenerating}>
+                  <RefreshCcw className="h-3.5 w-3.5 mr-1" /> Regenerate
+                </Button>
+                <Button size="sm" variant="secondary" onClick={discardSuggestion}>
+                  <X className="h-3.5 w-3.5 mr-1" /> Discard
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Lifecycle Progress Bar */}
       <div className="flex items-center gap-1 overflow-x-auto scrollbar-none rounded-2xl border border-surface-border bg-surface p-3 dark:border-gray-800 dark:bg-black">
@@ -314,6 +497,25 @@ export default function ContentItemDetail() {
         )}
         {activeTab === 'reviews' && (
           <ReviewsTab item={item} />
+        )}
+        {activeTab === 'publishing' && (
+          <PublishingTab record={publishingRecord} item={item} />
+        )}
+        {activeTab === 'comments' && (
+          <CommentsTab
+            comments={commentsQuery?.data?.data?.comments || []}
+            isLoading={commentsQuery?.isLoading}
+            text={commentText}
+            onTextChange={setCommentText}
+            onSubmit={() => {
+              if (!commentText.trim()) return
+              addCommentMutation.mutate({ text: commentText.trim() })
+            }}
+            isSubmitting={addCommentMutation.isLoading}
+            currentUserId={user?.id || user?._id}
+            isAdmin={can('*') || can('content.edit')}
+            onDelete={(id) => deleteCommentMutation.mutate(id)}
+          />
         )}
         {activeTab === 'history' && (
           <HistoryTab item={item} />
@@ -495,8 +697,49 @@ export default function ContentItemDetail() {
 // ── Tab Content Components ────────────────────────────────────────────────
 
 function OverviewTab({ item }) {
+  const brief = item.brief_completeness || null
   return (
     <div className="space-y-6">
+      {/* Backend-derived next action — same source as the workspace list. */}
+      <div className="flex items-center gap-2 rounded-xl border border-primary-200 bg-primary-50/60 p-3 dark:border-primary-900/40 dark:bg-primary-950/20">
+        <MoveRight className="h-4 w-4 text-primary-600" />
+        <p className="text-sm text-gray-700 dark:text-gray-300">
+          <span className="font-semibold text-text-primary">Next Action:</span>{' '}
+          <span className="font-semibold text-primary-700 dark:text-primary-400">{item.next_action || formatLabel(item.status)}</span>
+        </p>
+      </div>
+      {brief && (
+        <Section title="Brief Completeness">
+          <div className="rounded-xl border border-surface-border p-3 dark:border-gray-800">
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className="text-gray-600 dark:text-gray-400">Brief completeness</span>
+              <span className={brief.score >= 80 ? 'text-emerald-600' : brief.score >= 50 ? 'text-amber-600' : 'text-red-600'}>{brief.score}%</span>
+            </div>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+              <div
+                className={`h-full rounded-full ${brief.score >= 80 ? 'bg-emerald-500' : brief.score >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                style={{ width: `${brief.score}%` }}
+              />
+            </div>
+            {brief.missing?.length > 0 && (
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Missing: {brief.missing.map((m) => formatLabel(m)).join(', ')}
+              </p>
+            )}
+            <p className="mt-1 text-[11px] text-gray-400">Guidance only — the lifecycle decides what is required to move forward.</p>
+          </div>
+        </Section>
+      )}
+      <Section title="Business Context">
+        <InfoGrid>
+          <InfoItem label="Content ID" value={item.content_id || '—'} />
+          <InfoItem label="Client" value={item.client_name || '—'} />
+          <InfoItem label="Service" value={item.service_name || '—'} />
+          <InfoItem label="Project" value={item.project_name || '—'} />
+          <InfoItem label="Deliverable" value={item.deliverable_name || '—'} />
+          <InfoItem label="Owner" value={item.assignee_name || '—'} />
+        </InfoGrid>
+      </Section>
       <Section title="Content Details">
         <InfoGrid>
           <InfoItem label="Content ID" value={item.content_id || '—'} />
@@ -657,6 +900,124 @@ function ReviewsTab({ item }) {
   )
 }
 
+// Publishing visibility — mirrors the canonical publishing record's state.
+// This is deliberately read-oriented: Content never duplicates the Publishing
+// execution UI; publishing operators act from Publishing's own workspace.
+function PublishingTab({ record, item }) {
+  if (!record) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          {item?.status === 'ready_to_publish'
+            ? 'Waiting for Publishing — this item has been handed off but Publishing has not scheduled it yet.'
+            : 'Not yet handed off to Publishing. Publishing information appears here once the item is approved and becomes Ready to Publish.'}
+        </p>
+      </div>
+    )
+  }
+  const statusColors = {
+    not_started: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+    scheduled: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+    published: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+    failed: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  }
+  return (
+    <div className="space-y-6">
+      <Section title="Publishing Status">
+        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusColors[record.status] || 'bg-gray-100 text-gray-700'}`}>
+          {formatLabel(record.status)}
+        </span>
+        {record.status === 'failed' && record.error_message && (
+          <p className="mt-2 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">
+            <AlertTriangle className="mr-1.5 inline h-4 w-4" />
+            Last publishing error: {record.error_message}
+          </p>
+        )}
+      </Section>
+      <Section title="Publishing Details">
+        <InfoGrid>
+          <InfoItem label="Platform" value={record.platform || '—'} />
+          <InfoItem label="Account" value={record.account_name || '—'} />
+          <InfoItem label="Scheduled" value={record.scheduled_date ? format(parseISO(record.scheduled_date), 'MMM d, yyyy h:mm a') : '—'} />
+          <InfoItem label="Published" value={record.published_date ? format(parseISO(record.published_date), 'MMM d, yyyy h:mm a') : '—'} />
+          <InfoItem label="Publishing Owner" value={record.owner_name || record.owner_id || '—'} />
+          <InfoItem label="Approved Version" value={record.approved_version ? `v${record.approved_version}` : '—'} />
+        </InfoGrid>
+      </Section>
+      {record.external_url && (
+        <Section title="Published URL">
+          <a
+            href={record.external_url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm text-primary-600 hover:underline dark:text-primary-400"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            {record.external_url}
+          </a>
+        </Section>
+      )}
+    </div>
+  )
+}
+
+// Comments belong to the canonical Content Item. They are discussion about the
+// content ("please use the new product image") — NOT review decisions, which
+// remain in the Reviews tab.
+function CommentsTab({ comments, isLoading, text, onTextChange, onSubmit, isSubmitting, currentUserId, isAdmin, onDelete }) {
+  if (isLoading) {
+    return <p className="text-sm text-gray-500">Loading comments…</p>
+  }
+  return (
+    <div className="space-y-4">
+      <form
+        onSubmit={(e) => { e.preventDefault(); onSubmit() }}
+        className="flex items-start gap-2"
+      >
+        <textarea
+          className="input flex-1"
+          rows={2}
+          value={text}
+          onChange={(e) => onTextChange(e.target.value)}
+          placeholder="Add a comment… (discussion only — review decisions live in Reviews)"
+        />
+        <Button type="submit" disabled={isSubmitting || !text.trim()}>
+          Comment
+        </Button>
+      </form>
+      {(comments || []).length === 0 ? (
+        <p className="text-sm text-gray-500">No comments yet.</p>
+      ) : (
+        <div className="space-y-3">
+          {[...comments].reverse().map((c) => (
+            <div key={c.id} className="rounded-xl border border-surface-border p-3 dark:border-gray-800">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{c.user_name || 'Unknown'}</span>
+                  <span className="text-xs text-gray-400">
+                    {c.created_at ? format(parseISO(c.created_at), 'MMM d, yyyy h:mm a') : ''}
+                  </span>
+                </div>
+                {(isAdmin || c.user_id === currentUserId) && (
+                  <button
+                    type="button"
+                    onClick={() => onDelete(c.id)}
+                    title="Delete comment"
+                    className="rounded p-1 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <p className="mt-1.5 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{c.text}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function HistoryTab({ item }) {
   const history = item.history || []
   return (
@@ -698,6 +1059,19 @@ function Section({ title, children }) {
 
 function InfoGrid({ children }) {
   return <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
+}
+
+// Compact cell for the header context strip: hides the row entirely when the
+// value is missing so a deleted/missing relation never renders an empty hole.
+function SummaryCell({ label, value, valueClass = '' }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+      <p className={`mt-0.5 truncate text-sm text-gray-900 dark:text-gray-100 ${valueClass}`}>
+        {value || '—'}
+      </p>
+    </div>
+  )
 }
 
 function InfoItem({ label, value, wide }) {

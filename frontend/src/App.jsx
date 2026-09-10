@@ -67,6 +67,7 @@ const ContentCalendar = lazy(() => import('./pages/ContentCalendar'))
 const ContentWorkspace = lazy(() => import('./pages/ContentWorkspace'))
 const ContentItemDetail = lazy(() => import('./pages/ContentItemDetail'))
 const ContentOverview = lazy(() => import('./pages/ContentOverview'))
+const ContentTemplates = lazy(() => import('./pages/ContentTemplates'))
 const Timesheet = lazy(() => import('./pages/Timesheet'))
 const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
@@ -345,6 +346,7 @@ function App() {
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
           <Route path="content/overview" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentOverview />)}</ModuleGuard>} />
           <Route path="content" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentWorkspace />)}</ModuleGuard>} />
+          <Route path="content/templates" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentTemplates />)}</ModuleGuard>} />
           <Route path="content/:itemId" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentItemDetail />)}</ModuleGuard>} />
           <Route path="timesheet" element={<ModuleGuard module="time_tracking">{withBoundary(<Timesheet />)}</ModuleGuard>} />
           <Route path="attendance" element={withBoundary(<Attendance />)} />

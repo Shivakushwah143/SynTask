@@ -278,3 +278,86 @@ class ContentTemplate(Document):
             "company_id",
             "is_active",
         ]
+
+
+# ── Content Comment ────────────────────────────────────────────────────────
+
+class ContentComment(Document):
+    """A comment on a Content Item — separate from review decisions."""
+    company_id: Indexed(str)
+    content_item_id: Indexed(str)
+    user_id: str
+    user_name: Optional[str] = None
+    user_role: Optional[str] = None
+    text: str
+    attachments: List[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = None
+
+    class Settings:
+        name = "content_comments"
+        indexes = [
+            "company_id",
+            "content_item_id",
+            IndexModel([("content_item_id", ASCENDING), ("created_at", DESCENDING)]),
+        ]
+
+
+# ── Canonical Publishing Record (Document) ─────────────────────────────────
+
+class ContentPublishingRecordDoc(Document):
+    """Canonical publishing record — owns the publishing lifecycle.
+
+    Created when content reaches READY_TO_PUBLISH.
+    Publishing Centre updates status (scheduled → published/failed).
+    Content's ``publishing`` embedded field is a read-only mirror for convenience.
+    """
+    company_id: Indexed(str)
+    content_item_id: Indexed(str)
+    content_id: Optional[str] = None   # Human-readable CNT-XXX
+
+    # Publishing targets
+    client_id: Optional[str] = None
+    service_id: Optional[str] = None
+    project_id: Optional[str] = None
+    platform: Optional[str] = None
+    account_id: Optional[str] = None       # Platform account reference
+    account_name: Optional[str] = None
+
+    # Content references (consumed, not copied)
+    content_type: Optional[str] = None
+    caption: Optional[str] = None
+    file_urls: List[str] = Field(default_factory=list)
+    approved_version: Optional[int] = None  # Content version approved at handoff
+
+    # Lifecycle
+    status: ContentPublishingStatus = ContentPublishingStatus.NOT_STARTED
+    scheduled_date: Optional[datetime] = None
+    published_date: Optional[datetime] = None
+    external_post_id: Optional[str] = None
+    external_url: Optional[str] = None
+    error_message: Optional[str] = None
+    retry_count: int = 0
+
+    # Ownership
+    owner_id: Optional[str] = None
+    owner_name: Optional[str] = None
+
+    # Audit
+    created_by: Optional[str] = None
+    updated_by: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "content_publishing_records"
+        indexes = [
+            "company_id",
+            "content_item_id",
+            "content_id",
+            "status",
+            "platform",
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("scheduled_date", ASCENDING)]),
+            IndexModel([("content_item_id", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("content_item_id", ASCENDING)], unique=True),
+        ]

@@ -13,8 +13,11 @@ import { formatDistanceToNow, isPast, parseISO } from 'date-fns'
 import { extractErrorMessage } from '../api/axios'
 import { contentProductionApi } from '../api/contentProduction'
 import { projectsApi } from '../api/projects'
+import { clientsAPI } from '../api/clients'
 import { Button, FormField, Modal } from '../components/ui'
 import { asArray } from './phase4Utils'
+import { useAuthStore } from '../store/authStore'
+import { hasCapability } from '../utils/rbac'
 
 // ── Lifecycle tabs ────────────────────────────────────────────────────────
 
@@ -122,17 +125,51 @@ export default function ContentWorkspace() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+
+  // Permission truth mirrors the backend capability checks — the UI only hides
+  // what the backend would reject.
+  const user = useAuthStore((s) => s.user)
+  const can = (capability) => hasCapability(user, capability)
   // List pagination — the workspace aggregate returns every item, so the list
   // is paged client-side (same pattern as the Tasks page) to keep the page
   // tidy when large volumes of content are loaded.
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 20
   const [createForm, setCreateForm] = useState({
-    title: '', project_id: '', client_id: '', platform: 'Instagram',
+    title: '', project_id: '', client_id: '', service_id: '', deliverable_id: '', platform: 'Instagram',
     content_type: 'custom', priority: 'medium', description: '',
     objective: '', target_audience: '', key_message: '', hook: '', cta: '', tone: '',
     due_date: '', deadline: '',
   })
+
+  // Templates — reusable content structures (Content Type, Platform, defaults).
+  const [templates, setTemplates] = useState([])
+  useEffect(() => {
+    if (!showCreateModal) return
+    let cancelled = false
+    contentProductionApi.getTemplates()
+      .then((res) => { if (!cancelled) setTemplates(asArray(res?.data, ['templates'])) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [showCreateModal])
+
+  const applyTemplate = (templateId) => {
+    const template = templates.find((t) => t.id === templateId)
+    if (!template) return
+    setCreateForm((prev) => ({
+      ...prev,
+      content_type: template.content_type || prev.content_type,
+      platform: template.platform || prev.platform,
+      objective: template.default_objective || prev.objective,
+      target_audience: template.default_target_audience || prev.target_audience,
+      key_message: template.default_key_message || prev.key_message,
+      tone: template.default_tone || prev.tone,
+      cta: template.default_cta || prev.cta,
+      tags: template.default_tags?.length ? template.default_tags : prev.tags,
+      assets_required: template.default_assets_required?.length ? template.default_assets_required : prev.assets_required,
+    }))
+    toast.success(`Template "${template.name}" applied`)
+  }
 
   // Build query params
   const queryParams = useMemo(() => {
@@ -157,6 +194,40 @@ export default function ContentWorkspace() {
     () => projectsApi.getProjects({ limit: 100 }),
     { staleTime: 5 * 60 * 1000 }
   )
+
+  // Dependent relationship flow: Client → Service → Project → Deliverable.
+  // Each select narrows to records belonging to the previous selection; the
+  // backend re-validates every supplied relation (frontend is UX, not security).
+  const [clients, setClients] = useState([])
+  const [services, setServices] = useState([])
+  const [deliverables, setDeliverables] = useState([])
+
+  useEffect(() => {
+    if (!showCreateModal || clients.length) return
+    let cancelled = false
+    clientsAPI.listClients()
+      .then((res) => { if (!cancelled) setClients(asArray(res, ['clients', 'data'])) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [showCreateModal, clients.length])
+
+  useEffect(() => {
+    if (!showCreateModal || !createForm.client_id) { setServices([]); return }
+    let cancelled = false
+    clientsAPI.listServices(createForm.client_id)
+      .then((res) => { if (!cancelled) setServices(asArray(res, ['services', 'data'])) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [showCreateModal, createForm.client_id])
+
+  useEffect(() => {
+    if (!showCreateModal || !createForm.client_id) { setDeliverables([]); return }
+    let cancelled = false
+    clientsAPI.listDeliverables(createForm.client_id, { project_id: createForm.project_id || undefined })
+      .then((res) => { if (!cancelled) setDeliverables(asArray(res, ['deliverables', 'data'])) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [showCreateModal, createForm.client_id, createForm.project_id])
 
   const items = workspaceData?.data?.items || []
   const lifecycleCounts = workspaceData?.data?.lifecycle_counts || {}
@@ -296,14 +367,16 @@ export default function ContentWorkspace() {
               <RefreshCcw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
             </button>
-            <button
-              type="button"
-              onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              New Content
-            </button>
+            {can('content.create') && (
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New Content
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -439,10 +512,12 @@ export default function ContentWorkspace() {
               <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
                 {activeTab !== 'all' ? 'Try a different lifecycle stage or clear filters' : 'Create your first content item to get started'}
               </p>
-              <Button className="mt-4" onClick={() => setShowCreateModal(true)}>
-                <Plus className="h-4 w-4 mr-1.5" />
-                New Content
-              </Button>
+              {can('content.create') && (
+                <Button className="mt-4" onClick={() => setShowCreateModal(true)}>
+                  <Plus className="h-4 w-4 mr-1.5" />
+                  New Content
+                </Button>
+              )}
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-surface-border bg-surface shadow-sm dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
@@ -451,6 +526,7 @@ export default function ContentWorkspace() {
                   <thead className="bg-surface-muted dark:bg-[var(--color-app-surface-muted)]">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Content</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Client / Project</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Platform</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Type</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">Status</th>
@@ -506,6 +582,18 @@ export default function ContentWorkspace() {
         title="Create Content Item"
       >
         <form onSubmit={handleCreate} className="space-y-4">
+          {templates.length > 0 && (
+            <FormField label="Start from Template (optional)">
+              <select
+                className="input"
+                value=""
+                onChange={(e) => applyTemplate(e.target.value)}
+              >
+                <option value="">Blank content</option>
+                {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </FormField>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField label="Title" required>
               <input
@@ -517,6 +605,28 @@ export default function ContentWorkspace() {
                 required
               />
             </FormField>
+            <FormField label="Client (optional — links business context)">
+              <select
+                className="input"
+                value={createForm.client_id}
+                onChange={(e) => setCreateForm(prev => ({ ...prev, client_id: e.target.value, service_id: '', deliverable_id: '' }))}
+              >
+                <option value="">No client</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </FormField>
+            {createForm.client_id && (
+              <FormField label="Service (optional)">
+                <select
+                  className="input"
+                  value={createForm.service_id}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, service_id: e.target.value }))}
+                >
+                  <option value="">No service</option>
+                  {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </FormField>
+            )}
             <FormField label="Project" required>
               <select
                 className="input"
@@ -528,6 +638,18 @@ export default function ContentWorkspace() {
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </FormField>
+            {createForm.client_id && (
+              <FormField label="Deliverable (optional)">
+                <select
+                  className="input"
+                  value={createForm.deliverable_id}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, deliverable_id: e.target.value }))}
+                >
+                  <option value="">No deliverable</option>
+                  {deliverables.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
+                </select>
+              </FormField>
+            )}
             <FormField label="Platform">
               <select className="input" value={createForm.platform} onChange={(e) => setCreateForm(prev => ({ ...prev, platform: e.target.value }))}>
                 {PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
@@ -735,6 +857,14 @@ function ContentItemRow({ item, onClick }) {
           {item.current_version > 1 && <span className="text-xs text-gray-400 dark:text-gray-500">{`v${item.current_version}`}</span>}
         </div>
       </td>
+      <td className="max-w-[180px] px-4 py-3 text-gray-700 dark:text-gray-300">
+        <div className="truncate text-xs">
+          {item.client_name && <span className="font-medium">{item.client_name}</span>}
+          {item.client_name && item.project_name && <span className="text-gray-400"> · </span>}
+          {item.project_name && <span className="text-gray-500 dark:text-gray-400">{item.project_name}</span>}
+          {!item.client_name && !item.project_name && <span className="text-gray-400 dark:text-gray-600">-</span>}
+        </div>
+      </td>
       <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">
         {item.platform ? <span className="inline-flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-gray-400" />{item.platform}</span> : <span className="text-gray-400 dark:text-gray-600">-</span>}
       </td>
@@ -773,30 +903,14 @@ function ContentItemRow({ item, onClick }) {
       <td className="whitespace-nowrap px-4 py-3">
         <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: stageColor }}>
           <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: stageColor }} />
-          {getNextAction(item.status)}
+          {/* Backend-owned lifecycle metadata (item.next_action) — the frontend
+              keeps NO second lifecycle map so the workspace list, item detail,
+              and overview can never disagree about what happens next. */}
+          {item.next_action || formatStatusLabel(item.status)}
         </span>
       </td>
     </tr>
   )
-}
-
-function getNextAction(status) {
-  const map = {
-    idea: 'Move to Briefing',
-    briefing: 'Move to Script',
-    script: 'Move to Production',
-    production: 'Submit for Internal Review',
-    internal_review: 'Review & Approve or Request Revision',
-    client_review: 'Await Client Approval',
-    revision_required: 'Revise & Resubmit',
-    approved: 'Mark Ready to Publish',
-    ready_to_publish: 'Publish',
-    published: 'Complete',
-    draft: 'Move to Idea',
-    planned: 'Move to Briefing',
-    scheduled: 'Move to Ready to Publish',
-  }
-  return map[status] || 'Review'
 }
 
 function Globe({ className }) {

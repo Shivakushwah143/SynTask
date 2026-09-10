@@ -83,7 +83,7 @@ export default function ContentCalendar() {
     category: 'Marketing Campaign',
     platform: 'Instagram',
     priority: 'medium',
-    status: 'draft',
+    status: 'idea',
     start_date: '',
     end_date: '',
     time: '12:00',
@@ -216,7 +216,7 @@ export default function ContentCalendar() {
       category: 'Marketing Campaign',
       platform: 'Instagram',
       priority: 'medium',
-      status: 'draft',
+      status: 'idea',
       start_date: timeService.toZonedDateOnly(timeService.now()),
       end_date: date ? timeService.toZonedDateOnly(date) : timeService.toZonedDateOnly(timeService.now()),
       time: '12:00',
@@ -243,7 +243,7 @@ export default function ContentCalendar() {
       category: item.category || 'Marketing Campaign',
       platform: item.platform || 'Instagram',
       priority: item.priority || 'medium',
-      status: item.status || 'draft',
+      status: item.status || 'idea',
       start_date: item.start_date ? timeService.toZonedDateOnly(item.start_date) : item.publish_date ? timeService.toZonedDateOnly(item.publish_date) : '',
       end_date: item.end_date ? timeService.toZonedDateOnly(item.end_date) : item.due_date ? timeService.toZonedDateOnly(item.due_date) : '',
       time: item.time || '12:00',
@@ -266,7 +266,7 @@ export default function ContentCalendar() {
       category: item.category || 'Marketing Campaign',
       platform: item.platform || 'Instagram',
       priority: item.priority || 'medium',
-      status: 'draft',
+      status: 'idea',
       start_date: item.start_date ? timeService.toUtcISOString(item.start_date) : null,
       end_date: item.end_date ? timeService.toUtcISOString(item.end_date) : null,
       time: item.time || '12:00',
@@ -414,7 +414,7 @@ export default function ContentCalendar() {
             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Workflow State</h3>
             <select className="input text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Statuses</option>
-              {['draft', 'planned', 'shoot_scheduled', 'shot', 'editing', 'internal_review', 'client_review', 'approved', 'scheduled', 'published'].map((status) => (
+              {['idea', 'briefing', 'script', 'production', 'internal_review', 'client_review', 'revision_required', 'approved', 'ready_to_publish', 'published'].map((status) => (
                 <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status} value={status}>{status.replace(/_/g, ' ')}</option>
               ))}
             </select>
@@ -580,7 +580,7 @@ export default function ContentCalendar() {
             
             <FormField label="Status">
               <select className="input" value={form.status} onChange={(e) => setForm(prev => ({ ...prev, status: e.target.value }))}>
-                {['draft', 'planned', 'shoot_scheduled', 'shot', 'editing', 'internal_review', 'client_review', 'approved', 'scheduled', 'published'].map((status) => (
+                {['idea', 'briefing', 'script', 'production', 'internal_review', 'client_review', 'revision_required', 'approved', 'ready_to_publish', 'published'].map((status) => (
                   <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>
                 ))}
               </select>
@@ -748,7 +748,7 @@ function ContentWeekView({ days, items, onOpen, onDayClick, onDuplicate, parseEv
                     </div>
                     <p className="mt-1 text-[10px] text-slate-500 font-medium">{item.platform} · {item.category}</p>
                     <div className="mt-2 flex items-center justify-between">
-                      <Badge label={String(item.status).replace(/_/g, ' ')} colorKey={item.status || 'draft'} />
+                      <Badge label={String(item.status).replace(/_/g, ' ')} colorKey={item.status || 'idea'} />
                       {item.time && <span className="text-[9px] text-slate-400 font-semibold">{item.time}</span>}
                     </div>
                   </div>
@@ -808,7 +808,7 @@ function ContentDayView({ day, items, onOpen, onDuplicate, parseEventDate }) {
                   >
                     <Copy className="h-3.5 w-3.5" />
                   </button>
-                  <Badge label={String(item.status).replace(/_/g, ' ')} colorKey={item.status || 'draft'} />
+                  <Badge label={String(item.status).replace(/_/g, ' ')} colorKey={item.status || 'idea'} />
                 </div>
               </div>
 
@@ -861,15 +861,15 @@ function DayDetailPanel({ day, items, parseEventDate, onViewItem, onEditItem, on
   }, [items, day, parseEventDate])
 
   const STATUS_COLORS = {
-    draft: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-    planned: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-    shoot_scheduled: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
-    shot: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-    editing: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+    idea: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+    briefing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+    script: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
+    production: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
     internal_review: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
     client_review: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+    revision_required: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
     approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-    scheduled: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
+    ready_to_publish: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
     published: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
   }
 
@@ -886,7 +886,7 @@ function DayDetailPanel({ day, items, parseEventDate, onViewItem, onEditItem, on
       ) : (
         dayEntries.map((entry) => {
           const { item, type } = entry
-          const statusClass = STATUS_COLORS[item.status] || STATUS_COLORS.draft
+          const statusClass = STATUS_COLORS[item.status] || STATUS_COLORS.idea
           const isStart = type === 'start'
           return (
             <div
@@ -909,7 +909,7 @@ function DayDetailPanel({ day, items, parseEventDate, onViewItem, onEditItem, on
                       {isStart ? '▶ Start Date' : '⏰ Due Date'}
                     </span>
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${statusClass}`}>
-                      {(item.status || 'draft').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                      {(item.status || 'idea').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                     </span>
                     {item.priority && (
                       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${

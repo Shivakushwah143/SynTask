@@ -154,8 +154,11 @@ api_router.include_router(meetings.router, prefix="/meetings", tags=["Meetings"]
 api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar"])
 api_router.include_router(time.router, prefix="/time", tags=["Time"])
 api_router.include_router(content_calendar.router, prefix="/content-calendar", tags=["Content Calendar"], dependencies=[Depends(require_module("content_calendar"))])
-api_router.include_router(content_production.router, prefix="/content", tags=["Content Production"], dependencies=[Depends(require_module("content_calendar"))])
+# NOTE: /content/templates MUST be registered BEFORE /content so FastAPI matches
+# the static path first; otherwise `GET /content/templates` is captured by the
+# dynamic `GET /content/{item_id}` route and interpreted as an item id.
 api_router.include_router(content_templates.router, prefix="/content/templates", tags=["Content Templates"], dependencies=[Depends(require_module("content_calendar"))])
+api_router.include_router(content_production.router, prefix="/content", tags=["Content Production"], dependencies=[Depends(require_module("content_calendar"))])
 api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=["Scheduled Jobs"], dependencies=[Depends(require_module("scheduled_work"))])
 api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("time_tracking"))])
 api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])

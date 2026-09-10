@@ -9,9 +9,16 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_current_user, require_module
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.content_calendar import ContentTemplate, ContentItemType
-from app.services.content_production_service import _company_id, _parse_enum, _display_name
+from app.services.content_production_service import (
+    _company_id,
+    _parse_enum,
+    _display_name,
+    CAP_CONTENT_VIEW,
+    CAP_CONTENT_MANAGE_TEMPLATES,
+    require_content_capability,
+)
 from app.core.clock import utc_now
 
 from fastapi import HTTPException, status as http_status
@@ -76,6 +83,7 @@ async def list_templates(
     search: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
 ):
+    await require_content_capability(current_user, CAP_CONTENT_VIEW)
     company_id = _company_id(current_user)
     query = {"company_id": company_id, "is_active": True}
     templates = await ContentTemplate.find(query).sort("name").to_list()
@@ -90,6 +98,7 @@ async def create_template(
     payload: TemplateCreatePayload,
     current_user: User = Depends(get_current_user),
 ):
+    await require_content_capability(current_user, CAP_CONTENT_MANAGE_TEMPLATES)
     company_id = _company_id(current_user)
     now = utc_now()
     template = ContentTemplate(
@@ -119,8 +128,13 @@ async def update_template(
     payload: TemplateUpdatePayload,
     current_user: User = Depends(get_current_user),
 ):
+    await require_content_capability(current_user, CAP_CONTENT_MANAGE_TEMPLATES)
     template = await ContentTemplate.get(template_id)
     if not template:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Template not found")
+    # Company isolation: a template from another company is "not found".
+    company_id = _company_id(current_user)
+    if str(template.company_id) != company_id:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Template not found")
     now = utc_now()
     if payload.name is not None:
@@ -157,8 +171,13 @@ async def delete_template(
     template_id: str,
     current_user: User = Depends(get_current_user),
 ):
+    await require_content_capability(current_user, CAP_CONTENT_MANAGE_TEMPLATES)
     template = await ContentTemplate.get(template_id)
     if not template:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Template not found")
+    # Company isolation: a template from another company is "not found".
+    company_id = _company_id(current_user)
+    if str(template.company_id) != company_id:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Template not found")
     template.is_active = False
     template.updated_at = utc_now()
