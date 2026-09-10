@@ -1435,13 +1435,85 @@ async def execute_hr_tool(
     tool_name: str,
     arguments: dict[str, Any],
     company_id: str,
+    security_context: Any = None,
 ) -> dict[str, Any]:
     """Execute an HR tool by name with validated arguments.
 
+    When ``security_context`` (an ``AISecurityContext``) is provided, governance
+    authorization is enforced before execution.  Without a context the tool is
+    denied — legacy callers must pass the context explicitly.
+
     Returns structured JSON result suitable for feeding back into the LLM context.
+
+    Observability: records a TOOL span when a trace is active (tool name,
+    duration, status, error metadata only — never HR/payroll payloads).
     """
+    from app.ai.observability import tracer as _ai_tracer
+    from app.ai.security.governance import authorize_tool_execution, GovernanceDecision
+    from app.ai.security.audit import record_security_event
+    from app.ai.security.result_projection import project_tool_result
+
+    _trace = _ai_tracer.get_current_trace()
+    _span = None
+    if _trace is not None:
+        _span = _ai_tracer.start_span("TOOL", tool_name, attrs={"tool": tool_name})
+
+    def _finish(result: dict[str, Any]) -> dict[str, Any]:
+        """Close the TOOL span with safe status metadata."""
+        if _span is not None:
+            if isinstance(result, dict) and result.get("error"):
+                _ai_tracer.end_span(
+                    _span,
+                    status="FAILED",
+                    error_type="TOOL_ERROR",
+                    error_message=f"tool {tool_name}: {str(result['error'])[:300]}",
+                )
+            else:
+                _ai_tracer.end_span(_span)
+        return result
+
     if tool_name not in TOOL_DISPATCH:
-        return {"error": f"Unknown tool: {tool_name}"}
+        return _finish({"error": f"Unknown tool: {tool_name}"})
+
+    # ── Governance authorization (defense in depth) ──────────────────────────
+    # Security context is mandatory — deny if missing.
+    if security_context is None:
+        logger.warning("HR tool '%s' called without security context — DENY", tool_name)
+        return _finish({"error": "Access denied: missing security context", "governance_denied": True})
+
+    auth_result = authorize_tool_execution(
+        context=security_context,
+        tool_name=tool_name,
+        agent_id="hr_operations",
+        arguments=arguments,
+        company_id_from_args=company_id,
+    )
+
+    if not auth_result.allowed:
+        logger.info(
+            "HR tool '%s' denied by governance: %s — %s",
+            tool_name,
+            auth_result.reason.value if auth_result.reason else "unknown",
+            auth_result.details,
+        )
+        # Record security event (best-effort)
+        await record_security_event(
+            company_id=security_context.company_id,
+            user_id=security_context.user_id,
+            role=security_context.role,
+            agent="hr_operations",
+            capability=tool_name,
+            decision=auth_result.decision.value,
+            decision_code=auth_result.reason.value if auth_result.reason else None,
+            decision_details=auth_result.details,
+            risk_level=None,
+            trace_id=security_context.trace_id,
+        )
+        return _finish({
+            "error": f"Access denied: {auth_result.details}",
+            "governance_denied": True,
+            "decision": auth_result.decision.value,
+        })
 
     # Validate arguments with Pydantic
     schema = ARG_SCHEMAS.get(tool_name)
@@ -1449,14 +1521,16 @@ async def execute_hr_tool(
         try:
             validated = schema(**arguments)
         except Exception as exc:
-            return {"error": f"Invalid arguments for {tool_name}: {exc}"}
+            return _finish({"error": f"Invalid arguments for {tool_name}: {exc}"})
     else:
         validated = arguments
 
     # Execute
     try:
         result = await TOOL_DISPATCH[tool_name](company_id, validated)
-        return result
+        # ── Sensitive data projection (before returning to LLM) ──────────
+        result = project_tool_result(security_context, tool_name, result)
+        return _finish(result)
     except Exception as exc:
         logger.exception("HR tool %s failed", tool_name)
-        return {"error": f"Tool execution failed: {exc}"}
+        return _finish({"error": f"Tool execution failed: {exc}"})

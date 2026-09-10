@@ -26,6 +26,8 @@ from app.agents.executive.service import ExecutiveAgentService
 from app.agents.hr.service import HRAgentService
 from app.agents.routing import DeterministicAgentRouter
 from app.agents.schemas import AgentRunCreateRequest
+from app.ai.observability import tracer as ai_tracer
+from app.ai.observability.fastapi_trace import ai_request_trace
 from app.api.dependencies import get_current_user, get_project_by_id
 from app.core.config import settings
 from app.models.ai_conversation import AIConversation, AIConversationMessage
@@ -129,7 +131,11 @@ def _require_unified_ai_enabled() -> None:
 
 
 @router.post("/chat", response_model=UnifiedAssistantChatResponse)
-async def unified_assistant_chat(payload: UnifiedAssistantChatRequest, current_user: User = Depends(get_current_user)):
+async def unified_assistant_chat(
+    payload: UnifiedAssistantChatRequest,
+    current_user: User = Depends(get_current_user),
+    _trace: dict = Depends(ai_request_trace),
+):
     _require_unified_ai_enabled()
     if not getattr(current_user, "company_id", None):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant scope required")
@@ -317,6 +323,7 @@ def _unified_streamed_payload(
 async def unified_assistant_chat_stream(
     payload: UnifiedAssistantChatRequest,
     current_user: User = Depends(get_current_user),
+    _trace: dict = Depends(ai_request_trace),
 ) -> StreamingResponse:
     """Streaming version of ``POST /chat`` (SSE / chunked fetch).
 
@@ -482,6 +489,13 @@ async def unified_assistant_chat_stream(
                     else:
                         yield sse_frame(ev)
             except Exception as exc:  # never break the SSE channel silently
+                ctx = ai_tracer.get_current_trace()
+                if ctx is not None:
+                    ai_tracer.record_error(
+                        ctx,
+                        error_type="STREAM_ERROR",
+                        message=f"STREAM_ERROR: {exc}",
+                    )
                 yield sse_frame({
                     "type": "error",
                     "message": "The request failed on the server. Please try again.",
@@ -504,7 +518,7 @@ async def unified_assistant_chat_stream(
                 })
 
         return StreamingResponse(
-            _specialized_event_stream(),
+            ai_tracer.stream_trace_guard(_trace.get("ctx"), _specialized_event_stream()),
             media_type="text/event-stream",
             headers=DEFAULT_SSE_HEADERS,
         )
@@ -517,6 +531,13 @@ async def unified_assistant_chat_stream(
             yield sse_frame(status_event("routing", STATUS_UNDERSTANDING))
             yield sse_frame(status_event("analyzing", STATUS_ANALYZING))
         except Exception as exc:
+            ctx = ai_tracer.get_current_trace()
+            if ctx is not None:
+                ai_tracer.record_error(
+                    ctx,
+                    error_type="RUN_ERROR",
+                    message=f"RUN_ERROR: {exc}",
+                )
             yield sse_frame({
                 "type": "error",
                 "message": "The request failed on the server. Please try again.",
@@ -572,7 +593,7 @@ async def unified_assistant_chat_stream(
         yield sse_frame({"type": "done", "data": unified})
 
     return StreamingResponse(
-        _orchestrator_event_stream(),
+        ai_tracer.stream_trace_guard(_trace.get("ctx"), _orchestrator_event_stream()),
         media_type="text/event-stream",
         headers=DEFAULT_SSE_HEADERS,
     )

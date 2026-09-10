@@ -125,6 +125,31 @@ Personal memory preference request:
 
 Personal memory is tenant/user-owned through `UserMemory`. Saved preferences are advisory context only: they cannot override current workspace facts, permissions, policies, verified metrics, or action approval rules.
 
+### AI Security & Governance
+
+Admin-only endpoints for AI tool governance visibility. All endpoints require authentication, the `ai_agents` module gate, and Admin or Super Admin role. Records are tenant-scoped and contain no sensitive tool result payloads.
+
+| Method | Path | Handler | Description |
+|---|---|---|---|
+| GET | `/api/v1/ai-security/summary` | `get_security_summary` | Governance status overview: policy count, event counts (allow/deny/approval), top denied tools and reasons, injection detection counts. |
+| GET | `/api/v1/ai-security/events` | `get_security_events` | Recent security events with filtering by decision, agent, and capability. Returns safe metadata only (no raw prompts or tool results). |
+| GET | `/api/v1/ai-security/tool-policies` | `get_tool_policies` | Current tool policy registry snapshot: all registered governance policies with capability requirements, risk levels, and agent assignments. |
+
+Query parameters:
+
+| Endpoint | Parameter | Default | Description |
+|---|---|---|---|
+| `/summary` | `days` | `7` | Lookback window (1–90 days) |
+| `/events` | `days` | `7` | Lookback window (1–90 days) |
+| `/events` | `decision` | — | Filter by decision: `ALLOW`, `DENY`, `REQUIRE_APPROVAL` |
+| `/events` | `agent` | — | Filter by agent ID (e.g. `hr_operations`, `executive_operations`, `fast_fact`) |
+| `/events` | `capability` | — | Filter by capability/tool name (case-insensitive partial match) |
+| `/events` | `limit` | `50` | Max events to return (1–200) |
+| `/tool-policies` | `agent` | — | Filter policies by agent ID |
+| `/tool-policies` | `domain` | — | Filter policies by domain (e.g. `hr`, `projects`, `finance`) |
+
+Security principle: Every AI-originated business-data access passes through the governance boundary at execution time. These admin endpoints provide read-only operational visibility into that boundary's decisions.
+
 ### 2FA
 
 | Method | Path | Handler | Notes |
