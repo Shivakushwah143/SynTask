@@ -58,7 +58,11 @@ from app.models.creative_review import (
 from app.models.invoice import Invoice, InvoiceType, InvoiceStatus
 from app.models.msa import MSA, MSAStatus
 from app.models.meeting import Meeting, MeetingStatus
-from app.models.content_calendar import ContentCalendarItem, ContentItemType, ContentItemStatus, ContentItemPriority
+from app.models.content_calendar import (
+    ContentCalendarItem, ContentItemType, ContentItemStatus, ContentItemPriority,
+    ContentTemplate, ContentVersion, ContentReviewRecord, ContentReviewDecision,
+    ContentPublishingRecord, ContentPublishingStatus, ContentHistoryEntry,
+)
 from app.models.timesheet import TimesheetEntry, TimesheetSummary, TimesheetStatus
 from app.models.sales_category import SalesCategory
 from app.models.sales_product import SalesProduct

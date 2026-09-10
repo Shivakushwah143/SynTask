@@ -402,9 +402,7 @@ def can_update_task_field(current_user: User, task: Task, field_name: str) -> bo
     if current_user.role == UserRole.EMPLOYEE:
         return field_name == "status" and task.assigned_to == str(current_user.id)
     if current_user.role == UserRole.MANAGER:
-        manager_department = getattr(current_user, "department_id", None)
-        task_department = getattr(task, "department_id", None)
-        return bool(manager_department and task_department and str(manager_department) == str(task_department))
+        return True
     if current_user.role == UserRole.LEAD:
         return True
     return False
@@ -521,6 +519,13 @@ def build_employee_project_visibility_query(current_user: User, project_ids: lis
 async def _assert_can_assign_task(current_user: User, assignee: Optional[User], project=None) -> None:
     if not assignee:
         return
+    from app.services.authorization_service import authorize
+    decision = await authorize(current_user, "tasks.assign", resource=project, target_user=assignee)
+    if decision.allowed:
+        return
+    if decision.reason == "explicit_deny" or (decision.source == "user_override" and decision.reason == "scope_violation"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Task assignment is outside the granted permission scope")
+    # Legacy contextual policy remains until a user is explicitly migrated.
     if project and has_project_permission(current_user, project, ProjectPermission.ASSIGN_TASK):
         if assignee.company_id != project.company_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assigned user must be from the same company")

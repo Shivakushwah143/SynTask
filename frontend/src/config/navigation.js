@@ -38,6 +38,8 @@ import {
   MonitorCheck,
   Network,
   Palette,
+  LayoutTemplate,
+  Sparkles,
   Receipt,
   Settings,
   ShieldCheck,
@@ -330,7 +332,8 @@ export const SECTIONS = [
   {
     key: "content",
     label: "Content",
-    items: ["Content Calendar", "Content Studio"],
+    items: ["Content Overview", "Content", "Content Calendar", "Content Studio"],
+    overviewHref: "/content/overview",
   },
   {
     key: "publishing",
@@ -366,6 +369,7 @@ export const SECTIONS = [
     label: "People",
     items: [
       "HR Dashboard",
+      "Users",
       "Employees",
       "My People",
       "Attendance",
@@ -539,7 +543,30 @@ export const navigation = [
     module: "time_tracking",
   },
 
-  // Content — /content-calendar is gated by the task module on the backend.
+  // Content — /content is gated by the content_calendar module on the backend.
+  // The section's default destination: a Work-style overview page showing
+  // overall lifecycle progress and today's queues.
+  {
+    name: "Content Overview",
+    href: "/content/overview",
+    icon: Gauge,
+    roles: STANDARD_ROLES,
+    module: "content_calendar",
+  },
+  {
+    name: "Content",
+    href: "/content",
+    icon: Palette,
+    roles: STANDARD_ROLES,
+    module: "content_calendar",
+  },
+  {
+    name: "Content Templates",
+    href: "/content/templates",
+    icon: LayoutTemplate,
+    roles: STANDARD_ROLES,
+    module: "content_calendar",
+  },
   {
     name: "Content Calendar",
     href: "/content-calendar",
@@ -550,7 +577,7 @@ export const navigation = [
   {
     name: "Content Studio",
     href: "/creative-director",
-    icon: Palette,
+    icon: Sparkles,
     roles: STANDARD_ROLES,
     module: "ai_content_assistant",
   },
@@ -595,6 +622,7 @@ export const navigation = [
   // People. Employee Profiles are supplied by HR_MODULES; /users remains
   // account administration and is intentionally labelled separately.
   { name: "User Accounts", href: "/users", icon: UserCog, roles: TEAM_ROLES },
+  { name: "Users", href: "/users", icon: Users, roles: TEAM_ROLES },
   {
     name: "My People",
     href: "/my-team",
@@ -938,6 +966,8 @@ export const ITEM_COLORS = {
   "Scheduled Work": "text-amber-400",
   "Time Tracking": "text-amber-400",
 
+  "Content Overview": "text-rose-400",
+  "Content": "text-pink-400",
   "Content Calendar": "text-indigo-300",
   "Content Studio": "text-pink-400",
 
@@ -1128,6 +1158,61 @@ export const getNavContextForPath = (pathname, search = "") => {
   return prefixMatch;
 };
 
+// ── Centralized HR route ownership resolver ─────────────────────────────────
+// Single source of truth for "which section owns this /hr/* path?".
+// Used by SectionTabs, breadcrumbs, and any other consumer that needs to map
+// an HR route to its owning section ("people" or "recruitment").
+//
+// Returns { sectionKey, itemName, matchedExact } or null for excluded/unknown paths.
+//   sectionKey   — "people" | "recruitment"
+//   itemName     — The display name of the matched nav item (e.g. "Employees")
+//   matchedExact — true when pathname equals the item's href exactly
+//
+// Pre-computed once from HR_MODULES so every call is O(n) with a small constant.
+const _HR_ROUTE_LIST = HR_MODULES.flatMap((mod) =>
+  mod.navigation
+    .filter((item) => !HR_ITEM_SKIP.has(item.name))
+    .map((item) => ({
+      name: HR_ITEM_RENAMES[item.name] || item.name,
+      href: (item.href || "").split("?")[0],
+      basePath: mod.basePath,
+      moduleKey: mod.key,
+    })),
+);
+
+export const resolveHrSection = (pathname) => {
+  if (!pathname?.startsWith("/hr")) return null;
+
+  const hrPath = (item) => (item.href || "").split("?")[0];
+
+  // Excluded paths — intentionally return null so the caller shows no section context.
+  if (pathname === "/hr" || pathname === "/hr/recruitment/interview-screen") return null;
+
+  // Exact match — the pathname equals an HR nav item's href.
+  const hrExact = _HR_ROUTE_LIST.find((item) => pathname === item.href);
+  if (hrExact) {
+    const sectionKey = hrExact.moduleKey === "recruitment" ? "recruitment" : "people";
+    return { sectionKey, itemName: hrExact.name, matchedExact: true };
+  }
+
+  // Longest prefix match — /hr/employees/:id → "Employees", /hr/recruitment/jobs/123 → "Job Openings".
+  let bestMatch = null;
+  let bestLen = 0;
+  for (const item of _HR_ROUTE_LIST) {
+    const base = item.href;
+    if (pathname.startsWith(`${base}/`) && base.length > bestLen) {
+      bestLen = base.length;
+      bestMatch = item;
+    }
+  }
+  if (bestMatch) {
+    const sectionKey = bestMatch.moduleKey === "recruitment" ? "recruitment" : "people";
+    return { sectionKey, itemName: bestMatch.name, matchedExact: false };
+  }
+
+  return null;
+};
+
 // ── Shared gating helpers (Phase A of the tab sub-nav plan) ──────────────────
 // One source of truth for "which items does section X show for user U", used by BOTH the
 // Sidebar (section visibility + favorites pool) and the SectionTabs bar, so the two can never
@@ -1137,12 +1222,11 @@ export const getNavContextForPath = (pathname, search = "") => {
 // canonical mirror of backend `require_module`). That version honors the member's
 // explicit `modules` list — a deselected module (e.g. sales_crm) is truly hidden
 // for non-admin roles, while legacy (pre-permission-system) lists keep the role
-// auto-grants. HR nav entries use the legacy `module: "hr"` id; the catalog id
-// is `recruitment`, so map it for the check.
+// auto-grants. People/HR modules use `module: "hr"`, Recruitment uses
+// `module: "recruitment"` — the two permission domains are independent.
 export const hasModuleAccess = (user, module) => {
   if (!module) return true;
-  const canonicalModule = module === "hr" ? "recruitment" : module;
-  return hasModuleAccessFromRbac(user?.role, user?.modules, canonicalModule);
+  return hasModuleAccessFromRbac(user?.role, user?.modules, module);
 };
 
 export const hasCapabilityAccess = (user, capability) => {
@@ -1209,10 +1293,9 @@ const getHrNavItems = (user, ownerFilter) => {
       module.roles.includes(role) &&
       // Filter by owner section if specified
       (!ownerFilter || module.owner === ownerFilter) &&
-      // People/HR visibility keeps its pre-permission-system rules: the backend
-      // gates HR recruitment routes by role (require_job_view, ...), NOT by the
-      // `recruitment` module, so the sidebar must not hide them by module.
-      (hasModuleAccess(user, module.module) || module.key === "recruitment") &&
+      // Each module is gated by its own permission domain:
+      // People/HR modules use `module: "hr"`, Recruitment uses `module: "recruitment"`.
+      hasModuleAccess(user, module.module) &&
       hasCapabilityAccess(user, module.capability) &&
       hasDepartmentAccess(user, module.department),
   ).flatMap((module) =>

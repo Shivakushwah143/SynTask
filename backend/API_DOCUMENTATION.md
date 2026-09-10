@@ -756,6 +756,17 @@ Work Request endpoints require the Tasks module gate and same-company access. Th
 | GET | `/api/v1/crm/leads/{lead_id}/negotiation` | `get_lead_negotiation` | Loads the Negotiation workspace after the lead reaches Negotiation. Enforces existing lead company and ownership access. |
 | PATCH | `/api/v1/crm/leads/{lead_id}/negotiation` | `patch_lead_negotiation` | Saves negotiation terms, keeps `negotiation_status` manually editable, syncs accepted/final amount to existing Sales lead fields where applicable, and records a CRM lead activity event. Agreement entry remains gated by `negotiation_status = accepted`. |
 
+### CRM Lead Notes
+
+Lead-scoped comments for a prospect. Notes are tenant-scoped (`company_id`) and follow the lead across pipeline stages; ownership access matches the lead workspace Notes tab (same-company for Admin/Sub Admin/Manager/Lead, assigned/created-by only for Employees).
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/crm/leads/{lead_id}/notes` | `list_lead_notes` | Lists non-deleted notes for a lead, newest-updated first, with author display names resolved from the tenant's users. |
+| POST | `/api/v1/crm/leads/{lead_id}/notes` | `create_lead_note` | Creates a note (`content` required) and publishes a `LeadNoteCreated` timeline event. |
+| PATCH | `/api/v1/crm/leads/{lead_id}/notes/{note_id}` | `update_lead_note` | Edits a note, marks it `is_edited`, and publishes a `LeadNoteUpdated` timeline event. |
+| DELETE | `/api/v1/crm/leads/{lead_id}/notes/{note_id}` | `delete_lead_note` | Soft-deletes a note (recorded `deleted_by`) and publishes a `LeadNoteDeleted` timeline event. |
+
 ### Sales Categories
 
 Sales category list/create/update/delete are tenant-scoped and require the canonical `sales_crm` module. Create is allowed for Admin, Manager, Lead, and Super Admin; delete is allowed for Admin, Manager, and Super Admin.
@@ -1000,6 +1011,24 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | PATCH | `/api/v1/users/detail/{user_id}/status` | `update_user_status` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/my-team` | `get_my_team` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/reporting-options` | `get_reporting_options` | Uses router/endpoint dependencies where configured. |
+
+### Admin Permissions
+
+Centralized permission administration. All endpoints require company-admin or super-admin authentication.
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/admin/permissions/overview` | `get_permissions_overview` | Returns all users with module counts, role summary, permission catalog, and module catalog. |
+| GET | `/api/v1/admin/permissions/catalog` | `get_permission_catalog` | Returns the full `PERMISSION_CATALOG` (module → action → effect/scope metadata). |
+| GET | `/api/v1/admin/permissions/users/{user_id}` | `get_user_permissions` | Returns one user's `modules`, `capability_grants`, `permission_overrides`, and `effective_permissions`. |
+| PUT | `/api/v1/admin/permissions/users/{user_id}/modules` | `update_user_modules` | Replaces the user's `modules` list. Request body: `{ "modules": ["projects", "tasks"] }`. |
+| PUT | `/api/v1/admin/permissions/users/{user_id}` | `update_user_overrides` | Replaces the user's `permission_overrides`. Request body: `{ "overrides": [{ "permission": "projects.create", "effect": "deny" }] }`. |
+| POST | `/api/v1/admin/permissions/users/{user_id}/promote` | `promote_to_sub_admin` | Promotes a user to `sub_admin`. |
+| POST | `/api/v1/admin/permissions/users/{user_id}/demote` | `demote_from_sub_admin` | Demotes a `sub_admin` back to their previous role. |
+| PUT | `/api/v1/admin/permissions/departments/{dept_id}/modules` | `update_department_modules` | Updates the department default modules. |
+| POST | `/api/v1/admin/permissions/departments/{dept_id}/apply` | `apply_department_modules` | Applies department default modules to all users in the department. |
+
+**Frontend integration:** The `UserAccessEditor` component (shared by `/users` Edit modal and `/admin-permissions` page) uses these endpoints via `frontend/src/api/permissions.js`. Effective permissions are resolved server-side by `authorization_service.py` through: protected role bypass → `capability_grants` → department defaults → user overrides.
 
 ### Versions
 

@@ -5,9 +5,11 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from beanie import Document, Indexed
-from pydantic import Field
+from pydantic import BaseModel, Field
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
+
+# ── Enums ──────────────────────────────────────────────────────────────────
 
 class ContentItemType(str, Enum):
     REEL = "reel"
@@ -22,16 +24,24 @@ class ContentItemType(str, Enum):
 
 
 class ContentItemStatus(str, Enum):
+    # New production lifecycle (canonical)
+    IDEA = "idea"
+    BRIEFING = "briefing"
+    SCRIPT = "script"
+    PRODUCTION = "production"
+    INTERNAL_REVIEW = "internal_review"
+    CLIENT_REVIEW = "client_review"
+    REVISION_REQUIRED = "revision_required"
+    APPROVED = "approved"
+    READY_TO_PUBLISH = "ready_to_publish"
+    PUBLISHED = "published"
+    # Legacy statuses (mapped for backward compatibility)
     DRAFT = "draft"
     PLANNED = "planned"
     SHOOT_SCHEDULED = "shoot_scheduled"
     SHOT = "shot"
     EDITING = "editing"
-    INTERNAL_REVIEW = "internal_review"
-    CLIENT_REVIEW = "client_review"
-    APPROVED = "approved"
     SCHEDULED = "scheduled"
-    PUBLISHED = "published"
 
 
 class ContentItemPriority(str, Enum):
@@ -41,42 +51,158 @@ class ContentItemPriority(str, Enum):
     URGENT = "urgent"
 
 
+class ContentReviewDecision(str, Enum):
+    APPROVE = "approve"
+    REQUEST_REVISION = "request_revision"
+    REJECT = "reject"
+
+
+class ContentPublishingStatus(str, Enum):
+    NOT_STARTED = "not_started"
+    SCHEDULED = "scheduled"
+    PUBLISHED = "published"
+    FAILED = "failed"
+
+
+# ── Embedded sub-documents ─────────────────────────────────────────────────
+
+class ContentVersion(BaseModel):
+    """A immutable snapshot of content at a point in time."""
+    version_number: int
+    caption: Optional[str] = None
+    script: Optional[str] = None
+    creative_brief: Optional[str] = None
+    files: List[str] = Field(default_factory=list)
+    file_urls: List[str] = Field(default_factory=list)
+    created_by: Optional[str] = None
+    created_by_name: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    review_result: Optional[str] = None
+    feedback: Optional[str] = None
+
+
+class ContentReviewRecord(BaseModel):
+    """Audit trail of a single review action."""
+    reviewer_id: str
+    reviewer_name: Optional[str] = None
+    version_number: int
+    decision: ContentReviewDecision
+    feedback: Optional[str] = None
+    issues: List[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ContentPublishingRecord(BaseModel):
+    """Link to publishing execution — Publishing is source of truth for publish state."""
+    platform: Optional[str] = None
+    status: ContentPublishingStatus = ContentPublishingStatus.NOT_STARTED
+    scheduled_date: Optional[datetime] = None
+    published_date: Optional[datetime] = None
+    external_post_id: Optional[str] = None
+    external_url: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ContentHistoryEntry(BaseModel):
+    """Generic audit trail entry for any meaningful workflow action."""
+    action: str
+    actor_id: Optional[str] = None
+    actor_name: Optional[str] = None
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+    version_number: Optional[int] = None
+    details: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ── Main Document ──────────────────────────────────────────────────────────
+
 class ContentCalendarItem(Document):
+    # ── Identity & relationships ───────────────────────────────────────────
     company_id: Indexed(str)
     project_id: Indexed(str)
     client_id: Optional[str] = None
+    service_id: Optional[str] = None          # ClientService reference
+    deliverable_id: Optional[str] = None      # ClientDeliverable reference
+    content_id: Optional[str] = None          # Human-readable ID e.g. CNT-001
+
+    # ── Content details ────────────────────────────────────────────────────
     campaign: Optional[str] = None
     platform: Optional[str] = None
     title: str
     content_type: ContentItemType = ContentItemType.CUSTOM
-    assignee_id: Optional[str] = None
-    assignee_name: Optional[str] = None
-    due_date: Optional[datetime] = None
-    publish_date: Optional[datetime] = None
-    priority: ContentItemPriority = ContentItemPriority.MEDIUM
-    status: ContentItemStatus = ContentItemStatus.DRAFT
-    notes: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
-    file_ids: List[str] = Field(default_factory=list)
-    file_urls: List[str] = Field(default_factory=list)
-    deliverable_target: Optional[int] = None
-    completed: bool = False
-    shoot_date: Optional[datetime] = None
-    location: Optional[str] = None
-    photographer: Optional[str] = None
-    team: List[str] = Field(default_factory=list)
-    assets_required: List[str] = Field(default_factory=list)
     category: Optional[str] = None
     description: Optional[str] = None
+
+    # ── Briefing fields ────────────────────────────────────────────────────
+    objective: Optional[str] = None
+    target_audience: Optional[str] = None
+    key_message: Optional[str] = None
+    hook: Optional[str] = None
+    cta: Optional[str] = None                 # Call to action
+    tone: Optional[str] = None
+
+    # ── Content body ───────────────────────────────────────────────────────
+    caption: Optional[str] = None
+    script: Optional[str] = None
+    creative_brief: Optional[str] = None
+
+    # ── Assignment & scheduling ────────────────────────────────────────────
+    assignee_id: Optional[str] = None
+    assignee_name: Optional[str] = None
+    owner_id: Optional[str] = None
+    team: List[str] = Field(default_factory=list)
+    due_date: Optional[datetime] = None
+    publish_date: Optional[datetime] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     time: Optional[str] = None
+    deadline: Optional[datetime] = None
+
+    # ── Priority & status ──────────────────────────────────────────────────
+    priority: ContentItemPriority = ContentItemPriority.MEDIUM
+    status: ContentItemStatus = ContentItemStatus.IDEA
+    completed: bool = False
+
+    # ── Production details ─────────────────────────────────────────────────
+    shoot_date: Optional[datetime] = None
+    location: Optional[str] = None
+    photographer: Optional[str] = None
+    assets_required: List[str] = Field(default_factory=list)
+    references: List[str] = Field(default_factory=list)
+
+    # ── Files & assets ─────────────────────────────────────────────────────
+    file_ids: List[str] = Field(default_factory=list)
+    file_urls: List[str] = Field(default_factory=list)
+    attachment: Optional[str] = None
+
+    # ── Tags & metadata ────────────────────────────────────────────────────
+    tags: List[str] = Field(default_factory=list)
+    notes: Optional[str] = None
     assigned_person: Optional[str] = None
     reminder: Optional[str] = None
     color: Optional[str] = None
-    attachment: Optional[str] = None
+    deliverable_target: Optional[int] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    draft_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # ── Versioning ─────────────────────────────────────────────────────────
+    current_version: int = 1
+    versions: List[ContentVersion] = Field(default_factory=list)
+
+    # ── Review & approval history ──────────────────────────────────────────
+    internal_reviews: List[ContentReviewRecord] = Field(default_factory=list)
+    client_approvals: List[ContentReviewRecord] = Field(default_factory=list)
+
+    # ── Publishing ─────────────────────────────────────────────────────────
+    publishing: Optional[ContentPublishingRecord] = None
+
+    # ── Workflow history (audit trail) ─────────────────────────────────────
+    history: List[ContentHistoryEntry] = Field(default_factory=list)
+
+    # ── Legacy timestamps (preserved for backward compat) ──────────────────
+    draft_at: Optional[datetime] = None
     planned_at: Optional[datetime] = None
     shoot_scheduled_at: Optional[datetime] = None
     shot_at: Optional[datetime] = None
@@ -87,6 +213,16 @@ class ContentCalendarItem(Document):
     scheduled_at: Optional[datetime] = None
     published_at: Optional[datetime] = None
     deadline_missed_at: Optional[datetime] = None
+
+    # ── Lifecycle timestamps (new canonical) ───────────────────────────────
+    idea_at: Optional[datetime] = None
+    briefing_at: Optional[datetime] = None
+    script_at: Optional[datetime] = None
+    production_at: Optional[datetime] = None
+    revision_required_at: Optional[datetime] = None
+    ready_to_publish_at: Optional[datetime] = None
+
+    # ── Audit ──────────────────────────────────────────────────────────────
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -98,12 +234,130 @@ class ContentCalendarItem(Document):
             "company_id",
             "project_id",
             "client_id",
+            "service_id",
+            "deliverable_id",
+            "content_id",
             "content_type",
             "status",
             "assignee_id",
+            "owner_id",
             "publish_date",
             "due_date",
+            "deadline",
             IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING), ("publish_date", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("publish_date", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("content_type", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("due_date", ASCENDING)]),
+        ]
+
+
+# ── Content Template ───────────────────────────────────────────────────────
+
+class ContentTemplate(Document):
+    """Reusable content template for quick content creation."""
+    company_id: Indexed(str)
+    name: str
+    description: Optional[str] = None
+    content_type: ContentItemType = ContentItemType.CUSTOM
+    platform: Optional[str] = None
+    default_objective: Optional[str] = None
+    default_target_audience: Optional[str] = None
+    default_key_message: Optional[str] = None
+    default_tone: Optional[str] = None
+    default_cta: Optional[str] = None
+    default_tags: List[str] = Field(default_factory=list)
+    default_assets_required: List[str] = Field(default_factory=list)
+    is_active: bool = True
+    created_by: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "content_templates"
+        indexes = [
+            "company_id",
+            "is_active",
+        ]
+
+
+# ── Content Comment ────────────────────────────────────────────────────────
+
+class ContentComment(Document):
+    """A comment on a Content Item — separate from review decisions."""
+    company_id: Indexed(str)
+    content_item_id: Indexed(str)
+    user_id: str
+    user_name: Optional[str] = None
+    user_role: Optional[str] = None
+    text: str
+    attachments: List[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = None
+
+    class Settings:
+        name = "content_comments"
+        indexes = [
+            "company_id",
+            "content_item_id",
+            IndexModel([("content_item_id", ASCENDING), ("created_at", DESCENDING)]),
+        ]
+
+
+# ── Canonical Publishing Record (Document) ─────────────────────────────────
+
+class ContentPublishingRecordDoc(Document):
+    """Canonical publishing record — owns the publishing lifecycle.
+
+    Created when content reaches READY_TO_PUBLISH.
+    Publishing Centre updates status (scheduled → published/failed).
+    Content's ``publishing`` embedded field is a read-only mirror for convenience.
+    """
+    company_id: Indexed(str)
+    content_item_id: Indexed(str)
+    content_id: Optional[str] = None   # Human-readable CNT-XXX
+
+    # Publishing targets
+    client_id: Optional[str] = None
+    service_id: Optional[str] = None
+    project_id: Optional[str] = None
+    platform: Optional[str] = None
+    account_id: Optional[str] = None       # Platform account reference
+    account_name: Optional[str] = None
+
+    # Content references (consumed, not copied)
+    content_type: Optional[str] = None
+    caption: Optional[str] = None
+    file_urls: List[str] = Field(default_factory=list)
+    approved_version: Optional[int] = None  # Content version approved at handoff
+
+    # Lifecycle
+    status: ContentPublishingStatus = ContentPublishingStatus.NOT_STARTED
+    scheduled_date: Optional[datetime] = None
+    published_date: Optional[datetime] = None
+    external_post_id: Optional[str] = None
+    external_url: Optional[str] = None
+    error_message: Optional[str] = None
+    retry_count: int = 0
+
+    # Ownership
+    owner_id: Optional[str] = None
+    owner_name: Optional[str] = None
+
+    # Audit
+    created_by: Optional[str] = None
+    updated_by: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "content_publishing_records"
+        indexes = [
+            "company_id",
+            "content_item_id",
+            "content_id",
+            "status",
+            "platform",
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("scheduled_date", ASCENDING)]),
+            IndexModel([("content_item_id", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("content_item_id", ASCENDING)], unique=True),
         ]

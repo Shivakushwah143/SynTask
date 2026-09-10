@@ -112,6 +112,36 @@ DEFAULT_CAPABILITIES: dict[Tuple[DepartmentType, UserRole], List[str]] = {
     (DepartmentType.SUPPORT, UserRole.MANAGER): ["manage_tickets", "team_support"],
     (DepartmentType.OPERATIONS, UserRole.SUB_ADMIN): ["own_client_account", "manage_delivery"],
     (DepartmentType.OPERATIONS, UserRole.MANAGER): ["own_client_account", "manage_delivery"],
+    # Content production (module gate "content_calendar" still applies on top).
+    # Creators get create/edit + comments; reviewers add internal review;
+    # account-facing roles add client review; publishing is a separate grant so
+    # a content creator can never execute publishing by accident.
+    (DepartmentType.MARKETING, UserRole.SUB_ADMIN): [
+        "content.view", "content.create", "content.edit", "content.delete",
+        "content.transition", "content.internal_review", "content.client_review",
+        "content.comment", "content.manage_templates",
+        "content.view_publishing", "content.update_publishing",
+    ],
+    (DepartmentType.MARKETING, UserRole.MANAGER): [
+        "content.view", "content.create", "content.edit", "content.delete",
+        "content.transition", "content.internal_review", "content.client_review",
+        "content.comment", "content.manage_templates",
+        "content.view_publishing", "content.update_publishing",
+    ],
+    (DepartmentType.MARKETING, UserRole.LEAD): [
+        "content.view", "content.create", "content.edit",
+        "content.transition", "content.internal_review",
+        "content.comment", "content.manage_templates", "content.view_publishing",
+    ],
+    (DepartmentType.MARKETING, UserRole.EMPLOYEE): [
+        "content.view", "content.create", "content.edit", "content.comment",
+    ],
+    (DepartmentType.OPERATIONS, UserRole.LEAD): [
+        "content.view", "content.client_review", "content.view_publishing",
+    ],
+    (DepartmentType.OPERATIONS, UserRole.EMPLOYEE): [
+        "content.view", "content.comment",
+    ],
 }
 
 

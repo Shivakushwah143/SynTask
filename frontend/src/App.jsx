@@ -64,6 +64,10 @@ const Ledger = lazy(() => import('./pages/Ledger'))
 const Meetings = lazy(() => import('./pages/Meetings'))
 const WorkspaceCalendar = lazy(() => import('./pages/WorkspaceCalendar'))
 const ContentCalendar = lazy(() => import('./pages/ContentCalendar'))
+const ContentWorkspace = lazy(() => import('./pages/ContentWorkspace'))
+const ContentItemDetail = lazy(() => import('./pages/ContentItemDetail'))
+const ContentOverview = lazy(() => import('./pages/ContentOverview'))
+const ContentTemplates = lazy(() => import('./pages/ContentTemplates'))
 const Timesheet = lazy(() => import('./pages/Timesheet'))
 const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
@@ -130,7 +134,10 @@ const RecruitmentJobDetailPage = lazy(() => import('./modules/hr/recruitment/pag
 const RecruitmentInboxPage = lazy(() => import('./modules/hr/recruitment/pages/InboxPage'))
 const RecruitmentCandidatesPage = lazy(() => import('./modules/hr/recruitment/pages/CandidatesPage'))
 const RecruitmentResumePoolPage = lazy(() => import('./modules/hr/recruitment/pages/ResumePoolPage'))
-const RecruitmentEmployeesPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeesPage'))
+// People/HR — Employee directory lives at /hr/employees (People section).
+// The component physically resides in modules/hr/recruitment/ due to shared
+// utilities; the file is documented as misplaced debt (see completion report).
+const HrEmployeesPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeesPage'))
 const EmployeeDetailPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeeDetailPage'))
 const HRDocumentsPage = lazy(() => import('./pages/hr/HRDocumentsPage'))
 const RecruitmentInterviewsPage = lazy(() => import('./modules/hr/recruitment/pages/InterviewsPage'))
@@ -347,6 +354,10 @@ function App() {
           <Route path="google-workspace" element={withBoundary(<GoogleWorkspace />)} />
           <Route path="content-calendar" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentCalendar />)}</ModuleGuard>} />
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
+          <Route path="content/overview" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentOverview />)}</ModuleGuard>} />
+          <Route path="content" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentWorkspace />)}</ModuleGuard>} />
+          <Route path="content/templates" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentTemplates />)}</ModuleGuard>} />
+          <Route path="content/:itemId" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentItemDetail />)}</ModuleGuard>} />
           <Route path="timesheet" element={<ModuleGuard module="time_tracking">{withBoundary(<Timesheet />)}</ModuleGuard>} />
           <Route path="attendance" element={withBoundary(<Attendance />)} />
           <Route path="attendance/live" element={<Navigate to="/live-monitor" replace />} />
@@ -383,6 +394,7 @@ function App() {
         <Route path="sop-library/:moduleKey" element={withBoundary(<SOPLibrary />)} />
         <Route path="sop-library/:moduleKey/:articleKey" element={withBoundary(<SOPLibrary />)} />
           <Route path="sections/work" element={<Navigate to="/work/overview" replace />} />
+          <Route path="sections/content" element={<Navigate to="/content/overview" replace />} />
           <Route path="sections/:sectionKey" element={withBoundary(<SectionLanding />)} />
         {/* Sales workspace Overview — the first tab of the guided sales journey. */}
         <Route path="sales-overview" element={<ModuleGuard module="sales_overview">{withBoundary(<SalesOverviewPage />)}</ModuleGuard>} />
@@ -404,7 +416,7 @@ function App() {
             </Route>
             {/* Canonical HR-wide routes: Employee Profiles and HR Documents are
                 People/HR features, not Recruitment features. */}
-            <Route path="employees" element={withBoundary(<RecruitmentEmployeesPage />)} />
+            <Route path="employees" element={withBoundary(<HrEmployeesPage />)} />
             <Route path="employees/:employeeId" element={withBoundary(<EmployeeDetailPage />)} />
             <Route path="documents" element={withBoundary(<HRDocumentsPage />)} />
             <Route path="settings/document-types" element={withBoundary(<DocumentTypesSettingsPage />)} />

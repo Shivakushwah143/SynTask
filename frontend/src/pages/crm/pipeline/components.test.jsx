@@ -1,6 +1,72 @@
 import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PipelineStageListView, pipelineLeadCardClassNames } from './components'
+
+// Shared harness for the notes popover tests: the component under test calls
+// crmApi (notes endpoints) and react-query hooks. Both are mocked so the
+// pipeline table can be exercised without a backend or a QueryClientProvider.
+const notesHarness = vi.hoisted(() => ({
+  notes: [],
+  createdNotes: [],
+  getLeadNotes: vi.fn(),
+  createLeadNote: vi.fn(),
+  invalidateQueries: vi.fn(),
+}))
+
+vi.mock('../../../api/crm', () => ({
+  crmApi: {
+    getLeadNotes: (...args) => notesHarness.getLeadNotes(...args),
+    createLeadNote: (...args) => notesHarness.createLeadNote(...args),
+  },
+}))
+
+vi.mock('react-query', () => ({
+  useQueryClient: () => ({ invalidateQueries: notesHarness.invalidateQueries }),
+  useQuery: (key, queryFn, options = {}) => {
+    const enabled = options.enabled !== false
+    if (enabled) {
+      // Fire the fetch so call-count assertions hold, but serve the harness
+      // notes synchronously as the resolved data.
+      queryFn()
+    }
+    return {
+      data: enabled ? { notes: notesHarness.notes, total: notesHarness.notes.length } : undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    }
+  },
+  useMutation: (mutationFn, options = {}) => ({
+    mutate: (vars) => {
+      mutationFn(vars)
+      options.onSuccess?.()
+    },
+    mutateAsync: async (vars) => {
+      mutationFn(vars)
+      options.onSuccess?.()
+    },
+    isLoading: false,
+  }),
+  QueryClient: class {},
+}))
+
+const renderStageList = (leads, props = {}) => {
+  render(
+    <PipelineStageListView
+      stage={{ key: 'acquire', name: 'Acquire', nextStageKey: 'qualify' }}
+      stages={[
+        { key: 'acquire', name: 'Acquire', nextStageKey: 'qualify' },
+        { key: 'qualify', name: 'Qualify' },
+      ]}
+      leads={leads}
+      onLeadSelect={vi.fn()}
+      onMoveLeadToStage={vi.fn()}
+      onResetFilters={vi.fn()}
+      {...props}
+    />,
+  )
+}
 
 describe('pipeline lead card styles', () => {
   it('uses roomy, readable action controls in narrow columns', () => {
@@ -245,5 +311,84 @@ describe('pipeline stage list view', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^Delete$/i }))
     expect(onBulkDelete).toHaveBeenCalledWith(['lead-1', 'lead-2'])
+  })
+})
+
+describe('pipeline lead notes', () => {
+  beforeEach(() => {
+    notesHarness.notes = []
+    notesHarness.createdNotes = []
+    notesHarness.getLeadNotes.mockReset().mockResolvedValue({ notes: [], total: 0 })
+    notesHarness.createLeadNote.mockReset().mockResolvedValue({ note: {} })
+    notesHarness.invalidateQueries.mockReset()
+  })
+
+  it('opens a notes popover from a row and lists comments with author and date/time label', () => {
+    // Reported feedback: each pipeline lead should expose a comments/notes list
+    // with the creation time and date on every entry.
+    notesHarness.notes = [
+      {
+        id: 'note-1',
+        lead_id: 'lead-1',
+        content: 'Called the lead, very interested in the audit package.',
+        created_by_name: 'Riya Shah',
+        created_at: '2026-07-01T10:30:00.000Z',
+        is_edited: false,
+      },
+    ]
+    renderStageList([{ id: 'lead-1', company_name: 'Acme Pvt Ltd' }])
+
+    fireEvent.click(screen.getByRole('button', { name: /Notes for Acme Pvt Ltd/i }))
+
+    expect(notesHarness.getLeadNotes).toHaveBeenCalledWith('lead-1')
+    // Popover lists the note with its author and a timestamp (year is timezone-safe).
+    expect(screen.getByText(/Called the lead/i)).toBeTruthy()
+    expect(screen.getByText('Riya Shah')).toBeTruthy()
+    expect(screen.getByText(/2026/)).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: /Notes for Acme Pvt Ltd/i })).toBeTruthy()
+  })
+
+  it('clamps long comments to one line and expands them with Show more / Show less', () => {
+    // Reported feedback: an overflowing comment must show "..." on one line with
+    // a Show more toggle that expands to the full detail (and collapses again).
+    notesHarness.notes = [
+      {
+        id: 'note-1',
+        lead_id: 'lead-1',
+        content: 'A'.repeat(140),
+        created_by_name: 'Riya Shah',
+        created_at: '2026-07-01T10:30:00.000Z',
+      },
+    ]
+    renderStageList([{ id: 'lead-1', company_name: 'Acme Pvt Ltd' }])
+    fireEvent.click(screen.getByRole('button', { name: /Notes for Acme Pvt Ltd/i }))
+
+    const showMore = screen.getByRole('button', { name: /^Show more$/i })
+    expect(showMore).toBeTruthy()
+
+    fireEvent.click(showMore)
+    expect(screen.getByRole('button', { name: /^Show less$/i })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /^Show less$/i }))
+    expect(screen.getByRole('button', { name: /^Show more$/i })).toBeTruthy()
+  })
+
+  it('adds a new comment from the popover and refreshes the workspace notes cache', () => {
+    // Reported feedback: the user must be able to write something related to the
+    // lead (e.g. what the lead said) from the pipeline row itself.
+    renderStageList([{ id: 'lead-1', company_name: 'Acme Pvt Ltd' }])
+    fireEvent.click(screen.getByRole('button', { name: /Notes for Acme Pvt Ltd/i }))
+
+    expect(screen.getByText(/No notes yet/i)).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Write a note'), {
+      target: { value: 'Lead said they want pricing for 50 seats.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^Add$/i }))
+
+    expect(notesHarness.createLeadNote).toHaveBeenCalledWith('lead-1', {
+      content: 'Lead said they want pricing for 50 seats.',
+    })
+    expect(notesHarness.invalidateQueries).toHaveBeenCalled()
   })
 })

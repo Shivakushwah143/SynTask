@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import api from '../api/axios'
 import { useAuthStore } from '../store/authStore'
+import { UserAccessEditor } from '../components/permissions'
+import { saveUserAccess } from '../api/permissions'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -24,19 +26,6 @@ const ROLE_COLORS = {
   lead: 'bg-amber-100 text-amber-700 ring-amber-200',
   employee: 'bg-slate-100 text-slate-600 ring-slate-200',
 }
-
-const CAPABILITY_CATALOG = [
-  ['employee_management.view', 'View employee profiles'],
-  ['employee_management.manage', 'Manage employee profiles'],
-  ['leave_management.view', 'View leave'],
-  ['leave_management.manage', 'Manage leave'],
-  ['attendance_policy.view', 'View attendance'],
-  ['attendance_policy.manage', 'Manage attendance'],
-  ['salary_management.view', 'View salary'],
-  ['salary_management.manage', 'Manage salary'],
-  ['employee_lifecycle.view', 'View lifecycle'],
-  ['employee_lifecycle.manage', 'Manage lifecycle'],
-]
 
 // ─── Helper components ─────────────────────────────────────────────────────────
 
@@ -108,7 +97,7 @@ const AdminPermissions = () => {
 
   // Local edits before saving — keyed by userId / departmentId
   const [pendingUserModules, setPendingUserModules] = useState({})
-  const [pendingUserCapabilities, setPendingUserCapabilities] = useState({})
+  const [pendingUserOverrides, setPendingUserOverrides] = useState({})
   const [pendingDeptModules, setPendingDeptModules] = useState({})
 
   const toastTimerRef = useRef(null)
@@ -150,7 +139,7 @@ const AdminPermissions = () => {
 
       // Reset pending edits on full reload
       setPendingUserModules({})
-      setPendingUserCapabilities({})
+      setPendingUserOverrides({})
       setPendingDeptModules({})
     } catch (err) {
       showError(err?.response?.data?.detail || 'Unable to load permissions overview.')
@@ -178,8 +167,8 @@ const AdminPermissions = () => {
   const selectedUserModules = pendingUserModules[selectedUserId]
     ?? selectedUser?.modules
     ?? []
-  const selectedUserCapabilities = pendingUserCapabilities[selectedUserId]
-    ?? selectedUser?.capability_grants
+  const selectedUserOverrides = pendingUserOverrides[selectedUserId]
+    ?? selectedUser?.permission_overrides
     ?? []
 
   const selectedDeptMembers = (overview?.employees || []).filter(
@@ -187,7 +176,7 @@ const AdminPermissions = () => {
   )
 
   const hasPendingDeptChanges = Boolean(pendingDeptModules[selectedDepartmentId])
-  const hasPendingUserChanges = Boolean(pendingUserModules[selectedUserId] || pendingUserCapabilities[selectedUserId])
+  const hasPendingUserChanges = Boolean(pendingUserModules[selectedUserId] || pendingUserOverrides[selectedUserId])
 
   // ─── Toggle helpers ────────────────────────────────────────────────────────
 
@@ -206,10 +195,7 @@ const AdminPermissions = () => {
     const next = toggleSet(selectedUserModules, moduleId)
     setPendingUserModules((prev) => ({ ...prev, [selectedUserId]: next }))
   }
-  const handleToggleUserCapability = (capability) => {
-    const next = toggleSet(selectedUserCapabilities, capability)
-    setPendingUserCapabilities((prev) => ({ ...prev, [selectedUserId]: next }))
-  }
+  const handleUserOverrideChange = (overrides) => setPendingUserOverrides((prev) => ({ ...prev, [selectedUserId]: overrides }))
 
   // ─── Save handlers ─────────────────────────────────────────────────────────
 
@@ -221,7 +207,6 @@ const AdminPermissions = () => {
         `/admin/permissions/departments/${selectedDepartment.id}/modules`,
         { modules: selectedDeptModules }
       )
-      await api.put(`/admin/permissions/users/${selectedUser.id}/capabilities`, { capabilities: selectedUserCapabilities })
       const data = res.data ?? res
       showSuccess(`Department "${selectedDepartment.name}" defaults saved with ${data.modules?.length ?? 0} module(s).`)
       await loadOverview(true)
@@ -254,18 +239,27 @@ const AdminPermissions = () => {
     }
   }
 
-  const handleUserModulesSave = async () => {
+  const handleUserModulesSave = async ({ modules, overrides }) => {
     if (!selectedUser) return
     try {
       setSaving(true)
-      const res = await api.put(
-        `/admin/permissions/users/${selectedUser.id}/modules`,
-        { modules: selectedUserModules }
-      )
-      const data = res.data ?? res
+      await saveUserAccess(selectedUser.id, { modules, overrides })
       showSuccess(
-        `Access for ${selectedUser.full_name} updated — ${data.modules?.length ?? 0} module(s) active.`
+        `Access for ${selectedUser.full_name} updated — ${modules?.length ?? 0} module(s) active.`
       )
+      // Update local state so list reflects new module count
+      setSelectedUserModules(modules)
+      setSelectedUserOverrides(overrides)
+      setPendingUserModules((prev) => {
+        const next = { ...prev }
+        delete next[selectedUser.id]
+        return next
+      })
+      setPendingUserOverrides((prev) => {
+        const next = { ...prev }
+        delete next[selectedUser.id]
+        return next
+      })
       await loadOverview(true)
     } catch (err) {
       showError(err?.response?.data?.detail || 'Unable to update user modules.')
@@ -565,78 +559,20 @@ const AdminPermissions = () => {
                 </button>
               </div>
 
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {overview?.module_catalog?.map((module) => {
-                  const enabled = selectedUserModules.includes(module.id)
-                  return (
-                    <button
-                      key={module.id}
-                      type="button"
-                      onClick={() => handleToggleUserModule(module.id)}
-                      disabled={saving}
-                      className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left text-sm font-medium transition disabled:opacity-50 ${
-                        enabled
-                          ? 'border-primary-200 bg-primary-100 text-primary-800 dark:border-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
-                      }`}
-                    >
-                      <span>{module.label}</span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                          enabled
-                            ? 'bg-primary-200 text-primary-800 dark:bg-primary-800 dark:text-primary-200'
-                            : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
-                        }`}
-                      >
-                        {enabled ? 'On' : 'Off'}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-
-              <div className="mt-5 border-t border-primary-200 pt-4 dark:border-primary-800">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Action permissions</h3>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">These grants control API actions. They do not expand company scope.</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {CAPABILITY_CATALOG.map(([capability, label]) => {
-                    const enabled = selectedUserCapabilities.includes(capability)
-                    return <button key={capability} type="button" onClick={() => handleToggleUserCapability(capability)} disabled={saving} className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs font-medium transition disabled:opacity-50 ${enabled ? 'border-primary-200 bg-primary-100 text-primary-800 dark:border-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'}`}><span>{label}</span><span>{enabled ? 'Granted' : 'Off'}</span></button>
-                  })}
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleUserModulesSave}
-                  disabled={saving}
-                  className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 disabled:opacity-60"
-                >
-                  <Save className="h-4 w-4" />
-                  {saving ? 'Saving…' : 'Save changes'}
-                </button>
-                {hasPendingUserChanges && (
-                  <span className="text-xs font-medium text-amber-600 dark:text-amber-400">● Unsaved changes</span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPendingUserModules((prev) => {
-                      const next = { ...prev }
-                      delete next[selectedUserId]
-                      return next
-                    })
-                    setPendingUserCapabilities((prev) => {
-                      const next = { ...prev }
-                      delete next[selectedUserId]
-                      return next
-                    })
+              <div className="mt-4">
+                <UserAccessEditor
+                  user={{
+                    ...selectedUser,
+                    modules: selectedUserModules,
+                    permission_overrides: selectedUserOverrides,
+                    effective_permissions: selectedUser.effective_permissions || {},
                   }}
-                  className="text-xs font-semibold text-slate-500 hover:text-slate-700 transition dark:text-slate-400 dark:hover:text-slate-200"
-                >
-                  Reset
-                </button>
+                  initialCatalog={overview?.permission_catalog}
+                  initialModuleCatalog={overview?.module_catalog?.map(m => ({ id: m.id, label: m.label }))}
+                  disabled={saving}
+                  saving={saving}
+                  onSave={handleUserModulesSave}
+                />
               </div>
             </div>
           ) : (
