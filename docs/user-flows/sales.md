@@ -94,6 +94,8 @@ flowchart TD
 
 \- Timeline events created: stage updates and scheduled follow-up activity should be surfaced in activity/timeline where configured.
 
+\- Lead notes: every pipeline row and board card exposes a **Notes** button that opens a popover listing all comments for that lead. Comments are lead-scoped, never stage-scoped, so every stage shows the same full thread for the lead. Each entry shows the author and a creation date/time label, long comments collapse to a single line with an ellipsis and a **Show more**/**Show less** toggle, and the popover composer adds new comments via \`GET/POST /api/v1/crm/leads/{lead\_id}/notes\`. Notes added from the pipeline also appear in the lead workspace Notes tab.
+
 \- Notifications sent: none directly.
 
 \- Related modules updated: CRM Pipeline, Lead Timeline, Reports.

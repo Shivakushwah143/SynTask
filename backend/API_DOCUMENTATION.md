@@ -731,6 +731,17 @@ Work Request endpoints require the Tasks module gate and same-company access. Th
 | GET | `/api/v1/crm/leads/{lead_id}/negotiation` | `get_lead_negotiation` | Loads the Negotiation workspace after the lead reaches Negotiation. Enforces existing lead company and ownership access. |
 | PATCH | `/api/v1/crm/leads/{lead_id}/negotiation` | `patch_lead_negotiation` | Saves negotiation terms, keeps `negotiation_status` manually editable, syncs accepted/final amount to existing Sales lead fields where applicable, and records a CRM lead activity event. Agreement entry remains gated by `negotiation_status = accepted`. |
 
+### CRM Lead Notes
+
+Lead-scoped comments for a prospect. Notes are tenant-scoped (`company_id`) and follow the lead across pipeline stages; ownership access matches the lead workspace Notes tab (same-company for Admin/Sub Admin/Manager/Lead, assigned/created-by only for Employees).
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/crm/leads/{lead_id}/notes` | `list_lead_notes` | Lists non-deleted notes for a lead, newest-updated first, with author display names resolved from the tenant's users. |
+| POST | `/api/v1/crm/leads/{lead_id}/notes` | `create_lead_note` | Creates a note (`content` required) and publishes a `LeadNoteCreated` timeline event. |
+| PATCH | `/api/v1/crm/leads/{lead_id}/notes/{note_id}` | `update_lead_note` | Edits a note, marks it `is_edited`, and publishes a `LeadNoteUpdated` timeline event. |
+| DELETE | `/api/v1/crm/leads/{lead_id}/notes/{note_id}` | `delete_lead_note` | Soft-deletes a note (recorded `deleted_by`) and publishes a `LeadNoteDeleted` timeline event. |
+
 ### Sales Categories
 
 Sales category list/create/update/delete are tenant-scoped and require the canonical `sales_crm` module. Create is allowed for Admin, Manager, Lead, and Super Admin; delete is allowed for Admin, Manager, and Super Admin.
