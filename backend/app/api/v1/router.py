@@ -93,13 +93,12 @@ async def health_check():
     }
 
     status["checks"] = checks
+    return status
 
 
 @api_router.get("/example", tags=["Demo"], dependencies=[Depends(rate_limit)])
 async def example_endpoint():
     return {"msg": "Rate limited example endpoint"}
-
-    return status
 
 
 # Include all endpoint routers

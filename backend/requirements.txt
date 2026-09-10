@@ -70,3 +70,6 @@ requests==2.31.0
 openai==1.93.0
 qdrant-client==1.14.3
 pypdf==5.7.0
+
+# Prometheus metrics
+prometheus-client==0.26.0

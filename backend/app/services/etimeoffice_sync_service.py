@@ -473,6 +473,17 @@ async def sync_etimeoffice_for_company(
 
     Returns a safe summary (never credentials, cookies, or full employee PII).
     """
+    # Prometheus metrics (lazy import to avoid circular dep at module load)
+    try:
+        from app.metrics.etimeoffice import (
+            record_sync_start,
+            record_sync_success,
+            record_sync_error,
+        )
+        _sync_start = record_sync_start()
+    except Exception:
+        _sync_start = None  # metrics unavailable – continue without them
+
     if not settings.etimeoffice_configured:
         raise ETimeOfficeNotConfigured(
             "eTimeOffice integration is not configured or is disabled"
@@ -562,6 +573,11 @@ async def sync_etimeoffice_for_company(
             summary=summary,
             error=None,
         )
+        if _sync_start is not None:
+            try:
+                record_sync_success(_sync_start)
+            except Exception:
+                pass
         return summary
     except ETimeOfficeSyncInProgress:
         raise
@@ -574,6 +590,11 @@ async def sync_etimeoffice_for_company(
             summary=summary,
             error=f"{exc.__class__.__name__}: {str(exc)[:200]}",
         )
+        if _sync_start is not None:
+            try:
+                record_sync_error(_sync_start)
+            except Exception:
+                pass
         raise
     finally:
         if client is not None:

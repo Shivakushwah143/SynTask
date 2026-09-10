@@ -5,6 +5,7 @@ Main Application Entry Point
 
 
 import asyncio
+import os
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -15,9 +16,36 @@ from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
 
+# Prometheus multiprocess mode — must be set BEFORE any prometheus_client
+# import or metric registration.  When PROMETHEUS_MULTIPROC_DIR is set,
+# each worker writes to a shared directory; generate_latest() merges them.
+_PROM_MULTIPROC_DIR = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+if _PROM_MULTIPROC_DIR:
+    import atexit
+    import glob as _glob
+    import prometheus_client
+
+    # Ensure the multiprocess directory exists
+    os.makedirs(_PROM_MULTIPROC_DIR, exist_ok=True)
+
+    # Clear stale metric files from a previous container/process on startup
+    for stale_file in _glob.glob(os.path.join(_PROM_MULTIPROC_DIR, "*.db")):
+        try:
+            os.remove(stale_file)
+        except OSError:
+            pass
+
+    # Register atexit handler so the worker's metric files are cleaned up
+    # when the process terminates (graceful shutdown or crash).
+    atexit.register(
+        prometheus_client.multiprocess.mark_process_dead, os.getpid()
+    )
+
 # Centralised logging — called once at process start.
 from app.core.logging_config import configure_logging
 from app.middleware.request_id import RequestIDMiddleware, request_id_filter
+from app.core.health import router as health_router
+from app.middleware.prometheus import PrometheusMiddleware, metrics_endpoint
 
 configure_logging(service="syntask-backend")
 logger = logging.getLogger(__name__)
@@ -268,7 +296,8 @@ if settings.ENVIRONMENT == "production":
         allowed_hosts=settings.ALLOWED_HOSTS
     )
 
-# Request timing middleware
+# Request timing middleware + Prometheus RED metrics
+app.add_middleware(PrometheusMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
 
@@ -397,6 +426,13 @@ async def debug_backend():
 
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
+
+# Health probes (livez / readyz) — registered directly on the app
+# so they are available at root level for Docker/K8s probes.
+app.include_router(health_router)
+
+# Prometheus metrics endpoint
+app.get("/metrics", tags=["Observability"])(metrics_endpoint)
 
 # CORS-enabled avatar endpoint
 from fastapi import APIRouter, Depends

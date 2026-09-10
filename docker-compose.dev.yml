@@ -114,11 +114,26 @@ services:
     networks:
       - syntask
 
+  prometheus:
+    image: prom/prometheus:v2.53.3
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - syntask
+
 volumes:
   backend_uploads:
   frontend_node_modules:
   redis_data:
   qdrant_data:
+  prometheus_data:
 
 networks:
   syntask:
