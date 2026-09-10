@@ -369,6 +369,7 @@ export const SECTIONS = [
     label: "People",
     items: [
       "HR Dashboard",
+      "Users",
       "Employees",
       "My People",
       "Attendance",
@@ -379,7 +380,6 @@ export const SECTIONS = [
       "Payroll",
       "Departments",
       "HR Reports",
-      "Users",
     ],
   },
   {
