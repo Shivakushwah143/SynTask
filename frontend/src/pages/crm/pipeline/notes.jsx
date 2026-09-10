@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Loader2, Plus, RefreshCw, StickyNote, X } from 'lucide-react'
@@ -112,6 +112,15 @@ export const LeadNotesButton = memo(function LeadNotesButton({
   const queryClient = useQueryClient()
   const leadLabel = getLeadLabel(lead)
 
+  // ── Resizable panel state ────────────────────────────────────────────
+  const MIN_W = 280
+  const MAX_W = 600
+  const MIN_H = 220
+  const MAX_H = 700
+  const [panelSize, setPanelSize] = useState({ w: 320, h: 440 })
+  const resizingRef = useRef(null) // { startX, startY, startW, startH, dir }
+  const pinchRef = useRef(null)    // { startDist, startW, startH }
+
   const notesQuery = useQuery(
     [NOTES_QUERY_KEY, leadId],
     () => crmApi.getLeadNotes(leadId),
@@ -133,19 +142,90 @@ export const LeadNotesButton = memo(function LeadNotesButton({
     }
   )
 
+  // ── Resize: pointer drag (all four edges + corners) ─────────────────
+  const handleResizePointerDown = useCallback((event, dir) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const { clientX, clientY } = event
+    resizingRef.current = {
+      startX: clientX, startY: clientY,
+      startW: panelSize.w, startH: panelSize.h, dir,
+    }
+    const onMove = (e) => {
+      const r = resizingRef.current
+      if (!r) return
+      const dx = e.clientX - r.startX
+      const dy = e.clientY - r.startY
+      let newW = r.startW
+      let newH = r.startH
+      if (r.dir.includes('e')) newW = r.startW + dx
+      if (r.dir.includes('w')) newW = r.startW - dx
+      if (r.dir.includes('s')) newH = r.startH + dy
+      if (r.dir.includes('n')) newH = r.startH - dy
+      setPanelSize({
+        w: Math.min(MAX_W, Math.max(MIN_W, newW)),
+        h: Math.min(MAX_H, Math.max(MIN_H, newH)),
+      })
+    }
+    const onUp = () => {
+      resizingRef.current = null
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+    }
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+  }, [panelSize])
+
+  // ── Resize: pinch-to-zoom (touch) ───────────────────────────────────
+  useEffect(() => {
+    if (!open) return undefined
+    const el = popoverRef.current
+    if (!el) return undefined
+    const getDist = (touches) => {
+      const dx = touches[0].clientX - touches[1].clientX
+      const dy = touches[0].clientY - touches[1].clientY
+      return Math.hypot(dx, dy)
+    }
+    const onTouchStart = (e) => {
+      if (e.touches.length !== 2) return
+      e.preventDefault()
+      pinchRef.current = { startDist: getDist(e.touches), startW: panelSize.w, startH: panelSize.h }
+    }
+    const onTouchMove = (e) => {
+      const p = pinchRef.current
+      if (!p || e.touches.length !== 2) return
+      e.preventDefault()
+      const dist = getDist(e.touches)
+      const scale = dist / p.startDist
+      setPanelSize({
+        w: Math.min(MAX_W, Math.max(MIN_W, Math.round(p.startW * scale))),
+        h: Math.min(MAX_H, Math.max(MIN_H, Math.round(p.startH * scale))),
+      })
+    }
+    const onTouchEnd = () => { pinchRef.current = null }
+    el.addEventListener('touchstart', onTouchStart, { passive: false })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd)
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [open, panelSize.w, panelSize.h])
+
   // Anchor the popover to the trigger and close on outside clicks / Escape.
   useEffect(() => {
     if (!open) return undefined
     const updatePosition = () => {
       const rect = triggerRef.current?.getBoundingClientRect()
       if (!rect) return
-      const width = 320
       const margin = 12
+      const width = panelSize.w
       const left = Math.min(Math.max(margin, rect.left), window.innerWidth - width - margin)
       const spaceBelow = window.innerHeight - rect.bottom - margin
       const spaceAbove = rect.top - margin
       const renderAbove = spaceBelow < 300 && spaceAbove > spaceBelow
-      const maxHeight = Math.max(220, Math.min(440, (renderAbove ? spaceAbove : spaceBelow) - 8))
+      const maxHeight = Math.max(MIN_H, Math.min(panelSize.h, (renderAbove ? spaceAbove : spaceBelow) - 8))
       setPosition(
         renderAbove
           ? { bottom: window.innerHeight - rect.top + 8, left, width, maxHeight }
@@ -176,7 +256,7 @@ export const LeadNotesButton = memo(function LeadNotesButton({
       window.removeEventListener('resize', updatePosition)
       window.removeEventListener('scroll', updatePosition, true)
     }
-  }, [open])
+  }, [open, panelSize.w, panelSize.h])
 
   if (!leadId) return null
 
@@ -219,7 +299,7 @@ export const LeadNotesButton = memo(function LeadNotesButton({
           role="dialog"
           aria-label={`Notes for ${leadLabel}`}
           className="fixed z-[9999] flex flex-col overflow-hidden rounded-2xl border border-surface-border/80 bg-surface shadow-2xl backdrop-blur-md dark:border-gray-800 dark:bg-gray-900"
-          style={position || { width: 320, top: 'auto', left: 'auto', maxHeight: 440 }}
+          style={position || { width: panelSize.w, top: 'auto', left: 'auto', maxHeight: panelSize.h }}
         >
           <div className="flex items-start justify-between gap-3 border-b border-surface-border/70 px-4 py-3 dark:border-gray-800">
             <div className="min-w-0">
@@ -273,6 +353,48 @@ export const LeadNotesButton = memo(function LeadNotesButton({
               </div>
             )}
           </div>
+
+          {/* Resize handle: bottom-right corner + all four edges */}
+          {/* ── Corner: bottom-right ─────────────────────────────── */}
+          <div
+            role="separator"
+            aria-label="Resize notes panel"
+            onPointerDown={(e) => handleResizePointerDown(e, 'se')}
+            className="absolute bottom-0 right-0 z-10 h-5 w-5 cursor-se-resize"
+          >
+            <svg className="h-full w-full p-0.5 text-text-muted/50 dark:text-gray-500" viewBox="0 0 16 16" fill="none">
+              <path d="M14 2L2 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path d="M14 8L8 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </div>
+          {/* ── Edge: right ─────────────────────────────────────── */}
+          <div
+            role="separator"
+            aria-label="Resize width"
+            onPointerDown={(e) => handleResizePointerDown(e, 'e')}
+            className="absolute right-0 top-8 bottom-8 z-10 w-1.5 cursor-e-resize hover:bg-primary-400/20"
+          />
+          {/* ── Edge: bottom ────────────────────────────────────── */}
+          <div
+            role="separator"
+            aria-label="Resize height"
+            onPointerDown={(e) => handleResizePointerDown(e, 's')}
+            className="absolute bottom-0 left-4 right-4 z-10 h-1.5 cursor-s-resize hover:bg-primary-400/20"
+          />
+          {/* ── Edge: left ──────────────────────────────────────── */}
+          <div
+            role="separator"
+            aria-label="Resize width"
+            onPointerDown={(e) => handleResizePointerDown(e, 'w')}
+            className="absolute left-0 top-8 bottom-8 z-10 w-1.5 cursor-w-resize hover:bg-primary-400/20"
+          />
+          {/* ── Edge: top ───────────────────────────────────────── */}
+          <div
+            role="separator"
+            aria-label="Resize height"
+            onPointerDown={(e) => handleResizePointerDown(e, 'n')}
+            className="absolute top-0 left-4 right-4 z-10 h-1.5 cursor-n-resize hover:bg-primary-400/20"
+          />
 
           <div className="border-t border-surface-border/70 px-4 py-3 dark:border-gray-800">
             <div className="flex items-end gap-2">
