@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import api from '../api/axios'
 import { useAuthStore } from '../store/authStore'
+import { UserAccessEditor } from '../components/permissions'
+import { saveUserAccess } from '../api/permissions'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -72,54 +74,6 @@ function Toast({ message, type = 'success', onDismiss }) {
       <button type="button" onClick={onDismiss} className="rounded p-0.5 hover:bg-black/10 transition">
         <X className="h-3.5 w-3.5" />
       </button>
-    </div>
-  )
-}
-
-function PermissionEditor({ catalog = [], overrides = [], effective = {}, disabled, onChange }) {
-  const [expanded, setExpanded] = useState({ projects: true, tasks: true })
-  const byModule = catalog.reduce((groups, permission) => {
-    const group = groups[permission.module_id] || { label: permission.module_label, items: [] }
-    group.items.push(permission)
-    groups[permission.module_id] = group
-    return groups
-  }, {})
-  const overridesByKey = Object.fromEntries(overrides.map((item) => [item.permission, item]))
-  const update = (permission, patch) => {
-    const current = overridesByKey[permission.key] || { permission: permission.key, effect: 'inherit', scope: null }
-    const next = { ...current, ...patch }
-    onChange([...overrides.filter((item) => item.permission !== permission.key), next])
-  }
-  return (
-    <div className="mt-3 space-y-2" aria-label="Action permissions">
-      {Object.entries(byModule).map(([moduleId, group]) => (
-        <section key={moduleId} className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-          <button type="button" onClick={() => setExpanded((value) => ({ ...value, [moduleId]: !value[moduleId] }))}
-            className="flex min-h-11 w-full items-center justify-between px-3 text-left text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500 dark:text-slate-100 dark:hover:bg-slate-700">
-            <span>{group.label}</span><ChevronDown className={`h-4 w-4 transition-transform ${expanded[moduleId] ? '' : '-rotate-90'}`} />
-          </button>
-          {expanded[moduleId] ? <div className="divide-y divide-slate-100 dark:divide-slate-700">
-            {group.items.map((permission) => {
-              const override = overridesByKey[permission.key] || { effect: 'inherit', scope: null }
-              const inherited = effective[permission.key]
-              return <div key={permission.key} className="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_120px_140px] sm:items-center">
-                <div><p className="text-sm font-medium text-slate-800 dark:text-slate-100">{permission.label}</p>
-                  <p className="text-xs text-slate-500">{override.effect === 'inherit' && inherited ? `Inherited: ${inherited.source}` : override.effect === 'deny' ? 'Explicitly denied' : override.effect === 'allow' ? 'Explicitly allowed' : 'No access inherited'}</p></div>
-                <label className="sr-only" htmlFor={`effect-${permission.key}`}>Access for {permission.label}</label>
-                <select id={`effect-${permission.key}`} value={override.effect} disabled={disabled} onChange={(event) => update(permission, { effect: event.target.value, scope: event.target.value === 'inherit' ? null : override.scope })}
-                  className="min-h-11 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
-                  <option value="inherit">Inherit</option><option value="allow">Allow</option><option value="deny">Deny</option>
-                </select>
-                <label className="sr-only" htmlFor={`scope-${permission.key}`}>Scope for {permission.label}</label>
-                <select id={`scope-${permission.key}`} value={override.scope || ''} disabled={disabled || override.effect !== 'allow'} onChange={(event) => update(permission, { scope: event.target.value || null })}
-                  className="min-h-11 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
-                  <option value="">Default scope</option>{(permission.supported_scopes || []).map((scope) => <option key={scope} value={scope}>{scope.replace('_', ' ')}</option>)}
-                </select>
-              </div>
-            })}
-          </div> : null}
-        </section>
-      ))}
     </div>
   )
 }
@@ -285,18 +239,27 @@ const AdminPermissions = () => {
     }
   }
 
-  const handleUserModulesSave = async () => {
+  const handleUserModulesSave = async ({ modules, overrides }) => {
     if (!selectedUser) return
     try {
       setSaving(true)
-      const [res] = await Promise.all([
-        api.put(`/admin/permissions/users/${selectedUser.id}/modules`, { modules: selectedUserModules }),
-        api.put(`/admin/permissions/users/${selectedUser.id}`, { overrides: selectedUserOverrides }),
-      ])
-      const data = res.data ?? res
+      await saveUserAccess(selectedUser.id, { modules, overrides })
       showSuccess(
-        `Access for ${selectedUser.full_name} updated — ${data.modules?.length ?? 0} module(s) active.`
+        `Access for ${selectedUser.full_name} updated — ${modules?.length ?? 0} module(s) active.`
       )
+      // Update local state so list reflects new module count
+      setSelectedUserModules(modules)
+      setSelectedUserOverrides(overrides)
+      setPendingUserModules((prev) => {
+        const next = { ...prev }
+        delete next[selectedUser.id]
+        return next
+      })
+      setPendingUserOverrides((prev) => {
+        const next = { ...prev }
+        delete next[selectedUser.id]
+        return next
+      })
       await loadOverview(true)
     } catch (err) {
       showError(err?.response?.data?.detail || 'Unable to update user modules.')
@@ -596,73 +559,20 @@ const AdminPermissions = () => {
                 </button>
               </div>
 
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {overview?.module_catalog?.map((module) => {
-                  const enabled = selectedUserModules.includes(module.id)
-                  return (
-                    <button
-                      key={module.id}
-                      type="button"
-                      onClick={() => handleToggleUserModule(module.id)}
-                      disabled={saving}
-                      className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left text-sm font-medium transition disabled:opacity-50 ${
-                        enabled
-                          ? 'border-primary-200 bg-primary-100 text-primary-800 dark:border-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
-                      }`}
-                    >
-                      <span>{module.label}</span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                          enabled
-                            ? 'bg-primary-200 text-primary-800 dark:bg-primary-800 dark:text-primary-200'
-                            : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
-                        }`}
-                      >
-                        {enabled ? 'On' : 'Off'}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-
-              <div className="mt-5 border-t border-primary-200 pt-4 dark:border-primary-800">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Action permissions</h3>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Explicit deny wins over role and department access. Scope is enforced by the API.</p>
-                <PermissionEditor catalog={overview?.permission_catalog} overrides={selectedUserOverrides} effective={selectedUser.effective_permissions} disabled={saving} onChange={handleUserOverrideChange} />
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleUserModulesSave}
-                  disabled={saving}
-                  className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 disabled:opacity-60"
-                >
-                  <Save className="h-4 w-4" />
-                  {saving ? 'Saving…' : 'Save changes'}
-                </button>
-                {hasPendingUserChanges && (
-                  <span className="text-xs font-medium text-amber-600 dark:text-amber-400">● Unsaved changes</span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPendingUserModules((prev) => {
-                      const next = { ...prev }
-                      delete next[selectedUserId]
-                      return next
-                    })
-                    setPendingUserOverrides((prev) => {
-                      const next = { ...prev }
-                      delete next[selectedUserId]
-                      return next
-                    })
+              <div className="mt-4">
+                <UserAccessEditor
+                  user={{
+                    ...selectedUser,
+                    modules: selectedUserModules,
+                    permission_overrides: selectedUserOverrides,
+                    effective_permissions: selectedUser.effective_permissions || {},
                   }}
-                  className="text-xs font-semibold text-slate-500 hover:text-slate-700 transition dark:text-slate-400 dark:hover:text-slate-200"
-                >
-                  Reset
-                </button>
+                  initialCatalog={overview?.permission_catalog}
+                  initialModuleCatalog={overview?.module_catalog?.map(m => ({ id: m.id, label: m.label }))}
+                  disabled={saving}
+                  saving={saving}
+                  onSave={handleUserModulesSave}
+                />
               </div>
             </div>
           ) : (

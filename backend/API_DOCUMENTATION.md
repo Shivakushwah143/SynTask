@@ -987,6 +987,24 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | GET | `/api/v1/users/my-team` | `get_my_team` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/reporting-options` | `get_reporting_options` | Uses router/endpoint dependencies where configured. |
 
+### Admin Permissions
+
+Centralized permission administration. All endpoints require company-admin or super-admin authentication.
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/admin/permissions/overview` | `get_permissions_overview` | Returns all users with module counts, role summary, permission catalog, and module catalog. |
+| GET | `/api/v1/admin/permissions/catalog` | `get_permission_catalog` | Returns the full `PERMISSION_CATALOG` (module → action → effect/scope metadata). |
+| GET | `/api/v1/admin/permissions/users/{user_id}` | `get_user_permissions` | Returns one user's `modules`, `capability_grants`, `permission_overrides`, and `effective_permissions`. |
+| PUT | `/api/v1/admin/permissions/users/{user_id}/modules` | `update_user_modules` | Replaces the user's `modules` list. Request body: `{ "modules": ["projects", "tasks"] }`. |
+| PUT | `/api/v1/admin/permissions/users/{user_id}` | `update_user_overrides` | Replaces the user's `permission_overrides`. Request body: `{ "overrides": [{ "permission": "projects.create", "effect": "deny" }] }`. |
+| POST | `/api/v1/admin/permissions/users/{user_id}/promote` | `promote_to_sub_admin` | Promotes a user to `sub_admin`. |
+| POST | `/api/v1/admin/permissions/users/{user_id}/demote` | `demote_from_sub_admin` | Demotes a `sub_admin` back to their previous role. |
+| PUT | `/api/v1/admin/permissions/departments/{dept_id}/modules` | `update_department_modules` | Updates the department default modules. |
+| POST | `/api/v1/admin/permissions/departments/{dept_id}/apply` | `apply_department_modules` | Applies department default modules to all users in the department. |
+
+**Frontend integration:** The `UserAccessEditor` component (shared by `/users` Edit modal and `/admin-permissions` page) uses these endpoints via `frontend/src/api/permissions.js`. Effective permissions are resolved server-side by `authorization_service.py` through: protected role bypass → `capability_grants` → department defaults → user overrides.
+
 ### Versions
 
 | Method | Path | Handler | Notes |

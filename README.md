@@ -53,8 +53,9 @@ backend/app/models/      MongoDB document models
 backend/app/schemas/     Pydantic request/response schemas
 backend/scripts/         One-off setup and migration scripts
 frontend/                React/Vite single-page app
-frontend/src/api/        Axios API client modules
-frontend/src/components/ Reusable UI components
+frontend/src/api/        Axios API client modules (permissions.js, etc.)
+frontend/src/components/ Reusable UI components (permissions/UserAccessEditor.jsx, etc.)
+frontend/src/hooks/      React hooks (usePermissions.js for can/effective/hasModule)
 frontend/src/pages/      Application pages
 docs/                    Testing guide and diagrams
 ```
