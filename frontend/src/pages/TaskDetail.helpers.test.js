@@ -2,15 +2,27 @@ import { describe, expect, it } from 'vitest'
 import { buildTaskAssignmentOptions, canEditTaskDetails, getAttachmentKind, getProjectLeadName, getRevisionReasonContext, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
 
 describe('TaskDetail assignment helpers', () => {
-  it('splits assignable users into lead and employee options', () => {
+  it('exposes all assignable users as assignee options', () => {
     const options = buildTaskAssignmentOptions([
       { id: 'lead-1', role: 'lead', first_name: 'Leena' },
       { id: 'employee-1', role: 'employee', first_name: 'Asha' },
       { id: 'manager-1', role: 'manager', first_name: 'Maya' },
     ])
 
-    expect(options.leads.map(getUserId)).toEqual(['lead-1'])
-    expect(options.employees.map(getUserId)).toEqual(['employee-1'])
+    expect(options.employees.map(getUserId)).toEqual(['lead-1', 'employee-1', 'manager-1'])
+    expect(options.leads.map(getUserId)).toEqual(['lead-1', 'employee-1', 'manager-1'])
+  })
+
+  it('keeps all assignee options for managers regardless of department', () => {
+    const options = buildTaskAssignmentOptions(
+      [
+        { id: 'employee-1', role: 'employee', department_id: 'dept-1', first_name: 'Asha' },
+        { id: 'employee-2', role: 'employee', department_id: 'dept-2', first_name: 'Binu' },
+      ],
+      { id: 'manager-1', role: 'manager', department_id: 'dept-1', first_name: 'Maya' },
+    )
+
+    expect(options.employees.map(getUserId)).toEqual(['employee-1', 'employee-2'])
   })
 
   it('adds current lead when lead endpoint only returns employees', () => {
@@ -19,8 +31,8 @@ describe('TaskDetail assignment helpers', () => {
       { id: 'lead-1', role: 'lead', first_name: 'Leena' },
     )
 
-    expect(options.leads.map(getUserId)).toEqual(['lead-1'])
-    expect(options.employees.map(getUserId)).toEqual(['employee-1'])
+    expect(options.leads.map(getUserId)).toEqual(['employee-1', 'lead-1'])
+    expect(options.employees.map(getUserId)).toEqual(['employee-1', 'lead-1'])
   })
 
   it('formats names with email fallback', () => {
@@ -50,9 +62,10 @@ describe('TaskDetail assignment helpers', () => {
     expect(canEditTaskDetails({ role: 'employee', id: 'employee-1' }, { assigned_to: 'employee-1' })).toBe(false)
   })
 
-  it('allows managers to edit only same-department task details', () => {
+  it('allows managers to edit task details of any task', () => {
     expect(canEditTaskDetails({ role: 'manager', department_id: 'delivery' }, { department_id: 'delivery' })).toBe(true)
-    expect(canEditTaskDetails({ role: 'manager', department_id: 'delivery' }, { department_id: 'sales' })).toBe(false)
+    expect(canEditTaskDetails({ role: 'manager', department_id: 'delivery' }, { department_id: 'sales' })).toBe(true)
+    expect(canEditTaskDetails({ role: 'manager' }, {})).toBe(true)
   })
 
   it('provides color-coded status tone', () => {

@@ -402,9 +402,7 @@ def can_update_task_field(current_user: User, task: Task, field_name: str) -> bo
     if current_user.role == UserRole.EMPLOYEE:
         return field_name == "status" and task.assigned_to == str(current_user.id)
     if current_user.role == UserRole.MANAGER:
-        manager_department = getattr(current_user, "department_id", None)
-        task_department = getattr(task, "department_id", None)
-        return bool(manager_department and task_department and str(manager_department) == str(task_department))
+        return True
     if current_user.role == UserRole.LEAD:
         return True
     return False

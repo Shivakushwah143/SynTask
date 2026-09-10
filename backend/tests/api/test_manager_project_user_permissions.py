@@ -9,7 +9,7 @@ from app.core.hierarchy import get_creatable_roles
 from app.models.user import Manager, User, UserRole
 
 
-def user(user_id, role, *, company_id="company-1"):
+def user(user_id, role, *, company_id="company-1", department_id=None):
     async def get_all_subordinates():
         return []
 
@@ -17,6 +17,9 @@ def user(user_id, role, *, company_id="company-1"):
         id=user_id,
         role=role,
         company_id=company_id,
+        department_id=department_id,
+        capability_grants=[],
+        permission_overrides=[],
         get_all_subordinates=get_all_subordinates,
     )
 
@@ -87,14 +90,21 @@ async def test_manager_can_create_only_leads_and_employees():
 
 
 @pytest.mark.asyncio
-async def test_manager_can_assign_tasks_to_any_company_lead_or_employee():
-    manager = user("manager-1", UserRole.MANAGER)
-    admin_created_lead = user("lead-1", UserRole.LEAD)
-    admin_created_employee = user("employee-1", UserRole.EMPLOYEE)
-    other_manager = user("manager-2", UserRole.MANAGER)
+async def test_manager_can_assign_tasks_to_any_company_lead_or_employee(monkeypatch):
+    from app.services import authorization_service as authz
 
-    await task_endpoints._assert_can_assign_task(manager, admin_created_lead)
-    await task_endpoints._assert_can_assign_task(manager, admin_created_employee)
+    async def _no_department(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(authz.Department, "get", _no_department)
+
+    manager = user("manager-1", UserRole.MANAGER, department_id="dept-1")
+    lead_from_another_department = user("lead-1", UserRole.LEAD, department_id="dept-2")
+    employee_from_another_department = user("employee-1", UserRole.EMPLOYEE, department_id="dept-2")
+    other_manager = user("manager-2", UserRole.MANAGER, department_id="dept-1")
+
+    await task_endpoints._assert_can_assign_task(manager, lead_from_another_department)
+    await task_endpoints._assert_can_assign_task(manager, employee_from_another_department)
 
     with pytest.raises(HTTPException):
         await task_endpoints._assert_can_assign_task(manager, other_manager)

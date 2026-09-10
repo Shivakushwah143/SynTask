@@ -40,7 +40,7 @@ flowchart TD
 - Timeline events created: project changes should appear in timeline/activity where the backend emits events.
 - Notifications sent: none explicitly in the frontend.
 - Related modules updated: Tasks, Time Tracking, CRM handoff in future flows.
-- Tenant and access rule: task assignee choices come only from the authenticated user's company and are limited to active employee-role records; managers can see employees even when those employees report to a different manager. Negative tests should verify another company's employee never appears in the dropdown.
+- Tenant and access rule: task assignee choices come only from the authenticated user's company and are limited to active employee-role records; managers can assign to any active employee in the company regardless of department, and the current assignee still renders for display. Negative tests should verify another company's employee never appears in the dropdown.
 - Module gate: the Work route group treats `task` and `tasks_projects` as aliases and permits standard Work roles (Admin, Sub Admin, Manager, Lead, Employee) to reach the APIs shown by sidebar navigation; endpoint rules still enforce company, hierarchy, project membership, assignment, and project-scoped Lead authorization.
 - Quick-create behavior: the nested Create user modal opens above the Create task modal, and the employee designation field uses the shared designation dropdown with search and an inline create-new option.
 
@@ -71,7 +71,7 @@ flowchart TD
 - Timeline events created: task activity should be captured in the activity/timeline systems where wired.
 - Notifications sent: watchers/assignees may receive existing task notifications where configured.
 - Related modules updated: Timesheet, Time Tracking, CRM Activities if task is linked.
-- Tenant and access rule: every task workflow, checklist, dependency, and changelog request verifies `company_id` and then applies task view/manage rules. Catalogued `tasks.create` and `tasks.assign` overrides are evaluated with their configured project/team/department/company scope before legacy project and hierarchy fallback. A crafted assignment outside the configured reporting-team scope is denied. Reviewers must be active same-company users authorized through the workflow/project policy. Negative tests cover cross-company dependency rejection, out-of-scope assignment, and task visibility boundaries.
+- Tenant and access rule: every task workflow, checklist, dependency, and changelog request verifies `company_id` and then applies task view/manage rules. Catalogued `tasks.create` and `tasks.assign` overrides are evaluated with their configured project/team/department/company scope before legacy project and hierarchy fallback. A crafted assignment outside the configured reporting-team scope is denied. Managers can assign and reassign tasks to any active Lead or Employee in the company and can change the assignee of any task they can view, regardless of department. Reviewers must be active same-company users authorized through the workflow/project policy. Negative tests cover cross-company dependency rejection, out-of-scope assignment, and task visibility boundaries.
 
 ## Time Tracking / Timesheet
 - How the user reaches it: task pages or main navigation.
