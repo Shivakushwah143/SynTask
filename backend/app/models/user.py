@@ -4,7 +4,7 @@ User Models - Base and Role-specific
 from datetime import datetime
 from typing import Optional, List
 from beanie import Document, Indexed
-from pydantic import EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field
 from enum import Enum
 from pymongo import ASCENDING, IndexModel
 from app.core.clock import utc_now
@@ -42,6 +42,18 @@ class AuthProvider(str, Enum):
     GOOGLE = "google"
 
 
+class PermissionEffect(str, Enum):
+    INHERIT = "inherit"
+    ALLOW = "allow"
+    DENY = "deny"
+
+
+class PermissionOverride(BaseModel):
+    permission: str
+    effect: PermissionEffect = PermissionEffect.INHERIT
+    scope: Optional[str] = None
+
+
 class User(Document):
     """Base User Model with Hierarchical RBAC"""
     email: Indexed(EmailStr, unique=True)
@@ -59,6 +71,10 @@ class User(Document):
     # visibility, while a capability controls an API action.  Grants are
     # always evaluated with the user's company scope by the RBAC helpers.
     capability_grants: List[str] = Field(default_factory=list)
+    # Tri-state customizations. Existing capability_grants remain compatible as
+    # additive legacy allows and are never discarded during this transition.
+    permission_overrides: List[PermissionOverride] = Field(default_factory=list)
+    access_policy_version: int = 2
     previous_role: Optional[UserRole] = None
     # Preferred/last active module for UI landing
     active_module: Optional[str] = Field(default="task")

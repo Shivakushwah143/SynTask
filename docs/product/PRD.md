@@ -106,6 +106,8 @@ Repository search on 2026-07-18 found the following:
 
 Access is the intersection of authentication, active status, company, enabled module, role, hierarchy, ownership, membership, project authorization, mailbox/calendar consent where applicable, and capability. Backend enforcement is mandatory.
 
+**Implemented, 2026-09-10:** Role is a default policy, module access controls workspace entry, and catalogued business capabilities control actions. A user may have tri-state (`inherit`, `allow`, `deny`) permission overrides with an enforceable scope (`self`, `created`, `assigned`, `project`, `team`, `department`, or `company`). Explicit user deny precedes user allow, department/role policy, and default deny; company isolation always precedes every policy decision. Existing `capability_grants` remain compatible additive allows. Administrators edit catalog-backed overrides separately from module selection, and the permission audit event records module and override changes. Project creation/member assignment and task creation/assignment use this resolver while retaining project membership and reporting-team context.
+
 For local acceptance testing, the `admin@demo.com` development fixture is assigned every canonical module by the idempotent demo-admin seed. This fixture convenience does not alter production entitlement rules or tenant/resource authorization; testers must obtain a fresh session after reseeding.
 
 ## 4. Product-wide requirements

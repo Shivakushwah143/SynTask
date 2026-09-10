@@ -1,5 +1,6 @@
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from app.core.permission_catalog import SCOPES
 
 MODULE_CATALOG = [
     {"id": "tasks_projects", "label": "All Work", "core": True},
@@ -55,6 +56,30 @@ class ModuleUpdateRequest(BaseModel):
 class CapabilityGrantUpdateRequest(BaseModel):
     """Explicit company-scoped grants for one member."""
     capabilities: List[str] = Field(default_factory=list)
+
+
+class PermissionOverrideInput(BaseModel):
+    permission: str
+    effect: str = "inherit"
+    scope: Optional[str] = None
+
+    @field_validator("effect")
+    @classmethod
+    def validate_effect(cls, value: str) -> str:
+        if value not in {"inherit", "allow", "deny"}:
+            raise ValueError("effect must be inherit, allow, or deny")
+        return value
+
+    @field_validator("scope")
+    @classmethod
+    def validate_scope(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value not in SCOPES:
+            raise ValueError("unsupported permission scope")
+        return value
+
+
+class PermissionOverrideUpdateRequest(BaseModel):
+    overrides: List[PermissionOverrideInput] = Field(default_factory=list)
 
 
 # Role-level default module selections, used by the member creation forms to

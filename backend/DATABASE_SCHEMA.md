@@ -2187,3 +2187,15 @@ Additional time indexes:
 `context` (`progress_update` or `review_submission`), `created_at`. Indexed by
 `(company_id, task_id, created_at)`. There is no draft-progress collection;
 draft quantity is frontend-only.
+
+# Content Publishing Index Migration
+
+`content_publishing_records.content_item_id` has a unique index
+(`content_item_id_1`) because a content item has one canonical publishing
+record. At startup the database preflight upgrades a legacy non-unique index
+with the same name after checking for duplicates. The migration only drops the
+old index; Beanie recreates the unique canonical index. If duplicates exist,
+startup stops with the affected item id and no index is changed. Resolve or
+merge those duplicate publishing records before restarting. To roll back, drop
+the unique index manually and recreate a non-unique `content_item_id_1` index;
+this is only appropriate while rolling back the application code as well.

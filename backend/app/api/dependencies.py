@@ -8,6 +8,8 @@ from app.core.security import get_token_from_header, decode_token_with_blacklist
 from app.models.department import Department
 from app.models.capability import get_capabilities_for_role
 from app.models.user import User, UserRole, UserStatus
+from app.core.permission_catalog import is_known_permission
+from app.services.authorization_service import has_permission as authorization_has_permission, effective_permissions as authorization_effective_permissions
 
 WORK_MODULES = {
     "projects",
@@ -243,11 +245,19 @@ def require_capability(capability: str):
 
 
 async def get_effective_permissions(user: User) -> set[str]:
-    """Resolve role defaults plus explicit user grants; never grants tenant scope."""
+    """Compatibility set view of the central authorization resolver.
+
+    Callers that need a resource scope use ``authorization_service.authorize``;
+    this set remains for older route dependencies and login payloads.
+    """
     role = _normalize_role(getattr(user, "role", None))
     if role in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN}:
         return {"*"}
-    effective = set(getattr(user, "capability_grants", []) or [])
+    central = await authorization_effective_permissions(user)
+    effective = {key for key, result in central.items() if result.allowed}
+    # Keep un-catalogued historical capabilities working until their endpoint is
+    # migrated. New admin writes are catalog validated.
+    effective.update(getattr(user, "capability_grants", []) or [])
     department_id = getattr(user, "department_id", None)
     if not department_id or not user.company_id:
         return effective
@@ -259,6 +269,8 @@ async def get_effective_permissions(user: User) -> set[str]:
 
 
 async def has_capability(user: User, capability: str) -> bool:
+    if is_known_permission(capability):
+        return await authorization_has_permission(user, capability)
     effective = await get_effective_permissions(user)
     return "*" in effective or capability in effective
 

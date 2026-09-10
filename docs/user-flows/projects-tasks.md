@@ -71,7 +71,7 @@ flowchart TD
 - Timeline events created: task activity should be captured in the activity/timeline systems where wired.
 - Notifications sent: watchers/assignees may receive existing task notifications where configured.
 - Related modules updated: Timesheet, Time Tracking, CRM Activities if task is linked.
-- Tenant and access rule: every task workflow, checklist, dependency, and changelog request verifies `company_id` and then applies task view/manage rules. Reviewers must be active same-company users authorized as Admin/Sub Admin/Manager/Lead/Super Admin or through project task-management permission. Negative tests cover cross-company dependency rejection and task visibility boundaries.
+- Tenant and access rule: every task workflow, checklist, dependency, and changelog request verifies `company_id` and then applies task view/manage rules. Catalogued `tasks.create` and `tasks.assign` overrides are evaluated with their configured project/team/department/company scope before legacy project and hierarchy fallback. A crafted assignment outside the configured reporting-team scope is denied. Reviewers must be active same-company users authorized through the workflow/project policy. Negative tests cover cross-company dependency rejection, out-of-scope assignment, and task visibility boundaries.
 
 ## Time Tracking / Timesheet
 - How the user reaches it: task pages or main navigation.
