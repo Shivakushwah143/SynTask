@@ -2,8 +2,13 @@
 Celery application for async background work.
 """
 from celery import Celery
+from celery.signals import worker_ready
 
 from app.core.config import settings
+from app.core.logging_config import configure_logging
+
+# Configure structured logging for the worker process.
+configure_logging(service="syntask-worker")
 
 BROKER_URL = settings.CELERY_BROKER_URL or settings.REDIS_URL
 RESULT_BACKEND = settings.CELERY_RESULT_BACKEND or settings.REDIS_URL

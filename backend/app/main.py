@@ -15,12 +15,16 @@ from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-# Configure logging early so optional imports can report failures safely.
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Centralised logging — called once at process start.
+from app.core.logging_config import configure_logging
+from app.middleware.request_id import RequestIDMiddleware, request_id_filter
+
+configure_logging(service="syntask-backend")
 logger = logging.getLogger(__name__)
+
+# Attach the X-Request-ID filter to the root logger so every log line
+# includes the current request_id when inside an HTTP handler.
+logging.getLogger().addFilter(request_id_filter)
 
 from app.core.config import settings
 from app.core.database import init_db, close_db
@@ -46,6 +50,7 @@ from app.middleware.rate_limiter import (
     _rate_limit_exceeded_handler,
     limiter,
 )
+
 
 # Optional semantic imports - gracefully handle missing dependencies
 try:
@@ -264,17 +269,15 @@ if settings.ENVIRONMENT == "production":
     )
 
 # Request timing middleware
+app.add_middleware(RequestIDMiddleware)
+
+
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
-    
-    # Log failed requests
-    if response.status_code >= 400:
-        logger.warning(f"{request.method} {request.url.path} - {response.status_code}")
-    
     return response
 
 

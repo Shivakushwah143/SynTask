@@ -15,6 +15,9 @@ from app.api.dependencies import get_current_super_admin
 from app.core.config import settings
 from app.core.clock import utc_now
 from app.models.audit_log import log_audit
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Razorpay client
 try:
@@ -382,7 +385,7 @@ async def approve_tenant(
                 
             except Exception as e:
                 # Log error but continue with subscription creation
-                print(f"Razorpay subscription creation failed: {str(e)}")
+                logger.warning("Razorpay subscription creation failed: %s", e)
                 # Continue without Razorpay subscription
         
         subscription = CompanySubscription(
