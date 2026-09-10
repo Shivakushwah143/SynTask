@@ -379,6 +379,7 @@ export const SECTIONS = [
       "Payroll",
       "Departments",
       "HR Reports",
+      "Users",
     ],
   },
   {
@@ -621,6 +622,7 @@ export const navigation = [
   // People. Employee Profiles are supplied by HR_MODULES; /users remains
   // account administration and is intentionally labelled separately.
   { name: "User Accounts", href: "/users", icon: UserCog, roles: TEAM_ROLES },
+  { name: "Users", href: "/users", icon: Users, roles: TEAM_ROLES },
   {
     name: "My People",
     href: "/my-team",
