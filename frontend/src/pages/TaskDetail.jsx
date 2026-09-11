@@ -999,6 +999,16 @@ const TaskDetail = () => {
             </div>
           </div>
 
+          {/* Project association */}
+          {projectInfo && (
+            <div className="mb-2 flex items-center gap-2 px-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-700 dark:text-indigo-300">
+                <CheckSquare className="h-3 w-3" />
+                {projectInfo.name}
+              </span>
+            </div>
+          )}
+
           {/* Creator info */}
           <div className="mb-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 px-2">
             <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
