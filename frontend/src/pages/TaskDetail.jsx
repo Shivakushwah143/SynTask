@@ -999,6 +999,21 @@ const TaskDetail = () => {
             </div>
           </div>
 
+          {/* Creator info */}
+          <div className="mb-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 px-2">
+            <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+              <User className="h-3.5 w-3.5" />
+            </span>
+            <span>
+              Created by <span className="font-semibold text-gray-800 dark:text-gray-200">{task.created_by_name || '—'}</span>
+            </span>
+            {task.created_at ? (
+              <span className="text-gray-400 dark:text-gray-500">
+                · {(() => { try { return timeService.formatPattern(task.created_at, 'MMM d, yyyy') } catch { return String(task.created_at).slice(0, 10) } })()}
+              </span>
+            ) : null}
+          </div>
+
           {/* Description */}
           <div className="mb-6">
             {isEditing ? (
@@ -1191,6 +1206,16 @@ const TaskDetail = () => {
                   {task.created_at ? (() => { try { return timeService.formatPattern(task.created_at, 'MMM d, yyyy') } catch { return String(task.created_at).slice(0, 10) } })() : '—'}
                 </p>
               </div>
+
+              {/* Created By */}
+              {task.created_by_name ? (
+                <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Created By</p>
+                  <p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white truncate">
+                    {task.created_by_name}
+                  </p>
+                </div>
+              ) : null}
 
               {/* Estimated Hours — shown for both types */}
               <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
