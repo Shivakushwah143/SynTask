@@ -52,7 +52,9 @@ Production deployments run an internal observability stack on the `syntask` Dock
 | Alertmanager | Groups, de-duplicates and routes Prometheus alerts | `9093` | `127.0.0.1:9093` |
 | Node Exporter / cAdvisor / Redis Exporter | Host, container and Redis metrics | internal | internal only |
 
-Configuration is version-controlled under `observability/`; Docker log rotation is configured in both Compose files. Loki, Alloy, Alertmanager and the exporters are never published publicly. Alert runbooks: [docs/runbooks/observability-alerts.md](docs/runbooks/observability-alerts.md).
+Configuration is version-controlled under `observability/`; Docker log rotation is configured in both Compose files. Loki, Alloy, Alertmanager and the exporters are never published publicly.
+
+Reliability is measured with two internal SLOs (availability >= 99.5%, latency >= 95% within 2.5s, rolling 7 days) shown on the **SynTask SLO Overview** dashboard. See [docs/observability/SLOS.md](docs/observability/SLOS.md) for SLI/SLO/error-budget definitions and the distinction from any contractual SLA. Operational runbooks: [alerts](docs/runbooks/observability-alerts.md), [incident drill](docs/runbooks/INCIDENT_DRILL.md), [incident template](docs/runbooks/INCIDENT_TEMPLATE.md).
 
 MongoDB must be reachable before using authenticated API routes. If database initialization fails, the backend starts in a degraded state, `/health` reports `503`, `/api/v1/*` routes return a database-unavailable `503`, and database background workers are skipped until the backend is restarted with a valid `MONGODB_URL`.
 

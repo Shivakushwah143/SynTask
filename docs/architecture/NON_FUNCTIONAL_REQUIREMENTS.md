@@ -20,6 +20,12 @@ These targets make “production ready” measurable. They are not service-level
 | Observability | API/job correlation and alerts with owners/runbooks | Demonstration |
 | Integrity | Financial/provider callbacks idempotent; material changes audited | Reconciliation tests |
 
+Implemented measurement: Topic 7 records two internal SLOs over a rolling 7-day
+window — availability >= 99.5% and >= 95% of API requests within 2.5s — with
+error budgets. These are measured engineering targets, not an approved SLA, and
+they do not replace the proposed p95 <= 500 ms performance target above. See
+[`docs/observability/SLOS.md`](../observability/SLOS.md).
+
 ## Security and privacy
 
 - Deny by default when identity, tenant, hierarchy or entitlement cannot be established.

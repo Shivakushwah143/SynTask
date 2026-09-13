@@ -19,6 +19,10 @@ This is the canonical entry point. **Observed** means supported by repository ev
 
 ## Supporting documents
 
+- [SLIs and SLOs](observability/SLOS.md) — measured reliability targets, error budgets and the SLA distinction
+- [Observability alerts runbook](runbooks/observability-alerts.md)
+- [Incident drill runbook](runbooks/INCIDENT_DRILL.md)
+- [Incident template](runbooks/INCIDENT_TEMPLATE.md)
 - [Security](infrastructure/SECURITY.md)
 - [CI/CD](infrastructure/CI_CD.md)
 - [Startup guide](infrastructure/STARTUP_GUIDE.md)
