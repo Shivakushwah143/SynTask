@@ -232,7 +232,7 @@ class ReminderService:
         if await self.has_reminder_already_generated(reminder_key, item.company_id, assignee_id):
             logger.debug("Skipped duplicate reminder %s", reminder_key)
             return None
-        return await self.create_notification(
+        notification = await self.create_notification(
             company_id=item.company_id,
             user_id=assignee_id,
             notification_type=notification_type,
@@ -240,13 +240,59 @@ class ReminderService:
             message=self._content_message(item.title, remaining_days),
             priority=priority,
             related_id=str(item.id),
-            related_type="content",
-            action_url="/content-calendar",
+            related_type="content_item",
+            action_url=f"/content/{item.id}",
             due_date=item.due_date,
             remaining_days=remaining_days,
             reminder_key=reminder_key,
             show_toast=show_toast,
         )
+        if remaining_days < 0:
+            await self._escalate_content_overdue(item, assignee_id, remaining_days, now)
+        return notification
+
+    async def _escalate_content_overdue(
+        self,
+        item: ContentCalendarItem,
+        owner_id: str,
+        remaining_days: int,
+        now: datetime,
+    ) -> None:
+        """Escalate overdue content to the project's responsible lead.
+
+        Uses existing project responsibility data (``Project.lead_id``) — no
+        hardcoded manager IDs. The lead is notified at most once per day per
+        content item via the same reminder_key dedup used for owner reminders.
+        """
+        try:
+            from app.projects.models import Project
+
+            project = await Project.get(str(item.project_id))
+            lead_id = str(getattr(project, "lead_id", None) or "") if project else ""
+            if not lead_id or lead_id == str(owner_id):
+                return
+            reminder_key = f"content-overdue-escalation:{item.id}:{lead_id}:{now.date().isoformat()}"
+            if await self.has_reminder_already_generated(reminder_key, item.company_id, lead_id):
+                logger.debug("Skipped duplicate overdue escalation %s", reminder_key)
+                return
+            days = abs(remaining_days)
+            await self.create_notification(
+                company_id=item.company_id,
+                user_id=lead_id,
+                notification_type=NotificationType.CONTENT_OVERDUE,
+                title="Content overdue (escalation)",
+                message=f"Content {item.title} is overdue by {days} day{'s' if days != 1 else ''} and needs attention.",
+                priority=ReminderPriority.HIGH,
+                related_id=str(item.id),
+                related_type="content_item",
+                action_url=f"/content/{item.id}",
+                due_date=item.due_date,
+                remaining_days=remaining_days,
+                reminder_key=reminder_key,
+                show_toast=False,
+            )
+        except Exception as exc:
+            logger.exception("Failed overdue escalation for content %s: %s", getattr(item, "id", None), exc)
 
     async def check_task_reminders(self) -> int:
         now = self.now()

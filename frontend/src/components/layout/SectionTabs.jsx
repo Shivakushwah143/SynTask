@@ -16,8 +16,8 @@ import {
   getNavContextForPath,
   getSectionItems,
   isNavItemActive,
+  resolveHrSection,
 } from "../../config/navigation";
-import { HR_MODULES } from "../../config/hrModules";
 
 const SECTION_LANDING_RE = /^\/sections\/([^/]+)/;
 const SCROLL_STEP_PX = 240;
@@ -84,36 +84,11 @@ const resolveSectionContext = (location) => {
     return { sectionKey: ctx.sectionKey, isLanding: isLegacyLanding, itemName: ctx.itemName };
   }
 
-  // HR screens: determine section based on module key.
-  // Recruitment module items → "recruitment" section.
-  // All other HR items (employees, documents, payroll, settings, etc.) → "people" section.
-  // Exact matches win over prefix matches so nested routes keep their parent tab
-  // (e.g. /hr/employees/:id stays on the Employees tab). The /hr landing page and
-  // the interview screen deliberately show no tab bar.
-  const hrItems = HR_MODULES.flatMap((mod) =>
-    mod.navigation
-      .filter((item) => !HR_ITEM_SKIP.has(item.name))
-      .map((item) => ({
-        name: HR_ITEM_RENAMES[item.name] || item.name,
-        href: item.href,
-        match: item.href === mod.basePath ? mod.basePath : undefined,
-        moduleKey: mod.key,
-      })),
-  );
-  const hrPath = (item) => (item.href || "").split("?")[0];
-  if (location.pathname === "/hr" || location.pathname === "/hr/recruitment/interview-screen") {
-    return null;
-  }
-  const hrExact = hrItems.find((item) => isExactNavMatch(item, location));
-  if (hrExact) {
-    const sectionKey = hrExact.moduleKey === "recruitment" ? "recruitment" : "people";
-    return { sectionKey, isLanding: false, itemName: hrExact.name };
-  }
-  // Prefix match for nested routes (e.g. /hr/employees/:id → Employees tab).
-  const hrPrefix = hrItems.find((item) => location.pathname.startsWith(`${hrPath(item)}/`));
-  if (hrPrefix) {
-    const sectionKey = hrPrefix.moduleKey === "recruitment" ? "recruitment" : "people";
-    return { sectionKey, isLanding: false, itemName: hrPrefix.name };
+  // HR screens: use the centralized route ownership resolver (navigation.js).
+  // Returns null for /hr (no tab bar) and /hr/recruitment/interview-screen (excluded).
+  const hrCtx = resolveHrSection(location.pathname);
+  if (hrCtx) {
+    return { sectionKey: hrCtx.sectionKey, isLanding: false, itemName: hrCtx.itemName };
   }
 
   return null;

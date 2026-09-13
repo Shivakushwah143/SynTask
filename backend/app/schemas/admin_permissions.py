@@ -1,5 +1,6 @@
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from app.core.permission_catalog import SCOPES
 
 MODULE_CATALOG = [
     {"id": "tasks_projects", "label": "All Work", "core": True},
@@ -38,6 +39,7 @@ MODULE_CATALOG = [
     {"id": "live_attendance", "label": "Live Attendance", "core": False},
     {"id": "attendance_reports", "label": "Attendance Reports", "core": False},
     {"id": "leave_management", "label": "Leave Management", "core": False},
+    {"id": "hr", "label": "People / HR", "core": False},
     {"id": "recruitment", "label": "Recruitment", "core": False},
     {"id": "reports", "label": "Reports", "core": False},
     {"id": "activity_logs", "label": "Activity Logs", "core": False},
@@ -56,6 +58,30 @@ class CapabilityGrantUpdateRequest(BaseModel):
     capabilities: List[str] = Field(default_factory=list)
 
 
+class PermissionOverrideInput(BaseModel):
+    permission: str
+    effect: str = "inherit"
+    scope: Optional[str] = None
+
+    @field_validator("effect")
+    @classmethod
+    def validate_effect(cls, value: str) -> str:
+        if value not in {"inherit", "allow", "deny"}:
+            raise ValueError("effect must be inherit, allow, or deny")
+        return value
+
+    @field_validator("scope")
+    @classmethod
+    def validate_scope(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value not in SCOPES:
+            raise ValueError("unsupported permission scope")
+        return value
+
+
+class PermissionOverrideUpdateRequest(BaseModel):
+    overrides: List[PermissionOverrideInput] = Field(default_factory=list)
+
+
 # Role-level default module selections, used by the member creation forms to
 # pre-populate the Permissions selector (frontend mirrors this in
 # src/config/modulePermissions.js - keep both in sync).
@@ -68,7 +94,7 @@ ROLE_MODULE_DEFAULTS = {
     "super_admin": [entry["id"] for entry in MODULE_CATALOG],
     "admin": [entry["id"] for entry in MODULE_CATALOG],
     "sub_admin": [entry["id"] for entry in MODULE_CATALOG],
-    "manager": ["projects", "tasks", "scheduled_work", "time_tracking", "daily_updates", "content_calendar", "chat", "meetings_calendar", "clients", "attendance", "live_attendance", "attendance_reports", "leave_management", "ai_assistant", "ai_content_assistant"],
+    "manager": ["projects", "tasks", "scheduled_work", "time_tracking", "daily_updates", "content_calendar", "chat", "meetings_calendar", "clients", "attendance", "live_attendance", "attendance_reports", "leave_management", "hr", "ai_assistant", "ai_content_assistant"],
     "lead": ["projects", "tasks", "scheduled_work", "time_tracking", "daily_updates", "content_calendar", "chat", "meetings_calendar", "attendance", "attendance_reports", "leave_management"],
     "employee": ["projects", "tasks", "time_tracking", "daily_updates", "content_calendar", "chat", "meetings_calendar", "attendance", "leave_management"],
 }

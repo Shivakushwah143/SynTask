@@ -866,14 +866,20 @@ async def assign_job_to_candidate(candidate_id: str, payload: CandidateAssignJob
     return await RecruitmentService.assign_job_to_candidate(company(user), str(user.id), candidate_id, payload.job_id, payload.source, payload.hire)
 
 
-@router.get("/employees", response_model=EmployeeListResponse)
+@router.get("/employees", response_model=EmployeeListResponse, deprecated=True)
 async def list_employees(
     search: Optional[str] = None,
     page: int = 1,
     page_size: int = 50,
     user: User = Depends(require_candidate_view),
 ):
-    """List converted employees (candidates whose job was assigned with hire=True)."""
+    """List converted employees (candidates whose job was assigned with hire=True).
+
+    .. deprecated::
+        This endpoint is kept for backward compatibility. The canonical employee
+        directory lives at ``GET /employees`` (People module, ``/hr/employees`` in
+        the UI). Frontend callers have been migrated to use the canonical endpoint.
+    """
     items, total = await RecruitmentService.list_employees(company(user), search=search, page=page, page_size=page_size)
     return EmployeeListResponse(items=items, total=total, page=page, page_size=page_size, has_next=(page * page_size) < total)
 

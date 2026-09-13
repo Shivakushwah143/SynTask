@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Download, Plus, RefreshCw, Upload, UserPlus, X, Users as UsersIcon, UserCheck, UserCog, Briefcase, Mail, Phone, Shield, Building, Calendar, Activity } from 'lucide-react'
 import Papa from 'papaparse'
 import { useConfirmation } from '../hooks/useConfirmation'
@@ -9,8 +9,9 @@ import { hasCompanyAdminAccess, isLeadRole, normalizeRole, getRoleLabel } from '
 import { EmptyState, Modal, PasswordInput, PhoneInput, phoneValidationMessage } from '../components/ui'
 import { getDesignationOptions } from '../constants/designations'
 import toast from 'react-hot-toast'
-import ModulePermissionSelector from '../components/ui/ModulePermissionSelector'
 import { getRoleModuleDefaults, getMemberEditDefaults } from '../config/modulePermissions'
+import { UserAccessEditor } from '../components/permissions'
+import { saveUserAccess, getPermissionCatalog } from '../api/permissions'
 
 const BULK_HEADERS = ['role', 'first_name', 'last_name', 'email', 'password', 'phone', 'department', 'designation', 'team_name', 'lead_email']
 const makeTempPassword = () => `SynTask@${Math.random().toString(36).slice(2, 8)}1`
@@ -77,6 +78,11 @@ const Users = () => {
   const [bulkImporting, setBulkImporting] = useState(false)
   const [selectedModules, setSelectedModules] = useState(() => getRoleModuleDefaults('employee'))
   const [modulesTouched, setModulesTouched] = useState(false)
+  const [permissionCatalog, setPermissionCatalog] = useState([])
+  const [permissionModuleCatalog, setPermissionModuleCatalog] = useState([])
+  const [accessOverrides, setAccessOverrides] = useState([])
+  const [accessTouched, setAccessTouched] = useState(false)
+  const [savingAccess, setSavingAccess] = useState(false)
 
   const isLead = isLeadRole(user?.role)
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
@@ -361,7 +367,24 @@ const Users = () => {
     // silently strips permissions they already had.
     setSelectedModules(getMemberEditDefaults(normalizedRole, userToEdit.modules))
     setModulesTouched(false)
+    setAccessOverrides(userToEdit.permission_overrides || [])
+    setAccessTouched(false)
     setShowAddModal(true)
+    // Fetch the permission catalog so UserAccessEditor can render action permissions
+    getPermissionCatalog()
+      .then((data) => {
+        setPermissionCatalog(data.permissions || [])
+        const seen = new Map()
+        for (const entry of data.permissions || []) {
+          if (!seen.has(entry.module_id)) {
+            seen.set(entry.module_id, { id: entry.module_id, label: entry.module_label })
+          }
+        }
+        setPermissionModuleCatalog(Array.from(seen.values()))
+      })
+      .catch(() => {
+        // Catalog load failure is non-fatal — UserAccessEditor handles its own error state
+      })
   }
 
   const closeUserModal = () => {
@@ -370,6 +393,10 @@ const Users = () => {
     setUserType('employee')
     setSelectedModules(getRoleModuleDefaults('employee'))
     setModulesTouched(false)
+    setAccessOverrides([])
+    setAccessTouched(false)
+    setPermissionCatalog([])
+    setPermissionModuleCatalog([])
     setFormErrors({})
     setSelectedDepartmentId('')
     setShowDepartmentCreate(false)
@@ -488,6 +515,23 @@ const Users = () => {
     try {
       setSubmitting(true)
       await usersAPI.updateUser(editingUser.id, updateData)
+
+      // Save granular permissions if the user changed them in UserAccessEditor
+      if (accessTouched && accessOverrides.length >= 0) {
+        try {
+          await saveUserAccess(editingUser.id, {
+            modules: modulesTouched ? selectedModules : (editingUser.modules || []),
+            overrides: accessOverrides,
+          })
+        } catch (permError) {
+          // Profile was saved but permissions failed — inform the admin
+          const permMsg = permError.response?.data?.detail || 'Permission save failed'
+          toast.error(`Profile saved, but permissions failed: ${permMsg}`)
+          setSubmitting(false)
+          return
+        }
+      }
+
       toast.success('User updated successfully')
       closeUserModal()
       await fetchUsers()
@@ -1399,14 +1443,33 @@ const Users = () => {
                   )}
                 </div>
 
-                <div className="sm:col-span-2">
-                  <ModulePermissionSelector
-                    value={selectedModules}
-                    onChange={(next) => {
-                      setSelectedModules(next)
-                      setModulesTouched(true)
+                <div className="sm:col-span-2 border-t border-gray-200 pt-4 dark:border-gray-700">
+                  <UserAccessEditor
+                    user={{
+                      ...editingUser,
+                      modules: selectedModules,
+                      permission_overrides: accessOverrides,
+                      effective_permissions: editingUser?.effective_permissions || {},
                     }}
-                    role={editingUser ? normalizeRole(editingUser.role) : userType}
+                    initialCatalog={permissionCatalog}
+                    initialModuleCatalog={permissionModuleCatalog}
+                    disabled={submitting}
+                    saving={savingAccess}
+                    onDirtyChange={(dirty) => setAccessTouched(dirty)}
+                    onSave={async ({ modules: newModules, overrides }) => {
+                      setSavingAccess(true)
+                      try {
+                        await saveUserAccess(editingUser.id, { modules: newModules, overrides })
+                        toast.success('Access permissions updated')
+                        setAccessOverrides(overrides)
+                        setSelectedModules(newModules)
+                        setModulesTouched(true)
+                        setAccessTouched(false)
+                      } finally {
+                        setSavingAccess(false)
+                      }
+                    }}
+                    onCancel={closeUserModal}
                   />
                 </div>
                 {userType === 'lead' && (

@@ -1706,9 +1706,14 @@ const Dashboard = () => {
                     return (
                       <div key={emp.employee_id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md dark:border-gray-700 dark:bg-gray-900">
                         <div className="mb-2 flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white">{emp.employee_name}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">{emp.department || 'No department'}</p>
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-indigo-500 text-[11px] font-bold text-white">
+                              {String(emp.employee_name || '?').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'U'}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{emp.employee_name}</p>
+                              <p className="truncate text-xs text-gray-500 dark:text-gray-400">{emp.department || 'No department'}</p>
+                            </div>
                           </div>
                           <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
                             🎯 {emp.measurement_label || emp.measurement_type || 'Quant'}

@@ -169,6 +169,7 @@ const Tasks = () => {
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
   const [selectedAssigneeId, setSelectedAssigneeId] = useState('')
+  const [selectedCreateProjectId, setSelectedCreateProjectId] = useState('')
   const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
   const [showQuickDepartmentModal, setShowQuickDepartmentModal] = useState(false)
   const [dueDateValue, setDueDateValue] = useState('')
@@ -424,6 +425,7 @@ useEffect(() => {
     setShowCreateModal(false)
     setSelectedDepartmentId('')
     setSelectedAssigneeId('')
+    setSelectedCreateProjectId('')
     setDueDateValue('')
     setEstimatedHoursValue('')
     setCreateMode('now')
@@ -491,6 +493,7 @@ useEffect(() => {
         due_date: formData.get('due_date') || dueDateValue || '',
         estimated_hours: formData.get('estimated_hours') || estimatedHoursValue || '',
         task_type: taskType || 'standard',
+        project_id: selectedCreateProjectId || '',
       }
 
       if (isCompanyAdmin && selectedDepartmentId) {
@@ -762,6 +765,7 @@ useEffect(() => {
               <button
                 onClick={() => {
                   setSelectedDepartmentId('')
+                  setSelectedCreateProjectId(filters.project_id || '')
                   setShowCreateModal(true)
                 }}
                 className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
@@ -1517,6 +1521,22 @@ useEffect(() => {
               </button>
             </div>
             <form onSubmit={handleCreateTask} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Project</label>
+                <select
+                  value={selectedCreateProjectId}
+                  onChange={(e) => setSelectedCreateProjectId(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  disabled={loadingProjects}
+                >
+                  <option value="">No project (standalone)</option>
+                  {projects.map((project) => (
+                    <option key={project.id || project._id} value={project.project_id || project.id}>
+                      {project.name || project.project_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label>
                 <input

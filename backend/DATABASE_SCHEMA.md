@@ -12,6 +12,7 @@ Recruitment models under `backend/app/recruitment/models.py` also define tenant-
 |---|---|---|
 | `attendance` | Attendance, AttendanceSession, BreakLog, MonitoringSession, CameraSession, ScreenShareSession, AttendancePolicy, Holiday, AttendanceCorrectionRequest | Attendance check-in/out records, sessions, breaks, monitoring, policies, holidays, correction requests. Attendance rows carry an optional `source` marker (`etimeoffice` when written by the biometric sync). |
 | `attendance_sync_states` | ETimeOfficeSyncState | Company-scoped runtime state of the eTimeOffice biometric attendance sync (connection health, last run summary, in-flight guard). Never stores credentials. |
+| `ai_security_events` | AISecurityEvent | Immutable AI governance security decision audit log. Stores safe metadata only — never raw prompts, tool results, salaries, or credentials. Indexed on (company_id, created_at), (decision), (agent, capability), (user_id, created_at). Write failures must never grant access. |
 | `automation_executions` | AutomationExecution | AutomationExecution persistence collection. |
 | `automation_rules` | AutomationRule | AutomationRule persistence collection. |
 | `billing_transactions` | BillingTransaction | Billing invoices, payment state, Razorpay metadata. |
@@ -2187,3 +2188,15 @@ Additional time indexes:
 `context` (`progress_update` or `review_submission`), `created_at`. Indexed by
 `(company_id, task_id, created_at)`. There is no draft-progress collection;
 draft quantity is frontend-only.
+
+# Content Publishing Index Migration
+
+`content_publishing_records.content_item_id` has a unique index
+(`content_item_id_1`) because a content item has one canonical publishing
+record. At startup the database preflight upgrades a legacy non-unique index
+with the same name after checking for duplicates. The migration only drops the
+old index; Beanie recreates the unique canonical index. If duplicates exist,
+startup stops with the affected item id and no index is changed. Resolve or
+merge those duplicate publishing records before restarting. To roll back, drop
+the unique index manually and recreate a non-unique `content_item_id_1` index;
+this is only appropriate while rolling back the application code as well.

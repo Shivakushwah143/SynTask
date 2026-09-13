@@ -159,7 +159,7 @@ export const SIDEBAR_PERMISSION_SECTIONS = [
   {
     id: 'people',
     label: 'People',
-    moduleIds: ['attendance', 'live_attendance', 'attendance_reports', 'leave_management', 'recruitment'],
+    moduleIds: ['attendance', 'live_attendance', 'attendance_reports', 'leave_management', 'hr'],
     options: [
       { id: 'employees', label: 'Employees and My People', moduleIds: [], fixed: true },
       { id: 'attendance', label: 'Attendance', moduleIds: ['attendance'] },
@@ -167,6 +167,7 @@ export const SIDEBAR_PERMISSION_SECTIONS = [
       { id: 'attendance-reports', label: 'Attendance Reports', moduleIds: ['attendance_reports'] },
       { id: 'leave', label: 'Leave Management', moduleIds: ['leave_management'] },
       { id: 'departments', label: 'Departments', moduleIds: [], fixed: true },
+      { id: 'people-hr', label: 'People / HR (all)', moduleIds: ['hr'] },
       { id: 'recruitment', label: 'Recruitment', moduleIds: ['recruitment'] },
     ],
   },

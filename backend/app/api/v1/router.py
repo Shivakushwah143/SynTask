@@ -18,7 +18,10 @@ from app.api.v1.endpoints import (
     project_templates, work_reports,
 )
 from app.api.v1.endpoints import ai
+from app.api.v1.endpoints import ai_evals
+from app.api.v1.endpoints import ai_operations
 from app.api.v1.endpoints import ai_assistant
+from app.api.v1.endpoints import ai_security
 from app.api.v1.endpoints import hr_agent
 from app.api.v1.endpoints import executive_agent
 from app.api.v1.endpoints import rag
@@ -36,6 +39,8 @@ from app.api.v1.endpoints import crm_negotiation
 from app.api.v1.endpoints import crm_notes
 from app.api.v1.endpoints import crm_pipeline
 from app.api.v1.endpoints import content_calendar
+from app.api.v1.endpoints import content_production
+from app.api.v1.endpoints import content_templates
 from app.api.v1.endpoints import scheduled_jobs
 from app.api.v1.endpoints import sales_categories, sales_products, sales_contacts, sales_prospects, sales_masters, sales_reports, sales_followups
 from app.api.v1.endpoints import superadmin_plans, superadmin_tenants, superadmin_usage, superadmin_billing, superadmin_features
@@ -151,6 +156,11 @@ api_router.include_router(meetings.router, prefix="/meetings", tags=["Meetings"]
 api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar"])
 api_router.include_router(time.router, prefix="/time", tags=["Time"])
 api_router.include_router(content_calendar.router, prefix="/content-calendar", tags=["Content Calendar"], dependencies=[Depends(require_module("content_calendar"))])
+# NOTE: /content/templates MUST be registered BEFORE /content so FastAPI matches
+# the static path first; otherwise `GET /content/templates` is captured by the
+# dynamic `GET /content/{item_id}` route and interpreted as an item id.
+api_router.include_router(content_templates.router, prefix="/content/templates", tags=["Content Templates"], dependencies=[Depends(require_module("content_calendar"))])
+api_router.include_router(content_production.router, prefix="/content", tags=["Content Production"], dependencies=[Depends(require_module("content_calendar"))])
 api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=["Scheduled Jobs"], dependencies=[Depends(require_module("scheduled_work"))])
 api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("time_tracking"))])
 api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])
@@ -189,6 +199,10 @@ api_router.include_router(google_workspace_router, prefix="/google-workspace", t
 
 api_router.include_router(ai.router, prefix="/ai", tags=["AI"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(ai_assistant.router, prefix="/ai-assistant", tags=["Unified AI Assistant"], dependencies=[Depends(require_module("ai_agents"))])
+# AI Evaluation & Regression — admin/super-admin only (enforced inside the router).
+api_router.include_router(ai_evals.router, prefix="/ai-evals", tags=["AI Evaluations"], dependencies=[Depends(require_module("ai_agents"))])
+api_router.include_router(ai_operations.router, prefix="/ai-operations", tags=["AI Operations"], dependencies=[Depends(require_module("ai_agents"))])
+api_router.include_router(ai_security.router, prefix="/ai-security", tags=["AI Security & Governance"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 api_router.include_router(agents.router, prefix="/agents", tags=["Agent Platform"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(hr_agent.router, prefix="/hr-agent", tags=["HR Operations Agent"], dependencies=[Depends(require_module("ai_agents"))])

@@ -18,6 +18,79 @@ from app.core.json_safe import to_json_safe
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# LLM-span helpers (observability) — provider-neutral, trace-context aware
+# ---------------------------------------------------------------------------
+
+
+def _llm_span(model: str, *, streaming: bool = False, tool_schema_count: int = 0):
+    """Open one LLM span on the current trace, if any (never raises)."""
+    from app.ai.observability import tracer as ai_tracer
+
+    ctx = ai_tracer.get_current_trace()
+    if ctx is None or not ai_tracer.telemetry_enabled():
+        return None
+    ctx.llm_call_seq += 1
+    attrs: dict[str, Any] = {"model": model, "streaming": streaming}
+    if tool_schema_count:
+        attrs["tool_schema_count"] = tool_schema_count
+    return ai_tracer.start_span("LLM", f"groq_call_{ctx.llm_call_seq}", attrs=attrs)
+
+
+def _end_llm_span(span, result=None, exc: Exception | None = None, extra: dict[str, Any] | None = None):
+    """Close an LLM span with usage/error metadata (never raises)."""
+    from app.ai.observability import tracer as ai_tracer
+
+    if span is None:
+        return
+    if exc is not None:
+        error_type, message = ai_tracer.classify_span_error(exc)
+        if extra is None:
+            extra = {}
+        # Rate-limit/timeout error classes are surfaced on the span as counts
+        # so provider metrics can aggregate 429/400/timeout/retry rates.
+        if error_type == "RATE_LIMIT":
+            extra["429_count"] = extra.get("429_count", 0) + 1
+        elif error_type == "GROQ_400":
+            extra["400_count"] = extra.get("400_count", 0) + 1
+        elif error_type == "TIMEOUT":
+            extra["timeout_count"] = extra.get("timeout_count", 0) + 1
+        else:
+            extra["provider_error_count"] = extra.get("provider_error_count", 0) + 1
+        ai_tracer.end_span(span, status="FAILED", error_type=error_type, error_message=message, attrs=extra or None)
+        return
+    attrs: dict[str, Any] = {**(extra or {})}
+    if result is not None:
+        attrs.update(
+            {
+                "model": getattr(result, "model", None) or "",
+                "prompt_tokens": getattr(result, "prompt_tokens", None) or 0,
+                "completion_tokens": getattr(result, "completion_tokens", None) or 0,
+                "total_tokens": getattr(result, "total_tokens", None) or 0,
+                "tool_calls": len(getattr(result, "tool_calls", None) or []),
+                "finish_reason": getattr(result, "finish_reason", None),
+            }
+        )
+    ai_tracer.end_span(span, attrs=attrs)
+
+
+def _telemetry_snapshot() -> dict[str, int]:
+    """Snapshot of gateway error counters (to compute per-call deltas)."""
+    return {
+        "total_429": _telemetry["total_429"],
+        "total_400": _telemetry["total_400"],
+        "total_retries": _telemetry["total_retries"],
+    }
+
+
+def _telemetry_delta(start: dict[str, int]) -> dict[str, int]:
+    return {
+        "429_count": max(0, _telemetry["total_429"] - start.get("total_429", 0)),
+        "400_count": max(0, _telemetry["total_400"] - start.get("total_400", 0)),
+        "retry_count": max(0, _telemetry["total_retries"] - start.get("total_retries", 0)),
+    }
+
+
 class Groq400Error(Exception):
     """Structured 400 error from the Groq API.
 
@@ -112,8 +185,16 @@ class GroqProvider(AIProvider):
         if response_format:
             payload["response_format"] = response_format
 
-        data = await self._post(payload)
-        return self._parse_result(data, payload["model"])
+        span = _llm_span(payload["model"])
+        _tele = _telemetry_snapshot()
+        try:
+            data = await self._post(payload)
+            result = self._parse_result(data, payload["model"])
+        except Exception as exc:
+            _end_llm_span(span, exc=exc, extra=_telemetry_delta(_tele))
+            raise
+        _end_llm_span(span, result=result, extra=_telemetry_delta(_tele))
+        return result
 
     async def generate_with_tools(
         self,
@@ -160,10 +241,59 @@ class GroqProvider(AIProvider):
             "tool_choice": opts.get("tool_choice", "auto"),
         }
 
-        data = await self._post(payload)
-        return self._parse_result(data, payload["model"])
+        span = _llm_span(payload["model"], tool_schema_count=len(payload.get("tools") or []))
+        _tele = _telemetry_snapshot()
+        try:
+            data = await self._post(payload)
+            result = self._parse_result(data, payload["model"])
+        except Exception as exc:
+            _end_llm_span(span, exc=exc, extra=_telemetry_delta(_tele))
+            raise
+        _end_llm_span(span, result=result, extra=_telemetry_delta(_tele))
+        return result
 
     async def generate_with_tools_stream(
+        self,
+        prompt: str,
+        context: dict[str, Any],
+        tools: list[dict[str, Any]],
+        options: dict[str, Any] | None = None,
+    ) -> Any:
+        """Stream a tool-calling completion (SSE) as an async generator.
+
+        Records one ``LLM`` span per call when a trace is active; usage/token
+        metadata is attached when the final ``complete`` event is emitted.
+        """
+        if not settings.GROQ_API_KEY:
+            raise RuntimeError("GROQ_API_KEY is not configured")
+        opts = options or {}
+        model = opts.get("model") or settings.HR_AGENT_MODEL or settings.AI_MODEL_GROQ
+        span = _llm_span(model, streaming=True, tool_schema_count=len(tools or []))
+        _tele = _telemetry_snapshot()
+        try:
+            async for ev in self._generate_with_tools_stream_impl(
+                prompt=prompt, context=context, tools=tools, options=options
+            ):
+                if span is not None and ev.get("type") == "complete":
+                    usage = ev.get("usage") or {}
+                    span.safe_attributes.update(
+                        {
+                            "model": ev.get("model") or model,
+                            "prompt_tokens": usage.get("prompt_tokens") or 0,
+                            "completion_tokens": usage.get("completion_tokens") or 0,
+                            "total_tokens": usage.get("total_tokens") or 0,
+                            "tool_calls": len((ev.get("message") or {}).get("tool_calls") or []),
+                            "finish_reason": ev.get("finish_reason"),
+                        }
+                    )
+                yield ev
+        except Exception as exc:
+            _end_llm_span(span, exc=exc, extra=_telemetry_delta(_tele))
+            raise
+        else:
+            _end_llm_span(span, extra=_telemetry_delta(_tele))
+
+    async def _generate_with_tools_stream_impl(
         self,
         prompt: str,
         context: dict[str, Any],

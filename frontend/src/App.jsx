@@ -11,7 +11,7 @@ import ResponsiveTables from './components/ResponsiveTables';
 import ConfirmDialog from './components/ConfirmDialog';
 import UndoBar from './components/UndoBar';
 import { Agentation } from "agentation";
-import { hasCompanyAdminAccess, isManagerRole, isSuperAdminRole } from './utils/roles';
+import { hasCompanyAdminAccess, isAdminRole, isManagerRole, isSuperAdminRole } from './utils/roles';
 import { hasModuleAccess } from './utils/rbac';
 import { applySeoMeta, getSeoMeta } from './utils/seo';
 import DemoHome from './pages/DemoHome';
@@ -65,11 +65,17 @@ const Ledger = lazy(() => import('./pages/Ledger'))
 const Meetings = lazy(() => import('./pages/Meetings'))
 const WorkspaceCalendar = lazy(() => import('./pages/WorkspaceCalendar'))
 const ContentCalendar = lazy(() => import('./pages/ContentCalendar'))
+const ContentWorkspace = lazy(() => import('./pages/ContentWorkspace'))
+const ContentItemDetail = lazy(() => import('./pages/ContentItemDetail'))
+const ContentOverview = lazy(() => import('./pages/ContentOverview'))
+const ContentTemplates = lazy(() => import('./pages/ContentTemplates'))
 const Timesheet = lazy(() => import('./pages/Timesheet'))
 const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
 const ExecutiveAssistant = lazy(() => import('./pages/ExecutiveAssistant'))
 const AIHub = lazy(() => import('./pages/AIHub'))
+const AIEvaluations = lazy(() => import('./pages/AIEvaluations'))
+const AIOperations = lazy(() => import('./pages/AIOperations'))
 const CreativeDirector = lazy(() => import('./pages/CreativeDirector'))
 const MarketingChat = lazy(() => import('./pages/MarketingChat'))
 const MarketingCalendar = lazy(() => import('./pages/marketing/calendar/page'))
@@ -129,7 +135,10 @@ const RecruitmentJobDetailPage = lazy(() => import('./modules/hr/recruitment/pag
 const RecruitmentInboxPage = lazy(() => import('./modules/hr/recruitment/pages/InboxPage'))
 const RecruitmentCandidatesPage = lazy(() => import('./modules/hr/recruitment/pages/CandidatesPage'))
 const RecruitmentResumePoolPage = lazy(() => import('./modules/hr/recruitment/pages/ResumePoolPage'))
-const RecruitmentEmployeesPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeesPage'))
+// People/HR — Employee directory lives at /hr/employees (People section).
+// The component physically resides in modules/hr/recruitment/ due to shared
+// utilities; the file is documented as misplaced debt (see completion report).
+const HrEmployeesPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeesPage'))
 const EmployeeDetailPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeeDetailPage'))
 const HRDocumentsPage = lazy(() => import('./pages/hr/HRDocumentsPage'))
 const RecruitmentInterviewsPage = lazy(() => import('./modules/hr/recruitment/pages/InterviewsPage'))
@@ -187,6 +196,14 @@ const CompanyAdminGuard = ({ children }) => {
   const { user } = useAuthStore()
   if (!hasCompanyAdminAccess(user?.role)) return <Navigate to="/dashboard" replace />
   return children
+}
+
+// AI Evaluations & Regression — Admin / Super Admin only (raw evaluation
+// details must never be visible to managers or employees).
+const AIEvalGuard = ({ children }) => {
+  const { user } = useAuthStore()
+  if (isAdminRole(user?.role) || isSuperAdminRole(user?.role)) return children
+  return <Navigate to="/dashboard" replace />
 }
 
 // Only admins and managers can access CRM settings
@@ -341,6 +358,10 @@ function App() {
           <Route path="google-workspace" element={withBoundary(<GoogleWorkspace />)} />
           <Route path="content-calendar" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentCalendar />)}</ModuleGuard>} />
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
+          <Route path="content/overview" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentOverview />)}</ModuleGuard>} />
+          <Route path="content" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentWorkspace />)}</ModuleGuard>} />
+          <Route path="content/templates" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentTemplates />)}</ModuleGuard>} />
+          <Route path="content/:itemId" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentItemDetail />)}</ModuleGuard>} />
           <Route path="timesheet" element={<ModuleGuard module="time_tracking">{withBoundary(<Timesheet />)}</ModuleGuard>} />
           <Route path="attendance" element={withBoundary(<Attendance />)} />
           <Route path="attendance/live" element={<Navigate to="/live-monitor" replace />} />
@@ -356,6 +377,8 @@ function App() {
         <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
         <Route path="executive-assistant" element={withBoundary(<ExecutiveAssistant />)} />
         <Route path="ai-hub" element={<ModuleGuard module="ai_assistant">{withBoundary(<AIHub />)}</ModuleGuard>} />
+        <Route path="ai-evals" element={<ModuleGuard module="ai_assistant"><AIEvalGuard>{withBoundary(<AIEvaluations />)}</AIEvalGuard></ModuleGuard>} />
+        <Route path="ai-operations" element={<ModuleGuard module="ai_assistant"><AIEvalGuard>{withBoundary(<AIOperations />)}</AIEvalGuard></ModuleGuard>} />
         <Route path="creative-director" element={<ModuleGuard module="ai_content_assistant">{withBoundary(<CreativeDirector />)}</ModuleGuard>} />
         <Route path="marketing-support" element={<ModuleGuard module="ai_content_assistant">{withBoundary(<MarketingChat />)}</ModuleGuard>} />
         <Route path="marketing/calendar" element={withBoundary(<MarketingCalendar />)} />
@@ -375,6 +398,7 @@ function App() {
         <Route path="sop-library/:moduleKey" element={withBoundary(<SOPLibrary />)} />
         <Route path="sop-library/:moduleKey/:articleKey" element={withBoundary(<SOPLibrary />)} />
           <Route path="sections/work" element={<Navigate to="/work/overview" replace />} />
+          <Route path="sections/content" element={<Navigate to="/content/overview" replace />} />
           <Route path="sections/:sectionKey" element={withBoundary(<SectionLanding />)} />
         {/* Sales workspace Overview — the first tab of the guided sales journey. */}
         <Route path="sales-overview" element={<ModuleGuard module="sales_overview">{withBoundary(<SalesOverviewPage />)}</ModuleGuard>} />
@@ -396,7 +420,7 @@ function App() {
             </Route>
             {/* Canonical HR-wide routes: Employee Profiles and HR Documents are
                 People/HR features, not Recruitment features. */}
-            <Route path="employees" element={withBoundary(<RecruitmentEmployeesPage />)} />
+            <Route path="employees" element={withBoundary(<HrEmployeesPage />)} />
             <Route path="employees/:employeeId" element={withBoundary(<EmployeeDetailPage />)} />
             <Route path="documents" element={withBoundary(<HRDocumentsPage />)} />
             <Route path="settings/document-types" element={withBoundary(<DocumentTypesSettingsPage />)} />

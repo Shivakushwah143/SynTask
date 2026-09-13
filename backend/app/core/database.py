@@ -57,6 +57,9 @@ from app.models.ai_user_state import AIUserState
 from app.models.ai_memory import ClientMemory, CompanyMemory, ProjectMemory, UserMemory
 from app.models.knowledge import KnowledgeRecord
 from app.models.agent import AgentDefinition, AgentRun, AgentRunEvent, ActionProposal, SpecialistDefinition
+from app.models.ai_evaluation import AIEvalCaseResult, AIEvalRun
+from app.models.ai_observability import AITrace, AISpan
+from app.ai.security.audit import AISecurityEvent
 from app.rag.models import (
     RAGCitation,
     RAGKnowledgeChunk,
@@ -77,7 +80,7 @@ from app.models.creative_review import (
 from app.models.invoice import Invoice
 from app.models.msa import MSA
 from app.models.meeting import Meeting
-from app.models.content_calendar import ContentCalendarItem
+from app.models.content_calendar import ContentCalendarItem, ContentTemplate, ContentComment, ContentPublishingRecordDoc
 from app.models.timesheet import TimesheetEntry, TimesheetSummary
 from app.models.sales_category import SalesCategory
 from app.models.sales_product import SalesProduct
@@ -268,6 +271,48 @@ async def _migrate_task_source_marker_index(database) -> None:
     logger.info("Legacy task source-marker index removed.")
 
 
+async def _migrate_content_publishing_record_index(database) -> None:
+    """Replace the legacy non-unique publishing-record item index safely.
+
+    ``content_item_id`` used to be declared as a regular indexed field. The
+    canonical model now makes it unique, but MongoDB cannot replace an index
+    with the same generated name in place. Check for duplicate records before
+    removing the old index so a startup never silently discards an index and
+    then fails later with an opaque duplicate-key error.
+    """
+    collection = database["content_publishing_records"]
+    index_name = "content_item_id_1"
+    expected_keys = [("content_item_id", 1)]
+    indexes = await collection.index_information()
+    existing = indexes.get(index_name)
+
+    if not existing:
+        logger.info("Content publishing item index does not exist; Beanie will create the canonical index.")
+        return
+    if list(existing.get("key", [])) != expected_keys:
+        logger.warning("Publishing item index %s has unexpected keys; leaving it untouched.", index_name)
+        return
+    if existing.get("unique") is True:
+        logger.info("Content publishing item index is already canonical.")
+        return
+
+    duplicates = await collection.aggregate([
+        {"$match": {"content_item_id": {"$type": "string"}}},
+        {"$group": {"_id": "$content_item_id", "count": {"$sum": 1}}},
+        {"$match": {"count": {"$gt": 1}}},
+        {"$limit": 1},
+    ]).to_list(length=1)
+    if duplicates:
+        raise RuntimeError(
+            "Cannot migrate content_publishing_records.content_item_id_1 to unique: "
+            f"duplicate publishing records exist for content item {duplicates[0]['_id']}"
+        )
+
+    logger.warning("Dropping legacy non-unique content publishing index %s; Beanie will recreate it as unique.", index_name)
+    await collection.drop_index(index_name)
+    logger.info("Legacy content publishing index removed.")
+
+
 async def init_db():
     """Initialize database connection and Beanie ODM"""
     global client
@@ -312,6 +357,7 @@ async def init_db():
         # so Beanie can recreate them with the correct spec.
         await _migrate_employee_profile_candidate_index(database)
         await _migrate_task_source_marker_index(database)
+        await _migrate_content_publishing_record_index(database)
 
         # Initialize Beanie with document models
         await init_beanie(
@@ -402,6 +448,11 @@ async def init_db():
                 AgentRun,
                 AgentRunEvent,
                 ActionProposal,
+                AIEvalRun,
+                AIEvalCaseResult,
+                AITrace,
+                AISpan,
+                AISecurityEvent,
                 RAGKnowledgeSource,
                 RAGKnowledgeSourceVersion,
                 RAGKnowledgeChunk,
@@ -422,6 +473,9 @@ async def init_db():
                 MSA,
                 Meeting,
                 ContentCalendarItem,
+                ContentTemplate,
+                ContentComment,
+                ContentPublishingRecordDoc,
                 TimesheetEntry,
                 TimesheetSummary,
                 SalesCategory,

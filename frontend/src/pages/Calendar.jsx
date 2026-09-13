@@ -6,6 +6,7 @@ import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock3, LayoutGrid
 import toast from 'react-hot-toast'
 import { calendarApi } from '../api/calendar'
 import { contentCalendarApi } from '../api/contentCalendar'
+import { extractErrorMessage } from '../api/axios'
 import { projectsApi } from '../api/projects'
 import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, Skeleton } from '../components/ui'
 import { QuickCreateProjectModal } from '../components/relatedRecords/QuickCreateModals'
@@ -29,16 +30,23 @@ const HOUR_HEIGHT = 60
 const HOURS = Array.from({ length: TIMELINE_END_HOUR - TIMELINE_START_HOUR + 1 }, (_, index) => TIMELINE_START_HOUR + index)
 
 const STATUS_TONES = {
+  idea: 'draft',
+  briefing: 'scheduled',
+  script: 'scheduled',
+  production: 'scheduled',
+  internal_review: 'draft',
+  client_review: 'draft',
+  revision_required: 'draft',
+  approved: 'completed',
+  ready_to_publish: 'scheduled',
+  published: 'completed',
+  // Legacy fallback
   draft: 'draft',
   planned: 'scheduled',
   shoot_scheduled: 'scheduled',
   shot: 'completed',
   editing: 'scheduled',
-  internal_review: 'draft',
-  client_review: 'draft',
-  approved: 'completed',
   scheduled: 'scheduled',
-  published: 'completed',
 }
 
 const TYPE_LABELS = {
@@ -102,7 +110,7 @@ export default function Calendar() {
       toast.success('Content item created')
       setShowCreate(false)
     },
-    onError: (error) => toast.error(error?.response?.data?.detail || 'Could not create content item'),
+    onError: (error) => toast.error(extractErrorMessage(error?.response?.data?.detail) || 'Could not create content item'),
   })
 
   const updateMutation = useMutation(({ id, payload }) => contentCalendarApi.updateItem(id, payload), {
@@ -111,7 +119,7 @@ export default function Calendar() {
       toast.success('Content item updated')
       setDetailItem(null)
     },
-    onError: (error) => toast.error(error?.response?.data?.detail || 'Could not update content item'),
+    onError: (error) => toast.error(extractErrorMessage(error?.response?.data?.detail) || 'Could not update content item'),
   })
 
   const deleteMutation = useMutation((id) => contentCalendarApi.deleteItem(id), {
@@ -120,7 +128,7 @@ export default function Calendar() {
       toast.success('Content item deleted')
       setDetailItem(null)
     },
-    onError: (error) => toast.error(error?.response?.data?.detail || 'Could not delete content item'),
+    onError: (error) => toast.error(extractErrorMessage(error?.response?.data?.detail) || 'Could not delete content item'),
   })
 
   const items = asArray(calendarQuery.data, ['items'])
@@ -222,7 +230,7 @@ export default function Calendar() {
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Status</span>
             <select className="input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
               <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All statuses</option>
-              {['draft', 'planned', 'shoot_scheduled', 'shot', 'editing', 'internal_review', 'client_review', 'approved', 'scheduled', 'published'].map((status) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
+              {['idea', 'briefing', 'script', 'production', 'internal_review', 'client_review', 'revision_required', 'approved', 'ready_to_publish', 'published'].map((status) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
             </select>
           </label>
           <label className="block">
@@ -359,7 +367,7 @@ export default function Calendar() {
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{detailItem.title}</h3>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{detailItem.notes || detailItem.description || 'No notes.'}</p>
               </div>
-              <Badge label={String(detailItem.status || detailItem.type).replace(/_/g, ' ')} colorKey={STATUS_TONES[detailItem.status] || detailItem.type || 'draft'} />
+              <Badge label={String(detailItem.status || detailItem.type).replace(/_/g, ' ')} colorKey={STATUS_TONES[detailItem.status] || detailItem.type || 'idea'} />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Type" value={TYPE_LABELS[detailItem.content_type] || detailItem.content_type || detailItem.type} />
@@ -449,7 +457,7 @@ function parseAnyDate(value) {
 }
 
 function nextStatus(status) {
-  const flow = ['draft', 'planned', 'shoot_scheduled', 'shot', 'editing', 'internal_review', 'client_review', 'approved', 'scheduled', 'published']
+  const flow = ['idea', 'briefing', 'script', 'production', 'internal_review', 'client_review', 'revision_required', 'approved', 'ready_to_publish', 'published']
   const index = Math.max(flow.indexOf(String(status)), 0)
   return flow[Math.min(index + 1, flow.length - 1)]
 }
@@ -533,7 +541,7 @@ function MonthCalendar({ days, items, selected, setSelected, month, onOpen }) {
 }
 
 function BoardView({ items, onOpen }) {
-  const columns = ['draft', 'planned', 'shoot_scheduled', 'editing', 'internal_review', 'client_review', 'approved', 'scheduled', 'published']
+  const columns = ['idea', 'briefing', 'script', 'production', 'internal_review', 'client_review', 'revision_required', 'approved', 'ready_to_publish', 'published']
   return (
     <div className="grid gap-4 overflow-x-auto xl:grid-cols-3">
       {columns.map((status) => {
@@ -702,7 +710,7 @@ function AgendaView({ items, selected, onSelect, onOpen }) {
               <p className="font-medium text-gray-900 dark:text-gray-100">{item.title}</p>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatDateTime(date)}</p>
             </div>
-            <Badge label={String(item.status).replace(/_/g, ' ')} colorKey={STATUS_TONES[item.status] || 'draft'} />
+            <Badge label={String(item.status).replace(/_/g, ' ')} colorKey={STATUS_TONES[item.status] || 'idea'} />
           </button>
         )
       }) : <EmptyState title="No agenda items" description="Switch to calendar or board view." />}

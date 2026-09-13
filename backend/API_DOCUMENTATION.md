@@ -125,6 +125,31 @@ Personal memory preference request:
 
 Personal memory is tenant/user-owned through `UserMemory`. Saved preferences are advisory context only: they cannot override current workspace facts, permissions, policies, verified metrics, or action approval rules.
 
+### AI Security & Governance
+
+Admin-only endpoints for AI tool governance visibility. All endpoints require authentication, the `ai_agents` module gate, and Admin or Super Admin role. Records are tenant-scoped and contain no sensitive tool result payloads.
+
+| Method | Path | Handler | Description |
+|---|---|---|---|
+| GET | `/api/v1/ai-security/summary` | `get_security_summary` | Governance status overview: policy count, event counts (allow/deny/approval), top denied tools and reasons, injection detection counts. |
+| GET | `/api/v1/ai-security/events` | `get_security_events` | Recent security events with filtering by decision, agent, and capability. Returns safe metadata only (no raw prompts or tool results). |
+| GET | `/api/v1/ai-security/tool-policies` | `get_tool_policies` | Current tool policy registry snapshot: all registered governance policies with capability requirements, risk levels, and agent assignments. |
+
+Query parameters:
+
+| Endpoint | Parameter | Default | Description |
+|---|---|---|---|
+| `/summary` | `days` | `7` | Lookback window (1–90 days) |
+| `/events` | `days` | `7` | Lookback window (1–90 days) |
+| `/events` | `decision` | — | Filter by decision: `ALLOW`, `DENY`, `REQUIRE_APPROVAL` |
+| `/events` | `agent` | — | Filter by agent ID (e.g. `hr_operations`, `executive_operations`, `fast_fact`) |
+| `/events` | `capability` | — | Filter by capability/tool name (case-insensitive partial match) |
+| `/events` | `limit` | `50` | Max events to return (1–200) |
+| `/tool-policies` | `agent` | — | Filter policies by agent ID |
+| `/tool-policies` | `domain` | — | Filter policies by domain (e.g. `hr`, `projects`, `finance`) |
+
+Security principle: Every AI-originated business-data access passes through the governance boundary at execution time. These admin endpoints provide read-only operational visibility into that boundary's decisions.
+
 ### 2FA
 
 | Method | Path | Handler | Notes |
@@ -731,6 +756,17 @@ Work Request endpoints require the Tasks module gate and same-company access. Th
 | GET | `/api/v1/crm/leads/{lead_id}/negotiation` | `get_lead_negotiation` | Loads the Negotiation workspace after the lead reaches Negotiation. Enforces existing lead company and ownership access. |
 | PATCH | `/api/v1/crm/leads/{lead_id}/negotiation` | `patch_lead_negotiation` | Saves negotiation terms, keeps `negotiation_status` manually editable, syncs accepted/final amount to existing Sales lead fields where applicable, and records a CRM lead activity event. Agreement entry remains gated by `negotiation_status = accepted`. |
 
+### CRM Lead Notes
+
+Lead-scoped comments for a prospect. Notes are tenant-scoped (`company_id`) and follow the lead across pipeline stages; ownership access matches the lead workspace Notes tab (same-company for Admin/Sub Admin/Manager/Lead, assigned/created-by only for Employees).
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/crm/leads/{lead_id}/notes` | `list_lead_notes` | Lists non-deleted notes for a lead, newest-updated first, with author display names resolved from the tenant's users. |
+| POST | `/api/v1/crm/leads/{lead_id}/notes` | `create_lead_note` | Creates a note (`content` required) and publishes a `LeadNoteCreated` timeline event. |
+| PATCH | `/api/v1/crm/leads/{lead_id}/notes/{note_id}` | `update_lead_note` | Edits a note, marks it `is_edited`, and publishes a `LeadNoteUpdated` timeline event. |
+| DELETE | `/api/v1/crm/leads/{lead_id}/notes/{note_id}` | `delete_lead_note` | Soft-deletes a note (recorded `deleted_by`) and publishes a `LeadNoteDeleted` timeline event. |
+
 ### Sales Categories
 
 Sales category list/create/update/delete are tenant-scoped and require the canonical `sales_crm` module. Create is allowed for Admin, Manager, Lead, and Super Admin; delete is allowed for Admin, Manager, and Super Admin.
@@ -975,6 +1011,24 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | PATCH | `/api/v1/users/detail/{user_id}/status` | `update_user_status` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/my-team` | `get_my_team` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/users/reporting-options` | `get_reporting_options` | Uses router/endpoint dependencies where configured. |
+
+### Admin Permissions
+
+Centralized permission administration. All endpoints require company-admin or super-admin authentication.
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/admin/permissions/overview` | `get_permissions_overview` | Returns all users with module counts, role summary, permission catalog, and module catalog. |
+| GET | `/api/v1/admin/permissions/catalog` | `get_permission_catalog` | Returns the full `PERMISSION_CATALOG` (module → action → effect/scope metadata). |
+| GET | `/api/v1/admin/permissions/users/{user_id}` | `get_user_permissions` | Returns one user's `modules`, `capability_grants`, `permission_overrides`, and `effective_permissions`. |
+| PUT | `/api/v1/admin/permissions/users/{user_id}/modules` | `update_user_modules` | Replaces the user's `modules` list. Request body: `{ "modules": ["projects", "tasks"] }`. |
+| PUT | `/api/v1/admin/permissions/users/{user_id}` | `update_user_overrides` | Replaces the user's `permission_overrides`. Request body: `{ "overrides": [{ "permission": "projects.create", "effect": "deny" }] }`. |
+| POST | `/api/v1/admin/permissions/users/{user_id}/promote` | `promote_to_sub_admin` | Promotes a user to `sub_admin`. |
+| POST | `/api/v1/admin/permissions/users/{user_id}/demote` | `demote_from_sub_admin` | Demotes a `sub_admin` back to their previous role. |
+| PUT | `/api/v1/admin/permissions/departments/{dept_id}/modules` | `update_department_modules` | Updates the department default modules. |
+| POST | `/api/v1/admin/permissions/departments/{dept_id}/apply` | `apply_department_modules` | Applies department default modules to all users in the department. |
+
+**Frontend integration:** The `UserAccessEditor` component (shared by `/users` Edit modal and `/admin-permissions` page) uses these endpoints via `frontend/src/api/permissions.js`. Effective permissions are resolved server-side by `authorization_service.py` through: protected role bypass → `capability_grants` → department defaults → user overrides.
 
 ### Versions
 

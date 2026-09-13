@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
 import { PRODUCT_PREVIEW } from '../config/visualAssets';
+import { AttendancePreview, ExecutiveAiPreview, PeopleOpsPreview, RecruitmentPreview, RevenuePreview, WorkPreview } from '../components/landing/CapabilityPreviews';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Image metadata — centralized so URLs, alt text and loading strategy stay
@@ -10,46 +11,60 @@ import { PRODUCT_PREVIEW } from '../config/visualAssets';
    ──────────────────────────────────────────────────────────────────────────── */
 const IMAGES = {
   productPreview: PRODUCT_PREVIEW,
-  teamCollaboration: { src: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1200&q=80', alt: 'Team collaborating around a table in a bright modern office', loading: 'lazy' },
-  officeMeeting: { src: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=1200&q=80', alt: 'Business team in a strategy meeting reviewing documents', loading: 'lazy' },
-  workspace: { src: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80', alt: 'Open plan office workspace with desks and natural light', loading: 'lazy' },
+  teamPhoto: { src: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=1200&q=80', alt: 'Business team in a strategy meeting reviewing documents', loading: 'lazy' },
+  officeMeeting: { src: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1200&q=80', alt: 'Team collaborating around a table in a bright modern office', loading: 'lazy' },
   portraitMan1: { src: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=400&q=80', alt: 'Portrait of Rahul Mehta, CEO of TechNovo Solutions', loading: 'lazy' },
   portraitWoman: { src: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80', alt: 'Portrait of Neha Kapoor, Head of HR at TechNovate', loading: 'lazy' },
   portraitMan2: { src: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=400&q=80', alt: 'Portrait of Arjun Mehta, Delivery Head at PixelCraft', loading: 'lazy' },
 };
 
 const NAV_LINKS = [
-  { label: 'Platform', href: '#platform' },
+  { label: 'Product', href: '#platform' },
   { label: 'Live Demo', href: '#demo-preview' },
-  { label: 'Compare', href: '#comparison' },
-  { label: 'AI Workforce', href: '#ai-workforce' },
+  { label: 'Executive AI', href: '#executive-ai' },
+  { label: 'Company', href: '#built-by' },
   { label: 'Pricing', href: '#pricing' },
   { label: 'FAQ', href: '#faq' },
 ];
 
-const MODULES = [
-  { name: 'Tasks & Projects', desc: 'Kanban boards, subtasks, sprints, epics and automations your team will actually enjoy.', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-  { name: 'CRM & Sales', desc: 'Pipeline stages, leads, contacts, proposals and client workspaces in one flow.', icon: 'M3 21v-4m0 0V5a2 2 0 012-2h6a2 2 0 012 2v12m-10 0h10m0 0v4m0-8V5a2 2 0 012-2h6a2 2 0 012 2v12' },
-  { name: 'HRMS & People', desc: 'Employee profiles, documents, leave, appraisals and a full employee self-service portal.', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
-  { name: 'Attendance & Payroll', desc: 'Biometric sync, policy engine, corrections, salary structures and payslip generation.', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
-  { name: 'Recruitment', desc: 'Job posts, candidate pipeline, interviews, offers and a public careers portal.', icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 7l2 2-2 2m-4 0l-2-2 2-2' },
-  { name: 'Invoicing & Finance', desc: 'GST-ready invoices, ledger, payments and MSA signing without leaving the platform.', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-  { name: 'Meetings & Calendar', desc: 'Scheduling, agendas, notes and a shared workspace calendar for the whole company.', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
-  { name: 'Documents & SOPs', desc: 'HR documents, standard operating procedures and versioned files in one library.', icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2zm5-16v6h6' },
-  { name: 'Chat & Collaboration', desc: 'Team chat, group conversations and notifications tied to real work — not noise.', icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' },
-  { name: 'Executive AI', desc: 'Ask your whole company anything. The Executive Agent answers with KPIs, risks and evidence.', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
-  { name: 'Automation', desc: 'Workflows, scheduled jobs and AI assistants that close the loop on routine work.', icon: 'M13 10V3L4 14h7v7l9-11h-7zM19 4v6m0 0v6m0-6h6m-6 0h-6' },
-  { name: 'Security & Tenancy', desc: 'Multi-tenant isolation, role-based access, audit logs and enterprise-grade encryption.', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
+/* Six connected capability areas — every card ships with a small UI preview. */
+const CAPABILITIES = [
+  { label: 'People Operations', title: 'Employees, HR & payroll', desc: 'Employee records, HR documents, leave, appraisal and payroll flows that stay in sync with the work your people do.', chips: ['Employees', 'HR', 'Leave', 'Payroll'], preview: 'people' },
+  { label: 'Work Management', title: 'Tasks, projects & sprints', desc: 'Kanban boards, subtasks, timesheets and project delivery your team actually enjoys using.', chips: ['Tasks', 'Projects', 'Sprints', 'Timesheets'], preview: 'work' },
+  { label: 'Revenue Operations', title: 'Sales, CRM & clients', desc: 'Leads, pipelines, proposals and client workspaces — from first touch to invoice in one flow.', chips: ['Sales', 'CRM', 'Clients'], preview: 'revenue' },
+  { label: 'Smart Attendance', title: 'Biometric attendance with workforce visibility', desc: 'eTimeOffice sync, policy engine, corrections and live monitoring across every shift.', chips: ['Biometric', 'eTimeOffice', 'Live monitor'], preview: 'attendance' },
+  { label: 'Recruitment', title: 'Jobs to offers', desc: 'Job posts, candidate pipeline, interviews, offers and a public careers portal.', chips: ['Jobs', 'Candidates', 'Interviews', 'Offers'], preview: 'recruitment' },
+  { label: 'Executive AI', title: 'AI over real company data', desc: 'A cross-company agent that answers questions with evidence from your actual operations.', chips: ['Operations Agent', 'Answers', 'Actions'], preview: 'executive' },
 ];
 
-const AI_EMPLOYEES = [
-  { name: 'AI Sales Manager', img: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=400&q=80', alt: 'Portrait of a sales professional', color: 'text-orange-600', bg: 'bg-orange-100 dark:bg-orange-950/30', points: ['Lead qualification', 'Follow-ups & nurturing', 'Proposals & quotations', 'Deal tracking & insights'] },
-  { name: 'AI HR Manager', img: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80', alt: 'Portrait of an HR professional', color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-950/30', points: ['Resume screening', 'Interview scheduling', 'JD & offer letters', 'Employee support'] },
-  { name: 'AI Project Manager', img: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=400&q=80', alt: 'Portrait of a project management professional', color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-950/30', points: ['Task planning', 'Progress tracking', 'Risk & issue detection', 'Timeline management'] },
-  { name: 'AI Marketing Assistant', img: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=400&q=80', alt: 'Portrait of a marketing professional', color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-950/30', points: ['Content creation', 'Social media posts', 'Ad copy & creatives', 'Campaign ideas'] },
-  { name: 'AI Operations Manager', img: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=400&q=80', alt: 'Portrait of an operations professional', color: 'text-orange-600', bg: 'bg-orange-100 dark:bg-orange-950/30', points: ['Workflow optimization', 'Process automation', 'Bottleneck detection', 'Performance reports'] },
-  { name: 'AI Business Analyst', img: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80', alt: 'Portrait of a business analyst', color: 'text-blue-700', bg: 'bg-blue-100 dark:bg-blue-950/30', points: ['Data analysis', 'Business insights', 'Reports & dashboards', 'Forecasting & trends'] },
+const CAPABILITY_PREVIEWS = {
+  people: PeopleOpsPreview,
+  work: WorkPreview,
+  revenue: RevenuePreview,
+  attendance: AttendancePreview,
+  recruitment: RecruitmentPreview,
+  executive: ExecutiveAiPreview,
+};
+
+/* How modules connect — the story of the page. */
+const FLOW = [
+  { step: 'People', detail: 'Employees · HR · Payroll' },
+  { step: 'Work', detail: 'Tasks · Projects · Timesheets' },
+  { step: 'Revenue', detail: 'Sales · CRM · Clients' },
+  { step: 'Operations', detail: 'Attendance · Documents' },
+  { step: 'Intelligence', detail: 'Executive AI · Agents' },
 ];
+
+/* Company proof — AlphaNexis agency track record, never SynTask product stats. */
+const ALPHANEXIS_PROOF = [
+  { v: '8+', l: 'Years of expertise' },
+  { v: '100+', l: 'Projects delivered' },
+  { v: '30+', l: 'Active clients' },
+  { v: '3+', l: 'Countries served' },
+  { v: '96%', l: 'Client retention' },
+];
+
+const RECOGNITION = ['AWS Partner', 'Google Cloud', 'Microsoft Azure', 'DPIIT Startup India', 'MSME'];
 
 const PLANS = [
   { name: 'Starter', priceMonthly: '₹1,999', priceYearly: '₹1,599', tagline: 'Perfect for small teams getting started.', color: 'text-green-600 dark:text-green-400', border: 'border-green-500', cta: 'border border-green-500 text-green-600 dark:text-green-400 hover:bg-green-50', features: ['Up to 5 Users', 'Sales OS', 'Project OS', 'People OS', 'Basic Reports', 'Email Support'] },
@@ -146,35 +161,7 @@ const COMPARISON = [
   { feature: 'Integrations', cells: ['1000+', '200+', '1500+', '1000+', '3000+'] },
 ];
 
-const STATS = [
-  { target: 500, suffix: '+', label: 'Companies Trust SynTask' },
-  { target: 25, suffix: '+', label: 'Countries Worldwide' },
-  { target: 10, suffix: 'M+', label: 'Tasks Automated' },
-  { target: 1, suffix: 'M+', label: 'Users Empowered' },
-  { target: 98, suffix: '%', label: 'Customer Satisfaction' },
-];
-
 const COMPETITORS = ['ClickUp', 'Monday.com', 'HubSpot', 'Zoho One', 'Salesforce'];
-
-/* Counter animation for the stats bar — runs once when the section scrolls into view. */
-function useCounter(active, target, suffix) {
-  const [value, setValue] = useState(0);
-  useEffect(() => {
-    if (!active) return undefined;
-    let current = 0;
-    const step = Math.max(1, target / 90);
-    const id = setInterval(() => {
-      current += step;
-      if (current >= target) {
-        current = target;
-        clearInterval(id);
-      }
-      setValue(Math.floor(current));
-    }, 16);
-    return () => clearInterval(id);
-  }, [active, target]);
-  return `${value.toLocaleString('en-IN')}${suffix}`;
-}
 
 function Logo() {
   return (
@@ -193,24 +180,6 @@ export default function NewLanding() {
   const [activeTab, setActiveTab] = useState('crm');
   const [yearly, setYearly] = useState(false);
   const [openFaq, setOpenFaq] = useState(0);
-  const [statsVisible, setStatsVisible] = useState(false);
-  const statsRef = useRef(null);
-
-  useEffect(() => {
-    const el = statsRef.current;
-    if (!el) return undefined;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setStatsVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.3 },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   const [empCount, setEmpCount] = useState(25);
   const [toolCount, setToolCount] = useState(8);
@@ -309,13 +278,13 @@ export default function NewLanding() {
             <div data-purpose="hero-content">
               <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand-orange/30 bg-orange-50/80 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-widest text-brand-orange dark:bg-orange-950/30">
                 <span className="h-1.5 w-1.5 rounded-full bg-brand-orange" />
-                The AI Business Operating System
+                Built by AlphaNexis
               </span>
               <h1 className="text-4xl font-extrabold leading-[1.08] tracking-tight text-slate-900 dark:text-white sm:text-5xl xl:text-6xl">
-                Run your entire company in <span className="text-brand-orange">one workspace.</span>
+                Run your company from <span className="text-brand-orange">one connected workspace.</span>
               </h1>
               <p className="mt-5 max-w-xl text-base leading-relaxed text-slate-600 dark:text-gray-300 sm:text-lg">
-                Tasks, projects, CRM, sales, HRMS, attendance, payroll, recruitment, meetings and Executive AI — no more juggling six tools and scattered spreadsheets.
+                SynTask connects people, work, customers and company intelligence. Employees and HR, tasks and projects, sales and clients, attendance and payroll — one system, one source of truth, with Executive AI that reasons over real operational data.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <Link to="/login" className="group inline-flex items-center gap-2 rounded-xl bg-brand-orange px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600">
@@ -327,20 +296,17 @@ export default function NewLanding() {
                   Watch 2-Min Tour
                 </a>
               </div>
-              <dl className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {[
-                  { v: '500+', l: 'Companies' },
-                  { v: '10M+', l: 'Tasks automated' },
-                  { v: '60%', l: 'Cost savings' },
-                  { v: '24/7', l: 'AI workforce' },
-                ].map((s) => (
-                  <div key={s.l} className="rounded-xl border border-gray-100 bg-gray-50/60 p-3 dark:border-slate-800 dark:bg-[#111224]/60">
-                    <dt className="sr-only">{s.l}</dt>
-                    <dd className="text-lg font-extrabold text-slate-900 dark:text-white">{s.v}</dd>
-                    <dd className="text-[11px] font-medium text-gray-500 dark:text-gray-400">{s.l}</dd>
-                  </div>
+              <ul className="mt-9 flex flex-wrap items-center gap-2">
+                {['Employees + HR', 'Tasks + Projects', 'Sales + Clients', 'Attendance + Operations', 'Company Data', 'Executive AI'].map((c) => (
+                  <li key={c} className="rounded-full border border-gray-200 bg-gray-50/70 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-[#111224]/70 dark:text-gray-200">
+                    {c}
+                  </li>
                 ))}
-              </dl>
+              </ul>
+              <p className="mt-4 text-xs font-medium text-gray-500 dark:text-gray-400">
+                AI-native · Data-driven · Global reach —{' '}
+                <span className="font-bold text-slate-700 dark:text-gray-200">one operating workspace for your entire company</span>
+              </p>
             </div>
 
             <div className="relative" data-purpose="hero-image-container">
@@ -357,27 +323,29 @@ export default function NewLanding() {
               <div className="absolute -bottom-4 left-4 hidden items-center gap-3 rounded-xl border border-gray-100 bg-white/95 px-4 py-3 shadow-lg backdrop-blur dark:border-slate-800 dark:bg-[#111224]/95 sm:flex">
                 <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40">✓</span>
                 <div>
-                  <p className="text-xs font-bold text-slate-900 dark:text-white">97.2% On-time delivery</p>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Across all active projects</p>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">One connected workspace</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">HR · Tasks · CRM · Attendance · Executive AI</p>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ── Industries ───────────────────────────────────────────────────── */}
-        <section className="border-y border-gray-100 bg-gray-50/50 py-10 dark:border-slate-800 dark:bg-[#111224]/50">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
-            <p className="mb-6 text-center text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
-              Trusted by modern service businesses
+        {/* ── Trust strip — AlphaNexis company proof ────────────────────────── */}
+        <section className="border-y border-gray-100 bg-gray-50/50 dark:border-slate-800 dark:bg-[#111224]/50">
+          <div className="mx-auto flex max-w-7xl flex-col items-center gap-6 px-4 py-8 sm:px-6 lg:flex-row lg:justify-between">
+            <p className="shrink-0 text-sm font-bold uppercase tracking-widest text-slate-900 dark:text-white">
+              Built by <span className="text-brand-orange">AlphaNexis</span>
             </p>
-            <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              {['Digital Marketing Agencies', 'Creative Agencies', 'IT Services Companies', 'Software Development', 'Product Engineering', 'Consulting & Professional Services'].map((i) => (
-                <li key={i} className="rounded-xl border border-gray-100 bg-white px-4 py-4 text-center text-sm font-semibold text-slate-800 dark:border-slate-800 dark:bg-[#0A0B1A] dark:text-gray-200">
-                  {i}
-                </li>
+            <dl className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
+              {ALPHANEXIS_PROOF.map((s) => (
+                <div key={s.l} className="flex items-baseline gap-2">
+                  <dt className="sr-only">{s.l}</dt>
+                  <dd className="text-xl font-extrabold text-slate-900 dark:text-white">{s.v}</dd>
+                  <dd className="text-xs font-medium text-gray-500 dark:text-gray-400">{s.l}</dd>
+                </div>
               ))}
-            </ul>
+            </dl>
           </div>
         </section>
 
@@ -442,7 +410,7 @@ export default function NewLanding() {
           </div>
         </section>
 
-        {/* ── Platform modules ─────────────────────────────────────────────── */}
+        {/* ── Connected operations + capability cards ──────────────────────── */}
         <section id="platform" className="scroll-mt-20 bg-gray-50/50 py-16 dark:bg-[#111224]/50 lg:py-24">
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <div className="mx-auto max-w-2xl text-center">
@@ -452,28 +420,40 @@ export default function NewLanding() {
                 Replace multiple tools and manual work with a single system where tasks, people, clients and money connect.
               </p>
             </div>
-            <ul className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {MODULES.map((m, mi) => (
-                <li key={m.name} className="group rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand-orange/40 hover:shadow-md dark:border-slate-800 dark:bg-[#0A0B1A]">
-                  <div className="mb-3.5 flex items-center justify-between gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-brand-orange dark:bg-orange-950/30">
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d={m.icon} /></svg>
-                    </span>
-                    {/* Tiny product sparkline — decorative, deterministic per card */}
-                    <span aria-hidden="true" className="flex h-8 items-end gap-0.5 opacity-50">
-                      {[0, 1, 2, 3, 4].map((b) => (
-                        <span
-                          key={b}
-                          className="w-1 rounded-sm bg-brand-orange/70 transition-all group-hover:bg-brand-orange"
-                          style={{ height: `${34 + ((mi * 13 + b * 17) % 52)}%` }}
-                        />
-                      ))}
-                    </span>
-                  </div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">{m.name}</h3>
-                  <p className="mt-1.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{m.desc}</p>
+
+            {/* Connected operations — People → Work → Revenue → Operations → Intelligence */}
+            <ol className="mt-12 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              {FLOW.map((f, i) => (
+                <li key={f.step} className="relative rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-[#0A0B1A]">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-orange/10 text-[11px] font-extrabold text-brand-orange">{i + 1}</span>
+                  <p className="mt-2.5 text-sm font-extrabold text-slate-900 dark:text-white">{f.step}</p>
+                  <p className="mt-0.5 text-[11px] font-medium leading-relaxed text-gray-500 dark:text-gray-400">{f.detail}</p>
                 </li>
               ))}
+            </ol>
+
+            {/* Six capability cards, each with a real mini UI preview */}
+            <ul className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {CAPABILITIES.map((cap) => {
+                const Preview = CAPABILITY_PREVIEWS[cap.preview];
+                return (
+                  <li key={cap.label} className="group relative flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand-orange/40 hover:shadow-lg dark:border-slate-800 dark:bg-[#0A0B1A]">
+                    <div className="flex flex-1 flex-col p-5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-brand-orange">{cap.label}</span>
+                      <h3 className="mt-1.5 text-lg font-extrabold tracking-tight text-slate-900 dark:text-white">{cap.title}</h3>
+                      <p className="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{cap.desc}</p>
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {cap.chips.map((c) => (
+                          <span key={c} className="rounded-full border border-gray-100 bg-gray-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-gray-300">{c}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="border-t border-gray-100 bg-gray-50/70 p-4 dark:border-slate-800 dark:bg-[#111224]/70">
+                      <Preview />
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </section>
@@ -511,9 +491,9 @@ export default function NewLanding() {
                 </ul>
               </div>
               <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-100 bg-gray-50/60 p-8 text-center dark:border-slate-800 dark:bg-[#111224]/60">
-                <img src={IMAGES.teamCollaboration.src} alt={IMAGES.teamCollaboration.alt} loading={IMAGES.teamCollaboration.loading} width="400" height="300" className="mb-6 h-36 w-full rounded-xl object-cover" />
+                <img src={IMAGES.teamPhoto.src} alt={IMAGES.teamPhoto.alt} loading={IMAGES.teamPhoto.loading} width="400" height="300" className="mb-6 h-36 w-full rounded-xl object-cover" />
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">Ready to see the difference?</h3>
-                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Thousands of service companies run their entire business on SynTask.</p>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Most teams juggle separate tools for sales, projects and people. SynTask connects them in one workspace.</p>
                 <div className="mt-6 w-full space-y-3">
                   <Link to="/login" className="block w-full rounded-xl bg-brand-orange py-3 text-center text-sm font-bold text-white transition-colors hover:bg-orange-600">Start Free Trial</Link>
                   <a href="#pricing" className="block w-full rounded-xl border border-gray-200 py-3 text-center text-sm font-bold text-slate-800 transition-colors hover:bg-gray-50 dark:border-slate-700 dark:text-white dark:hover:bg-slate-800/70">See Pricing</a>
@@ -556,80 +536,137 @@ export default function NewLanding() {
           </div>
         </section>
 
-        {/* ── AI workforce ─────────────────────────────────────────────────── */}
-        <section id="ai-workforce" className="scroll-mt-20 bg-gray-50/50 py-16 dark:bg-[#111224]/50 lg:py-24">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
-            <div className="grid items-center gap-10 lg:grid-cols-2">
-              <div>
-                <span className="text-xs font-extrabold uppercase tracking-widest text-brand-orange">AI Workforce</span>
-                <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
-                  An AI employee for every function
-                </h2>
-                <p className="mt-4 max-w-xl text-sm leading-relaxed text-gray-500 dark:text-gray-400 sm:text-base">
-                  Delegate repetitive work, automate complex processes, and achieve more with AI teammates trained on best practices and your company data. Always on. Always learning.
-                </p>
-                <ul className="mt-6 space-y-3">
-                  {['AI employees for every department', 'Trained on best practices & your data', 'Always-on, always-learning, always-delivering'].map((item) => (
-                    <li key={item} className="flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-200">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-orange text-[10px] font-bold text-white">✓</span>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-8 flex flex-wrap gap-3">
-                  <Link to="/login" className="rounded-xl bg-brand-orange px-6 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600">Start Free Trial</Link>
-                  <a href="#pricing" className="rounded-xl border border-gray-200 px-6 py-3 text-sm font-bold text-slate-800 transition-colors hover:bg-gray-50 dark:border-slate-700 dark:text-white dark:hover:bg-slate-800/70">See Pricing</a>
-                </div>
+        {/* ── Executive AI — Ask your company, not another chatbot ────────── */}
+        <section id="executive-ai" className="scroll-mt-20 bg-gray-50/50 py-16 dark:bg-[#111224]/50 lg:py-24">
+          <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2">
+            <div>
+              <span className="text-xs font-extrabold uppercase tracking-widest text-brand-orange">Executive AI</span>
+              <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
+                Ask your company, not another chatbot.
+              </h2>
+              <p className="mt-4 max-w-xl text-sm leading-relaxed text-gray-500 dark:text-gray-400 sm:text-base">
+                Executive AI connects to your real operational data — HR records, project boards, timesheets, pipeline and payroll — and answers with evidence, not guesses. Ask once, across every module.
+              </p>
+              <ul className="mt-6 space-y-3">
+                {['Answers cite the exact projects, people and deals behind every claim', 'Runs across People, Work, Revenue and Operations in one conversation', 'Flags risks and recommends actions your team can execute directly'].map((item) => (
+                  <li key={item} className="flex items-start gap-3 text-sm font-medium text-gray-700 dark:text-gray-200">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-orange text-[10px] font-bold text-white">✓</span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link to="/login" className="rounded-xl bg-brand-orange px-6 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600">Talk to Executive AI</Link>
+                <a href="#platform" className="rounded-xl border border-gray-200 px-6 py-3 text-sm font-bold text-slate-800 transition-colors hover:bg-gray-50 dark:border-slate-700 dark:text-white dark:hover:bg-slate-800/70">See the connected modules</a>
               </div>
-              <img
-                src={IMAGES.officeMeeting.src}
-                alt={IMAGES.officeMeeting.alt}
-                loading={IMAGES.officeMeeting.loading}
-                width="800"
-                height="520"
-                className="h-64 w-full rounded-2xl object-cover shadow-lg sm:h-80 lg:h-96"
-              />
             </div>
 
-            <ul className="mt-14 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-              {AI_EMPLOYEES.map((role) => (
-                <li key={role.name} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-[#0A0B1A]">
-                  <img
-                    src={role.img}
-                    alt={role.alt}
-                    loading="lazy"
-                    width="400"
-                    height="300"
-                    className="mb-4 aspect-[4/3] w-full rounded-xl object-cover"
-                  />
-                  <span className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl text-base font-bold ${role.bg} ${role.color}`}>
-                    {role.name.replace('AI ', '').charAt(0)}
+            <div className="relative" data-purpose="executive-ai-preview">
+              <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-2xl dark:border-slate-800 dark:bg-[#0A0B1A]">
+                <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3.5 dark:border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-orange to-amber-500 text-xs font-extrabold text-white">EX</span>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">Executive Agent</p>
+                      <p className="text-[10px] text-gray-400">Reading live company data</p>
+                    </div>
+                  </div>
+                  <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Connected
                   </span>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">{role.name}</h3>
-                  <ul className="mt-2.5 space-y-1.5">
-                    {role.points.map((p) => (
-                      <li key={p} className="flex items-start gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
-                        <span className="mt-0.5 text-brand-orange">•</span>
-                        {p}
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
+                </div>
+                <div className="space-y-4 p-5">
+                  <div className="flex justify-end">
+                    <div className="max-w-[85%] rounded-2xl rounded-br-md bg-brand-orange px-4 py-2.5 text-xs font-medium text-white">
+                      What needs attention across the company this week?
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-orange to-amber-500 text-[10px] font-extrabold text-white">EX</span>
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="rounded-2xl rounded-tl-md border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-[#111224]">
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            ['3', 'projects need attention', 'text-orange-600 dark:text-orange-400'],
+                            ['2', 'employees overloaded', 'text-amber-600 dark:text-amber-400'],
+                            ['₹4.2L', 'pipeline at risk', 'text-rose-600 dark:text-rose-400'],
+                          ].map(([v, l, cls]) => (
+                            <div key={l} className="rounded-lg bg-white p-2.5 text-center shadow-sm dark:bg-slate-900">
+                              <p className={`text-base font-extrabold sm:text-lg ${cls}`}>{v}</p>
+                              <p className="text-[10px] font-medium leading-tight text-gray-500 dark:text-gray-400">{l}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 space-y-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-300">
+                          <p className="flex items-center gap-1.5"><span className="text-brand-orange">›</span> Project Atlas slipped 3 days — task board + timesheets</p>
+                          <p className="flex items-center gap-1.5"><span className="text-brand-orange">›</span> ₹4.2L deal idle 9 days — CRM pipeline + activity log</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {['Evidence: 6 sources', 'Risks', 'Recommended actions'].map((chip) => (
+                          <span key={chip} className="rounded-full border border-gray-100 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-gray-200">{chip}</span>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-gray-400">Grounded in projects · timesheets · CRM · payroll — not guesswork.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* ── Stats ────────────────────────────────────────────────────────── */}
-        <section ref={statsRef} className="bg-white py-16 dark:bg-[#0A0B1A] lg:py-20">
+        {/* ── Built by AlphaNexis ──────────────────────────────────────────── */}
+        <section id="built-by" className="scroll-mt-20 bg-white py-16 dark:bg-[#0A0B1A] lg:py-24">
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
-            <div className="relative overflow-hidden rounded-[2rem] bg-slate-900 px-6 py-12 dark:bg-slate-950 sm:px-12">
-              <div className="pointer-events-none absolute -right-16 top-0 h-full w-72 rotate-12 bg-white/5" />
-              <dl className="relative grid grid-cols-2 gap-x-6 gap-y-10 lg:grid-cols-5">
-                {STATS.map((s) => (
-                  <StatItem key={s.label} active={statsVisible} {...s} />
-                ))}
-              </dl>
+            <div className="mx-auto max-w-2xl text-center">
+              <span className="text-xs font-extrabold uppercase tracking-widest text-brand-orange">Built by AlphaNexis</span>
+              <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">Built by a team that builds operational systems.</h2>
+              <p className="mt-3 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+                AlphaNexis has spent 8+ years engineering CRM systems, project management, sales applications and business automation — including internal operations middleware that connects business data with LLM agents. SynTask is that experience, productized.
+              </p>
+            </div>
+
+            <div className="mt-12 grid gap-6 md:grid-cols-2">
+              <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-7 dark:border-slate-800 dark:bg-[#111224]/60 sm:p-9">
+                <h3 className="text-sm font-extrabold uppercase tracking-widest text-slate-900 dark:text-white">What we build</h3>
+                <ul className="mt-5 space-y-3.5">
+                  {[
+                    ['CRM systems', 'Sales pipelines and client lifecycles for service businesses'],
+                    ['Project management', 'Delivery systems for agencies and IT companies'],
+                    ['Business automation', 'Workflows that remove manual, repetitive operations work'],
+                    ['AI & LLM middleware', 'Connecting real business data with AI agents that act on it'],
+                  ].map(([t, d]) => (
+                    <li key={t} className="flex items-start gap-3">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-orange text-[10px] font-bold text-white">✓</span>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">{t}</p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{d}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-7 dark:border-slate-800 dark:bg-[#111224]/60 sm:p-9">
+                <h3 className="text-sm font-extrabold uppercase tracking-widest text-slate-900 dark:text-white">Company recognition</h3>
+                <p className="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">Recognition earned by AlphaNexis as a software partner and startup — a marker of the standards behind SynTask.</p>
+                <ul className="mt-5 flex flex-wrap gap-2.5">
+                  {RECOGNITION.map((r) => (
+                    <li key={r} className="rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{r}</li>
+                  ))}
+                </ul>
+                <dl className="mt-7 grid grid-cols-2 gap-x-6 gap-y-5 border-t border-gray-200 pt-6 dark:border-slate-800 sm:grid-cols-3">
+                  {ALPHANEXIS_PROOF.map((s) => (
+                    <div key={s.l}>
+                      <dt className="sr-only">{s.l}</dt>
+                      <dd className="text-2xl font-extrabold text-slate-900 dark:text-white">{s.v}</dd>
+                      <dd className="mt-1 text-[11px] font-medium text-gray-500 dark:text-gray-400">{s.l}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
             </div>
           </div>
         </section>
@@ -668,9 +705,9 @@ export default function NewLanding() {
             </div>
             <div className="mt-12 grid gap-6 md:grid-cols-3">
               {[
-                { quote: 'We replaced 6 different tools with SynTask and saved over ₹18 lakhs annually. Our team is 3X more productive now.', name: 'Rahul Mehta', role: 'CEO, TechNovo Solutions', img: IMAGES.portraitMan1 },
-                { quote: 'The AI HR Manager cut our hiring time by 60%. From screening to scheduling, everything is now effortless.', name: 'Neha Kapoor', role: 'Head of HR, TechNovate', img: IMAGES.portraitWoman },
-                { quote: 'Projects stay on track, risks stay under control, and clients stay happy. It\'s like having a co-pilot for delivery.', name: 'Arjun Mehta', role: 'Delivery Head, PixelCraft', img: IMAGES.portraitMan2 },
+                { quote: 'We replaced six separate tools — sales, projects and people finally live on one record set, and the Executive Agent surfaces what actually needs attention.', name: 'Rahul Mehta', role: 'CEO, TechNovo Solutions', img: IMAGES.portraitMan1 },
+                { quote: 'From screening to onboarding, recruitment and HR sit on the same records as the rest of the company. No more re-keying data between systems.', name: 'Neha Kapoor', role: 'Head of HR, TechNovate', img: IMAGES.portraitWoman },
+                { quote: 'Tasks, timesheets and client pipeline are connected, so projects stay on track and risks surface early. It is like having a co-pilot for delivery.', name: 'Arjun Mehta', role: 'Delivery Head, PixelCraft', img: IMAGES.portraitMan2 },
               ].map((t) => (
                 <figure key={t.name} className="flex flex-col rounded-2xl border border-gray-100 bg-gray-50/60 p-7 dark:border-slate-800 dark:bg-[#111224]/60">
                   <span className="text-3xl leading-none text-brand-orange">“</span>
@@ -770,9 +807,9 @@ export default function NewLanding() {
                 Estimate annual savings from replacing scattered tools with one platform — fewer subscriptions, less manual work, faster billing.
               </p>
               <img
-                src={IMAGES.workspace.src}
-                alt={IMAGES.workspace.alt}
-                loading={IMAGES.workspace.loading}
+                src={IMAGES.officeMeeting.src}
+                alt={IMAGES.officeMeeting.alt}
+                loading={IMAGES.officeMeeting.loading}
                 width="800"
                 height="500"
                 className="mt-8 hidden h-56 w-full rounded-2xl object-cover shadow-md lg:block"
@@ -868,7 +905,7 @@ export default function NewLanding() {
                 <div>
                   <h2 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">Stop switching. Start scaling.</h2>
                   <p className="mt-3 max-w-md text-sm leading-relaxed text-gray-400 sm:text-base">
-                    Join 500+ service companies using SynTask to automate operations, deliver better and grow faster.
+                    Run your company from one connected workspace — people, work, revenue and operations in a single system built by a team that builds operational software.
                   </p>
                   <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-xs font-medium text-gray-300">
                     <li className="flex items-center gap-1.5"><span className="text-green-500">✓</span> 14 days free trial</li>
@@ -964,13 +1001,3 @@ export default function NewLanding() {
   );
 }
 
-function StatItem({ active, target, suffix, label }) {
-  const value = useCounter(active, target, suffix);
-  return (
-    <div className="text-center">
-      <dt className="sr-only">{label}</dt>
-      <dd className="text-2xl font-bold text-white sm:text-3xl">{value}</dd>
-      <dd className="mt-1 text-[10px] font-medium uppercase tracking-wider text-gray-400">{label}</dd>
-    </div>
-  );
-}

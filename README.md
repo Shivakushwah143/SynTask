@@ -71,8 +71,9 @@ backend/app/models/      MongoDB document models
 backend/app/schemas/     Pydantic request/response schemas
 backend/scripts/         One-off setup and migration scripts
 frontend/                React/Vite single-page app
-frontend/src/api/        Axios API client modules
-frontend/src/components/ Reusable UI components
+frontend/src/api/        Axios API client modules (permissions.js, etc.)
+frontend/src/components/ Reusable UI components (permissions/UserAccessEditor.jsx, etc.)
+frontend/src/hooks/      React hooks (usePermissions.js for can/effective/hasModule)
 frontend/src/pages/      Application pages
 docs/                    Testing guide and diagrams
 ```
@@ -103,6 +104,8 @@ docs/                    Testing guide and diagrams
 | Employee | Individual task/ticket work | No users |
 
 Employees can be assigned as a project Leader without changing their global role. In that case, the backend grants Lead-level permissions only for that project and recalculates access from current project membership on every protected request.
+
+The Admin Permissions page supports catalog-backed action overrides in addition to module access. An override can inherit, allow, or deny a business capability and may be scoped to the relevant resource relationship; tenant isolation and protected platform administration remain non-configurable. See the [authorization override ADR](docs/architecture/decisions/2026-09-10-granular-authorization-overrides.md).
 
 ## Multi-Tenancy
 SynTask uses a single database with tenant isolation through `company_id` fields. Most tenant-owned models store `company_id`, and API queries use the authenticated user from `get_current_user()` plus dependency helpers to restrict access. Super admins can cross tenant boundaries; company users are scoped to their company.

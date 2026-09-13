@@ -141,11 +141,22 @@ function ArticleList({ articles }) {
         <Link
           key={article.path}
           to={article.path}
-          className="rounded-lg border border-gray-200 bg-white p-4 transition hover:border-primary-300 hover:shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:hover:border-primary-700"
+          className="flex items-start gap-4 rounded-lg border border-gray-200 bg-white p-4 transition hover:border-primary-300 hover:shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:hover:border-primary-700"
         >
-          <p className="text-xs font-semibold uppercase text-primary-600 dark:text-primary-300">{article.moduleTitle}</p>
-          <h3 className="mt-1 font-semibold text-gray-900 dark:text-white">{article.title}</h3>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{article.overview}</p>
+          {/* Mini document thumbnail — local lightweight illustration */}
+          <span aria-hidden="true" className="mt-0.5 hidden h-16 w-12 shrink-0 flex-col overflow-hidden rounded-md border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800 sm:flex">
+            <span className="h-1.5 bg-primary-500" />
+            <span className="flex-1 space-y-1 p-1.5">
+              <span className="block h-1 rounded-sm bg-gray-200 dark:bg-gray-600" />
+              <span className="block h-1 rounded-sm bg-gray-200 dark:bg-gray-600" />
+              <span className="block h-1 w-2/3 rounded-sm bg-gray-200 dark:bg-gray-600" />
+            </span>
+          </span>
+          <span className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase text-primary-600 dark:text-primary-300">{article.moduleTitle}</p>
+            <h3 className="mt-1 font-semibold text-gray-900 dark:text-white">{article.title}</h3>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{article.overview}</p>
+          </span>
         </Link>
       ))}
     </div>

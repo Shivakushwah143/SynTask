@@ -266,6 +266,11 @@ export const ITEM_OVERVIEWS = {
     examples: ["Create user", "Update role", "Review team"],
     badges: ["People", "Admin"],
   },
+  Users: {
+    description: "Manage company users, roles, reporting structure, account status, and user access.",
+    examples: ["Create user", "Update role", "Review team"],
+    badges: ["People", "Admin"],
+  },
   Documents: {
     description: "Review employee and candidate HR documents company-wide: uploads, expiry, versions, and visibility.",
     examples: ["Preview document", "Filter by type", "Check expiry", "Download file"],
@@ -542,6 +547,12 @@ export const ITEM_INSIGHTS = {
     queryHints: ["employees"],
   },
   "User Accounts": {
+    metrics: ["Users", "Active", "Managers", "Leads"],
+    alerts: ["Inactive users", "Access changes pending"],
+    actions: ["Add User", "Directory", "Roles"],
+    queryHints: ["users"],
+  },
+  Users: {
     metrics: ["Users", "Active", "Managers", "Leads"],
     alerts: ["Inactive users", "Access changes pending"],
     actions: ["Add User", "Directory", "Roles"],

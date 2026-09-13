@@ -114,7 +114,7 @@ export const hasModuleAccess = (role, modules, moduleName) => {
   const legacyConfig = isLegacyModules(modules);
   if (
     legacyConfig &&
-    ["task", "tasks_projects", "sales", "sales_crm", "tickets", "recruitment", ...WORK_MODULES, ...CRM_MODULES].includes(moduleName) &&
+    ["task", "tasks_projects", "sales", "sales_crm", "tickets", "recruitment", "hr", ...WORK_MODULES, ...CRM_MODULES, ...WORKFORCE_MODULES].includes(moduleName) &&
     [ROLE.MANAGER, ROLE.LEAD, ROLE.EMPLOYEE].includes(normalized)
   ) {
     return true;
@@ -146,8 +146,14 @@ export const hasModuleAccess = (role, modules, moduleName) => {
   if (moduleName === "attendance_leaves") {
     return userModules.has("attendance_leaves") || [...WORKFORCE_MODULES].some((id) => userModules.has(id));
   }
+  if (moduleName === "hr") {
+    // People/HR domain: accessible when the user has "hr" in their modules,
+    // or via the legacy "attendance_leaves" alias that covers workforce modules,
+    // or by having any individual workforce module (attendance, leave_management, etc.).
+    return userModules.has("hr") || userModules.has("attendance_leaves") || [...WORKFORCE_MODULES].some((id) => userModules.has(id));
+  }
   if (WORKFORCE_MODULES.has(moduleName)) {
-    return userModules.has(moduleName) || userModules.has("attendance_leaves");
+    return userModules.has(moduleName) || userModules.has("attendance_leaves") || userModules.has("hr");
   }
   if (moduleName === "invoicing_ledger") {
     return userModules.has("invoicing_ledger") || [...FINANCE_MODULES].some((id) => userModules.has(id));

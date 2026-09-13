@@ -144,6 +144,7 @@ class TaskService:
             _send_task_side_effects,
         )
         from app.services.project_permissions import ProjectPermission, has_project_permission
+        from app.services.authorization_service import authorize, has_permission, permission_result
 
         if not current_user.company_id:
             raise HTTPException(
@@ -240,7 +241,9 @@ class TaskService:
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="You cannot create tasks in this project",
                 )
-            if not has_project_permission(current_user, project, ProjectPermission.CREATE_TASK):
+            task_create = await permission_result(current_user, "tasks.create")
+            scoped_task_create = await authorize(current_user, "tasks.create", resource=project)
+            if task_create.reason == "explicit_deny" or (scoped_task_create.source == "user_override" and scoped_task_create.reason == "scope_violation") or (not scoped_task_create.allowed and not has_project_permission(current_user, project, ProjectPermission.CREATE_TASK)):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="You do not have permission to create tasks in this project",
@@ -255,7 +258,7 @@ class TaskService:
                 project_id = user_project_id
             else:
                 project_id = str(project.id)
-        elif current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
+        elif (await permission_result(current_user, "tasks.create")).reason == "explicit_deny" or (not await has_permission(current_user, "tasks.create") and current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}):
             if not is_self_assigned_sales_followup:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,

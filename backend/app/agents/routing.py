@@ -13,6 +13,19 @@ from app.agents.task_performance import TASK_PERFORMANCE_AGENT_ID, TASK_PERFORMA
 logger = logging.getLogger(__name__)
 
 
+def _routing_span_attrs(route: "AgentRoute") -> dict[str, Any]:
+    """Safe scalar attrs describing a resolved route (for observability)."""
+    return {
+        "agent_id": route.agent_id,
+        "agent_version": route.agent_version,
+        "intent": route.intent,
+        "routing_reason": route.routing_reason,
+        "confidence": round(float(route.confidence), 3),
+        "action_intent": route.action_intent,
+        "risk_level": route.risk_level,
+    }
+
+
 HR_AGENT_VERSION = "v1"
 EXECUTIVE_AGENT_VERSION = "v1"
 
@@ -286,6 +299,50 @@ class DeterministicAgentRouter:
         OR the deterministic route falls to the general fallback, the Groq intent
         interpreter is consulted.
         """
+        from app.ai.observability import tracer as ai_tracer
+
+        trace = ai_tracer.get_current_trace()
+        if trace is not None:
+            span = ai_tracer.start_span("ROUTING", "deterministic_agent_router", attrs={"uses_llm_intent": True})
+        else:
+            span = None
+        try:
+            route = await self._route_with_llm_intent_impl(
+                message=message,
+                workspace=workspace,
+                capability_pack=capability_pack,
+                conversation_history=conversation_history,
+                entity_context=entity_context,
+            )
+        except Exception as exc:
+            if span is not None:
+                ai_tracer.end_span(
+                    span,
+                    status="FAILED",
+                    error_type=type(exc).__name__,
+                    error_message=f"{type(exc).__name__}: {exc}",
+                )
+            raise
+        if span is not None:
+            ai_tracer.end_span(span, attrs=_routing_span_attrs(route))
+            ai_tracer.enrich_trace(
+                trace,
+                agent=route.agent_id,
+                path=route.intent,
+                route=route.routing_reason,
+            )
+        return route
+
+    async def _route_with_llm_intent_impl(
+        self,
+        *,
+        message: str,
+        workspace: dict[str, Any],
+        capability_pack: RoleCapabilityPack,
+        conversation_history: list[dict[str, str]] | None = None,
+        entity_context: dict[str, Any] | None = None,
+    ) -> AgentRoute:
+        """Deterministic-first routing with LLM intent fallback (instrumentation wrapper body)."""
         deterministic = self.route(message=message, workspace=workspace, capability_pack=capability_pack)
 
         # High-confidence deterministic route — use it directly

@@ -324,6 +324,26 @@ class Settings(BaseSettings):
     EXECUTIVE_AGENT_MAX_STEPS: int = 20
     EXECUTIVE_AGENT_MODEL: str = ""  # falls back to AI_MODEL_GROQ when empty
 
+    # AI Evaluation & Regression (internal). Eval runs always execute against
+    # the deterministic full_demo_v1 demo tenant, resolved server-side from
+    # this seeded admin account — never against uncontrolled production data.
+    AI_EVAL_DEMO_ADMIN_EMAIL: str = "admin1@demo.com"
+
+    # AI Observability / LLMOps — end-to-end trace capture for every AI request.
+    # Telemetry is best-effort and never blocks or fails AI execution.
+    AI_TELEMETRY_ENABLED: bool = True
+    # Retention window for AITrace/AISpan records (days). A cleanup task prunes
+    # older records when Celery beat is enabled.
+    AI_TELEMETRY_RETENTION_DAYS: int = 30
+    # Store a sanitized/truncated query excerpt on traces (privacy-safe only).
+    AI_TELEMETRY_STORE_QUERY: bool = True
+    AI_TELEMETRY_QUERY_EXCERPT_CHARS: int = 300
+    # Operations health thresholds (backend-derived warning states).
+    AI_OPS_P95_LATENCY_THRESHOLD_MS: int = 20000
+    AI_OPS_TOOL_FAILURE_RATE_THRESHOLD: float = 10.0
+    AI_OPS_GROQ_429_RATE_THRESHOLD: float = 5.0
+    AI_OPS_MAX_STEPS_SPIKE_THRESHOLD: int = 3
+
     # Super Admin
     SUPER_ADMIN_EMAIL: str = Field(..., description="Super admin bootstrap email address.")
     SUPER_ADMIN_PASSWORD: str = Field(..., description="Super admin bootstrap password. Minimum 16 characters.")
