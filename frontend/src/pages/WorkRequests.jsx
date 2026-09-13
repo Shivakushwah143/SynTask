@@ -115,7 +115,7 @@ export default function WorkRequests() {
         <Button variant="secondary" onClick={load}><RefreshCw className="h-4 w-4" /> Refresh</Button>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
         {loading ? (
           <div className="p-6 text-sm text-gray-500">Loading...</div>
         ) : requests.length === 0 ? (

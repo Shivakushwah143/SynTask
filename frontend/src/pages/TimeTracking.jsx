@@ -266,7 +266,7 @@ const TimeTracking = () => {
                       Log Time
                     </button>
                   </div>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
                     <div>
                       <div className="text-sm text-gray-600">Total Hours</div>
                       <div className="text-2xl font-bold">{timeSummary.total_hours.toFixed(1)}</div>

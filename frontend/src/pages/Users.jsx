@@ -1187,7 +1187,8 @@ const Users = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     User Type
                   </label>
-                  <div className={`grid gap-2 ${isFullCompanyAdmin ? 'grid-cols-4' : (isSubAdmin ? 'grid-cols-3' : 'grid-cols-2')}`}>
+                  {/* Phones: two columns (wraps for 3–4 roles); tablet/desktop keep the original row. */}
+                <div className={`grid grid-cols-2 gap-2 ${isFullCompanyAdmin ? 'sm:grid-cols-4' : (isSubAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-2')}`}>
                     {isFullCompanyAdmin && (
                       <button
                         type="button"

@@ -497,11 +497,13 @@ function ContentCard({ item, compact = false, onOpen }) {
 
 function MonthCalendar({ days, items, selected, setSelected, month, onOpen }) {
   return (
-    <div>
-      <div className="grid grid-cols-7 border-b border-surface-border bg-surface-muted text-xs font-semibold uppercase text-text-muted dark:border-gray-800 dark:bg-black dark:text-gray-400">
+    // A month grid is inherently 7 columns; on phones it scrolls horizontally
+    // instead of squeezing 7 day columns into ~45px each.
+    <div className="overflow-x-auto">
+      <div className="grid min-w-[640px] grid-cols-7 border-b border-surface-border bg-surface-muted text-xs font-semibold uppercase text-text-muted dark:border-gray-800 dark:bg-black dark:text-gray-400">
         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <div key={day} className="p-3 text-center">{day}</div>)}
       </div>
-      <div className="grid grid-cols-7">
+      <div className="grid min-w-[640px] grid-cols-7">
         {days.map((day) => {
           const dayItems = items.filter((item) => isSameDay(parseAnyDate(item.publish_date || item.due_date || item.shoot_date), day))
           const selectedDay = isSameDay(day, selected)

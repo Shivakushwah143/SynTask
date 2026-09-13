@@ -1674,7 +1674,7 @@ const Dashboard = () => {
             {productionDashboard?.employees?.length ? (
               <div className="space-y-6">
                 {/* Team aggregate */}
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
                   <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-4 text-center dark:border-purple-900/40 dark:bg-purple-950/20">
                     <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">{productionDashboard.team_total_target || 0}</p>
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Team Target</p>

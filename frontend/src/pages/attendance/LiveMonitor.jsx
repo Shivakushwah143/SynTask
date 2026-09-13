@@ -494,7 +494,7 @@ const LiveMonitor = () => {
               </div>
 
               {/* Working time summary */}
-              <div className="grid grid-cols-3 gap-3 my-4">
+              <div className="my-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-900/50">
                   <p className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase">Working</p>
                   <p className="text-lg font-black font-mono text-gray-900 dark:text-white">

@@ -7,6 +7,7 @@ import { useUIStore } from './store/uiStore';
 import { useAuthStore } from './store/authStore';
 import { useTheme } from './hooks/useTheme';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import ResponsiveTables from './components/ResponsiveTables';
 import ConfirmDialog from './components/ConfirmDialog';
 import UndoBar from './components/UndoBar';
 import { Agentation } from "agentation";
@@ -283,6 +284,9 @@ function App() {
 
   return (
     <Suspense fallback={<Loader force={true} />}>
+      {/* App-wide mobile progressive enhancement: gives every data table a
+          card representation below 768px without touching desktop markup. */}
+      <ResponsiveTables />
       <Routes>
         <Route path="/" element={<NewLandingRoute />} />
         <Route path="/old-landing" element={<LandingRoute />} />
