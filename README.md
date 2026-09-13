@@ -15,6 +15,7 @@ The application has a FastAPI backend, MongoDB/Beanie document models, Redis-bac
 | AI Retrieval | Qdrant `v1.14.1` with `qdrant-client==1.14.3` for RAG vector storage |
 | Background Work | asyncio deadline checker, reminder scheduler, and one-minute scheduled-job runner; Celery worker service |
 | Deployment | Docker, Docker Compose, Nginx reverse proxy |
+| Observability | Prometheus, Grafana, Loki + Grafana Alloy, Alertmanager, Node Exporter, cAdvisor, Redis Exporter |
 
 ## Prerequisites
 - Python 3.11
@@ -37,6 +38,21 @@ Use the dedicated startup guide for the canonical local workflow:
 3. Start the development stack with `.\bootstrap.ps1` on Windows or `./bootstrap.sh` on Linux/macOS.
 
 The frontend defaults to Vite port `3000`. The backend API defaults to port `8000`. See the startup guide for the complete port map and commands.
+
+## Observability
+
+Production deployments run an internal observability stack on the `syntask` Docker network. Only loopback-bound UIs are reachable from the host.
+
+| Component | Purpose | Dev port | Prod exposure |
+|---|---|---|---|
+| Prometheus | Metrics, alert rule evaluation | `9090` | `127.0.0.1:9090` |
+| Grafana | API, infrastructure, logs and alert dashboards | `3001` | `127.0.0.1:3001` |
+| Loki | Centralized log storage (7-day retention) | `3100` | internal only |
+| Alloy | Collects container stdout/stderr and forwards to Loki | `12345` | internal only |
+| Alertmanager | Groups, de-duplicates and routes Prometheus alerts | `9093` | `127.0.0.1:9093` |
+| Node Exporter / cAdvisor / Redis Exporter | Host, container and Redis metrics | internal | internal only |
+
+Configuration is version-controlled under `observability/`; Docker log rotation is configured in both Compose files. Loki, Alloy, Alertmanager and the exporters are never published publicly. Alert runbooks: [docs/runbooks/observability-alerts.md](docs/runbooks/observability-alerts.md).
 
 MongoDB must be reachable before using authenticated API routes. If database initialization fails, the backend starts in a degraded state, `/health` reports `503`, `/api/v1/*` routes return a database-unavailable `503`, and database background workers are skipped until the backend is restarted with a valid `MONGODB_URL`.
 
@@ -126,6 +142,7 @@ For detailed implementation status, see [docs/HRMS_FINAL_READINESS_REPORT.md](do
 - [API Documentation](backend/API_DOCUMENTATION.md)
 - [Database Schema](backend/DATABASE_SCHEMA.md)
 - [Testing Guide](docs/TESTING_GUIDE.md)
+- [Observability Alerts Runbook](docs/runbooks/observability-alerts.md)
 
 ## License
 Proprietary. Copyright SynTask / Alphanexis Tech LLC.

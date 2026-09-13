@@ -5,6 +5,17 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# Version-controlled alert rules (Topic 6).
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+# Prometheus evaluates the rules above and pushes firing alerts to Alertmanager,
+# which groups/de-duplicates/routes them.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 scrape_configs:
   # SynTask backend application metrics
   - job_name: "syntask-backend"
@@ -18,3 +29,47 @@ scrape_configs:
   - job_name: "prometheus"
     static_configs:
       - targets: ["localhost:9090"]
+
+  # Alertmanager metrics (meta-monitoring: verify Prometheus sees it)
+  - job_name: "alertmanager"
+    static_configs:
+      - targets: ["alertmanager:9093"]
+        labels:
+          service: "alertmanager"
+
+  # Host metrics via Node Exporter
+  - job_name: "node-exporter"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels:
+          service: "node-exporter"
+
+  # Docker container metrics via cAdvisor
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]
+        labels:
+          service: "cadvisor"
+
+  # Redis metrics via Redis Exporter
+  - job_name: "redis-exporter"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+        labels:
+          service: "redis-exporter"
+
+  # -------------------------------------------------------------------------
+  # Meta-monitoring: the logging pipeline must not fail silently.
+  # Loki exposes /metrics; Alloy exposes component metrics on its HTTP server.
+  # -------------------------------------------------------------------------
+  - job_name: "loki"
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          service: "loki"
+
+  - job_name: "alloy"
+    static_configs:
+      - targets: ["alloy:12345"]
+        labels:
+          service: "alloy"

@@ -1,0 +1,100 @@
+// SynTask centralized logging — Grafana Alloy.
+//
+//   Docker containers -> collect stdout/stderr -> parse SynTask JSON logs
+//   -> attach low-cardinality labels -> forward to Loki.
+//
+// Label policy (Loki stream labels are indexed; keep them bounded):
+//   service      docker compose service name        (backend, worker, ...)
+//   stack        docker compose project name        (syntask)
+//   container    docker container name              (syntask-backend-1)
+//   level        standard log level, from JSON only (INFO/WARNING/ERROR/...)
+//   environment  environment name, from JSON only   (production/development)
+//
+// NEVER promoted to labels (see the structured_metadata stage instead):
+//   request_id, trace_id, user_id, employee_id, company_id, email,
+//   raw URL/route, exception or message text, or any arbitrary value.
+//   request_id stays fully searchable as LogQL structured metadata and
+//   inside the JSON log content.
+
+// ---------------------------------------------------------------------------
+// 1. Discover Docker containers on the host daemon (read-only socket mount)
+// ---------------------------------------------------------------------------
+discovery.docker "syntask" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// Derive the small, bounded set of stream labels. `__meta_docker_*` labels are
+// internal and are dropped by loki.source.docker before they become labels.
+discovery.relabel "syntask" {
+  targets = discovery.docker.syntask.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "stack"
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2. Read stdout/stderr from the discovered containers
+// ---------------------------------------------------------------------------
+loki.source.docker "syntask" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.syntask.output
+  labels     = {}
+  forward_to = [loki.process.syntask.receiver]
+}
+
+// ---------------------------------------------------------------------------
+// 3. Parse SynTask JSON logs and promote only bounded values to labels
+// ---------------------------------------------------------------------------
+loki.process "syntask" {
+  forward_to = [loki.write.loki.receiver]
+
+  // Backend/worker emit one JSON object per line
+  // (backend/app/core/logging_config.py). Non-JSON lines from other
+  // containers are forwarded untouched — drop_malformed defaults to false.
+  stage.json {
+    expressions = {
+      level       = "level",
+      environment = "environment",
+      request_id  = "request_id",
+      logger      = "logger",
+    }
+  }
+
+  // Bounded labels only.
+  stage.labels {
+    values = {
+      level       = "level",
+      environment = "environment",
+    }
+  }
+
+  // High-cardinality identifiers stay searchable but are NOT labels.
+  stage.structured_metadata {
+    values = {
+      request_id = "request_id",
+      logger     = "logger",
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 4. Ship to Loki over the internal Docker network
+// ---------------------------------------------------------------------------
+loki.write "loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
