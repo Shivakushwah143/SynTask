@@ -728,7 +728,7 @@ The Candidates workspace uses an operations layout: a standalone lifecycle pipel
 
 In a Job Candidate Pipeline, the application table omits the repeated Job column. Each row presents candidate initials, name, contact metadata, a color-coded lifecycle pill, a score severity indicator, recruiter assignment state, source badge, applied date, and its allowed next action. Global Candidates retains the Job column.
 
-Every candidate application row has a Notes action. It opens a dated note history for that Candidate and current Application, including legacy candidate-level notes, and provides an inline add-note field. New notes include the current `application_id`; backend company, candidate-to-application ownership, role, and module checks remain authoritative.
+Every candidate application row has a borderless Notes text action. It opens a dated note history for that Candidate and current Application, including legacy candidate-level notes, and provides an inline add-note field. A successful save immediately adds the created note to the open history without replacing its current data; opening Notes again reads server history. Row Notes and stage-action controls have distinct, wrapping action space. New notes include the current `application_id`; backend company, candidate-to-application ownership, role, and module checks remain authoritative.
 
 The Job Candidate Pipeline includes Add Candidate. Its dialog locks the current Job so HR-created Candidate records are reused or created and associated with that Job only.
 
