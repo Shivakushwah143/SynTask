@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   ArrowLeft,
@@ -34,6 +34,7 @@ import { JobDialog, ConfirmActionDialog, InterviewDialog } from "../dialogs/Recr
 import { JobStatusDropdown } from "../components/JobStatusDropdown";
 import { StatusBadge } from "../components/StatusBadge";
 import { fmtDate, fmtDateTime, idOf, labelize } from "../utils/data";
+import { ApplicationLifecycleWorkspace } from "../components/ApplicationLifecycleWorkspace";
 
 // ============================================================
 // SMALL PRESENTATION HELPERS
@@ -139,6 +140,12 @@ const defaultExpiryDate = () => {
   return date.toISOString().slice(0, 10);
 };
 
+function JobScopedList({ title, query: fetchItems, params, fields }) {
+  const result = useQuery(["recruitment", title.toLowerCase(), params], () => fetchItems(params));
+  const items = result.data?.items || result.data?.data?.items || [];
+  return <div className="p-4 md:p-5"><h2 className="mb-3 text-lg font-semibold">{title}</h2>{result.isLoading ? <p>Loading {title.toLowerCase()}…</p> : !items.length ? <p className="rounded border p-6 text-center text-sm text-gray-500">No {title.toLowerCase()} for this job.</p> : <div className="overflow-x-auto rounded border"><table className="min-w-full text-sm"><thead><tr>{fields.map((field) => <th className="p-3 text-left" key={field}>{field.replace(/_/g, " ")}</th>)}</tr></thead><tbody>{items.map((item) => <tr className="border-t" key={item.id || item._id}>{fields.map((field) => <td className="p-3" key={field}>{String(item[field] ?? "—")}</td>)}</tr>)}</tbody></table></div>}</div>;
+}
+
 function InterviewResultDialog({ open, interview, onClose, onSubmit, loading, onScheduleNextRound }) {
   const [form, setForm] = useState({ decision: "passed", score: "", feedback: "", result: "" });
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
@@ -225,10 +232,7 @@ function OfferPrepDialog({ open, item, job, onClose, onSubmit, loading }) {
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit({
-            candidate_id: idOf(candidate),
-            job_id: idOf(job),
-            job_title: job?.title,
-            department: job?.department_id,
+            application_id: item?.application_id,
             employment_type: form.employment_type,
             work_location: form.work_location,
             joining_date: new Date(form.joining_date).toISOString(),
@@ -306,6 +310,7 @@ function OfferPrepDialog({ open, item, job, onClose, onSubmit, loading }) {
 export default function JobDetailPage() {
   const { jobId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const qc = useQueryClient();
 
   const [editOpen, setEditOpen] = useState(false);
@@ -554,6 +559,13 @@ export default function JobDetailPage() {
   const salary = job.salary_min != null || job.salary_max != null
     ? `${job.salary_min ?? "—"} – ${job.salary_max ?? "—"}`
     : "Not specified";
+  const workspaceTab = searchParams.get("tab") || "overview";
+  const workspaceTabs = [["overview", "Overview"], ["candidates", "Candidate Pipeline"], ["ranking", "Requirements & Ranking"], ["interviews", "Interviews"], ["offers", "Offers"]];
+  const workspaceHeader = <div className="space-y-3 p-4 md:p-5"><Link to="/hr/recruitment/jobs" className="text-sm font-medium text-indigo-600">← Back to Jobs</Link><PageHeader title={job.title} description={`${labelize(job.employment_type)} · ${job.location || "Location not set"}`} /><div className="flex gap-2 overflow-x-auto">{workspaceTabs.map(([key, label]) => <button key={key} onClick={() => { const next = new URLSearchParams(searchParams); key === "overview" ? next.delete("tab") : next.set("tab", key); setSearchParams(next); }} className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm ${workspaceTab === key ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800"}`}>{label}</button>)}</div></div>;
+  if (workspaceTab === "candidates") return <>{workspaceHeader}<ApplicationLifecycleWorkspace jobId={jobId} /></>;
+  if (workspaceTab === "interviews") return <>{workspaceHeader}<JobScopedList title="Interviews" query={recruitmentApi.getInterviews} params={{ job_id: jobId }} fields={["round", "status", "schedule_at"]} /></>;
+  if (workspaceTab === "offers") return <>{workspaceHeader}<JobScopedList title="Offers" query={recruitmentApi.getOffers} params={{ job_id: jobId }} fields={["offer_number", "status", "joining_date"]} /></>;
+  if (workspaceTab === "ranking") return <>{workspaceHeader}<div className="p-4 md:p-5"><h2 className="text-lg font-semibold">Requirements & Ranking</h2><p className="mb-3 text-sm text-gray-500">Job requirements and existing candidate scores.</p>{rankingsQuery.isLoading ? <p>Loading rankings…</p> : <pre className="overflow-auto rounded border p-3 text-xs">{JSON.stringify(rankingsQuery.data, null, 2)}</pre>}</div></>;
 
   return (
     <div className="space-y-5 p-4 md:p-5">
@@ -601,6 +613,8 @@ export default function JobDetailPage() {
           }
         />
       </div>
+
+      <div className="flex gap-2 overflow-x-auto">{workspaceTabs.map(([key, label]) => <button key={key} onClick={() => { const next = new URLSearchParams(searchParams); key === "overview" ? next.delete("tab") : next.set("tab", key); setSearchParams(next); }} className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm ${workspaceTab === key ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800"}`}>{label}</button>)}</div>
 
       {/* ============================================================ */}
       {/* ANALYTICS COUNTERS */}

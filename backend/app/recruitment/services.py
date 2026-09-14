@@ -79,7 +79,7 @@ JOB_LIFECYCLE_TRANSITIONS = {
 }
 
 
-async def record(company_id: str, event: str, actor_id: str | None, *, candidate_id: str | None = None, job_id: str | None = None, payload: dict | None = None):
+async def record(company_id: str, event: str, actor_id: str | None, *, candidate_id: str | None = None, application_id: str | None = None, job_id: str | None = None, payload: dict | None = None):
     data = payload or {}
     entity_type, entity_id = ("candidate", candidate_id) if candidate_id else ("job", job_id)
     return await publish_recruitment_event(
@@ -88,8 +88,19 @@ async def record(company_id: str, event: str, actor_id: str | None, *, candidate
         aggregate_id=entity_id or "",
         company_id=company_id,
         actor_id=actor_id,
-        payload={**data, "candidate_id": candidate_id, "job_id": job_id},
+        payload={**data, "candidate_id": candidate_id, "application_id": application_id, "job_id": job_id},
     )
+
+
+APPLICATION_TRANSITIONS = {
+    CandidateStatus.NEW: {CandidateStatus.SCREENING, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN, CandidateStatus.ARCHIVED},
+    CandidateStatus.SCREENING: {CandidateStatus.SHORTLISTED, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN, CandidateStatus.ARCHIVED},
+    CandidateStatus.SHORTLISTED: {CandidateStatus.INTERVIEW_1, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN, CandidateStatus.ARCHIVED},
+    CandidateStatus.INTERVIEW_1: {CandidateStatus.INTERVIEW_2, CandidateStatus.OFFER_SENT, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN, CandidateStatus.ARCHIVED},
+    CandidateStatus.INTERVIEW_2: {CandidateStatus.OFFER_SENT, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN, CandidateStatus.ARCHIVED},
+    CandidateStatus.OFFER_SENT: {CandidateStatus.OFFER_ACCEPTED, CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN, CandidateStatus.ARCHIVED},
+    CandidateStatus.OFFER_ACCEPTED: {CandidateStatus.JOINED, CandidateStatus.WITHDRAWN, CandidateStatus.ARCHIVED},
+}
 
 
 class RecruitmentService:
@@ -105,7 +116,10 @@ class RecruitmentService:
             raise HTTPException(status_code=400, detail="Email is required")
         existing = await CandidateRepository.find_by_email_or_phone(company_id, email, data.get("phone"))
         if existing:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Candidate with this email or phone already exists")
+            # Reuse the person profile. The caller can safely create a distinct
+            # application for another job; duplicate candidate+job is enforced
+            # by ApplicationWorkspaceService.
+            return existing
         skills = []
         raw_skills = data.get("skills")
         if raw_skills:
@@ -344,23 +358,10 @@ class RecruitmentService:
 
     @staticmethod
     async def move(candidate: Candidate, target: CandidateStatus, actor_id: str) -> Candidate:
-        if target not in TRANSITIONS.get(candidate.status, set()):
-            raise HTTPException(status_code=409, detail=f"Invalid candidate transition: {candidate.status.value} -> {target.value}")
-        old = candidate.status
-        candidate.status, candidate.updated_at = target, utc_now()
-        await candidate.save()
-        applications = await ApplicationRepository.list_for_candidate(candidate.company_id, str(candidate.id))
-        for application in applications:
-            application.status = target
-            application.updated_at = utc_now()
-            await application.save()
-        if target in {CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN, CandidateStatus.ARCHIVED, CandidateStatus.JOINED, CandidateStatus.EMPLOYEE}:
-            await CandidatePortalCredential.find({
-                "company_id": candidate.company_id,
-                "candidate_id": str(candidate.id),
-            }).delete()
-        await record(candidate.company_id, "CandidateMoved", actor_id, candidate_id=str(candidate.id), payload={"from": old.value, "to": target.value})
-        return candidate
+        raise HTTPException(status_code=409, detail={
+            "code": "APPLICATION_CONTEXT_REQUIRED",
+            "message": "Lifecycle changes require one application and never move every application for a candidate.",
+        })
 
     @staticmethod
     async def convert(candidate: Candidate, payload: ConversionRequest, actor_id: str) -> User:
@@ -396,11 +397,10 @@ class RecruitmentService:
         The candidate must already have an accepted offer. This is the standard
         pre-conversion step — convert() is a separate action.
         """
-        candidate = await RecruitmentService.move(candidate, CandidateStatus.JOINED, actor_id)
-        if joining_date:
-            candidate.updated_at = utc_now()
-            await candidate.save()
-        return candidate
+        raise HTTPException(status_code=409, detail={
+            "code": "APPLICATION_CONTEXT_REQUIRED",
+            "message": "Mark Joined requires a specific offer-accepted application.",
+        })
 
 
 class JobService:
@@ -1536,6 +1536,85 @@ class EmailImportService:
         return import_job
 
 
+class ApplicationLifecycleService:
+    """The sole authority for application lifecycle mutations.
+
+    Candidate profiles deliberately remain untouched: one person can have many
+    applications in different stages.  Offer and conversion flows call this
+    service with their explicit application context.
+    """
+
+    @staticmethod
+    def allowed(status_value: CandidateStatus) -> list[CandidateStatus]:
+        return sorted(APPLICATION_TRANSITIONS.get(status_value, set()), key=lambda item: item.value)
+
+    @staticmethod
+    async def get(company_id: str, application_id: str) -> Application:
+        application = await TenantRepository.get(Application, application_id, company_id)
+        if not application:
+            raise HTTPException(status_code=404, detail="Application not found")
+        return application
+
+    @staticmethod
+    async def transition(company_id: str, application_id: str, target: CandidateStatus, actor_id: str | None,
+                         *, expected: CandidateStatus | None = None, reason: str | None = None,
+                         notes: str | None = None, allow_offer_transition: bool = False) -> dict:
+        application = await ApplicationLifecycleService.get(company_id, application_id)
+        current = application.status
+        if expected and current != expected:
+            raise HTTPException(status_code=409, detail={
+                "code": "STALE_APPLICATION_STATE", "message": "Application changed since it was loaded.",
+                "application_id": application_id, "current_status": current.value,
+            })
+        if current == target:
+            return {"application_id": application_id, "previous_status": current, "status": current,
+                    "updated_at": application.updated_at, "allowed_transitions": ApplicationLifecycleService.allowed(current),
+                    "already_in_state": True}
+        if target in {CandidateStatus.OFFER_SENT, CandidateStatus.OFFER_ACCEPTED} and not allow_offer_transition:
+            raise HTTPException(status_code=409, detail={"code": "BUSINESS_ENDPOINT_REQUIRED", "message": "Use the offer workflow for this transition."})
+        allowed = APPLICATION_TRANSITIONS.get(current, set())
+        if target not in allowed:
+            raise HTTPException(status_code=409, detail={
+                "code": "INVALID_TRANSITION", "message": f"Cannot move {current.value} directly to {target.value}.",
+                "application_id": application_id, "current_status": current.value, "target_status": target.value,
+                "allowed_transitions": [item.value for item in ApplicationLifecycleService.allowed(current)],
+            })
+        application.previous_status = current
+        application.status = target
+        application.updated_at = utc_now()
+        await application.save()
+        if target in {CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN, CandidateStatus.ARCHIVED}:
+            credential = await CandidatePortalCredential.find_one({"company_id": company_id, "application_id": application_id})
+            if credential:
+                credential.active = False
+                await credential.save()
+        await record(company_id, "ApplicationLifecycleTransitioned", actor_id, candidate_id=application.candidate_id,
+                     application_id=application_id, job_id=application.job_id,
+                     payload={"from": current.value, "to": target.value, "reason": reason, "notes": notes})
+        return {"application_id": application_id, "previous_status": current, "status": target,
+                "updated_at": application.updated_at, "allowed_transitions": ApplicationLifecycleService.allowed(target)}
+
+    @staticmethod
+    async def restore(company_id: str, application_id: str, actor_id: str | None, target: CandidateStatus | None, reason: str | None) -> dict:
+        application = await ApplicationLifecycleService.get(company_id, application_id)
+        if application.status not in {CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN, CandidateStatus.ARCHIVED}:
+            raise HTTPException(status_code=409, detail={"code": "INVALID_RESTORE", "message": "Only outcome applications can be restored."})
+        restore_to = target or application.previous_status or CandidateStatus.NEW
+        if restore_to in {CandidateStatus.REJECTED, CandidateStatus.WITHDRAWN, CandidateStatus.ARCHIVED, CandidateStatus.JOINED, CandidateStatus.EMPLOYEE}:
+            raise HTTPException(status_code=409, detail={"code": "INVALID_RESTORE_TARGET", "message": "Choose an active lifecycle stage."})
+        previous = application.status
+        application.status, application.updated_at = restore_to, utc_now()
+        await application.save()
+        credential = await CandidatePortalCredential.find_one({"company_id": company_id, "application_id": application_id})
+        if credential:
+            credential.active = True
+            await credential.save()
+        await record(company_id, "ApplicationRestored", actor_id, candidate_id=application.candidate_id, application_id=application_id,
+                     job_id=application.job_id, payload={"from": previous.value, "to": restore_to.value, "reason": reason})
+        return {"application_id": application_id, "previous_status": previous, "status": restore_to,
+                "updated_at": application.updated_at, "allowed_transitions": ApplicationLifecycleService.allowed(restore_to)}
+
+
 class RecruitmentInboxService:
     @staticmethod
     async def list_inbox(company_id: str, status_value: Optional[ImportStatus], skip: int, limit: int) -> tuple[list[RecruitmentImportJob], int]:
@@ -1949,6 +2028,111 @@ class CandidateWorkspaceService:
         return items
 
 
+class ApplicationWorkspaceService:
+    """Application read/write model used by both global and job pipelines."""
+
+    @staticmethod
+    async def create(company_id: str, actor_id: str, data: dict) -> Application:
+        candidate = await TenantRepository.get(Candidate, data["candidate_id"], company_id)
+        job = await TenantRepository.get(RecruitmentJob, data["job_id"], company_id)
+        if not candidate:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if await ApplicationRepository.find_existing(company_id, str(candidate.id), str(job.id)):
+            raise HTTPException(status_code=409, detail="Candidate already has an application for this job")
+        resume_id = data.get("current_resume_id")
+        if resume_id:
+            resume = await TenantRepository.get(Resume, resume_id, company_id)
+            if not resume or resume.candidate_id != str(candidate.id):
+                raise HTTPException(status_code=400, detail="Resume does not belong to this candidate")
+        recruiter_id = data.get("assigned_recruiter_id")
+        if recruiter_id:
+            recruiter = await User.get(recruiter_id)
+            if not recruiter or recruiter.company_id != company_id:
+                raise HTTPException(status_code=400, detail="Recruiter not found")
+        tracking_code = await TrackingCodeService.generate_tracking_code(company_id)
+        secret = TrackingCodeService.generate_tracking_secret()
+        application = Application(company_id=company_id, candidate_id=str(candidate.id), job_id=str(job.id),
+                                  source=data.get("source") or "manual", status=CandidateStatus.NEW,
+                                  assigned_recruiter_id=recruiter_id, current_resume_id=resume_id or candidate.resume_id,
+                                  tracking_code=tracking_code, tracking_secret_hash=get_password_hash(secret),
+                                  tracking_secret_created_at=utc_now())
+        await application.insert()
+        await CandidatePortalCredential(company_id=company_id, candidate_id=str(candidate.id), application_id=str(application.id),
+                                        job_id=str(job.id), tracking_code=tracking_code, secret_hash=get_password_hash(secret)).insert()
+        await JobRepository.update_counters(str(job.id), "total_applications", 1)
+        await record(company_id, "ApplicationCreated", actor_id, candidate_id=str(candidate.id), application_id=str(application.id),
+                     job_id=str(job.id), payload={"source": application.source, "tracking_code": tracking_code})
+        return application
+
+    @staticmethod
+    async def item(company_id: str, application: Application) -> dict:
+        candidate = await TenantRepository.get(Candidate, application.candidate_id, company_id)
+        job = await TenantRepository.get(RecruitmentJob, application.job_id, company_id)
+        if not candidate or not job:
+            raise HTTPException(status_code=409, detail="Application has an invalid tenant relationship")
+        recruiter_id = application.assigned_recruiter_id
+        recruiter = await User.get(recruiter_id) if recruiter_id else None
+        resume_id = application.current_resume_id or candidate.resume_id
+        resume = await TenantRepository.get(Resume, resume_id, company_id) if resume_id else None
+        score_doc = await CandidateJobScore.find_one({"company_id": company_id, "candidate_id": application.candidate_id, "job_id": application.job_id})
+        score_value = (score_doc.score or {}).get("overall_score", (score_doc.score or {}).get("score")) if score_doc else None
+        return {
+            "application_id": str(application.id), "id": str(application.id), "status": application.status.value,
+            "source": application.source, "applied_at": application.applied_at, "updated_at": application.updated_at,
+            "assigned_recruiter_id": recruiter_id,
+            "candidate": {"id": str(candidate.id), "full_name": candidate.full_name, "email": candidate.email, "phone": candidate.phone,
+                          "location": candidate.location, "experience_years": candidate.experience_years, "skills": candidate.skills},
+            "job": {"id": str(job.id), "title": job.title, "department_id": job.department_id, "lifecycle_status": job.lifecycle_status.value},
+            "recruiter": {"id": str(recruiter.id), "name": f"{recruiter.first_name or ''} {recruiter.last_name or ''}".strip() or recruiter.email,
+                          "email": recruiter.email} if recruiter and recruiter.company_id == company_id else None,
+            "resume": {"id": str(resume.id), "filename": resume.original_filename, "processing_status": resume.processing_status} if resume else None,
+            "score": {"score": score_value, "details": score_doc.score} if score_doc else None,
+            "allowed_transitions": [item.value for item in ApplicationLifecycleService.allowed(application.status)],
+            "converted": bool(candidate.employee_id and application.status == CandidateStatus.JOINED),
+        }
+
+    @staticmethod
+    async def list(company_id: str, filters: dict, skip: int, limit: int) -> tuple[list[dict], int]:
+        query: dict = {"company_id": company_id, "deleted_at": None}
+        if filters.get("stage"):
+            query["status"] = CandidateStatus(filters["stage"])
+        for key in ("job_id", "assigned_recruiter_id", "source"):
+            if filters.get(key): query[key] = filters[key]
+        apps = await Application.find(query).sort("-applied_at").to_list()
+        items = []
+        search = (filters.get("search") or "").strip().lower()
+        for application in apps:
+            item = await ApplicationWorkspaceService.item(company_id, application)
+            if search and search not in item["candidate"]["full_name"].lower() and search not in item["candidate"]["email"].lower() and search not in item["job"]["title"].lower():
+                continue
+            if filters.get("department_id") and item["job"]["department_id"] != filters["department_id"]:
+                continue
+            items.append(item)
+        return items[skip:skip + limit], len(items)
+
+    @staticmethod
+    async def summary(company_id: str, filters: dict) -> dict:
+        items, total = await ApplicationWorkspaceService.list(company_id, filters, 0, 100000)
+        counts = {status.value: 0 for status in CandidateStatus if status != CandidateStatus.EMPLOYEE}
+        for item in items: counts[item["status"]] = counts.get(item["status"], 0) + 1
+        counts["converted"] = sum(1 for item in items if item["converted"])
+        return {"total": total, "counts": counts}
+
+    @staticmethod
+    async def assign(company_id: str, application_id: str, recruiter_id: str, actor_id: str) -> Application:
+        application = await ApplicationLifecycleService.get(company_id, application_id)
+        recruiter = await User.get(recruiter_id)
+        if not recruiter or recruiter.company_id != company_id:
+            raise HTTPException(status_code=400, detail="Recruiter not found")
+        application.assigned_recruiter_id, application.updated_at = recruiter_id, utc_now()
+        await application.save()
+        await record(company_id, "ApplicationRecruiterAssigned", actor_id, candidate_id=application.candidate_id,
+                     application_id=application_id, job_id=application.job_id, payload={"recruiter_id": recruiter_id})
+        return application
+
+
 class CandidateAssignmentService:
     @staticmethod
     async def assign(company_id: str, candidate_id: str, recruiter_id: str, actor_id: str) -> Candidate:
@@ -2118,6 +2302,8 @@ class InterviewService:
     async def schedule(company_id: str, actor_id: str, data: InterviewCreate) -> Interview:
         await InterviewSchedulingService.validate_panel(company_id, data.interviewer_ids)
         _candidate, application = await InterviewSchedulingService.validate_candidate_application(company_id, data.candidate_id, data.application_id, data.job_id)
+        if not application:
+            raise HTTPException(status_code=409, detail={"code": "APPLICATION_CONTEXT_REQUIRED", "message": "New interviews must identify one application."})
         interview = Interview(
             company_id=company_id,
             candidate_id=data.candidate_id,

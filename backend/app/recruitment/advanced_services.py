@@ -46,7 +46,7 @@ from app.recruitment.models import (
     SkillAlias,
 )
 from app.recruitment.repositories import TenantRepository
-from app.recruitment.services import RecruitmentService, ResumeStorageService, record
+from app.recruitment.services import ApplicationLifecycleService, ResumeStorageService, record
 
 
 DEFAULT_SKILL_ALIASES = {
@@ -1008,13 +1008,21 @@ class MicrosoftGraphRecruitmentService:
 class OfferWorkflowService:
     @staticmethod
     async def create(company_id: str, actor_id: str, payload: dict[str, Any]) -> Offer:
-        candidate = await TenantRepository.get(Candidate, payload["candidate_id"], company_id)
-        if not candidate:
-            raise HTTPException(status_code=404, detail="Candidate not found")
-        offer = Offer(company_id=company_id, created_by=actor_id, offer_number=f"OFF-{utc_now().strftime('%Y%m%d')}-{secrets.token_hex(3).upper()}", **payload)
+        application = await TenantRepository.get(Application, payload["application_id"], company_id)
+        if not application:
+            raise HTTPException(status_code=404, detail="Application not found")
+        candidate = await TenantRepository.get(Candidate, application.candidate_id, company_id)
+        job = await TenantRepository.get(RecruitmentJob, application.job_id, company_id)
+        if not candidate or not job:
+            raise HTTPException(status_code=409, detail="Application has invalid candidate or job context")
+        values = {**payload, "candidate_id": application.candidate_id, "job_id": application.job_id,
+                  "job_title": job.title, "department": job.department_id,
+                  "work_location": payload.get("work_location") or job.location,
+                  "employment_type": payload.get("employment_type") or job.employment_type.value}
+        offer = Offer(company_id=company_id, created_by=actor_id, offer_number=f"OFF-{utc_now().strftime('%Y%m%d')}-{secrets.token_hex(3).upper()}", **values)
         offer.offered_ctc = payload.get("base_salary", 0) + payload.get("variable_pay", 0) + payload.get("joining_bonus", 0)
         await offer.insert()
-        await record(company_id, "OfferDraftCreated", actor_id, candidate_id=offer.candidate_id, job_id=offer.job_id, payload={"offer_id": str(offer.id)})
+        await record(company_id, "OfferDraftCreated", actor_id, candidate_id=offer.candidate_id, application_id=offer.application_id, job_id=offer.job_id, payload={"offer_id": str(offer.id)})
         return offer
 
     @staticmethod
@@ -1160,7 +1168,10 @@ class OfferWorkflowService:
         offer.sent_at = offer.sent_at or utc_now()
         offer.updated_at = utc_now()
         await offer.save()
-        await RecruitmentService.move(await TenantRepository.get(Candidate, offer.candidate_id, company_id), CandidateStatus.OFFER_SENT, actor_id)
+        if not offer.application_id:
+            raise HTTPException(status_code=409, detail={"code": "APPLICATION_CONTEXT_REQUIRED", "message": "Offer must be linked to an application before it can be sent."})
+        await ApplicationLifecycleService.transition(company_id, offer.application_id, CandidateStatus.OFFER_SENT, actor_id,
+                                                     allow_offer_transition=True)
         candidate = await TenantRepository.get(Candidate, offer.candidate_id, company_id)
         secure_url = f"{settings.FRONTEND_URL}/public/offers/{raw}"
         delivery = None
@@ -1176,7 +1187,7 @@ class OfferWorkflowService:
                 text=f"Your offer letter is ready: {secure_url}\nOffer expires: {expiry.date().isoformat()}",
                 idempotency_key=f"offer-send:{offer_id}:{candidate.email}",
             )
-        await record(company_id, "OfferSent", actor_id, candidate_id=offer.candidate_id, job_id=offer.job_id, payload={"offer_id": offer_id})
+        await record(company_id, "OfferSent", actor_id, candidate_id=offer.candidate_id, application_id=offer.application_id, job_id=offer.job_id, payload={"offer_id": offer_id})
         return {"offer": offer, "secure_url": secure_url, "email_status": delivery.status if delivery else "not_sent"}
 
     @staticmethod
@@ -1213,10 +1224,12 @@ class OfferWorkflowService:
         offer.candidate_comment = payload.get("comment")
         offer.updated_at = utc_now()
         await offer.save()
+        if not offer.application_id:
+            raise HTTPException(status_code=409, detail={"code": "APPLICATION_CONTEXT_REQUIRED", "message": "Offer is missing application context."})
         if accepted:
             candidate = await TenantRepository.get(Candidate, offer.candidate_id, offer.company_id)
-            if candidate:
-                await RecruitmentService.move(candidate, CandidateStatus.OFFER_ACCEPTED, None)
+            await ApplicationLifecycleService.transition(offer.company_id, offer.application_id, CandidateStatus.OFFER_ACCEPTED, None,
+                                                         allow_offer_transition=True)
             if candidate and candidate.assigned_recruiter_id:
                 recruiter = await User.get(candidate.assigned_recruiter_id)
                 if recruiter and recruiter.email:
@@ -1231,5 +1244,8 @@ class OfferWorkflowService:
                         text=f"{candidate.full_name} accepted the offer.",
                         idempotency_key=f"offer-accepted:{offer.id}:{recruiter.email}",
                     )
-        await record(offer.company_id, "OfferAccepted" if accepted else "OfferRejected", None, candidate_id=offer.candidate_id, job_id=offer.job_id, payload={"offer_id": str(offer.id)})
+        else:
+            await ApplicationLifecycleService.transition(offer.company_id, offer.application_id, CandidateStatus.WITHDRAWN, None,
+                                                         reason=payload.get("rejection_reason") or "Offer declined")
+        await record(offer.company_id, "OfferAccepted" if accepted else "OfferRejected", None, candidate_id=offer.candidate_id, application_id=offer.application_id, job_id=offer.job_id, payload={"offer_id": str(offer.id)})
         return offer

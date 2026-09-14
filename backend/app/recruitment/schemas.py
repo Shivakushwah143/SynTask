@@ -186,10 +186,56 @@ class CandidateUpdate(BaseModel):
 
 class CandidateMove(BaseModel):
     status: CandidateStatus
+    application_id: Optional[str] = None
+    expected_current_status: Optional[CandidateStatus] = None
 
 
 class CandidateReject(BaseModel):
     reason: str = Field(min_length=2)
+    application_id: Optional[str] = None
+    expected_current_status: Optional[CandidateStatus] = None
+
+
+class ApplicationCreate(BaseModel):
+    candidate_id: str
+    job_id: str
+    source: str = "manual"
+    assigned_recruiter_id: Optional[str] = None
+    current_resume_id: Optional[str] = None
+
+
+class ApplicationTransitionRequest(BaseModel):
+    target_status: CandidateStatus
+    expected_current_status: Optional[CandidateStatus] = None
+    reason: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ApplicationActionRequest(BaseModel):
+    reason: Optional[str] = None
+    notes: Optional[str] = None
+    expected_current_status: Optional[CandidateStatus] = None
+
+
+class ApplicationRestoreRequest(BaseModel):
+    target_status: Optional[CandidateStatus] = None
+    reason: Optional[str] = None
+
+
+class ApplicationAssignRequest(BaseModel):
+    recruiter_id: str
+
+
+class ApplicationMarkJoinedRequest(BaseModel):
+    joining_date: Optional[datetime] = None
+
+
+class ApplicationTransitionResponse(BaseModel):
+    application_id: str
+    previous_status: CandidateStatus
+    status: CandidateStatus
+    updated_at: datetime
+    allowed_transitions: list[CandidateStatus]
 
 
 class InterviewCreate(BaseModel):
@@ -282,10 +328,17 @@ class InterviewDecisionRequest(BaseModel):
 
 
 class OfferCreate(BaseModel):
-    candidate_id: str
-    offered_ctc: float = Field(gt=0)
+    application_id: str
     joining_date: datetime
-    send: bool = True
+    currency: str = "INR"
+    base_salary: float = Field(default=0, ge=0)
+    variable_pay: float = Field(default=0, ge=0)
+    joining_bonus: float = Field(default=0, ge=0)
+    probation_period: Optional[str] = None
+    notice_period: Optional[str] = None
+    work_location: Optional[str] = None
+    employment_type: Optional[str] = None
+    offer_expiry: Optional[datetime] = None
 
 
 class OfferUpdate(BaseModel):
