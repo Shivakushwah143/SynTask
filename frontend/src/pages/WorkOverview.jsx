@@ -32,6 +32,7 @@ import {
   ChevronDown,
   ChevronUp,
   UserRound,
+  User,
 } from 'lucide-react'
 import { timeTrackingApi } from '../api/timeTracking'
 import { timeService } from '../services/timeService'
@@ -109,6 +110,11 @@ function TaskRow({ task, actionLabel, actionHref, showAssignee = false }) {
           <span className={`font-medium ${PRIORITY_COLORS[task.priority] || 'text-gray-500'}`}>
             {task.priority}
           </span>
+          {task.source_type === 'self_assigned' && (
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+              <User className="h-2.5 w-2.5" /> Self Assigned
+            </span>
+          )}
           {hasDueDate && <span>Due <CarryForwardDueDate task={task} formatOptions={{ month: 'short', day: 'numeric' }} /></span>}
           {showAssignee && task.assigned_to_name && <span className="text-text-muted">→ {task.assigned_to_name}</span>}
         </div>
@@ -739,7 +745,7 @@ function MonitoringTaskRow({ task }) {
   const effectiveDue = task.carry_forward_due_date
     ? new Date(task.carry_forward_due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : null
-  return <Link to={`/tasks/${task.task_id}`} className={`flex items-center gap-3 rounded-lg border border-surface-border px-3 py-2.5 transition hover:border-primary-300 dark:border-[var(--color-app-border)] dark:hover:border-primary-400 ${tone.row}`}><span className={`h-8 w-1 shrink-0 rounded-full ${tone.bar}`} aria-hidden="true" /><div className="min-w-0 flex-1"><p className="text-sm font-medium text-text-primary">{task.title}</p><p className="mt-0.5 text-xs text-text-muted">{task.project_name || 'No project'} · {task.status.replace(/_/g, ' ')}{effectiveDue && ` · new due ${effectiveDue}`}</p></div>{carriedDays > 0 && <span className="shrink-0 rounded-full bg-primary-100 px-2 py-0.5 text-[11px] font-semibold text-primary-700 dark:bg-primary-950/50 dark:text-primary-200" title={`Original due date kept for reporting; deadline carried forward ${carryForwardDuration} across ${task.carry_forward_count || 1} adjustment${(task.carry_forward_count || 1) === 1 ? '' : 's'}`}><span className="hidden sm:inline">Carry forwarded — {carryForwardDuration}</span><span className="sm:hidden">CF</span></span>}<span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone.badge}`}>{state.label}</span></Link>
+  return <Link to={`/tasks/${task.task_id}`} className={`flex items-center gap-3 rounded-lg border border-surface-border px-3 py-2.5 transition hover:border-primary-300 dark:border-[var(--color-app-border)] dark:hover:border-primary-400 ${tone.row}`}><span className={`h-8 w-1 shrink-0 rounded-full ${tone.bar}`} aria-hidden="true" /><div className="min-w-0 flex-1"><p className="text-sm font-medium text-text-primary">{task.title}</p><p className="mt-0.5 text-xs text-text-muted">{task.project_name || 'No project'} · {task.status.replace(/_/g, ' ')}{effectiveDue && ` · new due ${effectiveDue}`}{task.source_type === 'self_assigned' ? ' · Self Assigned' : ''}</p></div>{carriedDays > 0 && <span className="shrink-0 rounded-full bg-primary-100 px-2 py-0.5 text-[11px] font-semibold text-primary-700 dark:bg-primary-950/50 dark:text-primary-200" title={`Original due date kept for reporting; deadline carried forward ${carryForwardDuration} across ${task.carry_forward_count || 1} adjustment${(task.carry_forward_count || 1) === 1 ? '' : 's'}`}><span className="hidden sm:inline">Carry forwarded — {carryForwardDuration}</span><span className="sm:hidden">CF</span></span>}<span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone.badge}`}>{state.label}</span></Link>
 }
 
 function MonitoringStat({ label, value, tone = 'text-text-primary' }) {
