@@ -722,9 +722,11 @@ The workspace reads company-scoped application records and provides lifecycle co
 
 The lifecycle strip is displayed above the Candidates workspace heading as a horizontally scrollable stage pipeline. It uses the same ordering and URL-backed selection pattern as the Work Tasks lifecycle strip, while keeping Recruitment stage labels and counts.
 
-Candidate list rows display the current application status as a labeled, status-colored pill. A row with one sequential server-authorized transition exposes a direct `Move to <stage>` action. Rows with conditional, non-sequential, or multiple authorized transitions open a Move candidate modal that lists only the backend-authorized next stages; every choice includes the expected current status so stale or unauthorized moves remain rejected server-side.
+Candidate list rows display the current application status as a labeled, status-colored pill. Whenever the backend authorizes the next sequential lifecycle stage, the row exposes a direct `Move to <stage>` action, even if other outcome transitions are also authorized. Conditional or non-sequential paths expose `Move to next` and open a Move candidate modal that lists only the backend-authorized next stages; every choice includes the expected current status so stale or unauthorized moves remain rejected server-side.
 
 The Candidates workspace uses an operations layout: a standalone lifecycle pipeline above the Recruitment workspace heading, a compact color-coded summary strip for applications, active pipeline, interviews, and offers, a labeled search control, and a responsive application table. Status colors remain consistent between pipeline tabs, summary context, row pills, and move-stage choices; the table has an explicit minimum width and horizontal scroll only where required by its operational columns.
+
+In a Job Candidate Pipeline, the application table omits the repeated Job column. Each row presents candidate initials, name, contact metadata, a color-coded lifecycle pill, a score severity indicator, recruiter assignment state, source badge, applied date, and its allowed next action. Global Candidates retains the Job column.
 
 The Job Candidate Pipeline includes Add Candidate. Its dialog locks the current Job so HR-created Candidate records are reused or created and associated with that Job only.
 
