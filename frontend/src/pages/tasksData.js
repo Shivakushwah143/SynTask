@@ -101,6 +101,7 @@ export function buildTaskGraphRows(tasks, usersOrLimit = [], maybeLimit = 8) {
       dueDate: task.due_date,
       created_at: task.created_at,
       projectId: task.project_id,
+      sourceType: task.source_type || null,
     }
   })
 }

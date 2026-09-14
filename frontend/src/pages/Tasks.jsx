@@ -2138,6 +2138,12 @@ function TaskCard({ task, onOpen }) {
             >
               {task.priorityLabel}
             </span>
+            {task.sourceType === 'self_assigned' && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                <User className="h-3 w-3" />
+                Self Assigned
+              </span>
+            )}
           </div>
         </div>
       </div>

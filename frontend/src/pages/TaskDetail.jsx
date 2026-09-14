@@ -1176,6 +1176,13 @@ const TaskDetail = () => {
                     {projectInfo.name}
                   </span>
                 )}
+                {/* Self Assigned badge */}
+                {task.source_type === "self_assigned" && (
+                  <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-300">
+                    <User className="h-3 w-3" />
+                    Self Assigned
+                  </span>
+                )}
               </div>
               <div className="mt-2 flex items-center gap-2 px-2">
                 <span
