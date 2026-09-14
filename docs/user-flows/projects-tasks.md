@@ -152,4 +152,15 @@ Selecting Expand lazy-loads one employee’s evidence panel. The panel opens on 
 
 In the expanded Work tab, each assigned task is color-coded by due date so a supervisor can scan for risk: **due date passed** (red row tint, red accent bar, red badge showing how many days late), **due date near** (amber, meaning due within 3 days including today), and **due date far** (neutral row with a green accent bar and the due date). Every row also states its category as text, so the code never relies on color alone. Completed and cancelled tasks keep the neutral treatment because their due date is historical rather than a risk, and tasks without a due date show `No due date`. Colors read consistently in light and dark mode.
 
+When a deadline has carried forward, the row keeps its original-commitment tone (still late) and adds a `Carry forwarded Nd` tag plus `now due <date>` in the row detail, so the supervisor sees both the slip and the live effective deadline. The row's period membership still uses the original due date, so a carried task stays visible in the window it was actually due in.
+
+# Phase 10 Task Due-Date Carry Forward
+
+A task that stays open past its due date has its **effective deadline** moved to the current date automatically, and the move is tagged. `due_date` is not rewritten: it remains the original commitment, so late work stays flagged as overdue in the Tasks workspace, in overdue summaries, and in at-risk project analysis, and past-period reporting does not change retroactively. The task carries `carry_forward_due_date` (effective deadline), `carry_forward_days` (accumulated days moved), `carry_forward_count`, and `carry_forward_last_at`. Each further day the task remains open past its original deadline raises `carry_forward_days` by one, so the carried value grows the longer a task slips.
+
+Carry forward applies to open tasks only: completed and cancelled tasks are never carried, a task due today or later is not carried, and a task without a due date is skipped. A leader-elected daily background sweep is authoritative, and task list and task detail reads apply a lazy catch-up to the tasks they return, so a view opened before the sweep still shows the current effective deadline. Both paths share one per-task-per-day guard, so a task is adjusted at most once per day even when both run. Each adjustment records a `task_carried_forward` activity event, which appears in the employee's Activity feed; task status, health, assignee, and priority are untouched and no notification is sent.
+
+Carry forward is separate from the existing extension flow: moving the real commitment still requires an assignee request and manager approval, which sets the new `due_date` and increments `extension_count`. Carry forward never changes `due_date`, `extension_count`, or task health.
+
+
 Negative access flow: crafted employee ids outside the resolved descendant/company scope receive 403 for both detail and activity. Company A data never enters Company B aggregation, and filters never expose out-of-scope people, departments, managers, or projects.

@@ -36,6 +36,7 @@ from app.services.task_health_service import (
     sync_task_health,
     sync_task_health_for_company,
 )
+from app.services.task_carry_forward_service import carry_forward_tasks
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.services.timeline_service import create_timeline_event
 from app.core.cache import cache_delete_pattern, company_dashboard_pattern
@@ -449,6 +450,10 @@ async def serialize_task_response(
         "completed_at": task.completed_at,
         "health_status": getattr(task.health_status, "value", task.health_status),
         "extension_count": getattr(task, "extension_count", 0),
+        "carry_forward_due_date": getattr(task, "carry_forward_due_date", None),
+        "carry_forward_days": int(getattr(task, "carry_forward_days", 0) or 0),
+        "carry_forward_count": int(getattr(task, "carry_forward_count", 0) or 0),
+        "carry_forward_last_at": getattr(task, "carry_forward_last_at", None),
         "estimated_hours": getattr(task, "estimated_hours", None),
         "actual_hours": getattr(task, "actual_hours", None),
         "progress_percentage": getattr(task, "progress_percentage", 0.0),
@@ -902,6 +907,9 @@ async def list_tasks(
         if valid_ids:
             related_users = await User.find({"_id": {"$in": valid_ids}}).to_list()
             users_by_id = {str(user.id): user for user in related_users}
+    # Lazy carry-forward catch-up for the returned page only, so listing tasks
+    # stays write-free unless a deadline passed since the last sweep.
+    await carry_forward_tasks(tasks)
     task_payloads = [
         await serialize_task_response(task, current_user, users_by_id=users_by_id)
         for task in tasks
@@ -1249,6 +1257,9 @@ async def get_task(
         )
 
     await _assert_task_view(current_user, task)
+    # Lazy carry-forward catch-up so a detail view never shows a stale
+    # effective deadline when the daily sweep has not run yet.
+    await carry_forward_tasks([task])
     await sync_task_health(task)
 
     return await serialize_task_response(task, current_user, include_detail=True)

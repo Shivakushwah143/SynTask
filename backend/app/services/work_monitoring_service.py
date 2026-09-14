@@ -328,7 +328,9 @@ async def get_monitoring_filters(current_user: User) -> Dict[str, Any]:
 def _task_detail(task: Task, projects: Dict[str, Project], logs: Iterable[TimeLog]) -> Dict[str, Any]:
     project = projects.get(str(task.project_id)) or projects.get(str(task.project_object_id))
     tracked = sum(_duration_hours(item.hours, item.minutes) for item in logs if item.task_id == str(task.id))
-    return {"task_id": str(task.id), "title": task.title, "project_id": str(project.id) if project else task.project_id, "project_name": project.name if project else None, "status": _value(task.status), "priority": _value(task.priority), "progress_percentage": task.progress_percentage, "due_date": _iso(task.due_date), "tracked_seconds": tracked}
+    # Carry forward is read here, never applied: monitoring stays write-free.
+    # `due_date` remains the original commitment the period window uses.
+    return {"task_id": str(task.id), "title": task.title, "project_id": str(project.id) if project else task.project_id, "project_name": project.name if project else None, "status": _value(task.status), "priority": _value(task.priority), "progress_percentage": task.progress_percentage, "due_date": _iso(task.due_date), "carry_forward_due_date": _iso(getattr(task, "carry_forward_due_date", None)), "carry_forward_days": int(getattr(task, "carry_forward_days", 0) or 0), "carry_forward_count": int(getattr(task, "carry_forward_count", 0) or 0), "tracked_seconds": tracked}
 
 
 async def get_employee_monitoring_detail(current_user: User, employee_id: str, *, date_value: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, Any]:

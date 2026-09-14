@@ -108,6 +108,16 @@ class Task(Document):
     health_status: TaskHealthStatus = TaskHealthStatus.HEALTHY
     health_updated_at: datetime = Field(default_factory=datetime.utcnow)
     extension_count: int = 0
+
+    # Automatic carry forward of a passed deadline. `due_date` is never
+    # rewritten: it stays the original commitment that task health, overdue
+    # reporting, and at-risk analysis read. Only the effective deadline a task
+    # is worked to moves, so lateness remains visible while the task always
+    # shows a live deadline. `carry_forward_days` accumulates every day moved.
+    carry_forward_due_date: Optional[datetime] = None
+    carry_forward_days: int = 0
+    carry_forward_count: int = 0
+    carry_forward_last_at: Optional[datetime] = None
     
     # Attachments
     attachments: List[str] = []  # File URLs

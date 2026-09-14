@@ -1484,9 +1484,13 @@ Indexes: `['company_id', 'created_by', 'assigned_to', 'status', 'priority', 'pro
 | `assigned_by` | `Optional[str]` | No | No | Model field |
 | `status` | `<enum 'TaskStatus` | No | Yes | Model field |
 | `priority` | `<enum 'TaskPriority` | No | Yes | Model field |
-| `due_date` | `Optional[datetime.datetime]` | No | No | Model field |
+| `due_date` | `Optional[datetime.datetime]` | No | No | Original commitment; never rewritten by carry forward, and the source for task health, overdue filters, and at-risk analysis. |
 | `start_date` | `Optional[datetime.datetime]` | No | No | Model field |
 | `completed_at` | `Optional[datetime.datetime]` | No | No | Model field |
+| `carry_forward_due_date` | `Optional[datetime.datetime]` | No | No | Effective deadline after automatic carry forward (midnight of the day it was carried); null until a task's first carry forward. |
+| `carry_forward_days` | `int` | No | No | Accumulated days the effective deadline has been moved; grows by one for every further day an open task stays past its original due date. |
+| `carry_forward_count` | `int` | No | No | Number of carry-forward adjustments applied to the task. |
+| `carry_forward_last_at` | `Optional[datetime.datetime]` | No | No | When the last carry-forward adjustment was applied; also the per-day idempotency guard shared by the daily job and read-time catch-up. |
 | `attachments` | `List[str]` | No | No | Model field |
 | `tags` | `List[str]` | No | No | Model field |
 | `parent_task_id` | `Optional[str]` | No | No | Model field |

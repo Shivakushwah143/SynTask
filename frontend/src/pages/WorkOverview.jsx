@@ -733,7 +733,13 @@ function workScopeLabel(detail) {
 function MonitoringTaskRow({ task }) {
   const state = dueDateState(task.due_date, task.status)
   const tone = DUE_TONES[state.tone] || DUE_TONES.none
-  return <Link to={`/tasks/${task.task_id}`} className={`flex items-center gap-3 rounded-lg border border-surface-border px-3 py-2.5 transition hover:border-primary-300 dark:border-[var(--color-app-border)] dark:hover:border-primary-400 ${tone.row}`}><span className={`h-8 w-1 shrink-0 rounded-full ${tone.bar}`} aria-hidden="true" /><div className="min-w-0 flex-1"><p className="text-sm font-medium text-text-primary">{task.title}</p><p className="mt-0.5 text-xs text-text-muted">{task.project_name || 'No project'} · {task.status.replace(/_/g, ' ')}</p></div><span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone.badge}`}>{state.label}</span></Link>
+  // A carried deadline keeps its original commitment tone (still late) and adds
+  // the rolled effective deadline, so the slip is visible rather than silent.
+  const carriedDays = task.carry_forward_days || 0
+  const effectiveDue = task.carry_forward_due_date
+    ? new Date(task.carry_forward_due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : null
+  return <Link to={`/tasks/${task.task_id}`} className={`flex items-center gap-3 rounded-lg border border-surface-border px-3 py-2.5 transition hover:border-primary-300 dark:border-[var(--color-app-border)] dark:hover:border-primary-400 ${tone.row}`}><span className={`h-8 w-1 shrink-0 rounded-full ${tone.bar}`} aria-hidden="true" /><div className="min-w-0 flex-1"><p className="text-sm font-medium text-text-primary">{task.title}</p><p className="mt-0.5 text-xs text-text-muted">{task.project_name || 'No project'} · {task.status.replace(/_/g, ' ')}{effectiveDue && ` · now due ${effectiveDue}`}</p></div>{carriedDays > 0 && <span className="shrink-0 rounded-full bg-primary-100 px-2 py-0.5 text-[11px] font-semibold text-primary-700 dark:bg-primary-950/50 dark:text-primary-200" title={`Original due date kept for reporting; deadline carried forward ${carriedDays} day${carriedDays === 1 ? '' : 's'} across ${task.carry_forward_count || 1} adjustment${(task.carry_forward_count || 1) === 1 ? '' : 's'}`}>Carry forwarded {carriedDays}d</span>}<span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone.badge}`}>{state.label}</span></Link>
 }
 
 function MonitoringStat({ label, value, tone = 'text-text-primary' }) {
