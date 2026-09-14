@@ -1119,6 +1119,8 @@ Task responses from `list_tasks`, `get_task`, task creation, the Work Overview p
 
 An open task (status other than `completed` or `cancelled`) whose `due_date` is in the past is carried forward once per day, without an approval step. A task is skipped when it is closed, has no `due_date`, is not yet past due, or was already carried that day, so the daily background job and the read-time catch-up cannot double count. Each adjustment records a `task_carried_forward` TimelineEvent keyed per task per day. `GET /api/v1/tasks/` and `GET /api/v1/tasks/{task_id}` persist a catch-up for the tasks they return; the monitoring projection never writes and only reports these fields. Moving the real commitment remains the approval-gated `TaskExtensionRequest` flow. Because `due_date` is unchanged, overdue counts, `due_today` counts, and `?attention=overdue` results keep including carried tasks.
 
+`GET /api/v1/work/overview/monitoring` includes `performance` on every authorized employee and `GET /api/v1/work/overview/monitoring/employees/{employee_id}` includes the same values as `work.performance`: `total`, `completed`, `after_due_date`, `before_due_date`, `completed_on_time`, `completed_late`, and `without_due_date`. They use the effective `carry_forward_due_date` where present for current due-state and completion-timeliness metrics; monitoring authorization and tenant scope are unchanged.
+
 ## Error Responses
 
 | Status | Meaning | Typical Cause |

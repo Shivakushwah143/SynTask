@@ -241,6 +241,7 @@ def _snapshot(user: User, context: Dict[str, Any], start: date, end: date) -> Di
         "attendance": {"status": _attendance_status(today_record), "check_in": _iso(getattr(today_record, "login_time", None)), "check_out": _iso(getattr(today_record, "logout_time", None)), "worked_seconds": attendance_seconds if records else None, "break_seconds": break_seconds if records else None, "is_late": bool(getattr(today_record, "is_late", False)), "source": getattr(today_record, "source", None)},
         "current_work": {"project_id": str(current_project.id) if current_project else getattr(current, "project_id", None), "project_name": current_project.name if current_project else None, "task_id": str(current.id) if current else None, "task_title": current.title if current else None, "status": _value(current.status) if current else None},
         "workload": {"assigned": len(window_tasks), "active": len(open_tasks), "in_progress": status_values.count(TaskStatus.IN_PROGRESS.value), "completed": status_values.count(TaskStatus.COMPLETED.value), "due_in_period": len(period_tasks["window"]), "overdue": len(overdue), "blocked": len(blocked), "in_review": len(review), "revision_required": len(revisions), "undated_open": len(period_tasks["undated_open"])},
+        "performance": _task_performance(window_tasks),
         "daily_update": {"status": "submitted" if eods else "missing", "submitted_at": _iso(eods[-1].updated_at) if eods else None},
         "time_tracking": {"attendance_seconds": attendance_seconds if records else None, "tracked_work_seconds": tracked_seconds if logs else None, "break_seconds": break_seconds if records else None, "active_timer_seconds": active_seconds if timer else None},
         "attention": attention, "_records": records, "_breaks": breaks, "_tasks": user_tasks, "_window_tasks": window_tasks, "_logs": logs, "_eods": eods, "_current": current, "_timer": timer,
@@ -330,7 +331,36 @@ def _task_detail(task: Task, projects: Dict[str, Project], logs: Iterable[TimeLo
     tracked = sum(_duration_hours(item.hours, item.minutes) for item in logs if item.task_id == str(task.id))
     # Carry forward is read here, never applied: monitoring stays write-free.
     # `due_date` remains the original commitment the period window uses.
-    return {"task_id": str(task.id), "title": task.title, "project_id": str(project.id) if project else task.project_id, "project_name": project.name if project else None, "status": _value(task.status), "priority": _value(task.priority), "progress_percentage": task.progress_percentage, "due_date": _iso(task.due_date), "carry_forward_due_date": _iso(getattr(task, "carry_forward_due_date", None)), "carry_forward_days": int(getattr(task, "carry_forward_days", 0) or 0), "carry_forward_count": int(getattr(task, "carry_forward_count", 0) or 0), "tracked_seconds": tracked}
+    return {"task_id": str(task.id), "title": task.title, "project_id": str(project.id) if project else task.project_id, "project_name": project.name if project else None, "status": _value(task.status), "priority": _value(task.priority), "progress_percentage": task.progress_percentage, "due_date": _iso(task.due_date), "carry_forward_due_date": _iso(getattr(task, "carry_forward_due_date", None)), "carry_forward_days": int(getattr(task, "carry_forward_days", 0) or 0), "carry_forward_count": int(getattr(task, "carry_forward_count", 0) or 0), "completed_at": _iso(getattr(task, "completed_at", None)), "tracked_seconds": tracked}
+
+
+def _task_performance(tasks: Iterable[Task], today: Optional[date] = None) -> Dict[str, int]:
+    """Summarize selected employee work using effective carried-forward dates."""
+    today = today or date.today()
+    summary = {"total": 0, "completed": 0, "after_due_date": 0, "before_due_date": 0, "completed_on_time": 0, "completed_late": 0, "without_due_date": 0}
+    for task in tasks:
+        summary["total"] += 1
+        status = _value(task.status)
+        due_date = getattr(task, "carry_forward_due_date", None) or getattr(task, "due_date", None)
+        due_day = due_date.date() if due_date else None
+        if not due_day:
+            summary["without_due_date"] += 1
+        if status == TaskStatus.COMPLETED.value:
+            summary["completed"] += 1
+            completed_at = getattr(task, "completed_at", None)
+            if due_day and completed_at:
+                if completed_at.date() <= due_day:
+                    summary["completed_on_time"] += 1
+                else:
+                    summary["completed_late"] += 1
+            continue
+        if status in COMPLETED_STATUSES or not due_day:
+            continue
+        if due_day < today:
+            summary["after_due_date"] += 1
+        else:
+            summary["before_due_date"] += 1
+    return summary
 
 
 async def get_employee_monitoring_detail(current_user: User, employee_id: str, *, date_value: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, Any]:
@@ -358,7 +388,7 @@ async def get_employee_monitoring_detail(current_user: User, employee_id: str, *
         task = task_by_id.get(log.task_id)
         distribution[task.title if task else "Unassigned work"] += _duration_hours(log.hours, log.minutes)
     daily = eods[-1] if eods else None
-    return {"employee": {key: snapshot[key] for key in ("user_id", "employee_profile_id", "identity", "department")}, "period": {"mode": mode, "start_date": start.isoformat(), "end_date": end.isoformat()}, "attendance": attendance, "work": {"current": current, "summary": snapshot["workload"], "scope": {"mode": mode, "start_date": start.isoformat(), "end_date": end.isoformat(), "includes_overdue": True, "undated_open": snapshot["workload"]["undated_open"]}, "tasks": tasks}, "time_tracking": {**snapshot["time_tracking"], "distribution": [{"type": "task", "label": label, "duration_seconds": seconds} for label, seconds in distribution.items()]}, "daily_update": {"status": "submitted", "submitted_at": _iso(daily.updated_at), "worked_on": [daily.worked_on] if daily and daily.worked_on else [], "completed": daily.completed_task_ids if daily else [], "in_progress": daily.in_progress_task_ids if daily else [], "blockers": [daily.blockers] if daily and daily.blockers else [], "tomorrow_plan": [daily.tomorrow_plan] if daily and daily.tomorrow_plan else []} if daily else {"status": "missing"}, "attention": snapshot["attention"], "live_monitoring": {"available": bool(records), "camera_status": getattr(records[-1], "camera_permission_status", None) if records else None, "screen_status": getattr(records[-1], "screen_sharing_status", None) if records else None, "can_open_live_monitor": False}}
+    return {"employee": {key: snapshot[key] for key in ("user_id", "employee_profile_id", "identity", "department")}, "period": {"mode": mode, "start_date": start.isoformat(), "end_date": end.isoformat()}, "attendance": attendance, "work": {"current": current, "summary": snapshot["workload"], "performance": _task_performance(snapshot["_window_tasks"]), "scope": {"mode": mode, "start_date": start.isoformat(), "end_date": end.isoformat(), "includes_overdue": True, "undated_open": snapshot["workload"]["undated_open"]}, "tasks": tasks}, "time_tracking": {**snapshot["time_tracking"], "distribution": [{"type": "task", "label": label, "duration_seconds": seconds} for label, seconds in distribution.items()]}, "daily_update": {"status": "submitted", "submitted_at": _iso(daily.updated_at), "worked_on": [daily.worked_on] if daily and daily.worked_on else [], "completed": daily.completed_task_ids if daily else [], "in_progress": daily.in_progress_task_ids if daily else [], "blockers": [daily.blockers] if daily and daily.blockers else [], "tomorrow_plan": [daily.tomorrow_plan] if daily and daily.tomorrow_plan else []} if daily else {"status": "missing"}, "attention": snapshot["attention"], "live_monitoring": {"available": bool(records), "camera_status": getattr(records[-1], "camera_permission_status", None) if records else None, "screen_status": getattr(records[-1], "screen_sharing_status", None) if records else None, "can_open_live_monitor": False}}
 
 
 async def get_employee_monitoring_timeline(current_user: User, employee_id: str, *, date_value: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None, event_type: Optional[str] = None, page: int = 1, page_size: int = 50) -> Dict[str, Any]:

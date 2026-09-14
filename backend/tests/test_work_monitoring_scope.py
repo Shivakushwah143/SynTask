@@ -114,6 +114,20 @@ def test_period_tasks_include_due_in_window_and_carry_overdue():
     assert period["undated_open"] == []
 
 
+def test_task_performance_uses_effective_carry_forward_due_date():
+    today = date(2026, 9, 14)
+    tasks = [
+        SimpleNamespace(status=TaskStatus.TODO, due_date=_due(date(2026, 8, 2)), carry_forward_due_date=_due(today), completed_at=None),
+        SimpleNamespace(status=TaskStatus.TODO, due_date=_due(date(2026, 9, 10)), carry_forward_due_date=None, completed_at=None),
+        SimpleNamespace(status=TaskStatus.COMPLETED, due_date=_due(date(2026, 9, 12)), carry_forward_due_date=None, completed_at=_due(date(2026, 9, 12))),
+        SimpleNamespace(status=TaskStatus.COMPLETED, due_date=_due(date(2026, 9, 11)), carry_forward_due_date=None, completed_at=_due(date(2026, 9, 13))),
+    ]
+
+    performance = service._task_performance(tasks, today=today)
+
+    assert performance == {"total": 4, "completed": 2, "after_due_date": 1, "before_due_date": 1, "completed_on_time": 1, "completed_late": 1, "without_due_date": 0}
+
+
 def test_period_tasks_do_not_carry_late_work_from_a_future_window():
     """A task due before a future window is not overdue yet, so it stays out."""
     tasks = [_task("not_yet_late", _due(date(2026, 9, 18))), _task("already_late", _due(date(2026, 8, 2)))]

@@ -43,4 +43,4 @@ No backfill is required: fields are absent until a task's first carry forward, a
 
 - `backend/tests/test_task_carry_forward.py` covers the step calculation, that a task due today or later is never carried, that a second run on the same day is a no-op, day-over-day accumulation of `carry_forward_days`/`count`, skipped closed and undated tasks, the per-day timeline idempotency key, and batch counting.
 - Verified against the development database: a task due 2026-08-02 produced `carry_forward_days=43`, `carry_forward_count=1`, effective deadline 2026-09-14, with `due_date` unchanged; a second same-day run changed nothing; the next day added one day.
-- Verified that carried tasks still report `overdue` in the monitoring projection and still fall inside their original period window.
+- Verified that carried tasks remain inside their original monitoring period window while the monitoring row’s current risk label uses the effective due date.
