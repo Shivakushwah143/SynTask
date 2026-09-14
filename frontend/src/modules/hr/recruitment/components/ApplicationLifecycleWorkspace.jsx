@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { ArrowRight, ClipboardList, Plus, RefreshCw, Search, UserCheck, Users, X } from "lucide-react";
+import { ArrowRight, ClipboardList, MessageSquare, Plus, RefreshCw, Search, UserCheck, Users, X } from "lucide-react";
 
 import { recruitmentApi } from "../../../../api/recruitment";
 import { Button, EmptyState, FormField, Modal, inputClassName } from "../../../../components/ui";
@@ -121,15 +121,22 @@ export function ApplicationLifecycleWorkspace({ jobId } = {}) {
   const [search, setSearch] = useState(params.get("search") || "");
   const [addOpen, setAddOpen] = useState(false);
   const [moveApplication, setMoveApplication] = useState(null);
+  const [notesApplication, setNotesApplication] = useState(null);
+  const [noteBody, setNoteBody] = useState("");
   const stage = params.get("stage") || "";
   const queryParams = useMemo(() => ({ stage: stage || undefined, job_id: jobId, search: search || undefined, page_size: 50 }), [stage, jobId, search]);
   const applications = useQuery(["recruitment", "applications", queryParams], () => recruitmentApi.getApplications(queryParams));
   const summary = useQuery(["recruitment", "applicationSummary", jobId], () => recruitmentApi.getApplicationSummary({ job_id: jobId }));
   const jobs = useQuery(["recruitment", "jobs", "forApplications"], () => recruitmentApi.getJobs({ page_size: 100 }));
+  const notesQuery = useQuery(["recruitment", "candidateNotes", notesApplication?.candidate?.id], () => recruitmentApi.getCandidate(notesApplication.candidate.id), { enabled: Boolean(notesApplication?.candidate?.id) });
   const qc = useQueryClient();
   const transition = useMutation(({ id, target, current }) => recruitmentApi.transitionApplication(id, { target_status: target, expected_current_status: current }), {
     onSuccess: () => { qc.invalidateQueries(["recruitment", "applications"]); qc.invalidateQueries(["recruitment", "applicationSummary"]); setMoveApplication(null); },
     onError: (error) => toast.error(error?.response?.data?.detail?.message || error?.response?.data?.detail || "Stage could not be updated"),
+  });
+  const saveNote = useMutation(() => recruitmentApi.addCandidateNote(notesApplication.candidate.id, { body: noteBody.trim(), application_id: notesApplication.application_id }), {
+    onSuccess: () => { setNoteBody(""); qc.invalidateQueries(["recruitment", "candidateNotes", notesApplication?.candidate?.id]); toast.success("Note added"); },
+    onError: (error) => toast.error(error?.response?.data?.detail || "Could not add note"),
   });
   const items = applications.data?.data?.items || [];
   const counts = summary.data?.data?.counts || {};
@@ -141,14 +148,16 @@ export function ApplicationLifecycleWorkspace({ jobId } = {}) {
   const transitionsFor = (app) => app.allowed_transitions || [];
   const isSequentialTransition = (app, target) => lifecycleSequence.indexOf(target) === lifecycleSequence.indexOf(app.status) + 1;
   const tableHeaders = jobId ? ["Candidate", "Current status", "Score", "Recruiter", "Source", "Applied", "Actions"] : ["Candidate", "Job", "Current status", "Score", "Recruiter", "Source", "Applied", "Actions"];
+  const applicationNotes = (notesQuery.data?.data?.notes || []).filter((note) => !note.application_id || note.application_id === notesApplication?.application_id);
   const renderMoveAction = (app) => {
     const available = transitionsFor(app);
-    if (!available.length) return <span className="text-xs text-gray-400">No next stage</span>;
+    const notesButton = <Button size="sm" variant="secondary" onClick={() => setNotesApplication(app)}><MessageSquare className="h-3.5 w-3.5" /> Notes</Button>;
+    if (!available.length) return <div className="flex items-center gap-2">{notesButton}<span className="text-xs text-gray-400">No next stage</span></div>;
     const target = available.find((candidate) => isSequentialTransition(app, candidate));
     if (target) {
-      return <Button size="sm" loading={transition.isLoading && transition.variables?.id === app.application_id} onClick={() => transition.mutate({ id: app.application_id, target, current: app.status })}>Move to {displayStage(target)}</Button>;
+      return <div className="flex items-center gap-2">{notesButton}<Button size="sm" loading={transition.isLoading && transition.variables?.id === app.application_id} onClick={() => transition.mutate({ id: app.application_id, target, current: app.status })}>Move to {displayStage(target)}</Button></div>;
     }
-    return <Button size="sm" variant="secondary" onClick={() => setMoveApplication(app)}>Move to next</Button>;
+    return <div className="flex items-center gap-2">{notesButton}<Button size="sm" variant="secondary" onClick={() => setMoveApplication(app)}>Move to next</Button></div>;
   };
   return <div className="space-y-4 px-1 pb-5 pt-1 sm:px-2 sm:pb-6">
     <section className="rounded-xl border border-indigo-100 bg-white px-3 py-2 shadow-sm dark:border-indigo-900/60 dark:bg-gray-900 sm:px-4"><ApplicationLifecyclePipeline current={stage} counts={counts} total={totalApplications} onSelect={selectStage} /></section>
@@ -173,6 +182,9 @@ export function ApplicationLifecycleWorkspace({ jobId } = {}) {
     </section>
     <Modal isOpen={Boolean(moveApplication)} onClose={() => setMoveApplication(null)} title="Move candidate" description={moveApplication ? `Current status: ${displayStage(moveApplication.status)}. Select an allowed next stage.` : undefined} size="sm">
       <div className="space-y-2" role="list" aria-label="Allowed next stages">{transitionsFor(moveApplication || {}).map((target) => <button key={target} type="button" role="listitem" disabled={transition.isLoading} onClick={() => transition.mutate({ id: moveApplication.application_id, target, current: moveApplication.status })} className="flex min-h-11 w-full cursor-pointer items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-sm font-semibold text-gray-800 transition hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:border-indigo-600 dark:hover:bg-indigo-950/40"><span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: stageColors[target] || "#6B7280" }} />Move to {displayStage(target)}</span><ArrowRight className="h-4 w-4 text-gray-400" /></button>)}</div>
+    </Modal>
+    <Modal isOpen={Boolean(notesApplication)} onClose={() => { setNotesApplication(null); setNoteBody(""); }} title="Candidate notes" description={notesApplication ? `${notesApplication.candidate.full_name} · ${notesApplication.job.title}` : undefined} size="md">
+      <div className="space-y-4"><div className="max-h-64 space-y-3 overflow-y-auto pr-1" aria-live="polite">{notesQuery.isLoading ? <p className="py-4 text-center text-sm text-gray-500">Loading notes…</p> : notesQuery.isError ? <p className="py-4 text-center text-sm text-rose-600">Could not load notes. Try again.</p> : !applicationNotes.length ? <p className="rounded-xl border border-dashed border-gray-200 p-4 text-center text-sm text-gray-500 dark:border-gray-700">No notes for this application yet.</p> : applicationNotes.map((note) => <article className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/70" key={note.id}><p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-100">{note.body}</p><p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{new Date(note.created_at).toLocaleString()}</p></article>)}</div><div className="border-t border-gray-100 pt-4 dark:border-gray-800"><label className="block text-sm font-semibold text-gray-800 dark:text-gray-100" htmlFor="candidate-note">Add note</label><textarea id="candidate-note" rows="3" className={`${inputClassName} mt-2 resize-y`} value={noteBody} placeholder="Add recruiter context, feedback, or follow-up…" onChange={(event) => setNoteBody(event.target.value)} /><div className="mt-3 flex justify-end"><Button disabled={!noteBody.trim()} loading={saveNote.isLoading} onClick={() => saveNote.mutate()}>Add note</Button></div></div></div>
     </Modal>
     <AddCandidateDialog open={addOpen} onClose={() => setAddOpen(false)} jobs={jobs.data?.data?.items || []} jobId={jobId} />
   </div>;
