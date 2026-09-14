@@ -331,7 +331,7 @@ def _task_detail(task: Task, projects: Dict[str, Project], logs: Iterable[TimeLo
     tracked = sum(_duration_hours(item.hours, item.minutes) for item in logs if item.task_id == str(task.id))
     # Carry forward is read here, never applied: monitoring stays write-free.
     # `due_date` remains the original commitment the period window uses.
-    return {"task_id": str(task.id), "title": task.title, "project_id": str(project.id) if project else task.project_id, "project_name": project.name if project else None, "status": _value(task.status), "priority": _value(task.priority), "progress_percentage": task.progress_percentage, "due_date": _iso(task.due_date), "carry_forward_due_date": _iso(getattr(task, "carry_forward_due_date", None)), "carry_forward_days": int(getattr(task, "carry_forward_days", 0) or 0), "carry_forward_count": int(getattr(task, "carry_forward_count", 0) or 0), "completed_at": _iso(getattr(task, "completed_at", None)), "tracked_seconds": tracked}
+    return {"task_id": str(task.id), "title": task.title, "project_id": str(project.id) if project else task.project_id, "project_name": project.name if project else None, "status": _value(task.status), "priority": _value(task.priority), "progress_percentage": task.progress_percentage, "due_date": _iso(task.due_date), "carry_forward_due_date": _iso(getattr(task, "carry_forward_due_date", None)), "carry_forward_days": int(getattr(task, "carry_forward_days", 0) or 0), "carry_forward_count": int(getattr(task, "carry_forward_count", 0) or 0), "completed_at": _iso(getattr(task, "completed_at", None)), "tracked_seconds": tracked, "source_type": getattr(task, "source_type", None)}
 
 
 def _task_performance(tasks: Iterable[Task], today: Optional[date] = None) -> Dict[str, int]:
