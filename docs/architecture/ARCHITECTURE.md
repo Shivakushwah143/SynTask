@@ -120,6 +120,10 @@ Phase 2 messaging extends the same module with `MetaChannelConnection`, `MetaCon
 ### Work Requests
 Work Requests live in `backend/app/models/work_request.py` and are served through `/api/v1/work-requests`. They are company-scoped operational request records for new work, changes, approvals, deadline extensions, resource needs, blockers, leave/availability, client requests, and related coordination. The service validates project/task/client/reviewer context inside the caller's tenant, records changelog/timeline history, sends same-tenant notifications, and converts approved or under-review requests into Tasks or Projects through existing services. Support Tickets remain separate.
 
+### Work monitoring projection
+
+`work_monitoring_service.py` is a read aggregation boundary behind `/api/v1/work/overview/monitoring*`. It first resolves a company-scoped monitoring scope from role and the existing User `ancestors` hierarchy, then bulk-loads existing operational sources and normalizes compact department/employee snapshots. Detail and timeline routes reapply the same scope check before querying one employee. The projection owns no persisted model: Attendance owns attendance interpretation, Tasks owns lifecycle, Time Tracking owns timers/logs, EOD owns submissions, and Live Monitor owns streams. This keeps tenant isolation at every query while avoiding N+1 per-employee source calls. Task-to-project references resolve by logical `project_id` code (for example `ECP-001`) as well as MongoDB `_id`; identifier lists are filtered with an ObjectId validity check before they reach an `_id` lookup, so a code-style reference can never invalidate the monitoring query.
+
 ### Time Tracking and Project Control
 Live timers use `ActiveTimeSession` and finalized recorded effort uses `TimeLog`. Timer start/pause/resume/stop are server-authoritative; frontend displays elapsed time from backend timestamps but does not decide duration. Stopping a timer creates a canonical `TimeLog` with `source=timer`; manual entries create `source=manual`. Reporting aggregates finalized logs server-side by employee, task, project, client, and source.
 

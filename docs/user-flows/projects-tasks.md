@@ -141,3 +141,11 @@ workflow by default as well; only tasks explicitly configured with
 `review_required=false` (and Sales follow-ups) bypass review.
 
 Project pages can request completion readiness from `/api/v1/projects/{project_id}/completion-readiness`. A project is not ready while required tasks are incomplete, review/revision/approved-not-completed tasks remain, dependency blockers exist, blocker Work Requests are open, active project timers exist, or the project lifecycle is not eligible. Direct status completion and semantic completion both use this backend readiness gate. Archiving is allowed only after the project reaches reporting and preserves historical tasks, time, requests, scheduled work, and activity.
+
+# Phase 9 Supervisory Work Overview
+
+An Admin/Sub Admin opens **Work → Overview** and receives only active employees in that company. A Manager or Lead receives only active reporting descendants through `ancestors`; an Employee retains the self-work view. The supervisor begins on Today, combines authorized department, employee, attendance, work-status, task-health, and text filters, and sees matching employees grouped by Department (or Unassigned Department). Summary counts recalculate from that same filtered population.
+
+Selecting Expand lazy-loads one employee’s evidence panel. Overview, Attendance, Work, Time, and Daily Update read existing records; Activity loads the existing employee timeline only when its tab is selected and paginates results. Missing data is neutral and explicit. Task navigation stays in the Task workspace; monitoring has no task, attendance, timer, EOD, or stream writes.
+
+Negative access flow: crafted employee ids outside the resolved descendant/company scope receive 403 for both detail and activity. Company A data never enters Company B aggregation, and filters never expose out-of-scope people, departments, managers, or projects.

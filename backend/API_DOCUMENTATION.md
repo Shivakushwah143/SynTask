@@ -1134,6 +1134,19 @@ Recruitment resumes are stored in `recruitment_resumes` with `storage_url` plus 
 List endpoints commonly use `skip` and `limit`; default page size is configured in `Settings.DEFAULT_PAGE_SIZE` and max size is `Settings.MAX_PAGE_SIZE`.
 
 ## Role and Module Access
+
+## Work monitoring overview
+
+The Work monitoring projection is read-only and remains under the current Work route group. It does not replace Attendance, Tasks, Time Tracking, EOD, or Live Monitor APIs.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/v1/work/overview/monitoring` | Compact department-first monitoring snapshots. Supports `date` **or** `start_date` + `end_date`, plus `department_id`, `designation`, `employee_id`, `manager_id`, `attendance_status`, `work_status`, `task_health`, `project_id`, and `search`. Filters combine with AND semantics. |
+| GET | `/api/v1/work/overview/monitoring/filters` | Returns only filter choices inside the caller's monitoring scope. |
+| GET | `/api/v1/work/overview/monitoring/employees/{employee_id}` | Lazy employee evidence for the selected period. Server returns 403 when the employee is outside scope. |
+| GET | `/api/v1/work/overview/monitoring/employees/{employee_id}/timeline` | Lazy paginated TimelineEvent evidence. Supports the period, `event_type`, `page`, and `page_size` (1–100). |
+
+Scope is server-authoritative: Admin/Sub Admin receive active users in their current company; Manager/Lead receive active hierarchy descendants; Employee is self-only. Every source query includes the current `company_id`, and a user with no active company scope receives no data. The compact overview reads existing User, EmployeeProfile, Department, Attendance, BreakLog, Task, Project, ActiveTimeSession, TimeLog, EODReport, and TimelineEvent data without creating a monitoring persistence model.
 Route groups for task-management features are protected with `require_module("task")`; `task` and `tasks_projects` are treated as aliases, and Manager, Lead, and Employee users may enter the Work module route group while endpoint-level company, hierarchy, assignment, project membership, and project-scoped Lead checks still constrain returned records and mutations. Chat also allows `task` or `tasks_projects` workspace access so global communication works for task workspace users. Sales routes rely on endpoint-level role checks. Recruitment routes require the recruitment module gate plus recruitment capability dependencies for non-admin HR users. Role helpers in `app/api/dependencies.py` enforce super admin, admin, lead/manager, and company access checks.
 
 Role conventions:
