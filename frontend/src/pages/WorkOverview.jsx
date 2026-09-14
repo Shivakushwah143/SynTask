@@ -664,12 +664,53 @@ const attendanceStyle = {
   absent: 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/30 dark:text-red-300',
 }
 
+// Due-date supervision buckets for an expanded employee's task list.
+// A task is "near" when it is due within DUE_SOON_DAYS days (today included).
+// Tone classes use solid accent bars and 100/50 tints: the app theme remaps
+// many pastel utilities to the neutral surface palette, solid 500 shades and
+// amber/red 50-100 shades render as authored in both light and dark mode.
+const DUE_SOON_DAYS = 3
+const CLOSED_TASK_STATUSES = new Set(['completed', 'cancelled'])
+
+const DUE_TONES = {
+  passed: { row: 'bg-red-50/60 dark:bg-red-950/25', bar: 'bg-red-500', badge: 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-200' },
+  near: { row: 'bg-amber-50/60 dark:bg-amber-950/25', bar: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-200' },
+  far: { row: 'bg-surface dark:bg-[var(--color-app-surface)]', bar: 'bg-emerald-500', badge: 'bg-surface-muted text-text-muted dark:bg-[var(--color-app-surface-muted)]' },
+  none: { row: 'bg-surface dark:bg-[var(--color-app-surface)]', bar: 'bg-slate-300 dark:bg-slate-600', badge: 'bg-surface-muted text-text-muted dark:bg-[var(--color-app-surface-muted)]' },
+}
+
+const _dayCount = (days) => `${days} day${Math.abs(days) === 1 ? '' : 's'}`
+
+/**
+ * Bucket a task due date as passed, near (<= DUE_SOON_DAYS), or far.
+ * Closed tasks stay neutral — their due date is historical, not a risk.
+ */
+function dueDateState(dueDate, status) {
+  if (!dueDate) return { tone: 'none', label: 'No due date' }
+  const due = new Date(dueDate)
+  if (Number.isNaN(due.getTime())) return { tone: 'none', label: 'No due date' }
+  const formatted = due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  if (CLOSED_TASK_STATUSES.has(String(status || '').toLowerCase())) return { tone: 'none', label: `Closed · was due ${formatted}` }
+  const dayStart = (value) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime()
+  const days = Math.round((dayStart(due) - dayStart(new Date())) / 86400000)
+  if (days < 0) return { tone: 'passed', label: `Due date passed · ${_dayCount(days)} ago` }
+  if (days === 0) return { tone: 'near', label: 'Due date near · today' }
+  if (days <= DUE_SOON_DAYS) return { tone: 'near', label: `Due date near · in ${_dayCount(days)}` }
+  return { tone: 'far', label: `Due date far · ${formatted}` }
+}
+
+function MonitoringTaskRow({ task }) {
+  const state = dueDateState(task.due_date, task.status)
+  const tone = DUE_TONES[state.tone] || DUE_TONES.none
+  return <Link to={`/tasks/${task.task_id}`} className={`flex items-center gap-3 rounded-lg border border-surface-border px-3 py-2.5 transition hover:border-primary-300 dark:border-[var(--color-app-border)] dark:hover:border-primary-400 ${tone.row}`}><span className={`h-8 w-1 shrink-0 rounded-full ${tone.bar}`} aria-hidden="true" /><div className="min-w-0 flex-1"><p className="text-sm font-medium text-text-primary">{task.title}</p><p className="mt-0.5 text-xs text-text-muted">{task.project_name || 'No project'} · {task.status.replace(/_/g, ' ')}</p></div><span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone.badge}`}>{state.label}</span></Link>
+}
+
 function MonitoringStat({ label, value, tone = 'text-text-primary' }) {
   return <div className="min-w-[92px] rounded-lg bg-surface-muted px-3 py-2 dark:bg-[var(--color-app-surface-muted)]"><p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">{label}</p><p className={`mt-0.5 text-lg font-bold tabular-nums ${tone}`}>{value}</p></div>
 }
 
 function MonitoringDetails({ employee, filters }) {
-  const [tab, setTab] = useState('overview')
+  const [tab, setTab] = useState('work')
   const [timelinePage, setTimelinePage] = useState(1)
   const period = filters.date ? { date: filters.date } : { start_date: filters.start_date, end_date: filters.end_date }
   const query = monitoringParams(period)
@@ -686,14 +727,12 @@ function MonitoringDetails({ employee, filters }) {
   if (detailQuery.isLoading) return <div className="border-t border-surface-border bg-surface-muted/50 px-5 py-6 text-sm text-text-muted dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-muted)]">Loading employee monitoring…</div>
   if (detailQuery.error) return <div className="border-t border-surface-border px-5 py-5 text-sm text-red-600">Employee detail is temporarily unavailable. <button type="button" className="underline" onClick={() => detailQuery.refetch()}>Retry</button></div>
   const detail = detailQuery.data
-  const tabs = [['overview', 'Overview'], ['attendance', 'Attendance'], ['work', 'Work'], ['time', 'Time'], ['daily', 'Daily Update'], ['activity', 'Activity']]
-  const fields = tab === 'overview' ? [['Status', detail.attendance.status.replace(/_/g, ' ')], ['Check-in', detail.attendance.check_in ? new Date(detail.attendance.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'], ['Worked', formatDuration(detail.attendance.worked_seconds)], ['Current work', detail.work.current?.task_title || 'No active work detected'], ['Active tasks', detail.work.summary.active], ['Overdue', detail.work.summary.overdue], ['EOD', detail.daily_update.status]] : []
+  const tabs = [['work', 'Work'], ['attendance', 'Attendance'], ['time', 'Time'], ['daily', 'Daily Update'], ['activity', 'Activity']]
   return <div className="border-t border-surface-border bg-slate-50/70 px-4 py-4 dark:border-[var(--color-app-border)] dark:bg-slate-950/25 sm:px-5">
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-semibold text-text-primary">{employee.identity.name}</p><p className="text-xs text-text-muted">{detail.period.start_date === detail.period.end_date ? detail.period.start_date : `${detail.period.start_date} – ${detail.period.end_date}`}</p></div></div>
     <div className="-mx-1 mb-4 flex gap-1 overflow-x-auto px-1" role="tablist" aria-label="Employee monitoring sections">{tabs.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`whitespace-nowrap rounded-md px-3 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-primary-500 ${tab === id ? 'bg-primary-600 text-white' : 'text-text-muted hover:bg-surface hover:text-text-primary'}`}>{label}</button>)}</div>
-    {tab === 'overview' && <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{fields.map(([label, value]) => <div key={label} className="rounded-lg border border-surface-border bg-surface p-3 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]"><p className="text-[10px] font-semibold uppercase text-text-muted">{label}</p><p className="mt-1 text-sm font-medium capitalize text-text-primary">{value}</p></div>)}</div>}
     {tab === 'attendance' && <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(detail.attendance).filter(([key]) => !['mode', 'breaks'].includes(key)).map(([key, value]) => <div key={key} className="rounded-lg bg-surface p-3 text-sm dark:bg-[var(--color-app-surface)]"><p className="text-[10px] font-semibold uppercase text-text-muted">{key.replace(/_/g, ' ')}</p><p className="mt-1 font-medium capitalize text-text-primary">{key.includes('seconds') ? formatDuration(value) : value === null ? '—' : String(value).replace(/_/g, ' ')}</p></div>)}</div>}
-    {tab === 'work' && <div className="space-y-2">{detail.work.tasks.length ? detail.work.tasks.map(task => <Link key={task.task_id} to={`/tasks/${task.task_id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-surface-border bg-surface px-3 py-2.5 hover:border-primary-300 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]"><div><p className="text-sm font-medium text-text-primary">{task.title}</p><p className="text-xs text-text-muted">{task.project_name || 'No project'} · {task.status.replace(/_/g, ' ')}</p></div><span className="text-xs font-medium text-text-muted">{task.due_date ? `Due ${new Date(task.due_date).toLocaleDateString()}` : 'No due date'}</span></Link>) : <p className="text-sm text-text-muted">No assigned work for this period.</p>}</div>}
+    {tab === 'work' && <div className="space-y-2">{detail.work.tasks.length ? detail.work.tasks.map(task => <MonitoringTaskRow key={task.task_id} task={task} />) : <p className="text-sm text-text-muted">No assigned work for this period.</p>}</div>}
     {tab === 'time' && <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(detail.time_tracking).filter(([key]) => key !== 'distribution').map(([key, value]) => <div key={key} className="rounded-lg bg-surface p-3 dark:bg-[var(--color-app-surface)]"><p className="text-[10px] font-semibold uppercase text-text-muted">{key.replace(/_/g, ' ')}</p><p className="mt-1 text-sm font-semibold text-text-primary">{formatDuration(value)}</p></div>)}</div>}
     {tab === 'daily' && <div className="rounded-lg bg-surface p-4 dark:bg-[var(--color-app-surface)]"><p className="text-sm font-semibold capitalize text-text-primary">Daily update: {detail.daily_update.status}</p>{detail.daily_update.worked_on?.length ? <div className="mt-2 space-y-1 text-sm text-text-muted">{detail.daily_update.worked_on.map(item => <p key={item}>{item}</p>)}</div> : <p className="mt-2 text-sm text-text-muted">No daily update was submitted for this period.</p>}</div>}
     {tab === 'activity' && <div className="space-y-2">{timelineQuery.isLoading ? <p className="text-sm text-text-muted">Loading activity…</p> : timelineQuery.data?.events?.length ? timelineQuery.data.events.map(event => <div key={event.event_id} className="rounded-lg bg-surface px-3 py-2.5 dark:bg-[var(--color-app-surface)]"><p className="text-sm font-medium text-text-primary">{event.title}</p><p className="mt-0.5 text-xs text-text-muted">{event.timestamp ? new Date(event.timestamp).toLocaleString() : ''}{event.description ? ` · ${event.description}` : ''}</p></div>) : <p className="text-sm text-text-muted">No recorded work activity for this period.</p>}</div>}
