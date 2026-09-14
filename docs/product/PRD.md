@@ -720,4 +720,8 @@ Recruitment Candidates is an application-first lifecycle workspace. Candidate pr
 
 The workspace reads company-scoped application records and provides lifecycle counts, search, explicit loading/error/empty states, and URL stage state. Job workspaces use the same records under the Candidate Pipeline tab. Candidate profile routes continue to expose person-level information.
 
+The lifecycle strip is displayed above the Candidates workspace heading as a horizontally scrollable stage pipeline. It uses the same ordering and URL-backed selection pattern as the Work Tasks lifecycle strip, while keeping Recruitment stage labels and counts.
+
+The Job Candidate Pipeline includes Add Candidate. Its dialog locks the current Job so HR-created Candidate records are reused or created and associated with that Job only.
+
 Manual entry creates or reuses a Candidate, optionally uploads a Candidate-owned resume, then creates one `NEW` Application for the selected Job. Duplicate Candidate+Job applications are rejected. New Interviews and Offers require one Application. Sending, accepting, declining, joining, and conversion update only that linked Application; server-side expected-state checks reject stale changes. Cross-company references and unauthorized mutations are rejected server-side.
