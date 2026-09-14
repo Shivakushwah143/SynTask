@@ -724,4 +724,8 @@ The lifecycle strip is displayed above the Candidates workspace heading as a hor
 
 The Job Candidate Pipeline includes Add Candidate. Its dialog locks the current Job so HR-created Candidate records are reused or created and associated with that Job only.
 
+Add Candidate supports recruiter-defined text fields for job-specific details. Recruiters may add or remove rows before submission. These values are stored on the Application and never overwrite Candidate profile data.
+
+The Add Candidate upload control accepts all file types. PDFs and supported image/resume formats are stored even when optional resume text extraction cannot run (for example, a scanned or password-protected PDF); their processing state records whether HR review is needed. Other files, including video, are securely stored as Candidate attachments.
+
 Manual entry creates or reuses a Candidate, optionally uploads a Candidate-owned resume, then creates one `NEW` Application for the selected Job. Duplicate Candidate+Job applications are rejected. New Interviews and Offers require one Application. Sending, accepting, declining, joining, and conversion update only that linked Application; server-side expected-state checks reject stale changes. Cross-company references and unauthorized mutations are rejected server-side.

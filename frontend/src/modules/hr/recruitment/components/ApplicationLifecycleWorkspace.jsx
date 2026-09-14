@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { ArrowRight, Plus, RefreshCw } from "lucide-react";
+import { ArrowRight, Plus, RefreshCw, X } from "lucide-react";
 
 import { recruitmentApi } from "../../../../api/recruitment";
 import { Button, EmptyState, FormField, Modal, inputClassName } from "../../../../components/ui";
@@ -45,13 +45,23 @@ function AddCandidateDialog({ open, onClose, jobs, jobId }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({ name: "", email: "", phone: "", source: "manual", currentCompany: "", experience: "0", skills: "", job_id: jobId || "" });
   const [resume, setResume] = useState(null);
+  const [customFields, setCustomFields] = useState([]);
   const submit = useMutation(async () => {
     const data = new FormData();
     Object.entries(form).forEach(([key, value]) => { if (key !== "job_id") data.append(key, value); });
     const candidate = (await recruitmentApi.createCandidate(data)).data;
     let resumeId = candidate.resume_id;
-    if (resume) resumeId = (await recruitmentApi.uploadCandidateResume(candidate.id, resume)).data?.id;
-    return recruitmentApi.createApplication({ candidate_id: candidate.id, job_id: form.job_id, source: form.source, current_resume_id: resumeId || undefined });
+    if (resume) {
+      const extension = `.${(resume.name.split(".").pop() || "").toLowerCase()}`;
+      const resumeExtensions = new Set([".pdf", ".doc", ".docx", ".txt", ".jpg", ".jpeg", ".png"]);
+      if (resumeExtensions.has(extension)) resumeId = (await recruitmentApi.uploadCandidateResume(candidate.id, resume)).data?.id;
+      else await recruitmentApi.addCandidateAttachment(candidate.id, resume);
+    }
+    const applicationFields = customFields.reduce((values, field) => {
+      if (field.label.trim()) values[field.label.trim()] = field.value;
+      return values;
+    }, {});
+    return recruitmentApi.createApplication({ candidate_id: candidate.id, job_id: jobId || form.job_id, source: form.source, current_resume_id: resumeId || undefined, custom_fields: applicationFields });
   }, {
     onSuccess: () => { toast.success("Candidate application created"); qc.invalidateQueries(["recruitment", "applications"]); qc.invalidateQueries(["recruitment", "applicationSummary"]); onClose(); },
     onError: (error) => toast.error(error?.response?.data?.detail?.message || error?.response?.data?.detail || "Could not create candidate application"),
@@ -67,8 +77,13 @@ function AddCandidateDialog({ open, onClose, jobs, jobId }) {
         <FormField label="Experience (years)"><input type="number" min="0" className={inputClassName} value={form.experience} onChange={(e) => setForm({ ...form, experience: e.target.value })} /></FormField>
       </div>
       <FormField label="Skills"><input className={inputClassName} placeholder="React, Python, …" value={form.skills} onChange={(e) => setForm({ ...form, skills: e.target.value })} /></FormField>
+      <div>
+        <div className="flex items-center justify-between gap-3"><label className="text-sm font-medium text-gray-700 dark:text-gray-200">Job-specific details</label><button type="button" onClick={() => setCustomFields((fields) => [...fields, { id: crypto.randomUUID(), label: "", value: "" }])} className="min-h-9 cursor-pointer text-xs font-semibold text-indigo-600 transition hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-indigo-300">+ Add field</button></div>
+        <p className="mt-1 text-xs text-gray-500">Stored on this application only.</p>
+        {customFields.length > 0 && <div className="mt-2 space-y-2">{customFields.map((field) => <div className="flex items-center gap-2" key={field.id}><input className={inputClassName} aria-label="Field label" placeholder="Field name" value={field.label} onChange={(e) => setCustomFields((fields) => fields.map((item) => item.id === field.id ? { ...item, label: e.target.value } : item))} /><input className={inputClassName} aria-label={field.label || "Field value"} placeholder="Value" value={field.value} onChange={(e) => setCustomFields((fields) => fields.map((item) => item.id === field.id ? { ...item, value: e.target.value } : item))} /><button type="button" aria-label={`Remove ${field.label || "custom field"}`} onClick={() => setCustomFields((fields) => fields.filter((item) => item.id !== field.id))} className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-gray-500 transition hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:hover:bg-rose-950/40"><X className="h-4 w-4" /></button></div>)}</div>}
+      </div>
       <FormField label="Job"><select required disabled={Boolean(jobId)} className={inputClassName} value={jobId || form.job_id} onChange={(e) => setForm({ ...form, job_id: e.target.value })}><option value="">Select a job</option>{jobs.map((job) => <option key={job.id} value={job.id}>{job.title}</option>)}</select>{jobId && <p className="mt-1 text-xs text-gray-500">Candidate will be added to this Job Pipeline.</p>}</FormField>
-      <FormField label="Resume"><input type="file" accept=".pdf,.doc,.docx" onChange={(e) => setResume(e.target.files?.[0] || null)} /></FormField>
+      <FormField label="Resume or attachment"><input type="file" onChange={(e) => setResume(e.target.files?.[0] || null)} /><p className="mt-1 text-xs text-gray-500">All file types supported. Resumes are parsed when supported; images, video, and other files are saved as candidate attachments.</p></FormField>
       <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={submit.isLoading}>Create application</Button></div>
     </form>
   </Modal>;

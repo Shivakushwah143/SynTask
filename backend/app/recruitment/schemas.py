@@ -202,6 +202,7 @@ class ApplicationCreate(BaseModel):
     source: str = "manual"
     assigned_recruiter_id: Optional[str] = None
     current_resume_id: Optional[str] = None
+    custom_fields: dict[str, str] = Field(default_factory=dict)
 
 
 class ApplicationTransitionRequest(BaseModel):

@@ -242,6 +242,8 @@ class Application(Document):
     previous_status: Optional[CandidateStatus] = None
     assigned_recruiter_id: Optional[str] = None
     current_resume_id: Optional[str] = None
+    # Role-specific answers; never shared across a candidate's applications.
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
     tracking_code: Indexed(str, unique=True)
     tracking_secret_hash: Optional[str] = None
     tracking_secret_created_at: Optional[datetime] = None

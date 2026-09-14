@@ -2056,6 +2056,7 @@ class ApplicationWorkspaceService:
         application = Application(company_id=company_id, candidate_id=str(candidate.id), job_id=str(job.id),
                                   source=data.get("source") or "manual", status=CandidateStatus.NEW,
                                   assigned_recruiter_id=recruiter_id, current_resume_id=resume_id or candidate.resume_id,
+                                  custom_fields=data.get("custom_fields") or {},
                                   tracking_code=tracking_code, tracking_secret_hash=get_password_hash(secret),
                                   tracking_secret_created_at=utc_now())
         await application.insert()
@@ -2081,6 +2082,7 @@ class ApplicationWorkspaceService:
         return {
             "application_id": str(application.id), "id": str(application.id), "status": application.status.value,
             "source": application.source, "applied_at": application.applied_at, "updated_at": application.updated_at,
+            "custom_fields": application.custom_fields,
             "assigned_recruiter_id": recruiter_id,
             "candidate": {"id": str(candidate.id), "full_name": candidate.full_name, "email": candidate.email, "phone": candidate.phone,
                           "location": candidate.location, "experience_years": candidate.experience_years, "skills": candidate.skills},
@@ -2171,6 +2173,7 @@ class CandidateAttachmentService:
             url_prefix="/uploads/recruitment",
             scope="recruitment/attachments",
             sensitive=True,
+            allow_any_type=True,
         )
         attachment = RecruitmentAttachment(
             company_id=company_id,

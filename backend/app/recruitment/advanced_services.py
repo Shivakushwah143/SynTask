@@ -282,7 +282,13 @@ class ResumeIntelligenceService:
         await candidate.save()
         await record(company_id, "ResumeUploaded", actor_id, candidate_id=candidate_id, payload={"resume_id": str(resume.id)})
         if Path(resume.original_filename or "").suffix.lower() in {".pdf", ".doc", ".docx", ".txt"}:
-            await ResumeIntelligenceService.process_resume(company_id, str(resume.id), actor_id)
+            # Parsing enriches a resume but must never turn a successfully stored
+            # file into a failed upload. Scanned/password-protected PDFs may have
+            # no extractable text; process_resume records that review state.
+            try:
+                await ResumeIntelligenceService.process_resume(company_id, str(resume.id), actor_id)
+            except HTTPException:
+                pass
         return resume
 
     @staticmethod
