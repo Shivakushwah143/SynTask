@@ -148,6 +148,48 @@ def _task_map(tasks: Iterable[Task]) -> Dict[str, Task]:
     return {str(task.id): task for task in tasks}
 
 
+def _due_day(task: Task) -> Optional[date]:
+    value = getattr(task, "due_date", None)
+    if isinstance(value, datetime):
+        return value.date()
+    return value if isinstance(value, date) else None
+
+
+def _period_tasks(tasks: Iterable[Task], start: date, end: date, today: Optional[date] = None) -> Dict[str, list[Task]]:
+    """Split assigned tasks into the period window a supervisor is reviewing.
+
+    A task belongs to the period when its due date falls inside [start, end],
+    or when it is still open and overdue before the window opened. Overdue work
+    is carried over so late tasks stay visible in every period instead of
+    disappearing once a range starts after their due date.
+
+    Overdue is anchored to today as well as the window start, so a future
+    window never reports work that is merely due before it as already late.
+    Tasks due between today and a future window, and open tasks without a due
+    date, are outside the period and are counted separately rather than
+    silently dropped.
+    """
+    reference = min(start, today or date.today())
+    due_in_period: list[Task] = []
+    carried_overdue: list[Task] = []
+    undated_open: list[Task] = []
+    for task in tasks:
+        day = _due_day(task)
+        open_task = _value(task.status) not in COMPLETED_STATUSES
+        if day is None:
+            if open_task:
+                undated_open.append(task)
+            continue
+        if start <= day <= end:
+            due_in_period.append(task)
+        elif open_task and day < reference:
+            carried_overdue.append(task)
+    order = lambda task: _due_day(task) or date.max
+    due_in_period.sort(key=order)
+    carried_overdue.sort(key=order)
+    return {"window": due_in_period, "overdue": carried_overdue, "undated_open": undated_open}
+
+
 def _snapshot(user: User, context: Dict[str, Any], start: date, end: date) -> Dict[str, Any]:
     uid = str(user.id)
     profile = next((item for item in context["profiles"] if item.user_id == uid), None)
@@ -169,13 +211,17 @@ def _snapshot(user: User, context: Dict[str, Any], start: date, end: date) -> Di
         current = next((item for item in sorted(user_tasks, key=lambda task: task.updated_at or task.created_at, reverse=True) if _value(item.status) == TaskStatus.IN_PROGRESS.value), None)
     if not current:
         current = next((item for item in sorted(user_tasks, key=lambda task: task.updated_at or task.created_at, reverse=True) if _value(item.status) in ACTIVE_TASK_STATUSES), None)
-    status_values = [_value(item.status) for item in user_tasks]
-    open_tasks = [item for item in user_tasks if _value(item.status) not in COMPLETED_STATUSES]
-    overdue = [item for item in open_tasks if item.due_date and item.due_date.date() < end]
-    due_today = [item for item in open_tasks if item.due_date and item.due_date.date() == end]
+    # Task evidence is scoped to the selected period: overdue work is carried
+    # over so it stays visible, and every task-derived count below describes
+    # the same window as the attendance, time, and EOD evidence.
+    period_tasks = _period_tasks(user_tasks, start, end)
+    window_tasks = [*period_tasks["overdue"], *period_tasks["window"]]
+    status_values = [_value(item.status) for item in window_tasks]
+    open_tasks = [item for item in window_tasks if _value(item.status) not in COMPLETED_STATUSES]
+    overdue = period_tasks["overdue"]
     blocked = [item for item in open_tasks if bool(item.dependencies)]
-    review = [item for item in user_tasks if _value(item.status) == TaskStatus.IN_REVIEW.value]
-    revisions = [item for item in user_tasks if _value(item.status) == TaskStatus.REVISION_REQUIRED.value]
+    review = [item for item in window_tasks if _value(item.status) == TaskStatus.IN_REVIEW.value]
+    revisions = [item for item in window_tasks if _value(item.status) == TaskStatus.REVISION_REQUIRED.value]
     attendance_seconds = sum(int(item.total_working_hours or 0) for item in records)
     break_seconds = sum(int(item.break_duration or 0) for item in records)
     tracked_seconds = sum(_duration_hours(item.hours, item.minutes) for item in logs)
@@ -194,10 +240,10 @@ def _snapshot(user: User, context: Dict[str, Any], start: date, end: date) -> Di
         "manager_id": manager_id,
         "attendance": {"status": _attendance_status(today_record), "check_in": _iso(getattr(today_record, "login_time", None)), "check_out": _iso(getattr(today_record, "logout_time", None)), "worked_seconds": attendance_seconds if records else None, "break_seconds": break_seconds if records else None, "is_late": bool(getattr(today_record, "is_late", False)), "source": getattr(today_record, "source", None)},
         "current_work": {"project_id": str(current_project.id) if current_project else getattr(current, "project_id", None), "project_name": current_project.name if current_project else None, "task_id": str(current.id) if current else None, "task_title": current.title if current else None, "status": _value(current.status) if current else None},
-        "workload": {"assigned": len(user_tasks), "active": len(open_tasks), "in_progress": status_values.count(TaskStatus.IN_PROGRESS.value), "completed": status_values.count(TaskStatus.COMPLETED.value), "due_today": len(due_today), "overdue": len(overdue), "blocked": len(blocked), "in_review": len(review), "revision_required": len(revisions)},
+        "workload": {"assigned": len(window_tasks), "active": len(open_tasks), "in_progress": status_values.count(TaskStatus.IN_PROGRESS.value), "completed": status_values.count(TaskStatus.COMPLETED.value), "due_in_period": len(period_tasks["window"]), "overdue": len(overdue), "blocked": len(blocked), "in_review": len(review), "revision_required": len(revisions), "undated_open": len(period_tasks["undated_open"])},
         "daily_update": {"status": "submitted" if eods else "missing", "submitted_at": _iso(eods[-1].updated_at) if eods else None},
         "time_tracking": {"attendance_seconds": attendance_seconds if records else None, "tracked_work_seconds": tracked_seconds if logs else None, "break_seconds": break_seconds if records else None, "active_timer_seconds": active_seconds if timer else None},
-        "attention": attention, "_records": records, "_breaks": breaks, "_tasks": user_tasks, "_logs": logs, "_eods": eods, "_current": current, "_timer": timer,
+        "attention": attention, "_records": records, "_breaks": breaks, "_tasks": user_tasks, "_window_tasks": window_tasks, "_logs": logs, "_eods": eods, "_current": current, "_timer": timer,
     }
 
 
@@ -302,7 +348,7 @@ async def get_employee_monitoring_detail(current_user: User, employee_id: str, *
         attendance = {**snapshot["attendance"], "mode": "single_day", "overtime_seconds": int(getattr(records[0], "overtime_seconds", 0) or 0) if records else None, "breaks": [{"start": _iso(item.start_time), "end": _iso(item.end_time), "duration_seconds": int(item.duration or 0)} for item in snapshot["_breaks"]]}
     else:
         attendance = {"mode": "range", "present_days": present_days, "absent_days": sum(_attendance_status(item) == "absent" for item in records), "leave_days": sum(_attendance_status(item) == "on_leave" for item in records), "total_work_seconds": sum(int(item.total_working_hours or 0) for item in records), "average_work_seconds": int(sum(int(item.total_working_hours or 0) for item in records) / len(records)) if records else None, "late_days": sum(bool(item.is_late) for item in records), "overtime_seconds": sum(int(item.overtime_seconds or 0) for item in records)}
-    tasks = [_task_detail(item, projects, snapshot["_logs"]) for item in snapshot["_tasks"]]
+    tasks = [_task_detail(item, projects, snapshot["_logs"]) for item in snapshot["_window_tasks"]]
     task_by_id = {str(item.id): item for item in snapshot["_tasks"]}
     current = _task_detail(snapshot["_current"], projects, snapshot["_logs"]) if snapshot["_current"] else None
     distribution: Dict[str, int] = defaultdict(int)
@@ -310,7 +356,7 @@ async def get_employee_monitoring_detail(current_user: User, employee_id: str, *
         task = task_by_id.get(log.task_id)
         distribution[task.title if task else "Unassigned work"] += _duration_hours(log.hours, log.minutes)
     daily = eods[-1] if eods else None
-    return {"employee": {key: snapshot[key] for key in ("user_id", "employee_profile_id", "identity", "department")}, "period": {"mode": mode, "start_date": start.isoformat(), "end_date": end.isoformat()}, "attendance": attendance, "work": {"current": current, "summary": snapshot["workload"], "tasks": tasks}, "time_tracking": {**snapshot["time_tracking"], "distribution": [{"type": "task", "label": label, "duration_seconds": seconds} for label, seconds in distribution.items()]}, "daily_update": {"status": "submitted", "submitted_at": _iso(daily.updated_at), "worked_on": [daily.worked_on] if daily and daily.worked_on else [], "completed": daily.completed_task_ids if daily else [], "in_progress": daily.in_progress_task_ids if daily else [], "blockers": [daily.blockers] if daily and daily.blockers else [], "tomorrow_plan": [daily.tomorrow_plan] if daily and daily.tomorrow_plan else []} if daily else {"status": "missing"}, "attention": snapshot["attention"], "live_monitoring": {"available": bool(records), "camera_status": getattr(records[-1], "camera_permission_status", None) if records else None, "screen_status": getattr(records[-1], "screen_sharing_status", None) if records else None, "can_open_live_monitor": False}}
+    return {"employee": {key: snapshot[key] for key in ("user_id", "employee_profile_id", "identity", "department")}, "period": {"mode": mode, "start_date": start.isoformat(), "end_date": end.isoformat()}, "attendance": attendance, "work": {"current": current, "summary": snapshot["workload"], "scope": {"mode": mode, "start_date": start.isoformat(), "end_date": end.isoformat(), "includes_overdue": True, "undated_open": snapshot["workload"]["undated_open"]}, "tasks": tasks}, "time_tracking": {**snapshot["time_tracking"], "distribution": [{"type": "task", "label": label, "duration_seconds": seconds} for label, seconds in distribution.items()]}, "daily_update": {"status": "submitted", "submitted_at": _iso(daily.updated_at), "worked_on": [daily.worked_on] if daily and daily.worked_on else [], "completed": daily.completed_task_ids if daily else [], "in_progress": daily.in_progress_task_ids if daily else [], "blockers": [daily.blockers] if daily and daily.blockers else [], "tomorrow_plan": [daily.tomorrow_plan] if daily and daily.tomorrow_plan else []} if daily else {"status": "missing"}, "attention": snapshot["attention"], "live_monitoring": {"available": bool(records), "camera_status": getattr(records[-1], "camera_permission_status", None) if records else None, "screen_status": getattr(records[-1], "screen_sharing_status", None) if records else None, "can_open_live_monitor": False}}
 
 
 async def get_employee_monitoring_timeline(current_user: User, employee_id: str, *, date_value: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None, event_type: Optional[str] = None, page: int = 1, page_size: int = 50) -> Dict[str, Any]:

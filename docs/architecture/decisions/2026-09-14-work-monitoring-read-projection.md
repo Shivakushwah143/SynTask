@@ -14,6 +14,8 @@ Supervisors need one overview spanning employee identity, attendance, current wo
 
 The service bulk-reads User, EmployeeProfile, Department, Attendance, BreakLog, Task, Project, ActiveTimeSession, TimeLog, EODReport, and TimelineEvent. It stores no monitoring snapshot. Source systems retain their writes and calculations; Live Monitor remains separately authorized and unembedded.
 
+Every task-derived figure is computed from one period window rather than from an employee's whole task list, so the counters, badges, and evidence on the page describe the selected day or range. Period membership is a due date inside the window, plus work that was already overdue when the window opened — carrying overdue work forward keeps late tasks visible in later ranges, and anchoring lateness to today as well as to the window start prevents a future range from relabelling work that is not yet late.
+
 Because Tasks reference projects by the logical `project_id` code and Departments by `_id`, the projection resolves both key styles and only converts values that are valid ObjectIds before using them in `_id` lookups. A code-style reference is skipped rather than raising, so one legacy link cannot fail the whole monitoring response.
 
 ## Consequences

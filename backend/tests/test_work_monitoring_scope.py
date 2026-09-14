@@ -1,9 +1,10 @@
-from datetime import date
+from datetime import date, datetime
 from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 
+from app.models.task import TaskStatus
 from app.models.user import User, UserRole, UserStatus
 from app.services import work_monitoring_service as service
 
@@ -84,6 +85,67 @@ def _monitored_user(user_id="admin", role=UserRole.ADMIN, **extra):
     }
     fields.update(extra)
     return SimpleNamespace(full_name=lambda: "Admin User", **fields)
+
+
+def _task(task_id, due=None, status=TaskStatus.TODO, dependencies=None):
+    return SimpleNamespace(id=task_id, due_date=due, status=status, dependencies=dependencies or [])
+
+
+def _due(day):
+    return datetime(day.year, day.month, day.day, 18, 30)
+
+
+def test_period_tasks_include_due_in_window_and_carry_overdue():
+    tasks = [
+        _task("inside", _due(date(2026, 9, 10))),
+        _task("carried", _due(date(2026, 8, 2))),
+        _task("later", _due(date(2026, 10, 1))),
+    ]
+
+    period = service._period_tasks(tasks, date(2026, 9, 8), date(2026, 9, 14), today=date(2026, 9, 14))
+
+    assert [task.id for task in period["window"]] == ["inside"]
+    assert [task.id for task in period["overdue"]] == ["carried"]
+    assert period["undated_open"] == []
+
+
+def test_period_tasks_do_not_carry_late_work_from_a_future_window():
+    """A task due before a future window is not overdue yet, so it stays out."""
+    tasks = [_task("not_yet_late", _due(date(2026, 9, 18))), _task("already_late", _due(date(2026, 8, 2)))]
+
+    period = service._period_tasks(tasks, date(2026, 9, 20), date(2026, 9, 30), today=date(2026, 9, 14))
+
+    assert [task.id for task in period["overdue"]] == ["already_late"]
+    assert period["window"] == []
+
+
+def test_period_tasks_keep_closed_tasks_out_of_overdue():
+    tasks = [
+        _task("done", _due(date(2026, 8, 2)), status=TaskStatus.COMPLETED),
+        _task("cancelled", _due(date(2026, 8, 3)), status=TaskStatus.CANCELLED),
+        _task("open", _due(date(2026, 8, 4))),
+    ]
+
+    period = service._period_tasks(tasks, date(2026, 9, 8), date(2026, 9, 14), today=date(2026, 9, 14))
+
+    assert [task.id for task in period["overdue"]] == ["open"]
+
+
+def test_period_tasks_report_open_undated_work_separately():
+    tasks = [_task("undated"), _task("closed_undated", status=TaskStatus.COMPLETED), _task("d", _due(date(2026, 9, 9)))]
+
+    period = service._period_tasks(tasks, date(2026, 9, 8), date(2026, 9, 14), today=date(2026, 9, 14))
+
+    assert [task.id for task in period["undated_open"]] == ["undated"]
+    assert [task.id for task in period["window"]] == ["d"]
+
+
+def test_period_tasks_are_ordered_by_due_date():
+    tasks = [_task("third", _due(date(2026, 9, 12))), _task("first", _due(date(2026, 9, 9))), _task("second", _due(date(2026, 9, 11)))]
+
+    period = service._period_tasks(tasks, date(2026, 9, 8), date(2026, 9, 14), today=date(2026, 9, 14))
+
+    assert [task.id for task in period["window"]] == ["first", "second", "third"]
 
 
 def test_document_ids_skips_non_object_id_identifiers():
