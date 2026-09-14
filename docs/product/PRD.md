@@ -722,6 +722,10 @@ The workspace reads company-scoped application records and provides lifecycle co
 
 The lifecycle strip is displayed above the Candidates workspace heading as a horizontally scrollable stage pipeline. It uses the same ordering and URL-backed selection pattern as the Work Tasks lifecycle strip, while keeping Recruitment stage labels and counts.
 
+Candidate list rows display the current application status as a labeled, status-colored pill. A row with one sequential server-authorized transition exposes a direct `Move to <stage>` action. Rows with conditional, non-sequential, or multiple authorized transitions open a Move candidate modal that lists only the backend-authorized next stages; every choice includes the expected current status so stale or unauthorized moves remain rejected server-side.
+
+The Candidates workspace uses an operations layout: a standalone lifecycle pipeline above the Recruitment workspace heading, a compact color-coded summary strip for applications, active pipeline, interviews, and offers, a labeled search control, and a responsive application table. Status colors remain consistent between pipeline tabs, summary context, row pills, and move-stage choices; the table has an explicit minimum width and horizontal scroll only where required by its operational columns.
+
 The Job Candidate Pipeline includes Add Candidate. Its dialog locks the current Job so HR-created Candidate records are reused or created and associated with that Job only.
 
 Add Candidate supports recruiter-defined text fields for job-specific details. Recruiters may add or remove rows before submission. These values are stored on the Application and never overwrite Candidate profile data.
