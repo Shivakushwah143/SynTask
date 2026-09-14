@@ -646,7 +646,20 @@ function ActiveTimerBar() {
 
 const MONITORING_CONTROL_CLASS = 'h-10 w-full rounded-lg border border-surface-border bg-surface px-2.5 text-sm text-text-primary focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]'
 
-const PERIOD_MODES = [['today', 'Today'], ['yesterday', 'Yesterday'], ['custom', 'Custom range']]
+const PERIOD_MODES = [
+  ['today', 'Today'],
+  ['yesterday', 'Yesterday'],
+  ['last_7_days', 'Last 7 days'],
+  ['last_30_days', 'Last 30 days'],
+  ['last_1_year', 'Last 1 year'],
+  ['custom', 'Custom range'],
+]
+
+// Trailing windows counted back from today and inclusive of today, so "Last 7
+// days" covers today plus the previous six dates.
+const PERIOD_WINDOW_DAYS_BACK = { last_7_days: 6, last_30_days: 29, last_1_year: 364 }
+
+const isRangePeriod = (mode) => mode !== 'today' && mode !== 'yesterday'
 
 // Monitoring sends a calendar day, so resolve it in the supervisor's timezone
 // instead of slicing a UTC instant (which drifts by a day near midnight).
@@ -769,9 +782,12 @@ function SupervisoryWorkOverview() {
   // The backend takes either a single day or a start/end range, never both, so
   // switching modes clears the other one. A cleared range field falls back to
   // its partner, which keeps the range valid without a blocking validation step.
+  // Editing either bound makes the window a custom range, so the Period label
+  // never claims a preset that no longer matches the dates on screen.
   const updateRange = (key, value) => setFilters(current => {
+    setPeriodMode('custom')
     const partner = key === 'start_date' ? current.end_date : current.start_date
-    const next = { ...current, [key]: value || partner || zonedDay(timeService.now()) }
+    const next = { ...current, date: '', [key]: value || partner || zonedDay(timeService.now()) }
     if (next.start_date > next.end_date) {
       if (key === 'start_date') next.end_date = next.start_date
       else next.start_date = next.end_date
@@ -780,17 +796,23 @@ function SupervisoryWorkOverview() {
   })
   const changePeriod = (mode) => {
     setPeriodMode(mode)
-    if (mode === 'custom') {
-      const today = zonedDay(timeService.now())
-      setFilters(current => ({ ...current, date: '', start_date: current.start_date || zonedDay(timeService.addDays(timeService.now(), -6)), end_date: current.end_date || today }))
+    const now = timeService.now()
+    const daysBack = PERIOD_WINDOW_DAYS_BACK[mode]
+    if (mode === 'custom' || daysBack !== undefined) {
+      const today = zonedDay(now)
+      const start = daysBack === undefined
+        ? zonedDay(timeService.addDays(now, -6))
+        : zonedDay(timeService.addDays(now, -daysBack))
+      const keepExisting = mode === 'custom'
+      setFilters(current => ({ ...current, date: '', start_date: keepExisting ? current.start_date || start : start, end_date: keepExisting ? current.end_date || today : today }))
       return
     }
-    setFilters(current => ({ ...current, date: mode === 'today' ? 'today' : zonedDay(timeService.addDays(timeService.now(), -1)), start_date: '', end_date: '' }))
+    setFilters(current => ({ ...current, date: mode === 'today' ? 'today' : zonedDay(timeService.addDays(now, -1)), start_date: '', end_date: '' }))
   }
   const reset = () => { setPeriodMode('today'); setFilters({ date: 'today', start_date: '', end_date: '', department_id: '', designation: '', employee_id: '', manager_id: '', attendance_status: '', work_status: '', task_health: '', project_id: '', search: '' }) }
   const options = optionsQuery.data || {}
   const select = (label, key, items = []) => <label className="min-w-[130px] flex-1 text-xs font-medium text-text-muted sm:flex-none"><span className="sr-only">{label}</span><select value={filters[key]} onChange={event => update(key, event.target.value)} className={MONITORING_CONTROL_CLASS}><option value="">{label}: All</option>{items.map(item => <option key={item.id || item} value={item.id || item}>{item.name || item.replace?.(/_/g, ' ') || item}</option>)}</select></label>
-  const periodControl = <><label className="min-w-[130px] flex-1 text-xs font-medium text-text-muted sm:flex-none"><span className="sr-only">Period</span><select value={periodMode} onChange={event => changePeriod(event.target.value)} className={MONITORING_CONTROL_CLASS}>{PERIOD_MODES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>{periodMode === 'custom' && <><label className="min-w-[150px] flex-1 text-xs font-medium text-text-muted sm:flex-none"><span className="sr-only">From date</span><input type="date" value={filters.start_date} max={filters.end_date || undefined} onChange={event => updateRange('start_date', event.target.value)} className={MONITORING_CONTROL_CLASS} aria-label="From date" /></label><label className="min-w-[150px] flex-1 text-xs font-medium text-text-muted sm:flex-none"><span className="sr-only">To date</span><input type="date" value={filters.end_date} min={filters.start_date || undefined} onChange={event => updateRange('end_date', event.target.value)} className={MONITORING_CONTROL_CLASS} aria-label="To date" /></label></>}</>
+  const periodControl = <><label className="min-w-[130px] flex-1 text-xs font-medium text-text-muted sm:flex-none"><span className="sr-only">Period</span><select value={periodMode} onChange={event => changePeriod(event.target.value)} className={MONITORING_CONTROL_CLASS}>{PERIOD_MODES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>{isRangePeriod(periodMode) && <><label className="min-w-[150px] flex-1 text-xs font-medium text-text-muted sm:flex-none"><span className="sr-only">From date</span><input type="date" value={filters.start_date} max={filters.end_date || undefined} onChange={event => updateRange('start_date', event.target.value)} className={MONITORING_CONTROL_CLASS} aria-label="From date" /></label><label className="min-w-[150px] flex-1 text-xs font-medium text-text-muted sm:flex-none"><span className="sr-only">To date</span><input type="date" value={filters.end_date} min={filters.start_date || undefined} onChange={event => updateRange('end_date', event.target.value)} className={MONITORING_CONTROL_CLASS} aria-label="To date" /></label></>}</>
   if (overviewQuery.isLoading) return <LoadingSkeleton />
   if (overviewQuery.error) return <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-center text-sm text-red-700"><AlertTriangle className="mx-auto mb-2 h-5 w-5" />Unable to load Work Overview. <button type="button" className="underline" onClick={() => overviewQuery.refetch()}>Retry</button></div>
   const data = overviewQuery.data
