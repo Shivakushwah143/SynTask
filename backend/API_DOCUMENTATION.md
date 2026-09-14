@@ -1107,7 +1107,7 @@ Suspended tenant enforcement occurs in `get_current_user`: non-superadmin users 
 
 ## Task due dates and carry forward
 
-Task responses from `list_tasks`, `get_task`, task creation, and the Work Overview monitoring projection include the due-date carry-forward fields alongside `due_date`.
+Task responses from `list_tasks`, `get_task`, task creation, the Work Overview projections, and Work Reports include the due-date carry-forward fields alongside `due_date`.
 
 | Field | Meaning |
 |---|---|

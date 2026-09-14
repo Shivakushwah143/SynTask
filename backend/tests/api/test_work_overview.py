@@ -37,6 +37,7 @@ from app.services.work_overview_service import (
     _next_action_reason,
     _compute_next_action,
     _classify_dominant,
+    _task_summary,
 )
 
 
@@ -79,6 +80,19 @@ def _task(**kwargs):
 
 
 NOW = datetime(2026, 8, 15, 10, 0, 0)
+
+
+def test_task_summary_exposes_effective_due_date_and_carry_days():
+    effective_due = NOW + timedelta(days=1)
+    summary = _task_summary(_task(
+        due_date=NOW - timedelta(days=3),
+        carry_forward_due_date=effective_due,
+        carry_forward_days=3,
+    ))
+
+    assert summary["due_date"] == (NOW - timedelta(days=3)).isoformat()
+    assert summary["carry_forward_due_date"] == effective_due.isoformat()
+    assert summary["carry_forward_days"] == 3
 
 
 # ── Workload Pressure ───────────────────────────────────────────────────────

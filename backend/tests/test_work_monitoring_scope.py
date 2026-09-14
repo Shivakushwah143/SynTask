@@ -38,6 +38,11 @@ def test_period_accepts_single_day():
     assert (start, end, mode) == (date(2026, 9, 13), date(2026, 9, 13), "single_day")
 
 
+def test_document_ids_convert_user_identity_strings_for_mongo_queries():
+    ids = service._document_ids(["6a5a23751e4e313f1c9bc612", "not-a-mongo-id"])
+    assert [str(item) for item in ids] == ["6a5a23751e4e313f1c9bc612"]
+
+
 @pytest.mark.asyncio
 async def test_manager_scope_uses_descendants_and_company(monkeypatch):
     captured = {}

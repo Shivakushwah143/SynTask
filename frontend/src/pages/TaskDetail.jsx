@@ -60,6 +60,7 @@ import {
 } from "./taskNavigation";
 import toast from "react-hot-toast";
 import { timeService } from "@/services/timeService";
+import CarryForwardDueDate from "../components/tasks/CarryForwardDueDate";
 
 const dedupeUsersById = (items = []) => {
   const seen = new Set();
@@ -1487,6 +1488,8 @@ const TaskDetail = () => {
                       : "—"}
                   </p>
                 </div>
+
+                {task.carry_forward_due_date ? <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50"><p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">New due date</p><p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white"><CarryForwardDueDate task={task} /></p></div> : null}
 
                 {/* Created */}
                 <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">

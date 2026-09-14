@@ -97,6 +97,7 @@ import { isFollowUpTask } from "./tasksData";
 // lifecycle; they never surface in the Project Task workspace.
 const isScheduledTask = (task) => Boolean(task?.is_scheduled_placeholder);
 import { timeService } from "../services/timeService";
+import CarryForwardDueDate from "../components/tasks/CarryForwardDueDate";
 import { excludeCurrentUser } from "../utils/userFilters";
 import TemplateApplyModal from "../components/templates/TemplateApplyModal";
 
@@ -2139,12 +2140,7 @@ export default function ProjectBoard() {
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                             <div className="flex flex-wrap items-center gap-1.5">
-                              {task.due_date
-                                ? timeService.format(task.due_date, {
-                                    month: "short",
-                                    day: "numeric",
-                                  })
-                                : "\u2014"}
+                              <CarryForwardDueDate task={task} formatOptions={{ month: 'short', day: 'numeric' }} />
                               {task.health_status === "overdue" ? (
                                 <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">
                                   Overdue
@@ -3253,12 +3249,12 @@ function SortableProjectTaskCard({
         </button>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        {task.due_date ? (
+        {(task.due_date || task.carry_forward_due_date) ? (
           <Badge
-            label={timeService.format(task.due_date, {
+            label={`${timeService.format(task.carry_forward_due_date || task.due_date, {
               month: "short",
               day: "numeric",
-            })}
+            })}${task.carry_forward_due_date && task.carry_forward_days ? ` · Carry forwarded — ${task.carry_forward_days >= 30 && task.carry_forward_days % 30 === 0 ? `${task.carry_forward_days / 30} M` : `${task.carry_forward_days} D`}` : ''}`}
             colorKey="scheduled"
           />
         ) : null}
