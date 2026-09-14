@@ -123,6 +123,8 @@ def _task_summary(task: Task) -> Dict[str, Any]:
         "project_id": task.project_id,
         "project_object_id": task.project_object_id,
         "due_date": task.due_date.isoformat() if task.due_date else None,
+        "carry_forward_due_date": getattr(task, "carry_forward_due_date", None).isoformat() if getattr(task, "carry_forward_due_date", None) else None,
+        "carry_forward_days": int(getattr(task, "carry_forward_days", 0) or 0),
         "is_blocked": False,  # populated separately if needed
         "health_status": task.health_status.value if hasattr(task.health_status, "value") else str(task.health_status),
         "source_type": getattr(task, "source_type", None),
@@ -403,6 +405,8 @@ def _compute_next_action(tasks: List[Task], blocker_map: Optional[Dict[str, List
         "status": best.status.value if hasattr(best.status, "value") else str(best.status),
         "priority": best.priority.value if hasattr(best.priority, "value") else str(best.priority),
         "due_date": best.due_date.isoformat() if best.due_date else None,
+        "carry_forward_due_date": getattr(best, "carry_forward_due_date", None).isoformat() if getattr(best, "carry_forward_due_date", None) else None,
+        "carry_forward_days": int(getattr(best, "carry_forward_days", 0) or 0),
         "project_id": best.project_id,
         "project_object_id": best.project_object_id,
         "action": action,

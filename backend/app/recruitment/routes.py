@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from app.core.clock import utc_now
 from app.models.company import Company
 from app.models.user import User
-from app.recruitment.models import (Candidate, CandidateJobScore, CandidateStatus, CandidateTimeline,
+from app.recruitment.models import (Application, Candidate, CandidateJobScore, CandidateStatus, CandidateTimeline,
                                     ImportStatus, Interview, JobLifecycleStatus,
                                     JobRequirementProfile, JobStatus, Offer, RecruitmentJob,
                                     Resume, ResumeParsedProfile)
@@ -35,7 +35,9 @@ from app.recruitment.permissions import (require_job_archive, require_job_create
                                          require_interview_feedback,
                                          require_report_view)
 from app.recruitment.repositories import JobRepository, TenantRepository
-from app.recruitment.schemas import (ApplicationApplyResponse, ApplicationStatusResponse,
+from app.recruitment.schemas import (ApplicationActionRequest, ApplicationApplyResponse, ApplicationAssignRequest,
+                                     ApplicationCreate, ApplicationMarkJoinedRequest, ApplicationRestoreRequest,
+                                     ApplicationStatusResponse, ApplicationTransitionRequest, ApplicationTransitionResponse,
                                      CandidateApply, CandidateMove, CandidateReject,
                                      CandidateAssignRequest, CandidateAssignJobRequest,
                                      CandidateAssignJobResponse, CandidateNoteCreate,
@@ -59,7 +61,7 @@ from app.recruitment.schemas import (ApplicationApplyResponse, ApplicationStatus
                                      PublicTrackingProfileUpdate,
                                      PublicJobListResponse,
                                      PublicJobResponse, ResumePoolResponse)
-from app.recruitment.services import (ApplicationService, CareerPortalService,
+from app.recruitment.services import (ApplicationLifecycleService, ApplicationService, ApplicationWorkspaceService, CareerPortalService,
                                       CandidateAssignmentService,
                                       CandidateAttachmentService,
                                       CandidateNotesService,
@@ -269,9 +271,114 @@ async def list_jobs(
 
 
 @router.get("/jobs/{job_id}/applications")
-async def list_job_applications(job_id: str, user: User = Depends(require_candidate_view)):
+async def list_job_applications(job_id: str, stage: Optional[CandidateStatus] = None, search: Optional[str] = None,
+                                recruiter_id: Optional[str] = None, source: Optional[str] = None,
+                                page: int = 1, page_size: int = 50, user: User = Depends(require_candidate_view)):
     """List candidates who applied to one job."""
-    return {"items": await CandidateWorkspaceService.list_for_job(company(user), job_id)}
+    await JobService.get_job(job_id, company(user))
+    items, total = await ApplicationWorkspaceService.list(company(user), {
+        "job_id": job_id, "stage": stage.value if stage else None, "search": search,
+        "assigned_recruiter_id": recruiter_id, "source": source,
+    }, (page - 1) * page_size, page_size)
+    return {"items": items, "total": total, "page": page, "page_size": page_size, "has_next": page * page_size < total}
+
+
+@router.get("/applications/summary")
+async def application_summary(stage: Optional[CandidateStatus] = None, job_id: Optional[str] = None,
+                              recruiter_id: Optional[str] = None, source: Optional[str] = None,
+                              department_id: Optional[str] = None, user: User = Depends(require_candidate_view)):
+    return await ApplicationWorkspaceService.summary(company(user), {
+        "stage": stage.value if stage else None, "job_id": job_id, "assigned_recruiter_id": recruiter_id,
+        "source": source, "department_id": department_id,
+    })
+
+
+@router.get("/applications")
+async def list_applications(stage: Optional[CandidateStatus] = None, search: Optional[str] = None,
+                            job_id: Optional[str] = None, recruiter_id: Optional[str] = None,
+                            department_id: Optional[str] = None, source: Optional[str] = None,
+                            page: int = 1, page_size: int = 50, user: User = Depends(require_candidate_view)):
+    items, total = await ApplicationWorkspaceService.list(company(user), {
+        "stage": stage.value if stage else None, "search": search, "job_id": job_id,
+        "assigned_recruiter_id": recruiter_id, "department_id": department_id, "source": source,
+    }, (page - 1) * page_size, min(page_size, 100))
+    return {"items": items, "total": total, "page": page, "page_size": min(page_size, 100), "has_next": page * page_size < total}
+
+
+@router.post("/applications", status_code=201)
+async def create_application(payload: ApplicationCreate, user: User = Depends(require_candidate_manage)):
+    application = await ApplicationWorkspaceService.create(company(user), str(user.id), payload.model_dump())
+    return await ApplicationWorkspaceService.item(company(user), application)
+
+
+@router.get("/applications/{application_id}")
+async def get_application(application_id: str, user: User = Depends(require_candidate_view)):
+    application = await ApplicationLifecycleService.get(company(user), application_id)
+    return await ApplicationWorkspaceService.item(company(user), application)
+
+
+@router.post("/applications/{application_id}/transition", response_model=ApplicationTransitionResponse)
+async def transition_application(application_id: str, payload: ApplicationTransitionRequest, user: User = Depends(require_candidate_manage)):
+    return await ApplicationLifecycleService.transition(company(user), application_id, payload.target_status, str(user.id),
+                                                        expected=payload.expected_current_status, reason=payload.reason, notes=payload.notes)
+
+
+@router.post("/applications/{application_id}/reject", response_model=ApplicationTransitionResponse)
+async def reject_application(application_id: str, payload: ApplicationActionRequest, user: User = Depends(require_candidate_manage)):
+    if not payload.reason:
+        raise HTTPException(status_code=400, detail="Rejection reason is required")
+    return await ApplicationLifecycleService.transition(company(user), application_id, CandidateStatus.REJECTED, str(user.id),
+                                                        expected=payload.expected_current_status, reason=payload.reason, notes=payload.notes)
+
+
+@router.post("/applications/{application_id}/withdraw", response_model=ApplicationTransitionResponse)
+async def withdraw_application(application_id: str, payload: ApplicationActionRequest, user: User = Depends(require_candidate_manage)):
+    return await ApplicationLifecycleService.transition(company(user), application_id, CandidateStatus.WITHDRAWN, str(user.id),
+                                                        expected=payload.expected_current_status, reason=payload.reason, notes=payload.notes)
+
+
+@router.post("/applications/{application_id}/archive", response_model=ApplicationTransitionResponse)
+async def archive_application(application_id: str, payload: ApplicationActionRequest, user: User = Depends(require_candidate_manage)):
+    return await ApplicationLifecycleService.transition(company(user), application_id, CandidateStatus.ARCHIVED, str(user.id),
+                                                        expected=payload.expected_current_status, reason=payload.reason, notes=payload.notes)
+
+
+@router.post("/applications/{application_id}/restore", response_model=ApplicationTransitionResponse)
+async def restore_application(application_id: str, payload: ApplicationRestoreRequest, user: User = Depends(require_candidate_manage)):
+    return await ApplicationLifecycleService.restore(company(user), application_id, str(user.id), payload.target_status, payload.reason)
+
+
+@router.post("/applications/{application_id}/assign")
+async def assign_application(application_id: str, payload: ApplicationAssignRequest, user: User = Depends(require_candidate_assign)):
+    application = await ApplicationWorkspaceService.assign(company(user), application_id, payload.recruiter_id, str(user.id))
+    return await ApplicationWorkspaceService.item(company(user), application)
+
+
+@router.post("/applications/{application_id}/mark-joined", response_model=ApplicationTransitionResponse)
+async def mark_application_joined(application_id: str, payload: ApplicationMarkJoinedRequest, user: User = Depends(require_recruitment_manager)):
+    application = await ApplicationLifecycleService.get(company(user), application_id)
+    accepted = await Offer.find_one({"company_id": company(user), "application_id": application_id, "status": "accepted", "deleted_at": None})
+    if not accepted:
+        raise HTTPException(status_code=409, detail={"code": "JOINING_PREREQUISITE", "message": "An accepted offer for this application is required."})
+    return await ApplicationLifecycleService.transition(company(user), application_id, CandidateStatus.JOINED, str(user.id), expected=application.status)
+
+
+@router.post("/applications/{application_id}/convert")
+async def convert_application(application_id: str, payload: ConversionRequest, user: User = Depends(require_recruitment_manager)):
+    application = await ApplicationLifecycleService.get(company(user), application_id)
+    if application.status != CandidateStatus.JOINED:
+        raise HTTPException(status_code=409, detail={"code": "JOINING_PREREQUISITE", "message": "Application must be joined before conversion."})
+    candidate = await CandidateWorkspaceService.get_candidate(company(user), application.candidate_id)
+    if candidate.employee_id:
+        raise HTTPException(status_code=409, detail="Candidate is already converted")
+    offer = await Offer.find_one({"company_id": company(user), "application_id": application_id, "status": "accepted", "deleted_at": None})
+    if not offer:
+        raise HTTPException(status_code=409, detail="Accepted offer for this application is required")
+    from app.services.employee_profile_service import EmployeeOnboardingService
+    result = await EmployeeOnboardingService.create_employee_from_candidate(company(user), str(user.id), candidate, offer=offer,
+        department_id=payload.department_id, designation=payload.designation, reports_to=payload.reports_to)
+    await record(company(user), "CandidateConverted", str(user.id), candidate_id=application.candidate_id, application_id=application_id, job_id=application.job_id)
+    return result["user"]
 
 
 # Get Job by ID
@@ -926,27 +1033,44 @@ async def candidate_keyword_match(candidate_id: str, job_id: str, user: User = D
 
 @router.post("/candidates/{candidate_id}/move")
 async def move_candidate(candidate_id: str, payload: CandidateMove, user: User = Depends(require_recruitment_access)):
-    candidate = await CandidateWorkspaceService.get_candidate(company(user), candidate_id)
-    return await RecruitmentService.move(candidate, payload.status, str(user.id))
+    await CandidateWorkspaceService.get_candidate(company(user), candidate_id)
+    application_id = payload.application_id
+    if not application_id:
+        applications = await Application.find({"company_id": company(user), "candidate_id": candidate_id, "deleted_at": None}).to_list()
+        if len(applications) != 1:
+            raise HTTPException(status_code=409, detail={"code": "APPLICATION_CONTEXT_REQUIRED", "message": "Specify application_id to move this candidate."})
+        application_id = str(applications[0].id)
+    return await ApplicationLifecycleService.transition(company(user), application_id, payload.status, str(user.id), expected=payload.expected_current_status)
 
 
 @router.post("/candidates/{candidate_id}/reject")
 async def reject_candidate(candidate_id: str, payload: CandidateReject, user: User = Depends(require_recruitment_access)):
-    candidate = await CandidateWorkspaceService.get_candidate(company(user), candidate_id)
-    item = await RecruitmentService.move(candidate, CandidateStatus.REJECTED, str(user.id)); item.rejection_reason = payload.reason; await item.save(); return item
+    await CandidateWorkspaceService.get_candidate(company(user), candidate_id)
+    application_id = payload.application_id
+    if not application_id:
+        applications = await Application.find({"company_id": company(user), "candidate_id": candidate_id, "deleted_at": None}).to_list()
+        if len(applications) != 1:
+            raise HTTPException(status_code=409, detail={"code": "APPLICATION_CONTEXT_REQUIRED", "message": "Specify application_id to reject this candidate."})
+        application_id = str(applications[0].id)
+    return await ApplicationLifecycleService.transition(company(user), application_id, CandidateStatus.REJECTED, str(user.id),
+                                                        expected=payload.expected_current_status, reason=payload.reason)
 
 
 @router.post("/candidates/{candidate_id}/convert")
 async def convert_candidate(candidate_id: str, payload: ConversionRequest, user: User = Depends(require_recruitment_manager)):
-    candidate = await CandidateWorkspaceService.get_candidate(company(user), candidate_id)
-    return await RecruitmentService.convert(candidate, payload, str(user.id))
+    applications = await Application.find({"company_id": company(user), "candidate_id": candidate_id, "status": CandidateStatus.JOINED, "deleted_at": None}).to_list()
+    if len(applications) != 1:
+        raise HTTPException(status_code=409, detail={"code": "APPLICATION_CONTEXT_REQUIRED", "message": "Exactly one joined application is required for legacy conversion."})
+    return await convert_application(str(applications[0].id), payload, user)
 
 
 @router.post("/candidates/{candidate_id}/mark-joined")
 async def mark_candidate_joined(candidate_id: str, payload: MarkJoinedRequest | None = None, user: User = Depends(require_recruitment_manager)):
     """Mark an offer-accepted candidate as joined (OFFER_ACCEPTED → JOINED)."""
-    candidate = await CandidateWorkspaceService.get_candidate(company(user), candidate_id)
-    return await RecruitmentService.mark_joined(candidate, (payload or MarkJoinedRequest()).joining_date, str(user.id))
+    applications = await Application.find({"company_id": company(user), "candidate_id": candidate_id, "status": CandidateStatus.OFFER_ACCEPTED, "deleted_at": None}).to_list()
+    if len(applications) != 1:
+        raise HTTPException(status_code=409, detail={"code": "APPLICATION_CONTEXT_REQUIRED", "message": "Exactly one offer-accepted application is required."})
+    return await mark_application_joined(str(applications[0].id), ApplicationMarkJoinedRequest(joining_date=(payload or MarkJoinedRequest()).joining_date), user)
 
 
 @router.get("/candidates/{candidate_id}/timeline")
@@ -1135,12 +1259,10 @@ async def shortlist_candidates(job_id: str, payload: dict, user: User = Depends(
     reason = payload.get("reason") or "Human shortlisted from ranking screen"
     updated = []
     for candidate_id in candidate_ids:
-        candidate = await TenantRepository.get(Candidate, candidate_id, company(user))
-        if candidate:
-            candidate.status = CandidateStatus.SHORTLISTED
-            candidate.updated_at = utc_now()
-            await candidate.save()
-            await record(company(user), "CandidateShortlisted", str(user.id), candidate_id=candidate_id, job_id=job_id, payload={"reason": reason})
+        application = await Application.find_one({"company_id": company(user), "candidate_id": candidate_id, "job_id": job_id, "deleted_at": None})
+        if application:
+            await ApplicationLifecycleService.transition(company(user), str(application.id), CandidateStatus.SHORTLISTED, str(user.id),
+                                                         expected=application.status, reason=reason)
             updated.append(candidate_id)
     return {"updated": updated}
 
@@ -1366,8 +1488,8 @@ async def list_offers(
 
 
 @router.post("/offers", status_code=201)
-async def create_offer(payload: dict, user: User = Depends(require_recruitment_manager)):
-    return await OfferWorkflowService.create(company(user), str(user.id), payload)
+async def create_offer(payload: OfferCreate, user: User = Depends(require_recruitment_manager)):
+    return await OfferWorkflowService.create(company(user), str(user.id), payload.model_dump())
 
 
 @router.get("/offers/{offer_id}")
@@ -1473,11 +1595,15 @@ async def offer_history(offer_id: str, user: User = Depends(require_recruitment_
 async def decide_offer(offer_id: str, decision: str, user: User):
     item = await TenantRepository.get(Offer, offer_id, company(user))
     if not item: raise HTTPException(status_code=404, detail="Offer not found")
-    if item.status != "sent": raise HTTPException(status_code=409, detail="Only sent offers can be decided")
+    if item.status not in {"sent", "viewed"}: raise HTTPException(status_code=409, detail="Only sent offers can be decided")
+    if not item.application_id:
+        raise HTTPException(status_code=409, detail={"code": "APPLICATION_CONTEXT_REQUIRED", "message": "Offer is missing application context."})
     item.status, item.updated_at = decision, utc_now(); await item.save()
-    target = CandidateStatus.OFFER_ACCEPTED if decision == "accepted" else CandidateStatus.REJECTED
-    await RecruitmentService.move(await get_candidate(item.candidate_id, user), target, str(user.id))
-    await record(company(user), "OfferAccepted" if decision == "accepted" else "OfferRejected", str(user.id), candidate_id=item.candidate_id, payload={"offer_id": offer_id}); return item
+    target = CandidateStatus.OFFER_ACCEPTED if decision == "accepted" else CandidateStatus.WITHDRAWN
+    await ApplicationLifecycleService.transition(company(user), item.application_id, target, str(user.id), allow_offer_transition=decision == "accepted",
+                                                 reason="Offer declined" if decision == "rejected" else None)
+    await record(company(user), "OfferAccepted" if decision == "accepted" else "OfferRejected", str(user.id), candidate_id=item.candidate_id,
+                 application_id=item.application_id, job_id=item.job_id, payload={"offer_id": offer_id}); return item
 
 
 @router.post("/offers/{offer_id}/accept")

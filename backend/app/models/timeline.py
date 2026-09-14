@@ -26,6 +26,7 @@ class TimelineEventType(str, Enum):
     TASK_EXTENSION_REQUESTED = "task_extension_requested"
     TASK_EXTENSION_APPROVED = "task_extension_approved"
     TASK_EXTENSION_REJECTED = "task_extension_rejected"
+    TASK_CARRIED_FORWARD = "task_carried_forward"
     ATTENDANCE_CHECK_IN = "attendance_check_in"
     ATTENDANCE_CHECK_OUT = "attendance_check_out"
     MEETING_CREATED = "meeting_created"

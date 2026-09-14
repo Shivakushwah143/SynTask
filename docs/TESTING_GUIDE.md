@@ -86,3 +86,11 @@ Use a separate database for automated tests, e.g. `TEST_MONGODB_URL` and `DATABA
 - MSA public signing links
 - Sales imports and reports
 - Calendar and meetings
+
+## Work Monitoring Overview
+
+- Verify Admin/Sub Admin sees only active users in the current company; Manager/Lead sees descendants through `ancestors`; Employee sees self only.
+- Verify cross-company and unrelated employee detail/timeline requests return 403, including crafted employee, manager, project, and search inputs.
+- Verify `date` cannot combine with `start_date`/`end_date`, invalid/reversed ranges return 422, and filters use AND semantics.
+- Verify summary, department, and row counts share one filtered population; users without a department remain in Unassigned Department.
+- Verify bulk aggregation, non-blocking lazy expansion, lazy/paginated Activity, and absence of a monitoring write model.

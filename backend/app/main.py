@@ -130,6 +130,12 @@ async def _startup_tasks() -> None:
         except Exception as scheduling_err:
             logger.warning(f"Scheduled jobs startup skipped: {scheduling_err}")
         try:
+            from app.services.task_carry_forward_service import run_task_carry_forward_loop
+            asyncio.create_task(run_task_carry_forward_loop())
+            logger.info("Task carry forward background task started")
+        except Exception as carry_forward_err:
+            logger.warning(f"Task carry forward startup skipped: {carry_forward_err}")
+        try:
             from app.services.hr_document_expiry import run_hr_document_expiry_loop
             asyncio.create_task(run_hr_document_expiry_loop())
             logger.info("HR document expiry background task started")

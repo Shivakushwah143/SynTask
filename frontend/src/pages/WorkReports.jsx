@@ -3,6 +3,7 @@ import { useQuery } from 'react-query'
 import { FileBarChart2 } from 'lucide-react'
 import { workReportsAPI } from '../api/workReports'
 import { Button, PageHeader, SkeletonCard } from '../components/ui'
+import CarryForwardDueDate from '../components/tasks/CarryForwardDueDate'
 
 const TASK_HEALTH_OPTIONS = [
   { value: '', label: 'All task health' },
@@ -156,7 +157,7 @@ export default function WorkReports() {
                   <StatusBadge status={row.status} />
                   <span className="text-text-muted">{row.priority || '—'}</span>
                   <HealthBadge health={row.health} />
-                  <span className="text-text-muted text-xs">{row.due_date ? new Date(row.due_date).toLocaleDateString() : '—'}</span>
+                  <span className="text-text-muted text-xs"><CarryForwardDueDate task={row} /></span>
                 </div>
               ))
             ) : (

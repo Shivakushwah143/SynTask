@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useTasks } from '@/hooks/useTasks'
-import { timeService } from '@/services/timeService'
+import CarryForwardDueDate from './CarryForwardDueDate'
 
 const statuses = [
   { id: 'todo', label: 'To Do' },
@@ -63,9 +63,9 @@ export default function BoardView() {
                     {task.priority && (
                       <p className="mt-1 text-xs text-gray-500">Priority: {task.priority}</p>
                     )}
-                    {task.due_date && (
+                    {(task.due_date || task.carry_forward_due_date) && (
                       <p className="mt-1 text-xs text-gray-500">
-                        Due: {timeService.format(task.due_date, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        Due: <CarryForwardDueDate task={task} />
                       </p>
                     )}
                   </div>

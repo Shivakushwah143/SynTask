@@ -15,6 +15,7 @@ import { CreatableSelectField, EmptyState, SkeletonKanban } from '../components/
 import { QuickCreateDepartmentModal, QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import ViewToggle from '../components/layout/ViewToggle'
 import NaturalDateInput from '../components/tasks/NaturalDateInput'
+import CarryForwardDueDate from '../components/tasks/CarryForwardDueDate'
 import TaskLifecyclePipeline from '../components/tasks/TaskLifecyclePipeline'
 import { useViewStore } from '../store/viewStore'
 import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
@@ -1081,7 +1082,7 @@ useEffect(() => {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                           <div className="flex items-center gap-2">
-                            {task.due_date ? timeService.formatDate(task.due_date) : '—'}
+                            <CarryForwardDueDate task={task} />
                             {task.health_status === 'overdue' && (
                               <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">Overdue</span>
                             )}
@@ -1203,10 +1204,10 @@ useEffect(() => {
                               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${priorityColors[task.priority] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
                                 {priorities[task.priority]?.label || task.priority}
                               </span>
-                              {task.due_date && (
+                              {(task.due_date || task.carry_forward_due_date) && (
                                 <span className="text-xs text-gray-500 dark:text-gray-400">
                                   <Calendar className="inline h-3 w-3 mr-1" />
-                                  {timeService.formatMonthDay(task.due_date)}
+                                  <CarryForwardDueDate task={task} formatOptions={{ month: 'short', day: 'numeric' }} />
                                 </span>
                               )}
                               {assignedUser || task.assigned_to_name ? (
