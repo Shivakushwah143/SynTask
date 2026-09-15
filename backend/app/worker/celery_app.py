@@ -1,6 +1,8 @@
 """
 Celery application for async background work.
 """
+import logging
+
 from celery import Celery
 from celery.signals import worker_ready
 
@@ -9,6 +11,17 @@ from app.core.logging_config import configure_logging
 
 # Configure structured logging for the worker process.
 configure_logging(service="syntask-worker")
+
+# OpenTelemetry tracing (Topic 9). This module is the worker entrypoint
+# (`celery -A app.worker.celery_app worker|beat`) so it runs first in the worker
+# process and claims service.name=syntask-worker. In the API process main.py has
+# already configured syntask-backend, so this call is a no-op there.
+from app.observability.tracing import instrument_dependencies, setup_tracing
+
+setup_tracing("syntask-worker")
+instrument_dependencies()
+
+logger = logging.getLogger(__name__)
 
 BROKER_URL = settings.CELERY_BROKER_URL or settings.REDIS_URL
 RESULT_BACKEND = settings.CELERY_RESULT_BACKEND or settings.REDIS_URL
@@ -69,3 +82,22 @@ celery_app.conf.update(
 
 def is_celery_enabled() -> bool:
     return not settings.DISABLE_CELERY
+
+
+@worker_ready.connect
+def _log_worker_release(**_kwargs) -> None:
+    """Emit the worker's release identity as a Loki-visible deployment marker."""
+    try:
+        from app.core.release import release_info, release_log_fields
+
+        info = release_info()
+        logger.info(
+            "Deployment marker: release=%s commit=%s branch=%s environment=%s service=syntask-worker",
+            info["version"],
+            info["commit_short"],
+            info["branch"],
+            info["environment"],
+            extra=release_log_fields(),
+        )
+    except Exception:  # pragma: no cover - never break worker startup
+        logger.debug("Worker release marker skipped", exc_info=True)

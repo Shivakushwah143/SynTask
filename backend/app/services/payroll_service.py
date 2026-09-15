@@ -319,7 +319,15 @@ async def process_payroll(
     # best-effort — the authoritative PROCESSED transition never fails because
     # of presentation work, and any failure stays recoverable via the explicit
     # bulk/manual payslip actions.
-    await _auto_generate_period_payslips(company_id, period_id, actor)
+    # Manual business span (Topic 9) around the expensive backfill only — the
+    # authoritative transition above stays untouched. Bounded attributes only.
+    from app.observability.tracing import trace_span
+
+    with trace_span(
+        "payroll.payslip_backfill",
+        {"syntask.operation": "payroll.payslip_backfill"},
+    ):
+        await _auto_generate_period_payslips(company_id, period_id, actor)
 
     return period
 

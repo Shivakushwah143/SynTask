@@ -50,6 +50,33 @@ def redact_secrets(message: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# OpenTelemetry trace correlation
+# ---------------------------------------------------------------------------
+
+class _TraceContextFilter(logging.Filter):
+    """Inject the active OTLP ``trace_id`` into every log record.
+
+    Attached to the handler (not just the root logger) so records emitted by
+    child loggers — which propagate straight to the handler — are also tagged.
+    ``trace_id`` is additive: it never replaces ``request_id`` and is simply
+    absent when tracing is disabled.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: A003
+        if getattr(record, "trace_id", None):
+            return True
+        try:
+            from app.observability.tracing import current_trace_id
+
+            trace_id = current_trace_id()
+        except Exception:  # pragma: no cover - tracing is optional
+            trace_id = None
+        if trace_id:
+            record.trace_id = trace_id  # type: ignore[attr-defined]
+        return True
+
+
+# ---------------------------------------------------------------------------
 # Custom JSON formatter (stdlib only – no extra dependencies)
 # ---------------------------------------------------------------------------
 
@@ -68,10 +95,16 @@ class _JSONFormatter(logging.Formatter):
         # Attach common structured fields if present on the record.
         for key in (
             "request_id",
+            "trace_id",
             "method",
             "route",
             "status_code",
             "duration_ms",
+            "event",
+            "release_version",
+            "release_commit",
+            "release_branch",
+            "release_built_at",
         ):
             val = getattr(record, key, None)
             if val is not None:
@@ -130,6 +163,9 @@ def configure_logging(
     else:
         handler = logging.StreamHandler(sys.stderr)
         handler.setFormatter(_HumanFormatter())
+
+    # Reliable trace_id tagging for every record this handler emits.
+    handler.addFilter(_TraceContextFilter())
 
     root.addHandler(handler)
 

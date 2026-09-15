@@ -3,7 +3,8 @@
 Prometheus rules: `observability/prometheus/rules/syntask-alerts.yml`
 Alertmanager: `observability/alertmanager/alertmanager.yml`
 Dashboards: **SynTask API Overview**, **SynTask Infrastructure Overview**,
-**SynTask Logs Overview**, **SynTask Alerts Overview** (Grafana folder `SynTask`).
+**SynTask Logs Overview**, **SynTask Alerts Overview**, **SynTask Deployment
+Overview** (Grafana folder `SynTask`).
 
 ---
 
@@ -29,6 +30,20 @@ Dashboards: **SynTask API Overview**, **SynTask Infrastructure Overview**,
   Redis memory), SynTask Logs Overview (`{service=~"redis|worker"}`).
 - **First mitigation** — restart Redis; if it is out of memory, free space or
   raise the limit, then confirm AOF state is intact.
+
+## SynTaskTempoDown
+
+- **Meaning** — Prometheus cannot scrape Tempo (`up{job="tempo"} == 0`) for
+  5 minutes. New traces are not being stored; log → trace correlation in Grafana
+  is degraded. Metrics and structured logs are unaffected.
+- **First checks** — `docker compose -f docker-compose.prod.yml ps tempo`;
+  `docker compose -f docker-compose.prod.yml logs --since=15m tempo`; host disk
+  space and the `tempo_data` volume; OTLP connectivity from the backend.
+- **Dashboard / log source** — SynTask Deployment Overview, SynTask Logs
+  Overview (`{service="backend"}` for exporter errors).
+- **First mitigation** — restart the Tempo container; if it fails to start,
+  validate `observability/tempo/tempo.yml` and free disk space. Tracing loss is
+  non-fatal: the API keeps serving traffic.
 
 ## SynTaskHigh5xxRate
 

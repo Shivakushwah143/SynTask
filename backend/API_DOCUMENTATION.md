@@ -342,7 +342,16 @@ Client lifecycle statuses accepted by create/update/list responses are `new`, `o
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/debug` | `debug_backend` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/debug` | `debug_backend` | Non-production debug endpoint. Now also returns a `release` block (`version`, `commit`, `commit_short`, `branch`, `built_at`, `environment`). Returns `404` in production. |
+
+Root-level probes and observability endpoints (registered on the app, not under `/api/v1`):
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/health` | Legacy health check: `{status, version, environment, database}`; `503` when MongoDB is not ready. |
+| GET | `/livez` | Liveness probe (no dependencies): `{status: "alive", uptime_seconds}`. |
+| GET | `/readyz` | Readiness probe: MongoDB + Redis required, Qdrant optional/degraded. Includes a `release` block with the deployed release identity (`version`, `commit`, `commit_short`, `branch`, `built_at`, `environment`). |
+| GET | `/metrics` | Prometheus metrics, including `syntask_build_info{version,commit,branch,environment}` and `syntask_release_deployed_timestamp_seconds`. |
 
 ### Invoices
 

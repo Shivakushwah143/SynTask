@@ -20,6 +20,17 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 
 logger = logging.getLogger(__name__)
 
+
+def _current_trace_id() -> str | None:
+    """Return the active OTLP trace_id, or None when tracing is disabled."""
+    try:
+        from app.observability.tracing import current_trace_id
+
+        return current_trace_id()
+    except Exception:  # pragma: no cover - tracing is optional
+        return None
+
+
 # Paths that should not produce an access-log line.
 _HEALTH_PATHS = frozenset({"/health", "/api/v1/health", "/api/v1/debug", "/debug", "/metrics"})
 
@@ -75,22 +86,28 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         finally:
             duration_ms = round((time.perf_counter() - start) * 1000, 2)
 
-            # Structured access log line
+            # Structured access log line. request_id and trace_id are both
+            # attached; they serve different purposes and neither replaces the
+            # other (request_id = support/audit id, trace_id = Tempo lookup).
             path = request.url.path
             if path not in _HEALTH_PATHS:
+                log_extra = {
+                    "method": request.method,
+                    "route": path,
+                    "status_code": status_code,
+                    "duration_ms": duration_ms,
+                    "request_id": rid,
+                }
+                trace_id = _current_trace_id()
+                if trace_id:
+                    log_extra["trace_id"] = trace_id
                 logger.info(
                     "%s %s completed in %.2fms [%s]",
                     request.method,
                     path,
                     duration_ms,
                     rid,
-                    extra={
-                        "method": request.method,
-                        "route": path,
-                        "status_code": status_code,
-                        "duration_ms": duration_ms,
-                        "request_id": rid,
-                    },
+                    extra=log_extra,
                 )
 
             # Clear filter context so it doesn't leak across async tasks

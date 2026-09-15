@@ -6,12 +6,27 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+# Shared, non-secret release + tracing configuration for the app services
+# (Topics 9 & 10). Values are supplied by scripts/deployment/deploy.sh at deploy
+# time; never put credentials here.
+x-app-observability: &app-observability
+  OTEL_TRACES_ENABLED: ${OTEL_TRACES_ENABLED:-true}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4317}
+  OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+  SYNTASK_RELEASE_COMMIT: ${SYNTASK_RELEASE_COMMIT:-unknown}
+  SYNTASK_RELEASE_VERSION: ${SYNTASK_RELEASE_VERSION:-unknown}
+  SYNTASK_RELEASE_BRANCH: ${SYNTASK_RELEASE_BRANCH:-unknown}
+  SYNTASK_RELEASE_BUILT_AT: ${SYNTASK_RELEASE_BUILT_AT:-unknown}
+
 services:
   backend:
     build:
       context: ./backend
     env_file:
       - ./backend/.env
+    environment:
+      <<: *app-observability
+      OTEL_SERVICE_NAME: syntask-backend
     command: >
       sh -c "python scripts/wait_for_dependencies.py &&
       python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
@@ -42,6 +57,8 @@ services:
       - ./backend/.env
     environment:
       BACKEND_HEALTH_URL: http://backend:8000/health
+      <<: *app-observability
+      OTEL_SERVICE_NAME: syntask-worker
     command: >
       sh -c "python scripts/wait_for_dependencies.py &&
       celery -A app.worker.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}"
@@ -162,6 +179,7 @@ services:
     depends_on:
       - prometheus
       - loki
+      - tempo
     logging: *default-logging
     networks:
       - syntask
@@ -244,15 +262,43 @@ services:
       # Alloy runs with all capabilities dropped and no-new-privileges.
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
-      - alloy_data:/var/lib/alloy/data
+      # Mount the parent dir, not the leaf: the named volume must inherit the
+      # image's alloy-owned data/ directory or the non-root Alloy process cannot
+      # create /var/lib/alloy/data (crash loop: permission denied).
+      - alloy_data:/var/lib/alloy
     ports:
       - "12345:12345"
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # Alloy runs as root but must traverse the alloy-owned storage volume;
+    # with all capabilities dropped, root lacks CAP_DAC_OVERRIDE and crash-loops
+    # with "mkdir /var/lib/alloy/data: permission denied". Keep every other
+    # capability dropped and add back only DAC_OVERRIDE.
+    cap_add:
+      - DAC_OVERRIDE
     depends_on:
       - loki
+    logging: *default-logging
+    networks:
+      - syntask
+
+  # ---------------------------------------------------------------------------
+  # Topic 9 — distributed tracing store. Dev publishes the query API (3200) and
+  # OTLP/HTTP (4318) for local debugging; production keeps everything internal.
+  # ---------------------------------------------------------------------------
+  tempo:
+    image: grafana/tempo:2.6.1
+    restart: unless-stopped
+    command:
+      - "-config.file=/etc/tempo/tempo.yml"
+    volumes:
+      - ./observability/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "3200:3200"
+      - "4318:4318"
     logging: *default-logging
     networks:
       - syntask
@@ -285,6 +331,7 @@ volumes:
   loki_data:
   alloy_data:
   alertmanager_data:
+  tempo_data:
 
 networks:
   syntask:

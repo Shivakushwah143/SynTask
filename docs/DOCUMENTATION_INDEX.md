@@ -1,7 +1,7 @@
 # SynTask Documentation Index
 
 Status: living documentation
-Last reviewed: 2026-09-02 (Executive Operations Agent added)
+Last reviewed: 2026-09-13 (OpenTelemetry + Tempo tracing and safe deployment added)
 
 This is the canonical entry point. **Observed** means supported by repository evidence. **Verified** means exercised in a named environment. **Target** is intended design and is not proof of deployment.
 
@@ -20,6 +20,8 @@ This is the canonical entry point. **Observed** means supported by repository ev
 ## Supporting documents
 
 - [SLIs and SLOs](observability/SLOS.md) — measured reliability targets, error budgets and the SLA distinction
+- [Distributed tracing](observability/TRACING.md) — OpenTelemetry instrumentation, Tempo, sampling and log↔trace correlation
+- [Deployment and rollback runbook](runbooks/DEPLOYMENT_ROLLBACK.md) — safe deploy, health gate, release identity and rollback
 - [Observability alerts runbook](runbooks/observability-alerts.md)
 - [Incident drill runbook](runbooks/INCIDENT_DRILL.md)
 - [Incident template](runbooks/INCIDENT_TEMPLATE.md)
@@ -31,6 +33,8 @@ This is the canonical entry point. **Observed** means supported by repository ev
 - [Database schema](../backend/DATABASE_SCHEMA.md)
 - [PRD template](product/PRD_TEMPLATE.md)
 - [Architecture decisions](architecture/decisions/README.md)
+- [ADR: OpenTelemetry + Tempo tracing](architecture/decisions/2026-09-13-opentelemetry-tempo-tracing.md)
+- [ADR: Safe deployment, release identity and rollback](architecture/decisions/2026-09-13-safe-deployment-and-rollback.md)
 - [Phase 1 Work Foundation Report](../PHASE1_WORK_FOUNDATION_REPORT.md)
 - [Phase 2 Task Execution Report](../PHASE2_TASK_EXECUTION_REPORT.md)
 - [Phase 3 Work Experience Report](../PHASE3_WORK_EXPERIENCE_REPORT.md)

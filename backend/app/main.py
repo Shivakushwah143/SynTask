@@ -54,6 +54,20 @@ logger = logging.getLogger(__name__)
 # includes the current request_id when inside an HTTP handler.
 logging.getLogger().addFilter(request_id_filter)
 
+# OpenTelemetry distributed tracing (Topic 9). Configured before other app
+# modules are imported so this process keeps service.name=syntask-backend even
+# though it transitively imports the Celery app (which sets syntask-worker in
+# its own process). Safe no-op when tracing is disabled or the SDK is absent.
+from app.observability.tracing import (
+    instrument_dependencies,
+    instrument_fastapi_app,
+    setup_tracing,
+    shutdown_tracing,
+)
+
+setup_tracing("syntask-backend")
+instrument_dependencies()
+
 from app.core.config import settings
 from app.core.database import init_db, close_db
 from app.core.json_response import UTCJSONResponse
@@ -91,6 +105,27 @@ except (ImportError, ModuleNotFoundError) as e:
 async def _startup_tasks() -> None:
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION}")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
+
+    # Release identity (Topic 10) — metric + structured deployment marker line.
+    # The log line (event=deployment) is the Loki-visible deployment marker.
+    from app.core.release import release_info, release_log_fields
+
+    try:
+        from app.metrics.release import register_release_metrics
+
+        register_release_metrics()
+    except Exception as release_metric_err:  # pragma: no cover - defensive
+        logger.warning(f"Release metrics registration skipped: {release_metric_err}")
+    _release = release_info()
+    logger.info(
+        "Deployment marker: release=%s commit=%s branch=%s built_at=%s environment=%s",
+        _release["version"],
+        _release["commit_short"],
+        _release["branch"],
+        _release["built_at"],
+        _release["environment"],
+        extra=release_log_fields(),
+    )
     if settings.ENVIRONMENT == "production":
         assert len(settings.SECRET_KEY) >= 32, "SECRET_KEY too short for production"
         assert "changeme" not in settings.SECRET_KEY.lower(), "SECRET_KEY is default value"
@@ -189,6 +224,11 @@ async def _startup_tasks() -> None:
 
 async def _shutdown_tasks() -> None:
     logger.info("Shutting down application")
+    # Flush buffered spans so the last traces reach Tempo before exit.
+    try:
+        shutdown_tracing()
+    except Exception:
+        pass
     await close_redis()
     await close_db()
     # Close pooled AI HTTP connections (best-effort, never blocks shutdown)
@@ -417,9 +457,12 @@ async def debug_backend():
     """Call this to confirm the backend returns user-provided project_id (no auto-generated ID as project_id)."""
     if settings.ENVIRONMENT == "production":
         return JSONResponse(status_code=404, content={"detail": "Not found"})
+    from app.core.release import release_info
+
     return {
         "status": "ok",
         "version": settings.VERSION,
+        "release": release_info(),
         "project_id": "user_provided",
         "message": "Create project returns your project_id (e.g. ak-001), not MongoDB _id. If you see this, the new backend is live."
     }
@@ -484,6 +527,10 @@ async def serve_upload(file_path: str):
 
 app.include_router(uploads_router, include_in_schema=False)
 app.include_router(uploads_router, prefix="/api/v1", include_in_schema=False)
+
+# OpenTelemetry FastAPI instrumentation must run last so the server span wraps
+# every route and middleware added above. No-op when tracing is disabled.
+instrument_fastapi_app(app)
 
 # Root endpoint
 @app.get("/", tags=["Root"])

@@ -6,6 +6,7 @@
 #   syntask_http_requests_total{status_code=...}          (Topic 2)
 #   syntask_http_request_duration_seconds_bucket          (Topic 2)
 #   up{job="syntask-backend"}                             (Topic 2)
+#   up{job="tempo"}                                       (Topic 9, Tempo)
 #   redis_up                                              (Topic 4, redis_exporter)
 #   node_filesystem_{avail,size}_bytes{mountpoint="/"}    (Topic 4, node_exporter)
 #
@@ -25,6 +26,19 @@ groups:
             Prometheus has failed to scrape the SynTask backend (/metrics) for
             more than 1 minute. The API is likely unavailable to users.
           runbook: "docs/runbooks/observability-alerts.md#syntaskbackenddown"
+
+      - alert: SynTaskTempoDown
+        expr: up{job="tempo"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SynTask Tempo (distributed tracing) is down"
+          description: >-
+            Prometheus has failed to scrape Tempo for more than 5 minutes. New
+            traces are not being stored, so log -> trace correlation is
+            degraded. Metrics and structured logs are unaffected.
+          runbook: "docs/runbooks/observability-alerts.md#syntasktempodown"
 
       - alert: SynTaskRedisDown
         expr: redis_up == 0

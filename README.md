@@ -15,7 +15,7 @@ The application has a FastAPI backend, MongoDB/Beanie document models, Redis-bac
 | AI Retrieval | Qdrant `v1.14.1` with `qdrant-client==1.14.3` for RAG vector storage |
 | Background Work | asyncio deadline checker, reminder scheduler, and one-minute scheduled-job runner; Celery worker service |
 | Deployment | Docker, Docker Compose, Nginx reverse proxy |
-| Observability | Prometheus, Grafana, Loki + Grafana Alloy, Alertmanager, Node Exporter, cAdvisor, Redis Exporter |
+| Observability | Prometheus, Grafana, Loki + Grafana Alloy, Alertmanager, Grafana Tempo + OpenTelemetry tracing, Node Exporter, cAdvisor, Redis Exporter |
 
 ## Prerequisites
 - Python 3.11
@@ -49,6 +49,7 @@ Production deployments run an internal observability stack on the `syntask` Dock
 | Grafana | API, infrastructure, logs and alert dashboards | `3001` | `127.0.0.1:3001` |
 | Loki | Centralized log storage (7-day retention) | `3100` | internal only |
 | Alloy | Collects container stdout/stderr and forwards to Loki | `12345` | internal only |
+| Tempo | Distributed tracing store (OTLP gRPC `4317` / HTTP `4318`, 48 h retention) | `3200` (query API) | internal only |
 | Alertmanager | Groups, de-duplicates and routes Prometheus alerts | `9093` | `127.0.0.1:9093` |
 | Node Exporter / cAdvisor / Redis Exporter | Host, container and Redis metrics | internal | internal only |
 
@@ -56,11 +57,15 @@ Configuration is version-controlled under `observability/`; Docker log rotation 
 
 Reliability is measured with two internal SLOs (availability >= 99.5%, latency >= 95% within 2.5s, rolling 7 days) shown on the **SynTask SLO Overview** dashboard. See [docs/observability/SLOS.md](docs/observability/SLOS.md) for SLI/SLO/error-budget definitions and the distinction from any contractual SLA. Operational runbooks: [alerts](docs/runbooks/observability-alerts.md), [incident drill](docs/runbooks/INCIDENT_DRILL.md), [incident template](docs/runbooks/INCIDENT_TEMPLATE.md).
 
+Distributed tracing is provided by OpenTelemetry exported over OTLP to Grafana Tempo, with distinct `service.name` values for the backend and Celery worker. Structured logs carry both `request_id` and `trace_id`, so Grafana can pivot from a log line to its trace. See [docs/observability/TRACING.md](docs/observability/TRACING.md). Tracing is sampled at 10% in production (configurable via `OTEL_TRACES_SAMPLER_ARG`).
+
+Application deployments use `scripts/deployment/deploy.sh`, which never runs `docker compose down`, waits for release readiness, and rolls back to the previous recorded release when the health gate fails. Each release is identified by `syntask_build_info{version,commit,environment}` and an `event=deployment` structured log line. See [the deployment and rollback runbook](docs/runbooks/DEPLOYMENT_ROLLBACK.md).
+
 MongoDB must be reachable before using authenticated API routes. If database initialization fails, the backend starts in a degraded state, `/health` reports `503`, `/api/v1/*` routes return a database-unavailable `503`, and database background workers are skipped until the backend is restarted with a valid `MONGODB_URL`.
 
 ## Environment Variables
 ## Environment Variables
-See [backend/.env.example](backend/.env.example) and [frontend/.env.example](frontend/.env.example). Required backend variables are `SECRET_KEY`, `ENCRYPTION_KEY`, `MONGODB_URL`, `DATABASE_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, and `REDIS_URL`. RAG development uses `QDRANT_URL` against pinned Qdrant server `v1.14.1` with `qdrant-client==1.14.3`. Optional integrations include SMTP, Brevo, Stripe, Razorpay, Zoom, Google OAuth, AWS S3, Celery overrides, AI provider keys, and the disabled-by-default Meta foundation. Google Workspace support reuses the existing Google OAuth flow and can use `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and workspace scope configuration when connected account features are enabled. Meta deployment credentials use `META_APP_ID`, `META_APP_SECRET`, and `META_VERIFY_TOKEN`; `META_INTEGRATION_ENABLED=False` remains the safe default. The startup guide and infrastructure audit document the full environment strategy.
+See [backend/.env.example](backend/.env.example) and [frontend/.env.example](frontend/.env.example). Required backend variables are `SECRET_KEY`, `ENCRYPTION_KEY`, `MONGODB_URL`, `DATABASE_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, and `REDIS_URL`. RAG development uses `QDRANT_URL` against pinned Qdrant server `v1.14.1` with `qdrant-client==1.14.3`. Optional integrations include SMTP, Brevo, Stripe, Razorpay, Zoom, Google OAuth, AWS S3, Celery overrides, AI provider keys, and the disabled-by-default Meta foundation. Google Workspace support reuses the existing Google OAuth flow and can use `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and workspace scope configuration when connected account features are enabled. Meta deployment credentials use `META_APP_ID`, `META_APP_SECRET`, and `META_VERIFY_TOKEN`; `META_INTEGRATION_ENABLED=False` remains the safe default. The startup guide and infrastructure audit document the full environment strategy. Observability-specific optional variables are `OTEL_TRACES_ENABLED` (false outside production; set true to trace locally), `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_SAMPLER_ARG`, and the deploy-time `SYNTASK_RELEASE_{COMMIT,VERSION,BRANCH,BUILT_AT}` release identity values. Production Compose also requires `GRAFANA_ADMIN_PASSWORD`.
 
 ## Project Structure
 ```text
@@ -147,6 +152,8 @@ For detailed implementation status, see [docs/HRMS_FINAL_READINESS_REPORT.md](do
 - [API Documentation](backend/API_DOCUMENTATION.md)
 - [Database Schema](backend/DATABASE_SCHEMA.md)
 - [Testing Guide](docs/TESTING_GUIDE.md)
+- [Distributed Tracing](docs/observability/TRACING.md)
+- [Deployment and Rollback Runbook](docs/runbooks/DEPLOYMENT_ROLLBACK.md)
 - [Observability Alerts Runbook](docs/runbooks/observability-alerts.md)
 
 ## License

@@ -1,11 +1,15 @@
-# Grafana datasource provisioning — auto-registers Prometheus and Loki on startup.
+# Grafana datasource provisioning — auto-registers Prometheus, Loki and Tempo
+# on startup. No manual Grafana setup is required.
 apiVersion: 1
 
 datasources:
+  # uid is pinned so the provisioned dashboards' hardcoded datasource uid
+  # (PBFA97CFB590B2093) keeps resolving.
   - name: Prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
+    uid: PBFA97CFB590B2093
     isDefault: true
     editable: false
     jsonData:
@@ -20,3 +24,33 @@ datasources:
     editable: false
     jsonData:
       maxLines: 1000
+      # Log -> trace correlation (Topic 9). A structured `trace_id` field in a
+      # SynTask JSON log line becomes a clickable link straight to the matching
+      # trace in Tempo (internal link — no external URL required).
+      derivedFields:
+        - name: TraceID
+          matcherRegex: '"trace_id"\s*:\s*"([a-f0-9]{16,32})"'
+          datasourceUid: tempo
+          urlDisplayLabel: "View trace in Tempo"
+
+  # Distributed tracing (Topic 9). Internal Docker URL only.
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    uid: tempo
+    editable: false
+    jsonData:
+      httpMethod: GET
+      # Trace -> logs correlation: open the Loki logs for a span's time range.
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        filterByTraceID: true
+        tags:
+          - key: service.name
+            value: service
+      # Search a trace id directly in Loki from the Tempo trace view.
+      lokiSearch:
+        datasourceUid: loki

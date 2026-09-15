@@ -73,3 +73,13 @@ scrape_configs:
       - targets: ["alloy:12345"]
         labels:
           service: "alloy"
+
+  # -------------------------------------------------------------------------
+  # Topic 9 — Tempo tracing pipeline must not fail silently. Tempo exposes
+  # ingestion/query metrics on its HTTP server (internal network only).
+  # -------------------------------------------------------------------------
+  - job_name: "tempo"
+    static_configs:
+      - targets: ["tempo:3200"]
+        labels:
+          service: "tempo"

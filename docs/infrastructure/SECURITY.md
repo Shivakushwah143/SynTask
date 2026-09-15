@@ -32,6 +32,13 @@ Expected response time: 48 hours. Coordinated disclosure target: 90 days after a
 - Frontend Nginx config includes CSP, HSTS, Referrer-Policy, X-Frame-Options, and X-Content-Type-Options.
 - JWTs are not persisted in frontend localStorage.
 
+### Observability and Telemetry Security
+- The observability stack is never publicly exposed: Grafana, Prometheus and Alertmanager bind to `127.0.0.1`; Loki, Alloy and Tempo publish no ports at all and are reachable only on the internal `syntask` Docker network.
+- Tempo's OTLP receivers (`4317` gRPC / `4318` HTTP) are internal only; `usage_report.reporting_enabled` is disabled.
+- Traces never contain secrets, credentials, prompts, user IDs, emails or company IDs. OpenTelemetry resource/span attributes are limited to bounded release and environment identities.
+- Structured logs keep the existing credential redaction, and `trace_id` is added alongside `request_id` without exposing request payloads.
+- `GRAFANA_ADMIN_PASSWORD` is required for the production Grafana service and supplied via GitHub Secrets; it is never committed.
+
 ## Known Limitations
 - Chat messages are not end-to-end encrypted.
 - Local file uploads are not encrypted at rest.
@@ -48,4 +55,6 @@ Expected response time: 48 hours. Coordinated disclosure target: 90 days after a
 - [ ] `ALLOWED_HOSTS` contains only trusted hostnames
 - [ ] HTTPS certificate is active
 - [ ] SMTP, Zoom, Stripe, Razorpay credentials are set only when needed
+- [ ] `GRAFANA_ADMIN_PASSWORD` is set and Grafana/Prometheus/Alertmanager remain loopback-bound
+- [ ] Tempo OTLP endpoints are internal-only (no published ports)
 - [ ] Test super-admin accounts are deleted before launch

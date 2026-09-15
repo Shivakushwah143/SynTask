@@ -19,7 +19,15 @@ flowchart LR
     Meta[Meta Cloud] --> MetaBoundary[Meta Integration - disabled by default]
     MetaBoundary --> Mongo
     MetaBoundary --> Redis
-    Redis --> Celery[Future Celery Workers]
+    Redis --> Celery[Celery Workers]
+    API -- OTLP --> Tempo[(Grafana Tempo)]
+    Celery -- OTLP --> Tempo
+    API -- JSON logs --> Loki[(Loki)]
+    Celery -- JSON logs --> Loki
+    Tempo --> Grafana[Grafana]
+    Loki --> Grafana
+    API -- /metrics --> Prometheus[(Prometheus)]
+    Prometheus --> Grafana
 ```
 
 See the standalone diagram in [docs/diagrams/architecture.md](docs/diagrams/architecture.md).
@@ -127,6 +135,23 @@ Project completion control lives in `project_completion_service.py` and is calle
 
 ### Background Tasks
 Startup launches the deadline checker from `app.core.deadline_checker`, the centralized reminder scheduler from `app.services.reminder_service`, and the one-minute scheduled-job runner from `app.services.scheduling_service`. The reminder scheduler runs hourly in-process, scans incomplete assigned tasks and unpublished assigned content with due dates up to three days ahead plus overdue records, and writes company-scoped notifications with duplicate keys in notification metadata. The scheduled-job runner locks due `scheduled_jobs` records atomically before invoking the existing project/task creation services, records one-time or recurring occurrence history in `scheduled_job_occurrences`, calculates the next recurring run from recurrence and timezone settings, and records notifications and timeline events. Paused recurring jobs are skipped; resumed recurring jobs advance missed times to the next future occurrence. Celery and Redis dependencies are present, but Celery workers are not yet wired as the primary background execution path.
+
+## Observability and Deployment
+
+The backend and Celery worker ship structured JSON logs with `request_id` and,
+when tracing is enabled, `trace_id`. Logs are collected by Grafana Alloy into
+Loki; trace spans are exported over OTLP to Grafana Tempo; Prometheus scrapes
+RED metrics, host/container metrics and the Tempo pipeline. Grafana, Prometheus
+and Alertmanager bind to loopback in production, while Loki, Alloy and Tempo are
+internal-only on the `syntask` Docker network.
+
+Each deployment carries a bounded release identity (`SYNTASK_RELEASE_*`) shown
+in logs (`event=deployment`), the `syntask_build_info` metric, `/readyz` and OTLP
+resource attributes. Deployments run through `scripts/deployment/deploy.sh`
+(no `docker compose down`), pass a readiness health gate, and roll back to the
+previous recorded release on failure. See
+[docs/observability/TRACING.md](../observability/TRACING.md) and the
+[deployment and rollback runbook](../runbooks/DEPLOYMENT_ROLLBACK.md).
 
 ## AI Security & Governance
 

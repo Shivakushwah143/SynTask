@@ -69,6 +69,7 @@ loki.process "syntask" {
       level       = "level",
       environment = "environment",
       request_id  = "request_id",
+      trace_id    = "trace_id",
       logger      = "logger",
     }
   }
@@ -82,9 +83,11 @@ loki.process "syntask" {
   }
 
   // High-cardinality identifiers stay searchable but are NOT labels.
+  // trace_id is what lets operators move Grafana log -> trace_id -> Tempo.
   stage.structured_metadata {
     values = {
       request_id = "request_id",
+      trace_id   = "trace_id",
       logger     = "logger",
     }
   }

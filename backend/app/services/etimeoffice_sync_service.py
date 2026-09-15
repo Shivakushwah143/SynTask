@@ -657,7 +657,15 @@ async def run_etimeoffice_sync_loop() -> None:
             company_ids = await _companies_with_etimeoffice_mappings()
             for company_id in company_ids:
                 try:
-                    await sync_etimeoffice_for_company(company_id)
+                    # Manual business span (Topic 9). No tenant/user identifiers
+                    # are attached — trace attributes stay bounded.
+                    from app.observability.tracing import trace_span
+
+                    with trace_span(
+                        "etimeoffice.attendance_sync",
+                        {"syntask.integration": "etimeoffice", "syntask.operation": "attendance_sync"},
+                    ):
+                        await sync_etimeoffice_for_company(company_id)
                 except ETimeOfficeSyncInProgress:
                     continue
                 except ETimeOfficeError:

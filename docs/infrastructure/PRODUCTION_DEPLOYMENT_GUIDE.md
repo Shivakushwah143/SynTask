@@ -1,7 +1,7 @@
 # SynTask Production Deployment Guide
 
 Status: repository-supported Compose procedure; production controls require verification  
-Last reviewed: 2026-07-17
+Last reviewed: 2026-09-13 (safe deployment script, release identity, health gate and rollback added)
 
 ## Deployment model
 
@@ -36,13 +36,14 @@ Verify frontend, `/health`, database/Redis health, login, and a tenant-scoped re
 1. Record commit, operator, window, current service state, and rollback commit.
 2. Confirm database/file backup and last restoration evidence.
 3. Validate configuration: `docker compose -f docker-compose.prod.yml config --quiet`.
-4. Build immutable images in CI where possible; repository fallback is `docker compose -f docker-compose.prod.yml build`.
+4. Build immutable images in CI where possible; the script builds before updating.
 5. Apply approved backward-compatible migrations/backfills.
-6. Start: `docker compose -f docker-compose.prod.yml up -d`.
+6. Deploy in place (never `docker compose down`): `bash scripts/deployment/deploy.sh --env production --yes`. The script updates services, waits for `--wait` where supported, and runs the readiness gate.
 7. Inspect: `docker compose -f docker-compose.prod.yml ps`.
-8. Verify Nginx/frontend/API, worker, database/Redis, storage, and logs.
-9. Smoke-test login/logout, role denial, cross-tenant denial, project/task write, an enabled critical module, upload/download, queued job, and configured sandbox callback.
-10. Observe error rate, latency, resources, and queue depth through stabilization; record evidence.
+8. Confirm the release: `curl -s http://127.0.0.1:8000/readyz` and the `syntask_build_info` metric show the expected commit; check the `event=deployment` line in Loki.
+9. Verify Nginx/frontend/API, worker, database/Redis, storage, and logs.
+10. Smoke-test login/logout, role denial, cross-tenant denial, project/task write, an enabled critical module, upload/download, queued job, and configured sandbox callback.
+11. Observe error rate, latency, resources, and queue depth through stabilization on the **SynTask Deployment Overview** dashboard; record evidence.
 
 ## TLS and exposure warning
 
@@ -54,12 +55,21 @@ Named volumes persist on one Docker host but are not high availability or indepe
 
 ## Rollback
 
-- Application-only/backward compatible: redeploy the last known-good image/commit.
+Run `bash scripts/deployment/rollback.sh --env production --yes` (or
+`deploy.sh --env production --rollback --yes`). The script restores the previous
+release SHA recorded in `.deploy-state/production.json`, rebuilds, updates
+services in place and re-runs the health gate. It never deletes volumes or the
+database. Automatic rollback also happens when a deploy fails the health gate.
+
+- Application-only/backward compatible: redeploy the last known-good commit (scripted above).
 - Schema expansion: old code must tolerate new optional fields/indexes.
 - Destructive migration: require tested reverse migration or restoration; otherwise no-go.
+- Environment files are not rolled back automatically; restore prior values if the failed release changed them.
 - External side effects: reconcile or compensate; do not replay unsafe callbacks.
 
-After rollback, repeat health/security smoke tests and reconcile jobs/provider events created in the failed window.
+After rollback, repeat health/security smoke tests and reconcile jobs/provider
+events created in the failed window. See the
+[deployment and rollback runbook](../runbooks/DEPLOYMENT_ROLLBACK.md).
 
 ## Troubleshooting
 

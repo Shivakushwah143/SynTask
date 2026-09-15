@@ -43,6 +43,7 @@ async def readiness():
     """
     from app.core.database import get_database
     from app.core.redis_client import get_redis_health
+    from app.core.release import release_info
 
     status = "ready"
     checks: dict[str, dict] = {}
@@ -104,6 +105,9 @@ async def readiness():
             "status": status,
             "version": settings.VERSION,
             "environment": settings.ENVIRONMENT,
+            # Release identity (Topic 10) so a deployment can be identified
+            # from the readiness probe without extra tooling.
+            "release": release_info(),
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "checks": checks,
         },
