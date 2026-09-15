@@ -83,6 +83,7 @@ export default function OffersPage() {
   // Fetch candidates and jobs for create form
   const candidatesQuery = useQuery(["recruitment", "offerCandidates"], () => recruitmentApi.getCandidates({ page_size: 100 }));
   const jobsQuery = useQuery(["recruitment", "offerJobs"], () => recruitmentApi.getJobs({ page_size: 100 }));
+  const applicationsQuery = useQuery(["recruitment", "offerApplications"], () => recruitmentApi.getApplications({ page_size: 100 }));
 
   const offers = toArray(offersQuery.data);
   const total = offersQuery.data?.total || offers.length;
@@ -90,7 +91,7 @@ export default function OffersPage() {
 
   // Form state for create
   const [form, setForm] = useState({
-    candidate_id: "", job_id: "", job_title: "", department: "",
+    application_id: "", candidate_id: "", job_id: "", job_title: "", department: "",
     employment_type: "full_time", work_location: "", joining_date: "",
     currency: "INR", base_salary: 0, variable_pay: 0, joining_bonus: 0, offer_expiry: "",
   });
@@ -109,7 +110,7 @@ export default function OffersPage() {
 
   // Mutations
   const createMutation = useMutation(() => recruitmentApi.createOffer({
-    ...form,
+    application_id: form.application_id,
     joining_date: new Date(form.joining_date).toISOString(),
     offer_expiry: form.offer_expiry ? new Date(form.offer_expiry).toISOString() : null,
     base_salary: Number(form.base_salary || 0),
@@ -320,18 +321,9 @@ export default function OffersPage() {
       >
         <div className="space-y-4">
           <FormField label="Candidate *">
-            <select className={inputClassName} value={form.candidate_id} onChange={(e) => update("candidate_id", e.target.value)}>
-              <option value="">Select candidate</option>
-              {candidateItems.map((c) => <option key={idOf(c)} value={idOf(c)}>{c.full_name || c.name}</option>)}
-            </select>
-          </FormField>
-          <FormField label="Job">
-            <select className={inputClassName} value={form.job_id} onChange={(e) => {
-              const job = jobItems.find((j) => idOf(j) === e.target.value);
-              setForm((c) => ({ ...c, job_id: e.target.value, job_title: job?.title || c.job_title, department: job?.department_id || c.department, work_location: job?.location || c.work_location, employment_type: job?.employment_type || c.employment_type }));
-            }}>
-              <option value="">Select job</option>
-              {jobItems.map((j) => <option key={idOf(j)} value={idOf(j)}>{j.title}</option>)}
+            <select className={inputClassName} value={form.application_id} onChange={(e) => update("application_id", e.target.value)}>
+              <option value="">Select application</option>
+              {(applicationsQuery.data?.data?.items || []).map((app) => <option key={app.application_id} value={app.application_id}>{app.candidate.full_name} — {app.job.title}</option>)}
             </select>
           </FormField>
           {["job_title", "department", "employment_type", "work_location", "currency"].map((key) => (
@@ -345,7 +337,7 @@ export default function OffersPage() {
           <FormField label="Variable pay"><input type="number" className={inputClassName} value={form.variable_pay} onChange={(e) => update("variable_pay", e.target.value)} /></FormField>
           <FormField label="Joining bonus"><input type="number" className={inputClassName} value={form.joining_bonus} onChange={(e) => update("joining_bonus", e.target.value)} /></FormField>
           <div className="flex gap-2 pt-2">
-            <Button onClick={() => createMutation.mutate()} disabled={createMutation.isLoading || !form.candidate_id || !form.joining_date}>
+            <Button onClick={() => createMutation.mutate()} disabled={createMutation.isLoading || !form.application_id || !form.joining_date}>
               {createMutation.isLoading ? "Creating..." : "Create Draft"}
             </Button>
             <Button variant="secondary" onClick={() => setShowCreateForm(false)}>Cancel</Button>

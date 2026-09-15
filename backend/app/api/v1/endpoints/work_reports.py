@@ -292,6 +292,8 @@ async def task_report(
             "status": task.status.value if hasattr(task.status, "value") else str(task.status),
             "priority": task.priority.value if hasattr(task.priority, "value") else str(task.priority),
             "due_date": task.due_date.isoformat() if task.due_date else None,
+            "carry_forward_due_date": getattr(task, "carry_forward_due_date", None).isoformat() if getattr(task, "carry_forward_due_date", None) else None,
+            "carry_forward_days": int(getattr(task, "carry_forward_days", 0) or 0),
             "review_round": getattr(task, "review_round", 0),
             "health": getattr(task_health, "value", str(task_health)),
         })

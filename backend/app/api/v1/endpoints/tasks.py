@@ -36,6 +36,7 @@ from app.services.task_health_service import (
     sync_task_health,
     sync_task_health_for_company,
 )
+from app.services.task_carry_forward_service import carry_forward_tasks
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.services.timeline_service import create_timeline_event
 from app.core.cache import cache_delete_pattern, company_dashboard_pattern
@@ -449,6 +450,10 @@ async def serialize_task_response(
         "completed_at": task.completed_at,
         "health_status": getattr(task.health_status, "value", task.health_status),
         "extension_count": getattr(task, "extension_count", 0),
+        "carry_forward_due_date": getattr(task, "carry_forward_due_date", None),
+        "carry_forward_days": int(getattr(task, "carry_forward_days", 0) or 0),
+        "carry_forward_count": int(getattr(task, "carry_forward_count", 0) or 0),
+        "carry_forward_last_at": getattr(task, "carry_forward_last_at", None),
         "estimated_hours": getattr(task, "estimated_hours", None),
         "actual_hours": getattr(task, "actual_hours", None),
         "progress_percentage": getattr(task, "progress_percentage", 0.0),
@@ -669,8 +674,13 @@ async def _send_task_side_effects(task: Task, current_user: User, assignee, proj
     import logging
     logger = logging.getLogger(__name__)
 
+    # Self-assigned tasks never trigger assignment notifications — the
+    # employee is both creator and assignee, so email/in-app spam is
+    # pointless.
+    is_self_assigned = getattr(task, "source_type", None) == "self_assigned"
+
     # --- Email notification ---
-    if task.assigned_to and assignee:
+    if task.assigned_to and assignee and not is_self_assigned:
         try:
             from app.worker.tasks.email_tasks import send_task_assignment_email_task
             project_name = None
@@ -696,7 +706,7 @@ async def _send_task_side_effects(task: Task, current_user: User, assignee, proj
             logger.error(f"Failed to queue task assignment email: {str(e)}")
 
     # --- In-app notification ---
-    if task.assigned_to:
+    if task.assigned_to and not is_self_assigned:
         try:
             from app.models.notification import Notification, NotificationType
             notification = Notification(
@@ -786,6 +796,8 @@ async def list_tasks(
     due_from: Optional[str] = None,
     due_to: Optional[str] = None,
     exclude_follow_up: Optional[bool] = None,
+    source_type: Optional[str] = None,
+    assignment_source: Optional[str] = None,
     pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user)
 ):
@@ -835,6 +847,18 @@ async def list_tasks(
         query_parts.append({"department_id": department_id})
     if exclude_follow_up:
         query_parts.append({"source_type": {"$ne": "sales_follow_up"}})
+    if source_type:
+        query_parts.append({"source_type": source_type})
+    if assignment_source:
+        # assignment_source="self" → source_type = "self_assigned"
+        # assignment_source="assigned" → exclude self-assigned (source_type != "self_assigned" or null)
+        if assignment_source == "self":
+            query_parts.append({"source_type": "self_assigned"})
+        elif assignment_source == "assigned":
+            query_parts.append({"$or": [
+                {"source_type": {"$ne": "self_assigned"}},
+                {"source_type": None},
+            ]})
     if due_from or due_to:
         query_parts.append(_task_due_range_condition(due_from, due_to))
     if search and search.strip():
@@ -902,6 +926,9 @@ async def list_tasks(
         if valid_ids:
             related_users = await User.find({"_id": {"$in": valid_ids}}).to_list()
             users_by_id = {str(user.id): user for user in related_users}
+    # Lazy carry-forward catch-up for the returned page only, so listing tasks
+    # stays write-free unless a deadline passed since the last sweep.
+    await carry_forward_tasks(tasks)
     task_payloads = [
         await serialize_task_response(task, current_user, users_by_id=users_by_id)
         for task in tasks
@@ -977,6 +1004,67 @@ async def create_task(
         review_required=review_required,
         current_user=current_user,
         background_tasks=background_tasks
+    )
+
+
+@router.post("/self")
+async def create_self_task(
+    background_tasks: BackgroundTasks,
+    title: str = Form(...),
+    description: Optional[str] = Form(None),
+    project_id: Optional[str] = Form(None),
+    priority: str = Form("medium"),
+    due_date: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+    estimated_hours: Optional[float] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a self-assigned task.
+
+    The authenticated employee creates a task for themselves.  Server
+    derives ``created_by``, ``assigned_to``, ``company_id`` and stamps
+    ``source_type = 'self_assigned'`` so the task participates in the
+    normal lifecycle while retaining its origin metadata.
+    """
+    from app.services.task_service import TaskService
+
+    # Validate optional project access up-front so the user gets a clear
+    # error before the heavier create_task_core path.
+    if project_id and project_id.strip():
+        from app.api.dependencies import get_project_by_id
+        project, resolved_id = await get_project_by_id(
+            project_id.strip(),
+            current_user.company_id,
+        )
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found",
+            )
+        if project.company_id != current_user.company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this project",
+            )
+        if not await _can_access_project_for_task(current_user, project):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this project",
+            )
+
+    return await TaskService.create_task_core(
+        title=title,
+        description=description,
+        assigned_to=str(current_user.id),
+        priority=priority,
+        due_date=due_date,
+        tags=tags,
+        estimated_hours=estimated_hours,
+        project_id=project_id,
+        source_type="self_assigned",
+        review_required=False,
+        current_user=current_user,
+        background_tasks=background_tasks,
     )
 
 
@@ -1249,6 +1337,9 @@ async def get_task(
         )
 
     await _assert_task_view(current_user, task)
+    # Lazy carry-forward catch-up so a detail view never shows a stale
+    # effective deadline when the daily sweep has not run yet.
+    await carry_forward_tasks([task])
     await sync_task_health(task)
 
     return await serialize_task_response(task, current_user, include_detail=True)

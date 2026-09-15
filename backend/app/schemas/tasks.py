@@ -21,6 +21,24 @@ class CreateTaskRequest(BaseModel):
     target_unit: Optional[str] = None
 
 
+class SelfTaskCreateRequest(BaseModel):
+    """Schema for employee self-assigned task creation.
+
+    Only user-editable fields are accepted. Server derives:
+    - created_by = current user
+    - assigned_to = current user
+    - company_id = current user's tenant
+    - assignment_source = SELF (via source_type)
+    """
+    title: str = Field(..., min_length=1, max_length=500)
+    description: Optional[str] = Field(None, max_length=10000)
+    project_id: Optional[str] = None
+    priority: str = "medium"
+    due_date: Optional[datetime] = None
+    estimated_hours: Optional[float] = Field(None, ge=0)
+    tags: List[str] = []
+
+
 class UpdateTaskRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=500)
     description: Optional[str] = None

@@ -1,7 +1,7 @@
 export const TASK_VIEW_PARAM = 'view'
 export const TASK_SEARCH_PARAM = 'q'
 export const TASK_ATTENTION_PARAM = 'attention'
-export const TASK_FILTER_KEYS = ['status', 'priority', 'assigned_to', 'department_id', 'project_id', 'due_from', 'due_to']
+export const TASK_FILTER_KEYS = ['status', 'priority', 'assigned_to', 'department_id', 'project_id', 'due_from', 'due_to', 'assignment_source']
 const TASK_VIEW_VALUES = new Set(['list', 'board'])
 const TASK_ATTENTION_VALUES = new Set(['blocked', 'overdue', 'due_today', 'critical'])
 

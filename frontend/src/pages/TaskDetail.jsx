@@ -60,6 +60,7 @@ import {
 } from "./taskNavigation";
 import toast from "react-hot-toast";
 import { timeService } from "@/services/timeService";
+import CarryForwardDueDate from "../components/tasks/CarryForwardDueDate";
 
 const dedupeUsersById = (items = []) => {
   const seen = new Set();
@@ -1175,6 +1176,13 @@ const TaskDetail = () => {
                     {projectInfo.name}
                   </span>
                 )}
+                {/* Self Assigned badge */}
+                {task.source_type === "self_assigned" && (
+                  <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-300">
+                    <User className="h-3 w-3" />
+                    Self Assigned
+                  </span>
+                )}
               </div>
               <div className="mt-2 flex items-center gap-2 px-2">
                 <span
@@ -1487,6 +1495,8 @@ const TaskDetail = () => {
                       : "—"}
                   </p>
                 </div>
+
+                {task.carry_forward_due_date ? <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50"><p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">New due date</p><p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white"><CarryForwardDueDate task={task} /></p></div> : null}
 
                 {/* Created */}
                 <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">

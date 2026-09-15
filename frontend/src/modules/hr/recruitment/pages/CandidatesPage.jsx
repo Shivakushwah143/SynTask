@@ -51,6 +51,7 @@ import { RecruitmentTable } from "../components/RecruitmentTable";
 import { RecruitmentTabs } from "../components/RecruitmentTabs";
 import { RecruitmentTimeline } from "../components/RecruitmentTimeline";
 import { StatusBadge } from "../components/StatusBadge";
+import { ApplicationLifecycleWorkspace } from "../components/ApplicationLifecycleWorkspace";
 import { compactParams, fmtDate, fmtDateTime, idOf, labelize, toArray } from "../utils/data";
 
 const tabs = [
@@ -712,6 +713,10 @@ export default function CandidatesPage() {
       toast.error("Could not copy temporary ID");
     }
   };
+
+  // The global page is intentionally application-centric. The existing route
+  // with a candidate id below remains the person-centric profile workspace.
+  if (!routeCandidateId) return <ApplicationLifecycleWorkspace />;
 
   return (
     <div className="space-y-4 p-4 md:p-5">
