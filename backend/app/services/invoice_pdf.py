@@ -197,6 +197,20 @@ def _to_float(value, default: float = 0.0) -> float:
         return default
 
 
+def _to_float(value, default: float = 0.0) -> float:
+    """Coerce a value to float, falling back to ``default`` for None/invalid.
+
+    Item fields are sometimes stored as ``null`` in the database; treat those
+    as missing so invoice PDF generation never crashes on a None value.
+    """
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _build_address_block(title: str, lines: List[str], styles) -> List:
     block: List = [Paragraph(f"<b>{escape_paragraph(title)}</b>", styles["Label"])]
     for line in lines:
