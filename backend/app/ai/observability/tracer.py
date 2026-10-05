@@ -313,9 +313,21 @@ async def _schedule_persist(ctx: TraceContext) -> None:
         logger.warning("AI telemetry scheduling failed (non-fatal): %s", exc)
 
 
+def _otel_trace_id() -> Optional[str]:
+    """Active OTLP trace id (Topic 9), or None when tracing is disabled."""
+    try:
+        from app.observability.tracing import current_trace_id
+
+        return current_trace_id()
+    except Exception:  # pragma: no cover - tracing is optional
+        return None
+
+
 def _serialize_trace(ctx: TraceContext) -> dict[str, Any]:
     return {
         "trace_id": ctx.trace_id,
+        # Additive cross-reference to the Tempo trace; never replaces trace_id.
+        "otel_trace_id": _otel_trace_id(),
         "tenant_id": ctx.tenant_id,
         "user_id": ctx.user_id,
         "role": ctx.role,

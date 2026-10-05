@@ -28,6 +28,8 @@ export const tasksAPI = {
     if (filters.critical !== undefined) params.append('critical', filters.critical)
     if (filters.awaiting_review !== undefined) params.append('awaiting_review', filters.awaiting_review)
     if (filters.exclude_follow_up !== undefined) params.append('exclude_follow_up', filters.exclude_follow_up)
+    if (filters.source_type) params.append('source_type', filters.source_type)
+    if (filters.assignment_source) params.append('assignment_source', filters.assignment_source)
     if (filters.search) params.append('search', filters.search)
     if (filters.due_from) params.append('due_from', filters.due_from)
     if (filters.due_to) params.append('due_to', filters.due_to)
@@ -92,6 +94,17 @@ export const tasksAPI = {
   createTask: async (taskData) => {
     const formData = toFormData(taskData)
     const response = await api.post('/tasks/', formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
+    })
+    return response.data
+  },
+
+  // Create self-assigned task
+  createSelfTask: async (taskData) => {
+    const formData = toFormData(taskData)
+    const response = await api.post('/tasks/self', formData, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       }

@@ -247,8 +247,8 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(screen.getByRole('tab', { name: /^Job Openings$/i })).toHaveAttribute('aria-selected', 'true')
     // The match-prefix on Hiring Dashboard must NOT also light up (single-active rule).
     expect(screen.getByRole('tab', { name: /^Hiring Dashboard$/i })).toHaveAttribute('aria-selected', 'false')
-    // Employees (from HR employees module) should be in Recruitment section tabs.
-    expect(screen.getByRole('tab', { name: /^Employees$/i })).toBeTruthy()
+    // Employees is a People-only module and must NOT appear in Recruitment tabs.
+    expect(screen.queryByRole('tab', { name: /^Employees$/i })).toBeNull()
   })
 
   it('keeps the Employees tab active on a nested employee detail page', () => {

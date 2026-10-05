@@ -1,0 +1,70 @@
+# Grafana Loki configuration — SynTask single-VPS deployment.
+#
+# Deployment mode : single binary ("all" target, the image default).
+# Storage         : local filesystem on a persistent Docker volume (/loki).
+# Networking      : listens on 3100 inside the `syntask` Docker network only.
+#                   No public/ingress port is published in production.
+# Retention       : 7 days, enforced by the Compactor (Loki's supported
+#                   mechanism for finite retention).
+#
+# Keep this file free of secrets; Loki runs with auth_enabled=false on an
+# internal network and is never exposed publicly.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+# ---------------------------------------------------------------------------
+# Retention (finite) — see https://grafana.com/docs/loki/latest/operations/storage/retention/
+# The Compactor removes chunks older than retention_period; the delete request
+# store must be configured whenever retention is enabled.
+# ---------------------------------------------------------------------------
+limits_config:
+  retention_period: 168h # 7 days
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  max_query_lookback: 168h
+  # Required for the structured metadata Alloy attaches (e.g. request_id).
+  allow_structured_metadata: true
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h # required for Compactor retention
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-index
+    cache_location: /loki/tsdb-cache
+
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+  delete_request_store: filesystem
+
+# Do not phone usage statistics home from production.
+analytics:
+  reporting_enabled: false

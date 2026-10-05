@@ -1,0 +1,106 @@
+# SynTask Prometheus alert rules.
+#
+# Only user-impacting / symptom-focused alerts. All metrics referenced here
+# already exist from Topics 2 and 4 — do not add duplicate application metrics.
+#
+#   syntask_http_requests_total{status_code=...}          (Topic 2)
+#   syntask_http_request_duration_seconds_bucket          (Topic 2)
+#   up{job="syntask-backend"}                             (Topic 2)
+#   up{job="tempo"}                                       (Topic 9, Tempo)
+#   redis_up                                              (Topic 4, redis_exporter)
+#   node_filesystem_{avail,size}_bytes{mountpoint="/"}    (Topic 4, node_exporter)
+#
+# Runbooks: docs/runbooks/observability-alerts.md
+
+groups:
+  - name: syntask-availability
+    rules:
+      - alert: SynTaskBackendDown
+        expr: up{job="syntask-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SynTask backend is down"
+          description: >-
+            Prometheus has failed to scrape the SynTask backend (/metrics) for
+            more than 1 minute. The API is likely unavailable to users.
+          runbook: "docs/runbooks/observability-alerts.md#syntaskbackenddown"
+
+      - alert: SynTaskTempoDown
+        expr: up{job="tempo"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SynTask Tempo (distributed tracing) is down"
+          description: >-
+            Prometheus has failed to scrape Tempo for more than 5 minutes. New
+            traces are not being stored, so log -> trace correlation is
+            degraded. Metrics and structured logs are unaffected.
+          runbook: "docs/runbooks/observability-alerts.md#syntasktempodown"
+
+      - alert: SynTaskRedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SynTask Redis is down"
+          description: >-
+            The Redis exporter reports Redis as unavailable for more than
+            1 minute. Background jobs, caching, and rate limiting are degraded.
+          runbook: "docs/runbooks/observability-alerts.md#syntaskredisdown"
+
+  - name: syntask-api-symptoms
+    rules:
+      - alert: SynTaskHigh5xxRate
+        expr: >-
+          sum(rate(syntask_http_requests_total{status_code=~"5.."}[5m]))
+          /
+          sum(rate(syntask_http_requests_total[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SynTask API 5xx error ratio above 5%"
+          description: >-
+            More than 5% of API requests have returned 5xx responses for over
+            5 minutes. Users are seeing failed requests.
+          runbook: "docs/runbooks/observability-alerts.md#syntaskhigh5xxrate"
+
+      - alert: SynTaskHighP95Latency
+        expr: >-
+          histogram_quantile(
+            0.95,
+            sum(rate(syntask_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SynTask API p95 latency above 2s"
+          description: >-
+            The 95th percentile API request latency has stayed above 2 seconds
+            for over 5 minutes. The API is slow for a significant share of users.
+          runbook: "docs/runbooks/observability-alerts.md#syntaskhighp95latency"
+
+  - name: syntask-host
+    rules:
+      - alert: SynTaskRootDiskAlmostFull
+        expr: >-
+          (1 - (
+            node_filesystem_avail_bytes{mountpoint="/"}
+            /
+            node_filesystem_size_bytes{mountpoint="/"}
+          )) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SynTask host root disk above 85% full"
+          description: >-
+            Root filesystem utilisation on the host has exceeded 85% for over
+            10 minutes. Log growth or Docker images may fill the disk.
+          runbook: "docs/runbooks/observability-alerts.md#syntaskrootdiskalmostfull"

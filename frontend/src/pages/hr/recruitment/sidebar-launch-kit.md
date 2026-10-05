@@ -102,7 +102,7 @@ Questions? Reply to this message.
 | Company directory | People → Company Directory | Was "Company Directory" under Administration |
 | Recruitment / Hiring | Recruitment → Hiring Dashboard | Was under HR Department |
 | Job openings | Recruitment → Job Openings | Was "Jobs" under HR Department |
-| Applications | Recruitment → Applications | Was "Inbox" under HR Department |
+| Applications | Recruitment → Recruitment Inbox | Was "Inbox" under HR Department |
 | Candidates / Interviews | Recruitment → Candidates / Interviews | Was under HR Department |
 | Resume pool | Recruitment → Talent Pool | Was "Resume Pool" under HR Department |
 | Hiring reports | Recruitment → Hiring Reports | Was "Reports" under HR Department |

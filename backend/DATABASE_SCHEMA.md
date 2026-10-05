@@ -4,7 +4,7 @@ Database: `alphanexis_task_management`
 
 This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **63 unique MongoDB collection names** across **68 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
 
-Recruitment models under `backend/app/recruitment/models.py` also define tenant-scoped collections. `recruitment_candidates` stores public applicant profile data including `date_of_birth` when submitted. `recruitment_applications` stores candidate job applications with `company_id`, `candidate_id`, `job_id`, `status`, globally unique `tracking_code`, hashed `tracking_secret_hash`, `tracking_secret_created_at`, `applied_at`, `updated_at`, and `deleted_at`. `recruitment_candidate_portal_credentials` is a temporary public tracking credential collection keyed by `company_id`, `candidate_id`, `application_id`, `job_id`, and `tracking_code`; it stores only `secret_hash`, never the temporary password. Public candidate tracking verifies `tracking_code` plus PIN against a temporary credential hash and never exposes the hash or MongoDB id. `recruitment_offer_access_tokens` stores tenant-scoped offer access records with a token hash and optional encrypted raw token used to render public offer links in candidate tracking; public offer routes still verify the token hash and expiry before exposing offer details. Terminal candidate states remove temporary credential documents while retaining recruitment audit/application records.
+Recruitment models under `backend/app/recruitment/models.py` also define tenant-scoped collections. `recruitment_candidates` stores reusable person/profile data including `date_of_birth` when submitted. `recruitment_applications` stores the canonical job-specific hiring lifecycle with `company_id`, `candidate_id`, `job_id`, `status`, `previous_status`, `custom_fields`, globally unique `tracking_code`, hashed `tracking_secret_hash`, `tracking_secret_created_at`, `applied_at`, `updated_at`, and `deleted_at`. `custom_fields` stores recruiter-defined text answers for the current Job Application; it never modifies the reusable Candidate profile. A unique `(company_id, candidate_id, job_id)` relationship prevents duplicate applications while allowing one candidate to apply to multiple jobs. Offers, Interviews, and CandidateTimeline records carry optional `application_id` for safe legacy migration; all newly created Offers and Interviews require it. `recruitment_candidate_portal_credentials` is a temporary public tracking credential collection keyed by `company_id`, `candidate_id`, `application_id`, `job_id`, and `tracking_code`; it stores only `secret_hash`, never the temporary password. Application outcomes deactivate only the linked credential, preserving tracking for another active application belonging to the same candidate. Public candidate tracking verifies `tracking_code` plus PIN against a temporary credential hash and never exposes the hash or MongoDB id. `recruitment_offer_access_tokens` stores tenant-scoped offer access records with a token hash and optional encrypted raw token used to render public offer links in candidate tracking; public offer routes still verify the token hash and expiry before exposing offer details.
 
 ## Collection Summary
 
@@ -13,6 +13,7 @@ Recruitment models under `backend/app/recruitment/models.py` also define tenant-
 | `attendance` | Attendance, AttendanceSession, BreakLog, MonitoringSession, CameraSession, ScreenShareSession, AttendancePolicy, Holiday, AttendanceCorrectionRequest | Attendance check-in/out records, sessions, breaks, monitoring, policies, holidays, correction requests. Attendance rows carry an optional `source` marker (`etimeoffice` when written by the biometric sync). |
 | `attendance_sync_states` | ETimeOfficeSyncState | Company-scoped runtime state of the eTimeOffice biometric attendance sync (connection health, last run summary, in-flight guard). Never stores credentials. |
 | `ai_security_events` | AISecurityEvent | Immutable AI governance security decision audit log. Stores safe metadata only — never raw prompts, tool results, salaries, or credentials. Indexed on (company_id, created_at), (decision), (agent, capability), (user_id, created_at). Write failures must never grant access. |
+| `ai_traces` | AITrace | One AI request trace for the custom LLMOps observability system (tenant-scoped, privacy-safe). The custom `trace_id` remains authoritative; the optional `otel_trace_id` field (no index) cross-references the OpenTelemetry/Grafana Tempo infrastructure trace added in Topic 9. AI observability storage and retention are unchanged. |
 | `automation_executions` | AutomationExecution | AutomationExecution persistence collection. |
 | `automation_rules` | AutomationRule | AutomationRule persistence collection. |
 | `billing_transactions` | BillingTransaction | Billing invoices, payment state, Razorpay metadata. |
@@ -1484,9 +1485,13 @@ Indexes: `['company_id', 'created_by', 'assigned_to', 'status', 'priority', 'pro
 | `assigned_by` | `Optional[str]` | No | No | Model field |
 | `status` | `<enum 'TaskStatus` | No | Yes | Model field |
 | `priority` | `<enum 'TaskPriority` | No | Yes | Model field |
-| `due_date` | `Optional[datetime.datetime]` | No | No | Model field |
+| `due_date` | `Optional[datetime.datetime]` | No | No | Original commitment; never rewritten by carry forward, and the source for task health, overdue filters, and at-risk analysis. |
 | `start_date` | `Optional[datetime.datetime]` | No | No | Model field |
 | `completed_at` | `Optional[datetime.datetime]` | No | No | Model field |
+| `carry_forward_due_date` | `Optional[datetime.datetime]` | No | No | Effective deadline after automatic carry forward (midnight of the day it was carried); null until a task's first carry forward. |
+| `carry_forward_days` | `int` | No | No | Accumulated days the effective deadline has been moved; grows by one for every further day an open task stays past its original due date. |
+| `carry_forward_count` | `int` | No | No | Number of carry-forward adjustments applied to the task. |
+| `carry_forward_last_at` | `Optional[datetime.datetime]` | No | No | When the last carry-forward adjustment was applied; also the per-day idempotency guard shared by the daily job and read-time catch-up. |
 | `attachments` | `List[str]` | No | No | Model field |
 | `tags` | `List[str]` | No | No | Model field |
 | `parent_task_id` | `Optional[str]` | No | No | Model field |
@@ -2188,3 +2193,15 @@ Additional time indexes:
 `context` (`progress_update` or `review_submission`), `created_at`. Indexed by
 `(company_id, task_id, created_at)`. There is no draft-progress collection;
 draft quantity is frontend-only.
+
+# Content Publishing Index Migration
+
+`content_publishing_records.content_item_id` has a unique index
+(`content_item_id_1`) because a content item has one canonical publishing
+record. At startup the database preflight upgrades a legacy non-unique index
+with the same name after checking for duplicates. The migration only drops the
+old index; Beanie recreates the unique canonical index. If duplicates exist,
+startup stops with the affected item id and no index is changed. Resolve or
+merge those duplicate publishing records before restarting. To roll back, drop
+the unique index manually and recreate a non-unique `content_item_id_1` index;
+this is only appropriate while rolling back the application code as well.

@@ -96,6 +96,7 @@ export function buildTaskQueryParams({ filters = {}, attention = '', search = ''
   if (filters.project_id) params.project_id = filters.project_id
   if (filters.due_from) params.due_from = filters.due_from
   if (filters.due_to) params.due_to = filters.due_to
+  if (filters.assignment_source) params.assignment_source = filters.assignment_source
   const attentionQuery = ATTENTION_TO_QUERY[attention]
   if (attentionQuery) Object.assign(params, attentionQuery)
   // Sales follow-up items are not standalone tasks and never appear on the
@@ -115,6 +116,7 @@ export function activeFilterCount(filters = {}, attention = '', search = '') {
   if (filters.department_id) count += 1
   if (filters.project_id) count += 1
   if (filters.due_from || filters.due_to) count += 1
+  if (filters.assignment_source) count += 1
   if (attention) count += 1
   if (search && search.trim()) count += 1
   return count

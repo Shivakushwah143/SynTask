@@ -51,6 +51,7 @@ import { RecruitmentTable } from "../components/RecruitmentTable";
 import { RecruitmentTabs } from "../components/RecruitmentTabs";
 import { RecruitmentTimeline } from "../components/RecruitmentTimeline";
 import { StatusBadge } from "../components/StatusBadge";
+import { ApplicationLifecycleWorkspace } from "../components/ApplicationLifecycleWorkspace";
 import { compactParams, fmtDate, fmtDateTime, idOf, labelize, toArray } from "../utils/data";
 
 const tabs = [
@@ -536,7 +537,9 @@ export default function CandidatesPage() {
         }
         setAssignJobOpen(false);
         invalidate();
-        qc.invalidateQueries(["recruitment", "employees"]);
+        // Employees list lives in People section — use canonical ['employees'] key
+        // that matches EmployeesPage.jsx queryClient usage.
+        qc.invalidateQueries(['employees']);
         qc.invalidateQueries(["recruitment", "candidate", selectedId]);
       },
       onError: (error) => {
@@ -710,6 +713,10 @@ export default function CandidatesPage() {
       toast.error("Could not copy temporary ID");
     }
   };
+
+  // The global page is intentionally application-centric. The existing route
+  // with a candidate id below remains the person-centric profile workspace.
+  if (!routeCandidateId) return <ApplicationLifecycleWorkspace />;
 
   return (
     <div className="space-y-4 p-4 md:p-5">
@@ -1097,7 +1104,7 @@ export default function CandidatesPage() {
                       await recruitmentApi.convertCandidate(idOf(candidate), { department_id: candidate.department_id || "", designation: candidate.designation || "" });
                       toast.success("Candidate converted to employee!");
                       qc.invalidateQueries(["recruitment", "candidates"]);
-                      qc.invalidateQueries(["recruitment", "employees"]);
+                      qc.invalidateQueries(['employees']);
                       setSelected(null);
                     } catch (err) {
                       toast.error(err?.response?.data?.detail || "Failed to convert candidate");

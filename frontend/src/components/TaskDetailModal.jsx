@@ -15,6 +15,7 @@ import { hasCompanyAdminAccess, isLeadRole, getRoleLabel } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { timeService } from '@/services/timeService'
+import CarryForwardDueDate from './tasks/CarryForwardDueDate'
 
 const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh }) => {
   const { user } = useAuthStore()
@@ -598,12 +599,10 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                 })()}
               </div>
 
-              {task.due_date && (
+              {(task.due_date || task.carry_forward_due_date) && (
                 <div>
                   <label className="text-sm font-medium text-gray-700">Due Date</label>
-                  <p className="text-gray-900 mt-1">
-                    {timeService.formatPattern(task.due_date, 'PPpp')}
-                  </p>
+                  <p className="text-gray-900 mt-1"><CarryForwardDueDate task={task} /></p>
                 </div>
               )}
 

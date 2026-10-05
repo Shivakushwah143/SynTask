@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Maximize2, Menu, MessageCircle, Minimize2, Search, Video, LayoutDashboard } from 'lucide-react'
+import { LogOut, Maximize2, Menu, MessageCircle, Minimize2, Search, Settings, Video, LayoutDashboard } from 'lucide-react'
 import NotificationBell from '../NotificationBell'
 import ThemeToggle from '../ThemeToggle'
 import GlobalClock from '../GlobalClock'
 import AttendanceStatusPill from '../attendance/AttendanceStatusPill'
 import { Button } from '../ui'
 import { useAuthStore } from '../../store/authStore'
-import { ROLE, hasCompanyAdminAccess, isManagerRole, normalizeRole } from '../../utils/roles'
+import { ROLE, getRoleLabel, hasCompanyAdminAccess, isManagerRole, normalizeRole } from '../../utils/roles'
 import { filterNavItems } from '../../utils/rbac'
 import { SynzinAvatar } from '../ai/SynzinAvatar'
 import { getAvatarUrl } from '../../utils/avatarUrl'
@@ -53,6 +53,27 @@ export function TopNavigation({
   const avatarUrl = getAvatarUrl(user?.avatar, user?.avatar_version)
   const searchShortcut = useMemo(() => getSearchShortcutLabel(), [])
   const [highlightSearch, setHighlightSearch] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const userMenuRef = useRef(null)
+
+  // Close the mobile/desktop user menu on outside click or route change.
+  useEffect(() => {
+    if (!userMenuOpen) return undefined
+    const onPointerDown = (event) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setUserMenuOpen(false)
+      }
+    }
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setUserMenuOpen(false)
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [userMenuOpen])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -107,12 +128,16 @@ export function TopNavigation({
 
         {/* Right Section - Actions */}
         <div className="flex shrink-0 items-center justify-end gap-1 sm:gap-1.5">
-          <GlobalClock />
+          {/* Clock is secondary; hidden on small phones so attendance, search,
+              notifications and the account menu never collide or overflow. */}
+          <div className="hidden md:flex">
+            <GlobalClock />
+          </div>
           {/* Attendance Status (status indicator + navigation shortcut only) */}
           <AttendanceStatusPill />
           {/* Communication Links */}
           {communicationLinks.length > 0 && (
-            <nav className="flex items-center gap-1 rounded-xl border border-gray-200 bg-gray-50/80 p-1 dark:border-gray-700 dark:bg-gray-800/50" aria-label="Global communication">
+            <nav className="hidden items-center gap-1 rounded-xl border border-gray-200 bg-gray-50/80 p-1 sm:flex dark:border-gray-700 dark:bg-gray-800/50" aria-label="Global communication">
               {communicationLinks.map((item) => {
                 const isActive = location.pathname === item.href || location.pathname.startsWith(`${item.href}/`)
                 return (
@@ -198,15 +223,64 @@ export function TopNavigation({
           {/* Notification Bell */}
           <NotificationBell />
 
-          <div className="hidden h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-xs font-semibold text-white shadow-sm dark:border-gray-700 sm:flex" aria-label="Current user profile photo">
-            {avatarUrl ? (
-              <img src={avatarUrl} alt={user?.first_name || 'Profile'} className="h-full w-full object-cover" />
-            ) : (
-              <span>{user?.first_name?.[0]}{user?.last_name?.[0]}</span>
-            )}
+          {/* Account menu — always visible, including phones. Previously the
+              avatar and logout were hidden below sm, leaving mobile users with
+              no way to reach profile settings or log out. */}
+          <div className="relative" ref={userMenuRef}>
+            <button
+              type="button"
+              onClick={() => setUserMenuOpen((open) => !open)}
+              aria-haspopup="menu"
+              aria-expanded={userMenuOpen}
+              aria-label="Account menu"
+              className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-xs font-semibold text-white shadow-sm transition-all hover:ring-2 hover:ring-indigo-500/30 dark:border-gray-700"
+            >
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={user?.first_name || 'Profile'} className="h-full w-full object-cover" />
+              ) : (
+                <span>{user?.first_name?.[0]}{user?.last_name?.[0]}</span>
+              )}
+            </button>
+            {userMenuOpen ? (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-50 mt-2 w-56 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900"
+              >
+                <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+                  <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                    {`${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Account'}
+                  </p>
+                  <p className="truncate text-xs capitalize text-gray-500 dark:text-gray-400">
+                    {getRoleLabel(user?.role)}
+                  </p>
+                </div>
+                <Link
+                  to="/settings"
+                  role="menuitem"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="flex min-h-10 items-center gap-2 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+                >
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Link>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false)
+                    onLogout?.()
+                  }}
+                  disabled={logoutLoading}
+                  className="flex min-h-10 w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-950/30"
+                >
+                  <LogOut className="h-4 w-4" />
+                  {logoutLoading ? 'Logging out…' : 'Logout'}
+                </button>
+              </div>
+            ) : null}
           </div>
 
-          {/* Logout Button */}
+          {/* Logout Button (desktop/tablet keeps its existing inline action) */}
           <Button
             variant="ghost"
             size="sm"

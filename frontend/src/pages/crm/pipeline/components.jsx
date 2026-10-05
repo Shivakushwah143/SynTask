@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
 import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadRawContactName, getLeadStageStatus, getLeadTags, getStageDealValue, getStageKey, getStageStatusOptions } from './utils'
+import { LeadNotesButton } from './notes'
 
 const leadColumnStyle = 'w-[300px] flex-none snap-start'
 export const pipelineLeadCardClassNames = {
@@ -413,6 +414,7 @@ export const PipelineStageListView = memo(function PipelineStageListView({
   onUpdateStageStatus,
   onRecordContact,
   onScheduleFollowUp,
+  onGenerateQuotation,
   onDeleteLead,
   onLeadSelect,
   onResetFilters,
@@ -782,6 +784,7 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                           Quotation
                         </Button>
                       ) : null}
+                      <LeadNotesButton lead={lead} />
                       <Button
                         type="button"
                         variant="primary"
@@ -1269,6 +1272,12 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
             Quotation
           </Button>
         ) : null}
+        <LeadNotesButton
+          lead={lead}
+          variant="ghost"
+          size="sm"
+          className={pipelineLeadCardClassNames.actionButton}
+        />
         {canMoveNext ? (
           <Button
             type="button"

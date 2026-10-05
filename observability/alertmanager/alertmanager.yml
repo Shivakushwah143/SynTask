@@ -1,0 +1,32 @@
+# SynTask Alertmanager configuration.
+#
+# Prometheus evaluates the alert rules in observability/prometheus/rules/ and
+# sends firing alerts here. Alertmanager groups, de-duplicates, and routes them.
+#
+# NO notification credentials are committed. The `default` receiver below is an
+# intentional no-op: alerts still appear in the Alertmanager UI/API and in
+# Prometheus, but no external message is sent yet. At deploy time, add a
+# webhook/Slack/email integration (prefer `*_file` secrets or environment
+# interpolation) without checking credentials into this repository.
+#
+# In production Alertmanager is bound to the host loopback interface only.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: ["alertname", "severity"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    # Notify faster for critical, user-impacting alerts.
+    - receiver: default
+      matchers:
+        - severity = "critical"
+      group_wait: 10s
+
+receivers:
+  # No-op receiver (no integrations configured).
+  - name: default

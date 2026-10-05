@@ -5,6 +5,7 @@ Main Application Entry Point
 
 
 import asyncio
+import os
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -15,12 +16,57 @@ from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-# Configure logging early so optional imports can report failures safely.
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Prometheus multiprocess mode — must be set BEFORE any prometheus_client
+# import or metric registration.  When PROMETHEUS_MULTIPROC_DIR is set,
+# each worker writes to a shared directory; generate_latest() merges them.
+_PROM_MULTIPROC_DIR = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+if _PROM_MULTIPROC_DIR:
+    import atexit
+    import glob as _glob
+    import prometheus_client
+
+    # Ensure the multiprocess directory exists
+    os.makedirs(_PROM_MULTIPROC_DIR, exist_ok=True)
+
+    # Clear stale metric files from a previous container/process on startup
+    for stale_file in _glob.glob(os.path.join(_PROM_MULTIPROC_DIR, "*.db")):
+        try:
+            os.remove(stale_file)
+        except OSError:
+            pass
+
+    # Register atexit handler so the worker's metric files are cleaned up
+    # when the process terminates (graceful shutdown or crash).
+    atexit.register(
+        prometheus_client.multiprocess.mark_process_dead, os.getpid()
+    )
+
+# Centralised logging — called once at process start.
+from app.core.logging_config import configure_logging
+from app.middleware.request_id import RequestIDMiddleware, request_id_filter
+from app.core.health import router as health_router
+from app.middleware.prometheus import PrometheusMiddleware, metrics_endpoint
+
+configure_logging(service="syntask-backend")
 logger = logging.getLogger(__name__)
+
+# Attach the X-Request-ID filter to the root logger so every log line
+# includes the current request_id when inside an HTTP handler.
+logging.getLogger().addFilter(request_id_filter)
+
+# OpenTelemetry distributed tracing (Topic 9). Configured before other app
+# modules are imported so this process keeps service.name=syntask-backend even
+# though it transitively imports the Celery app (which sets syntask-worker in
+# its own process). Safe no-op when tracing is disabled or the SDK is absent.
+from app.observability.tracing import (
+    instrument_dependencies,
+    instrument_fastapi_app,
+    setup_tracing,
+    shutdown_tracing,
+)
+
+setup_tracing("syntask-backend")
+instrument_dependencies()
 
 from app.core.config import settings
 from app.core.database import init_db, close_db
@@ -47,6 +93,7 @@ from app.middleware.rate_limiter import (
     limiter,
 )
 
+
 # Optional semantic imports - gracefully handle missing dependencies
 try:
     from app.semantic.worker import register_semantic_subscribers
@@ -58,6 +105,27 @@ except (ImportError, ModuleNotFoundError) as e:
 async def _startup_tasks() -> None:
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION}")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
+
+    # Release identity (Topic 10) — metric + structured deployment marker line.
+    # The log line (event=deployment) is the Loki-visible deployment marker.
+    from app.core.release import release_info, release_log_fields
+
+    try:
+        from app.metrics.release import register_release_metrics
+
+        register_release_metrics()
+    except Exception as release_metric_err:  # pragma: no cover - defensive
+        logger.warning(f"Release metrics registration skipped: {release_metric_err}")
+    _release = release_info()
+    logger.info(
+        "Deployment marker: release=%s commit=%s branch=%s built_at=%s environment=%s",
+        _release["version"],
+        _release["commit_short"],
+        _release["branch"],
+        _release["built_at"],
+        _release["environment"],
+        extra=release_log_fields(),
+    )
     if settings.ENVIRONMENT == "production":
         assert len(settings.SECRET_KEY) >= 32, "SECRET_KEY too short for production"
         assert "changeme" not in settings.SECRET_KEY.lower(), "SECRET_KEY is default value"
@@ -130,6 +198,12 @@ async def _startup_tasks() -> None:
         except Exception as scheduling_err:
             logger.warning(f"Scheduled jobs startup skipped: {scheduling_err}")
         try:
+            from app.services.task_carry_forward_service import run_task_carry_forward_loop
+            asyncio.create_task(run_task_carry_forward_loop())
+            logger.info("Task carry forward background task started")
+        except Exception as carry_forward_err:
+            logger.warning(f"Task carry forward startup skipped: {carry_forward_err}")
+        try:
             from app.services.hr_document_expiry import run_hr_document_expiry_loop
             asyncio.create_task(run_hr_document_expiry_loop())
             logger.info("HR document expiry background task started")
@@ -156,6 +230,11 @@ async def _startup_tasks() -> None:
 
 async def _shutdown_tasks() -> None:
     logger.info("Shutting down application")
+    # Flush buffered spans so the last traces reach Tempo before exit.
+    try:
+        shutdown_tracing()
+    except Exception:
+        pass
     await close_redis()
     await close_db()
     # Close pooled AI HTTP connections (best-effort, never blocks shutdown)
@@ -263,18 +342,17 @@ if settings.ENVIRONMENT == "production":
         allowed_hosts=settings.ALLOWED_HOSTS
     )
 
-# Request timing middleware
+# Request timing middleware + Prometheus RED metrics
+app.add_middleware(PrometheusMiddleware)
+app.add_middleware(RequestIDMiddleware)
+
+
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
-    
-    # Log failed requests
-    if response.status_code >= 400:
-        logger.warning(f"{request.method} {request.url.path} - {response.status_code}")
-    
     return response
 
 
@@ -385,15 +463,25 @@ async def debug_backend():
     """Call this to confirm the backend returns user-provided project_id (no auto-generated ID as project_id)."""
     if settings.ENVIRONMENT == "production":
         return JSONResponse(status_code=404, content={"detail": "Not found"})
+    from app.core.release import release_info
+
     return {
         "status": "ok",
         "version": settings.VERSION,
+        "release": release_info(),
         "project_id": "user_provided",
         "message": "Create project returns your project_id (e.g. ak-001), not MongoDB _id. If you see this, the new backend is live."
     }
 
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
+
+# Health probes (livez / readyz) — registered directly on the app
+# so they are available at root level for Docker/K8s probes.
+app.include_router(health_router)
+
+# Prometheus metrics endpoint
+app.get("/metrics", tags=["Observability"])(metrics_endpoint)
 
 # CORS-enabled avatar endpoint
 from fastapi import APIRouter, Depends
@@ -445,6 +533,10 @@ async def serve_upload(file_path: str):
 
 app.include_router(uploads_router, include_in_schema=False)
 app.include_router(uploads_router, prefix="/api/v1", include_in_schema=False)
+
+# OpenTelemetry FastAPI instrumentation must run last so the server span wraps
+# every route and middleware added above. No-op when tracing is disabled.
+instrument_fastapi_app(app)
 
 # Root endpoint
 @app.get("/", tags=["Root"])

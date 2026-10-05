@@ -31,4 +31,4 @@ restart: down up
 
 validate:
 	$(COMPOSE_DEV) config >/dev/null
-	$(COMPOSE_PROD) config >/dev/null
+	GRAFANA_ADMIN_PASSWORD=validation-only $(COMPOSE_PROD) config >/dev/null

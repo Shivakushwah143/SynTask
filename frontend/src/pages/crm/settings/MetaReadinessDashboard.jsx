@@ -143,7 +143,7 @@ export function MetaReadinessDashboard() {
       </div>
 
       {/* Compliance Table */}
-      <div className="mt-6 overflow-hidden rounded-xl border border-slate-100 bg-white">
+      <div className="mt-6 overflow-x-auto rounded-xl border border-slate-100 bg-white">
         <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
           <thead className="bg-slate-50 text-slate-700">
             <tr>

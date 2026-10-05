@@ -253,5 +253,107 @@ describe('sidebar config integrity (Phase 7)', () => {
     expect(typeof navigationModule.getSectionItems).toBe('function')
     expect(typeof navigationModule.isNavItemActive).toBe('function')
     expect(typeof navigationModule.gateNavItem).toBe('function')
+    expect(typeof navigationModule.resolveHrSection).toBe('function')
+  })
+})
+
+// ── Centralized HR route ownership resolver tests ──────────────────────────
+describe('resolveHrSection (centralized HR route ownership)', () => {
+  it('returns null for non-HR paths', () => {
+    expect(navigationModule.resolveHrSection('/crm/leads')).toBeNull()
+    expect(navigationModule.resolveHrSection('/dashboard')).toBeNull()
+    expect(navigationModule.resolveHrSection(null)).toBeNull()
+    expect(navigationModule.resolveHrSection(undefined)).toBeNull()
+  })
+
+  it('returns null for /hr root (no tab bar)', () => {
+    expect(navigationModule.resolveHrSection('/hr')).toBeNull()
+  })
+
+  it('returns null for excluded paths', () => {
+    expect(navigationModule.resolveHrSection('/hr/recruitment/interview-screen')).toBeNull()
+  })
+
+  it('resolves HR Dashboard to people section', () => {
+    const result = navigationModule.resolveHrSection('/hr/dashboard')
+    expect(result).toEqual({ sectionKey: 'people', itemName: 'HR Dashboard', matchedExact: true })
+  })
+
+  it('resolves employee routes to people section', () => {
+    const exact = navigationModule.resolveHrSection('/hr/employees')
+    expect(exact).toEqual({ sectionKey: 'people', itemName: 'Employees', matchedExact: true })
+
+    const detail = navigationModule.resolveHrSection('/hr/employees/emp-123')
+    expect(detail).toEqual({ sectionKey: 'people', itemName: 'Employees', matchedExact: false })
+  })
+
+  it('resolves document routes to people section', () => {
+    const result = navigationModule.resolveHrSection('/hr/documents')
+    expect(result).toEqual({ sectionKey: 'people', itemName: 'HR Documents', matchedExact: true })
+  })
+
+  it('resolves payroll routes to people section', () => {
+    const result = navigationModule.resolveHrSection('/hr/payroll')
+    expect(result).toEqual({ sectionKey: 'people', itemName: 'Payroll', matchedExact: true })
+  })
+
+  it('resolves settings sub-routes to people section', () => {
+    const documentTypes = navigationModule.resolveHrSection('/hr/settings/document-types')
+    expect(documentTypes).toEqual({ sectionKey: 'people', itemName: 'Document Types', matchedExact: true })
+
+    const attendancePolicy = navigationModule.resolveHrSection('/hr/settings/attendance-policy')
+    expect(attendancePolicy).toEqual({ sectionKey: 'people', itemName: 'Attendance Policy', matchedExact: true })
+  })
+
+  it('resolves recruitment routes to recruitment section', () => {
+    const dashboard = navigationModule.resolveHrSection('/hr/recruitment')
+    expect(dashboard).toEqual({ sectionKey: 'recruitment', itemName: 'Hiring Dashboard', matchedExact: true })
+
+    const jobs = navigationModule.resolveHrSection('/hr/recruitment/jobs')
+    expect(jobs).toEqual({ sectionKey: 'recruitment', itemName: 'Job Openings', matchedExact: true })
+
+    const jobDetail = navigationModule.resolveHrSection('/hr/recruitment/jobs/job-123')
+    expect(jobDetail).toEqual({ sectionKey: 'recruitment', itemName: 'Job Openings', matchedExact: false })
+
+    const candidates = navigationModule.resolveHrSection('/hr/recruitment/candidates')
+    expect(candidates).toEqual({ sectionKey: 'recruitment', itemName: 'Candidates', matchedExact: true })
+
+    const candidateDetail = navigationModule.resolveHrSection('/hr/recruitment/candidates/cand-456')
+    expect(candidateDetail).toEqual({ sectionKey: 'recruitment', itemName: 'Candidates', matchedExact: false })
+
+    const inbox = navigationModule.resolveHrSection('/hr/recruitment/inbox')
+    expect(inbox).toEqual({ sectionKey: 'recruitment', itemName: 'Recruitment Inbox', matchedExact: true })
+
+    const reports = navigationModule.resolveHrSection('/hr/recruitment/reports')
+    expect(reports).toEqual({ sectionKey: 'recruitment', itemName: 'Hiring Reports', matchedExact: true })
+  })
+
+  it('never returns two different sectionKeys for the same path', () => {
+    const paths = [
+      '/hr/dashboard',
+      '/hr/employees',
+      '/hr/employees/emp-1',
+      '/hr/documents',
+      '/hr/payroll',
+      '/hr/settings/document-types',
+      '/hr/recruitment',
+      '/hr/recruitment/jobs',
+      '/hr/recruitment/jobs/job-1',
+      '/hr/recruitment/candidates',
+      '/hr/recruitment/inbox',
+      '/hr/recruitment/reports',
+    ]
+    for (const path of paths) {
+      const result = navigationModule.resolveHrSection(path)
+      expect(result).toBeTruthy()
+      expect(['people', 'recruitment']).toContain(result.sectionKey)
+    }
+  })
+
+  it('uses longest prefix match for nested routes', () => {
+    // /hr/recruitment/jobs/123 should match "Job Openings" (longest prefix),
+    // not "Hiring Dashboard" (which is /hr/recruitment).
+    const result = navigationModule.resolveHrSection('/hr/recruitment/jobs/123')
+    expect(result.itemName).toBe('Job Openings')
   })
 })

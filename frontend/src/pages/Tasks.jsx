@@ -15,6 +15,7 @@ import { CreatableSelectField, EmptyState, SkeletonKanban } from '../components/
 import { QuickCreateDepartmentModal, QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import ViewToggle from '../components/layout/ViewToggle'
 import NaturalDateInput from '../components/tasks/NaturalDateInput'
+import CarryForwardDueDate from '../components/tasks/CarryForwardDueDate'
 import TaskLifecyclePipeline from '../components/tasks/TaskLifecyclePipeline'
 import { useViewStore } from '../store/viewStore'
 import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
@@ -141,6 +142,11 @@ const Tasks = () => {
   const [loadError, setLoadError] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [showSelfTaskModal, setShowSelfTaskModal] = useState(false)
+  const [selfTaskSubmitting, setSelfTaskSubmitting] = useState(false)
+  const [selfTaskProjectId, setSelfTaskProjectId] = useState('')
+  const [selfTaskDueDate, setSelfTaskDueDate] = useState('')
+  const [selfTaskPriority, setSelfTaskPriority] = useState('medium')
   const routeState = useMemo(() => readTaskRouteState(searchParams), [searchParams])
   // Holds the URL whose query state has already been applied to component
   // state. Write effects skip while an external navigation (Back/Forward/deep
@@ -160,6 +166,7 @@ const Tasks = () => {
     project_id: routeState.filters.project_id || '',
     due_from: routeState.filters.due_from || '',
     due_to: routeState.filters.due_to || '',
+    assignment_source: routeState.filters.assignment_source || '',
   })
   const [assignableUsers, setAssignableUsers] = useState([])
   const [loadingUsers, setLoadingUsers] = useState(false)
@@ -169,6 +176,7 @@ const Tasks = () => {
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
   const [selectedAssigneeId, setSelectedAssigneeId] = useState('')
+  const [selectedCreateProjectId, setSelectedCreateProjectId] = useState('')
   const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
   const [showQuickDepartmentModal, setShowQuickDepartmentModal] = useState(false)
   const [dueDateValue, setDueDateValue] = useState('')
@@ -424,6 +432,7 @@ useEffect(() => {
     setShowCreateModal(false)
     setSelectedDepartmentId('')
     setSelectedAssigneeId('')
+    setSelectedCreateProjectId('')
     setDueDateValue('')
     setEstimatedHoursValue('')
     setCreateMode('now')
@@ -491,6 +500,7 @@ useEffect(() => {
         due_date: formData.get('due_date') || dueDateValue || '',
         estimated_hours: formData.get('estimated_hours') || estimatedHoursValue || '',
         task_type: taskType || 'standard',
+        project_id: selectedCreateProjectId || '',
       }
 
       if (isCompanyAdmin && selectedDepartmentId) {
@@ -612,6 +622,50 @@ useEffect(() => {
       navigate(`/projects/${task.project_id}/tasks/${task.id}`)
     } else {
       navigate(`/tasks/${task.id}`)
+    }
+  }
+
+  const handleCreateSelfTask = async (e) => {
+    e.preventDefault()
+    if (selfTaskSubmitting) return
+
+    const formData = new FormData(e.target)
+    const title = formData.get('title')?.trim()
+    if (!title) {
+      toast.error('Title is required')
+      return
+    }
+
+    try {
+      setSelfTaskSubmitting(true)
+      const taskData = {
+        title,
+        description: formData.get('description') || '',
+        priority: selfTaskPriority || 'medium',
+        project_id: selfTaskProjectId || '',
+      }
+      if (selfTaskDueDate) {
+        taskData.due_date = selfTaskDueDate
+      }
+      const estimatedHours = formData.get('estimated_hours')
+      if (estimatedHours) {
+        taskData.estimated_hours = estimatedHours
+      }
+
+      const response = await tasksAPI.createSelfTask(taskData)
+      const createdTask = response?.task || response?.data?.task || response
+      toast.success('✅ Task created!')
+      setShowSelfTaskModal(false)
+      // Refresh task list to include the new self-assigned task
+      fetchTasks({ isRefresh: true })
+      fetchSummary()
+      queryClient.invalidateQueries(['workOverview'])
+      e.target.reset()
+    } catch (error) {
+      console.error('Error creating self-task:', error)
+      toast.error(error.response?.data?.detail || 'Failed to create task')
+    } finally {
+      setSelfTaskSubmitting(false)
     }
   }
 
@@ -762,6 +816,7 @@ useEffect(() => {
               <button
                 onClick={() => {
                   setSelectedDepartmentId('')
+                  setSelectedCreateProjectId(filters.project_id || '')
                   setShowCreateModal(true)
                 }}
                 className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
@@ -770,6 +825,18 @@ useEffect(() => {
                 New Task
               </button>
             )}
+            <button
+              onClick={() => {
+                setSelfTaskProjectId('')
+                setSelfTaskDueDate('')
+                setSelfTaskPriority('medium')
+                setShowSelfTaskModal(true)
+              }}
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/80 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-emerald-600"
+            >
+              <User className="h-3.5 w-3.5" />
+              Add My Task
+            </button>
           </div>
         </div>
       </div>
@@ -949,6 +1016,18 @@ useEffect(() => {
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               />
             </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Assignment Source</label>
+              <select
+                value={filters.assignment_source || ''}
+                onChange={(e) => setFilters({ ...filters, assignment_source: e.target.value })}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              >
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Tasks</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="assigned">Assigned to Me</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="self">Self Assigned</option>
+              </select>
+            </div>
           </div>
         )}
         
@@ -1056,6 +1135,12 @@ useEffect(() => {
                                 Needs Your Review
                               </span>
                             )}
+                            {task.source_type === 'self_assigned' && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                <User className="h-3 w-3" />
+                                Self Assigned
+                              </span>
+                            )}
                           </div>
                           {(task.status === 'revision_required' && task.latest_revision_reason) || (task.status === 'in_review' && task.review_round > 0) ? (
                             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
@@ -1077,7 +1162,7 @@ useEffect(() => {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                           <div className="flex items-center gap-2">
-                            {task.due_date ? timeService.formatDate(task.due_date) : '—'}
+                            <CarryForwardDueDate task={task} />
                             {task.health_status === 'overdue' && (
                               <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">Overdue</span>
                             )}
@@ -1187,6 +1272,11 @@ useEffect(() => {
                                 <Lock className="h-3 w-3" />Blocked
                               </span>
                             )}
+                            {task.source_type === 'self_assigned' && (
+                              <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                <User className="h-3 w-3" />Self Assigned
+                              </span>
+                            )}
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               {task.task_type === 'quantitative' && (
                                 <span className="inline-flex items-center gap-1 rounded-md bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
@@ -1199,10 +1289,10 @@ useEffect(() => {
                               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${priorityColors[task.priority] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
                                 {priorities[task.priority]?.label || task.priority}
                               </span>
-                              {task.due_date && (
+                              {(task.due_date || task.carry_forward_due_date) && (
                                 <span className="text-xs text-gray-500 dark:text-gray-400">
                                   <Calendar className="inline h-3 w-3 mr-1" />
-                                  {timeService.formatMonthDay(task.due_date)}
+                                  <CarryForwardDueDate task={task} formatOptions={{ month: 'short', day: 'numeric' }} />
                                 </span>
                               )}
                               {assignedUser || task.assigned_to_name ? (
@@ -1518,6 +1608,22 @@ useEffect(() => {
             </div>
             <form onSubmit={handleCreateTask} className="space-y-4">
               <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Project</label>
+                <select
+                  value={selectedCreateProjectId}
+                  onChange={(e) => setSelectedCreateProjectId(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  disabled={loadingProjects}
+                >
+                  <option value="">No project (standalone)</option>
+                  {projects.map((project) => (
+                    <option key={project.id || project._id} value={project.project_id || project.id}>
+                      {project.name || project.project_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label>
                 <input
                   type="text"
@@ -1756,6 +1862,114 @@ useEffect(() => {
         </div>
       )}
 
+      {/* Self-Assigned Task Modal */}
+      {showSelfTaskModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm">
+          <div
+            className="flex min-h-full items-center justify-center p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowSelfTaskModal(false)
+            }}
+          >
+          <div
+            className="my-auto w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Add My Task</h2>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Create a task assigned to yourself</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSelfTaskModal(false)}
+                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateSelfTask} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Project</label>
+                <select
+                  value={selfTaskProjectId}
+                  onChange={(e) => setSelfTaskProjectId(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  disabled={loadingProjects}
+                >
+                  <option value="">Personal / No Project</option>
+                  {projects.map((project) => (
+                    <option key={project.id || project._id} value={project.project_id || project.id}>
+                      {project.name || project.project_name}
+                    </option>
+                  ))}
+                </select>
+                {projects.length === 0 && !loadingProjects && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">No accessible projects. You can still create this as a personal task.</p>
+                )}
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Title <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  name="title"
+                  required
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  placeholder="What needs to be done?"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
+                <textarea
+                  name="description"
+                  rows="3"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  placeholder="Add details (optional)"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Priority</label>
+                <select
+                  value={selfTaskPriority}
+                  onChange={(e) => setSelfTaskPriority(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Due Date</label>
+                <NaturalDateInput
+                  value={selfTaskDueDate}
+                  onDateResolved={(date) => setSelfTaskDueDate(date ? timeService.toUtcISOString(date) : '')}
+                />
+              </div>
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="submit"
+                  disabled={selfTaskSubmitting}
+                  className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {selfTaskSubmitting ? 'Creating...' : 'Create My Task'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSelfTaskModal(false)}
+                  disabled={selfTaskSubmitting}
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+          </div>
+        </div>
+      )}
+
       <QuickCreateEmployeeModal
         isOpen={showQuickEmployeeModal}
         onClose={() => setShowQuickEmployeeModal(false)}
@@ -1924,6 +2138,12 @@ function TaskCard({ task, onOpen }) {
             >
               {task.priorityLabel}
             </span>
+            {task.sourceType === 'self_assigned' && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                <User className="h-3 w-3" />
+                Self Assigned
+              </span>
+            )}
           </div>
         </div>
       </div>

@@ -1,0 +1,74 @@
+# SynTask SLI/SLO recording rules (Topic 7).
+#
+# Measurement window: rolling 7 days.
+#   * Prometheus retention is 30d (prod) / 15d (dev), so 7d is safely covered.
+#   * 7d matches the SLO window documented in docs/observability/SLOS.md.
+#
+# These rules reuse the existing RED metrics from Topic 2 — no new application
+# metrics are introduced:
+#   syntask_http_requests_total{method,normalized_route,status_code}
+#   syntask_http_request_duration_seconds_bucket{method,normalized_route,le}
+#   (the 2.5s bucket exists in the histogram buckets, so the latency SLO is
+#    measurable without changing the middleware)
+#
+# Health/metrics/observability endpoints are already excluded from these
+# metrics by the Prometheus middleware, so they cannot skew the SLIs.
+#
+# All rules aggregate with `sum(...)`, producing ZERO-label series — no
+# high-cardinality recording rules.
+#
+# Targets (see docs/observability/SLOS.md):
+#   availability >= 99.5%  (0.5% error budget)
+#   latency      >= 95% of requests <= 2.5s  (5% error budget)
+#
+# Cost note: a 7d `rate()` evaluated every 15s would be wasteful, so these
+# groups evaluate every 5 minutes. 7d SLIs do not need second-level freshness.
+
+groups:
+  - name: syntask-slo-availability
+    interval: 5m
+    rules:
+      # SLI: successful valid API requests / all valid API requests.
+      # A "failure" is any 5xx; 1xx-4xx are not service failures.
+      # `or vector(1)` handles the no-traffic case: with no requests in the
+      # window there are no failures to observe (a measurement gap, not proof
+      # of reliability — see docs/observability/SLOS.md).
+      - record: syntask:sli_availability:ratio_7d
+        expr: >-
+          (
+            sum(rate(syntask_http_requests_total{status_code!~"5.."}[7d]))
+            /
+            sum(rate(syntask_http_requests_total[7d]))
+          )
+          or vector(1)
+
+      # Error budget remaining as a ratio (1 = full budget, 0 = exhausted,
+      # negative = over budget). allowed_bad_ratio = 1 - 0.995 = 0.5%.
+      - record: syntask:slo_availability:error_budget_remaining_ratio_7d
+        expr: >-
+          1 - (
+            (1 - syntask:sli_availability:ratio_7d)
+            / (1 - 0.995)
+          )
+
+  - name: syntask-slo-latency
+    interval: 5m
+    rules:
+      # SLI: requests that complete within 2.5s / all requests.
+      # le="2.5" is an existing histogram bucket; le="+Inf" is the total count.
+      - record: syntask:sli_latency_le_2_5_seconds:ratio_7d
+        expr: >-
+          (
+            sum(rate(syntask_http_request_duration_seconds_bucket{le="2.5"}[7d]))
+            /
+            sum(rate(syntask_http_request_duration_seconds_bucket{le="+Inf"}[7d]))
+          )
+          or vector(1)
+
+      # Error budget remaining as a ratio. allowed_slow_ratio = 1 - 0.95 = 5%.
+      - record: syntask:slo_latency:error_budget_remaining_ratio_7d
+        expr: >-
+          1 - (
+            (1 - syntask:sli_latency_le_2_5_seconds:ratio_7d)
+            / (1 - 0.95)
+          )

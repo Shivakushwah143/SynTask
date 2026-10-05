@@ -1164,14 +1164,15 @@ export default function WorkspaceCalendar() {
 /* Month view sub-component */
 function MonthView({ days, events, selected, setSelected, month, onOpenEvent, parseEventDate }) {
   return (
-    <div>
-      <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50/50 text-center text-xs font-semibold uppercase text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+    // Month grid scrolls horizontally on phones rather than squeezing 7 columns.
+    <div className="overflow-x-auto">
+      <div className="grid min-w-[640px] grid-cols-7 border-b border-gray-200 bg-gray-50/50 text-center text-xs font-semibold uppercase text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
           <div key={day} className="p-3">{day}</div>
         ))}
       </div>
       
-      <div className="grid grid-cols-7 divide-x divide-y divide-gray-100 dark:divide-gray-800">
+      <div className="grid min-w-[640px] grid-cols-7 divide-x divide-y divide-gray-100 dark:divide-gray-800">
         {days.map((day) => {
           const dayEvents = events.filter((e) => isSameDay(parseEventDate(e), day))
           const isSelected = isSameDay(day, selected)

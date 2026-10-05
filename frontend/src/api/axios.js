@@ -81,7 +81,7 @@ const withDataCompatibility = (payload) => {
   return payload
 }
 
-const extractErrorMessage = (value) => {
+export const extractErrorMessage = (value) => {
   if (!value) return 'An error occurred'
   if (typeof value === 'string' && /<html[\s>]/i.test(value)) {
     return 'Server temporarily unavailable. Please try again.'

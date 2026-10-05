@@ -61,6 +61,10 @@ class AITrace(Document):
     user_id: Optional[str] = None
     role: Optional[str] = None
     conversation_id: Optional[str] = None
+    # OTLP trace id of the enclosing infrastructure trace (Topic 9). This is an
+    # additive cross-reference to Grafana Tempo; it does NOT replace trace_id
+    # and never changes the AI observability storage/retention model.
+    otel_trace_id: Optional[str] = None
 
     # Routing / runtime identity
     agent: Optional[str] = None

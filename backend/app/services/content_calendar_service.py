@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from fastapi import HTTPException, status
 
@@ -19,29 +19,97 @@ from app.services.reminder_service import calendar_due_tone
 from app.core.clock import utc_now
 
 
-CONTENT_STATUS_FLOW = [
-    ContentItemStatus.DRAFT,
-    ContentItemStatus.PLANNED,
-    ContentItemStatus.SHOOT_SCHEDULED,
-    ContentItemStatus.SHOT,
-    ContentItemStatus.EDITING,
+# ── Canonical lifecycle (same as ContentProductionService) ──────────────────
+CANONICAL_LIFECYCLE = [
+    ContentItemStatus.IDEA,
+    ContentItemStatus.BRIEFING,
+    ContentItemStatus.SCRIPT,
+    ContentItemStatus.PRODUCTION,
     ContentItemStatus.INTERNAL_REVIEW,
     ContentItemStatus.CLIENT_REVIEW,
+    ContentItemStatus.REVISION_REQUIRED,
     ContentItemStatus.APPROVED,
-    ContentItemStatus.SCHEDULED,
+    ContentItemStatus.READY_TO_PUBLISH,
     ContentItemStatus.PUBLISHED,
 ]
 
+# ── Allowed transitions (bidirectional where revision loops exist) ──────────
+ALLOWED_TRANSITIONS: Dict[ContentItemStatus, Set[ContentItemStatus]] = {
+    ContentItemStatus.IDEA: {ContentItemStatus.BRIEFING},
+    ContentItemStatus.BRIEFING: {ContentItemStatus.SCRIPT, ContentItemStatus.IDEA},
+    ContentItemStatus.SCRIPT: {ContentItemStatus.PRODUCTION, ContentItemStatus.BRIEFING},
+    ContentItemStatus.PRODUCTION: {ContentItemStatus.INTERNAL_REVIEW},
+    ContentItemStatus.INTERNAL_REVIEW: {
+        ContentItemStatus.CLIENT_REVIEW,
+        ContentItemStatus.REVISION_REQUIRED,
+    },
+    ContentItemStatus.CLIENT_REVIEW: {
+        ContentItemStatus.APPROVED,
+        ContentItemStatus.REVISION_REQUIRED,
+    },
+    ContentItemStatus.REVISION_REQUIRED: {ContentItemStatus.PRODUCTION},
+    ContentItemStatus.APPROVED: {ContentItemStatus.READY_TO_PUBLISH},
+    # Publishing boundary: Content stops at Ready to Publish. The published
+    # state is DERIVED from the canonical Publishing record — Content never
+    # executes scheduled/published business transitions itself.
+    ContentItemStatus.READY_TO_PUBLISH: set(),
+    ContentItemStatus.PUBLISHED: set(),  # Terminal — derived from PublishingRecord
+    # Legacy statuses — allow forward movement into canonical lifecycle
+    ContentItemStatus.DRAFT: {ContentItemStatus.IDEA, ContentItemStatus.BRIEFING, ContentItemStatus.PRODUCTION},
+    ContentItemStatus.PLANNED: {ContentItemStatus.BRIEFING, ContentItemStatus.PRODUCTION},
+    ContentItemStatus.SHOOT_SCHEDULED: {ContentItemStatus.PRODUCTION},
+    ContentItemStatus.SHOT: {ContentItemStatus.PRODUCTION},
+    ContentItemStatus.EDITING: {ContentItemStatus.PRODUCTION, ContentItemStatus.INTERNAL_REVIEW},
+    ContentItemStatus.SCHEDULED: {ContentItemStatus.READY_TO_PUBLISH},
+}
+
+# ── Legacy status → canonical status mapping ────────────────────────────────
+LEGACY_STATUS_MAP = {
+    ContentItemStatus.DRAFT: ContentItemStatus.IDEA,
+    ContentItemStatus.PLANNED: ContentItemStatus.BRIEFING,
+    ContentItemStatus.SHOOT_SCHEDULED: ContentItemStatus.PRODUCTION,
+    ContentItemStatus.SHOT: ContentItemStatus.PRODUCTION,
+    ContentItemStatus.EDITING: ContentItemStatus.PRODUCTION,
+    ContentItemStatus.SCHEDULED: ContentItemStatus.READY_TO_PUBLISH,
+}
+
+# ── Status timestamp field mapping ──────────────────────────────────────────
+STATUS_TIMESTAMP_FIELDS = {
+    ContentItemStatus.IDEA: "idea_at",
+    ContentItemStatus.BRIEFING: "briefing_at",
+    ContentItemStatus.SCRIPT: "script_at",
+    ContentItemStatus.PRODUCTION: "production_at",
+    ContentItemStatus.INTERNAL_REVIEW: "internal_review_at",
+    ContentItemStatus.CLIENT_REVIEW: "client_review_at",
+    ContentItemStatus.REVISION_REQUIRED: "revision_required_at",
+    ContentItemStatus.APPROVED: "approved_at",
+    ContentItemStatus.READY_TO_PUBLISH: "ready_to_publish_at",
+    ContentItemStatus.PUBLISHED: "published_at",
+    ContentItemStatus.DRAFT: "draft_at",
+    ContentItemStatus.PLANNED: "planned_at",
+    ContentItemStatus.SHOOT_SCHEDULED: "shoot_scheduled_at",
+    ContentItemStatus.SHOT: "shot_at",
+    ContentItemStatus.EDITING: "editing_started_at",
+    ContentItemStatus.SCHEDULED: "scheduled_at",
+}
+
+# ── Event map (status → domain event name) ──────────────────────────────────
 CONTENT_EVENT_MAP = {
+    ContentItemStatus.IDEA: "ContentIdea",
+    ContentItemStatus.BRIEFING: "ContentBriefing",
+    ContentItemStatus.SCRIPT: "ContentScript",
+    ContentItemStatus.PRODUCTION: "ContentProduction",
+    ContentItemStatus.INTERNAL_REVIEW: "ReadyForReview",
+    ContentItemStatus.CLIENT_REVIEW: "SentForClientReview",
+    ContentItemStatus.REVISION_REQUIRED: "RevisionRequested",
+    ContentItemStatus.APPROVED: "Approved",
+    ContentItemStatus.READY_TO_PUBLISH: "ReadyToPublish",
+    ContentItemStatus.PUBLISHED: "Published",
     ContentItemStatus.PLANNED: "ContentPlanned",
     ContentItemStatus.SHOOT_SCHEDULED: "ShootScheduled",
     ContentItemStatus.SHOT: "ShootCompleted",
     ContentItemStatus.EDITING: "EditingStarted",
-    ContentItemStatus.INTERNAL_REVIEW: "ReadyForReview",
-    ContentItemStatus.CLIENT_REVIEW: "ReadyForReview",
-    ContentItemStatus.APPROVED: "Approved",
     ContentItemStatus.SCHEDULED: "Scheduled",
-    ContentItemStatus.PUBLISHED: "Published",
 }
 
 
@@ -95,16 +163,20 @@ def _serialize_item(item: ContentCalendarItem) -> Dict[str, Any]:
         "company_id": item.company_id,
         "project_id": item.project_id,
         "client_id": item.client_id,
+        "service_id": getattr(item, "service_id", None),
+        "deliverable_id": getattr(item, "deliverable_id", None),
+        "content_id": getattr(item, "content_id", None),
         "campaign": item.campaign,
         "platform": item.platform,
         "title": item.title,
         "content_type": item.content_type.value if getattr(item, "content_type", None) else ContentItemType.CUSTOM.value,
         "assignee_id": item.assignee_id,
         "assignee_name": item.assignee_name,
+        "owner_id": getattr(item, "owner_id", None),
         "due_date": item.due_date,
         "publish_date": item.publish_date,
         "priority": item.priority.value if getattr(item, "priority", None) else ContentItemPriority.MEDIUM.value,
-        "status": item.status.value if getattr(item, "status", None) else ContentItemStatus.DRAFT.value,
+        "status": item.status.value if getattr(item, "status", None) else ContentItemStatus.IDEA.value,
         "notes": item.notes,
         "tags": list(item.tags or []),
         "file_ids": list(item.file_ids or []),
@@ -121,11 +193,20 @@ def _serialize_item(item: ContentCalendarItem) -> Dict[str, Any]:
         "start_date": getattr(item, "start_date", None),
         "end_date": getattr(item, "end_date", None),
         "time": getattr(item, "time", None),
+        "deadline": getattr(item, "deadline", None),
         "assigned_person": getattr(item, "assigned_person", None),
         "reminder": getattr(item, "reminder", None),
         "color": reminder_status["color"],
         "reminder_status": reminder_status,
         "attachment": getattr(item, "attachment", None),
+        # Canonical lifecycle timestamps
+        "idea_at": getattr(item, "idea_at", None),
+        "briefing_at": getattr(item, "briefing_at", None),
+        "script_at": getattr(item, "script_at", None),
+        "production_at": getattr(item, "production_at", None),
+        "revision_required_at": getattr(item, "revision_required_at", None),
+        "ready_to_publish_at": getattr(item, "ready_to_publish_at", None),
+        # Legacy timestamps (preserved for backward compat)
         "draft_at": item.draft_at,
         "planned_at": item.planned_at,
         "shoot_scheduled_at": item.shoot_scheduled_at,
@@ -138,6 +219,7 @@ def _serialize_item(item: ContentCalendarItem) -> Dict[str, Any]:
         "published_at": item.published_at,
         "deadline_missed_at": item.deadline_missed_at,
         "metadata": item.metadata,
+        "current_version": getattr(item, "current_version", 1),
         "created_by": item.created_by,
         "updated_by": item.updated_by,
         "created_at": item.created_at,
@@ -146,31 +228,31 @@ def _serialize_item(item: ContentCalendarItem) -> Dict[str, Any]:
 
 
 def _apply_transition(item: ContentCalendarItem, next_status: ContentItemStatus, now: datetime) -> None:
-    current_index = CONTENT_STATUS_FLOW.index(item.status) if item.status in CONTENT_STATUS_FLOW else 0
-    next_index = CONTENT_STATUS_FLOW.index(next_status)
-    if next_index < current_index:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid content status transition")
-    if next_index == current_index:
-        return
+    """Apply a status transition using the canonical lifecycle."""
+    current_status = item.status
+    # If current status is legacy, auto-migrate to canonical first
+    if current_status in LEGACY_STATUS_MAP:
+        current_status = LEGACY_STATUS_MAP[current_status]
+        item.status = current_status
+    # Check if transition is allowed
+    allowed = ALLOWED_TRANSITIONS.get(current_status, set())
+    if next_status not in allowed:
+        # Try mapping legacy next_status to canonical
+        canonical_next = LEGACY_STATUS_MAP.get(next_status, next_status)
+        if canonical_next not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status transition from {current_status.value} to {next_status.value}",
+            )
+        next_status = canonical_next
     item.status = next_status
-    if next_status == ContentItemStatus.PLANNED:
-        item.planned_at = item.planned_at or now
-    elif next_status == ContentItemStatus.SHOOT_SCHEDULED:
-        item.shoot_scheduled_at = item.shoot_scheduled_at or now
-    elif next_status == ContentItemStatus.SHOT:
-        item.shot_at = item.shot_at or now
-    elif next_status == ContentItemStatus.EDITING:
-        item.editing_started_at = item.editing_started_at or now
-    elif next_status == ContentItemStatus.INTERNAL_REVIEW:
-        item.internal_review_at = item.internal_review_at or now
-    elif next_status == ContentItemStatus.CLIENT_REVIEW:
-        item.client_review_at = item.client_review_at or now
-    elif next_status == ContentItemStatus.APPROVED:
-        item.approved_at = item.approved_at or now
-    elif next_status == ContentItemStatus.SCHEDULED:
-        item.scheduled_at = item.scheduled_at or now
-    elif next_status == ContentItemStatus.PUBLISHED:
-        item.published_at = item.published_at or now
+    # Set timestamp for the new status
+    ts_field = STATUS_TIMESTAMP_FIELDS.get(next_status)
+    if ts_field and hasattr(item, ts_field):
+        current_val = getattr(item, ts_field)
+        if not current_val:
+            setattr(item, ts_field, now)
+    if next_status == ContentItemStatus.PUBLISHED:
         item.completed = True
 
 
@@ -237,7 +319,7 @@ class ContentCalendarService:
                 "items": len(items),
                 "shoot_days": shoot_days,
                 "published": published,
-                "draft": sum(1 for item in items if item.status == ContentItemStatus.DRAFT),
+                "idea": sum(1 for item in items if item.status in (ContentItemStatus.IDEA, ContentItemStatus.DRAFT)),
                 "tasks": len(tasks),
                 "meetings": len(meetings),
             },
@@ -250,83 +332,11 @@ class ContentCalendarService:
 
     @staticmethod
     async def create_item(current_user: User, payload: Dict[str, Any]) -> Dict[str, Any]:
-        project = await _load_project(current_user, str(payload.get("project_id") or ""))
-        now = utc_now()
-        item = ContentCalendarItem(
-            company_id=str(project.company_id),
-            project_id=str(project.id),
-            client_id=payload.get("client_id"),
-            campaign=payload.get("campaign"),
-            platform=payload.get("platform"),
-            title=str(payload.get("title") or "Untitled content").strip(),
-            content_type=_parse_enum(ContentItemType, payload.get("content_type"), ContentItemType.CUSTOM),
-            assignee_id=payload.get("assignee_id"),
-            assignee_name=payload.get("assignee_name"),
-            due_date=_parse_datetime(payload.get("due_date")),
-            publish_date=_parse_datetime(payload.get("publish_date")),
-            priority=_parse_enum(ContentItemPriority, payload.get("priority"), ContentItemPriority.MEDIUM),
-            notes=payload.get("notes"),
-            tags=list(payload.get("tags") or []),
-            file_ids=list(payload.get("file_ids") or []),
-            file_urls=list(payload.get("file_urls") or []),
-            deliverable_target=payload.get("deliverable_target"),
-            shoot_date=_parse_datetime(payload.get("shoot_date")),
-            location=payload.get("location"),
-            photographer=payload.get("photographer"),
-            team=list(payload.get("team") or []),
-            assets_required=list(payload.get("assets_required") or []),
-            category=payload.get("category"),
-            description=payload.get("description"),
-            start_date=_parse_datetime(payload.get("start_date")),
-            end_date=_parse_datetime(payload.get("end_date")),
-            time=payload.get("time"),
-            assigned_person=payload.get("assigned_person"),
-            reminder=payload.get("reminder"),
-            color=payload.get("color"),
-            attachment=payload.get("attachment"),
-            metadata=dict(payload.get("metadata") or {}),
-            created_by=str(getattr(current_user, "id", "")),
-            updated_by=str(getattr(current_user, "id", "")),
-            created_at=now,
-            updated_at=now,
-        )
-        await item.insert()
-        await publish_crm_timeline_event(
-            event_name="ContentPlanned",
-            aggregate_type="content_item",
-            aggregate_id=str(item.id),
-            company_id=str(project.company_id),
-            actor_id=str(getattr(current_user, "id", "")),
-            project_id=str(project.project_id or project.id),
-            payload={"content_item_id": str(item.id), "project_id": str(project.id), "title": item.title, "status": item.status.value, "timestamp": now.isoformat()},
-            metadata={"surface": "delivery", "workflow": "content_calendar"},
-        )
-        await knowledge_service.ingest_event(
-            knowledge_service._event(
-                event_name="ContentPlanned",
-                aggregate_type="content_item",
-                aggregate_id=str(item.id),
-                company_id=str(project.company_id),
-                actor_id=str(getattr(current_user, "id", "")),
-                project_id=str(project.project_id or project.id),
-                payload={
-                    "title": item.title,
-                    "summary": item.notes or item.title,
-                    "status": item.status.value,
-                    "priority": item.priority.value,
-                    "due_date": item.due_date.isoformat() if item.due_date else None,
-                    "publish_date": item.publish_date.isoformat() if item.publish_date else None,
-                    "tags": list(item.tags or []),
-                    "relationships": [
-                        {"relationship_type": "project", "entity_type": "project", "entity_id": str(project.project_id or project.id)},
-                    ],
-                    "content": item.notes or item.title,
-                    "version_marker": str(item.updated_at or item.created_at or utc_now()),
-                },
-                metadata={"module": "content_calendar"},
-            )
-        )
-        return {"item": _serialize_item(item)}
+        """Create content via the canonical ContentProductionService.
+        This ensures Calendar-created items get a content_id, versioning,
+        and use the canonical lifecycle statuses."""
+        from app.services.content_production_service import ContentProductionService
+        return await ContentProductionService.create_item(current_user, payload)
 
     @staticmethod
     async def update_item(current_user: User, item_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -352,6 +362,8 @@ class ContentCalendarService:
             item.due_date = _parse_datetime(payload.get("due_date"))
         if "publish_date" in payload:
             item.publish_date = _parse_datetime(payload.get("publish_date"))
+        if "deadline" in payload:
+            item.deadline = _parse_datetime(payload.get("deadline"))
         if "notes" in payload:
             item.notes = payload.get("notes")
         if "tags" in payload and isinstance(payload.get("tags"), list):
@@ -410,4 +422,40 @@ class ContentCalendarService:
         project = await _load_project(current_user, str(item.project_id))
         await item.delete()
         return {"message": "Content item deleted", "id": item_id, "project_id": str(project.id)}
+
+    @staticmethod
+    async def migrate_legacy_statuses(current_user: User) -> Dict[str, Any]:
+        """One-time migration: convert all legacy statuses to canonical statuses."""
+        legacy_statuses = list(LEGACY_STATUS_MAP.keys())
+        migrated = 0
+        skipped = 0
+        errors = []
+
+        for legacy_status in legacy_statuses:
+            canonical = LEGACY_STATUS_MAP[legacy_status]
+            items = await ContentCalendarItem.find(
+                ContentCalendarItem.status == legacy_status
+            ).to_list()
+
+            for item in items:
+                try:
+                    item.status = canonical
+                    # Set the corresponding timestamp field if not already set
+                    ts_field = STATUS_TIMESTAMP_FIELDS.get(canonical)
+                    if ts_field and not getattr(item, ts_field, None):
+                        setattr(item, ts_field, utc_now())
+                    item.updated_by = str(getattr(current_user, "id", ""))
+                    item.updated_at = utc_now()
+                    await item.save()
+                    migrated += 1
+                except Exception as e:
+                    errors.append({"item_id": str(item.id), "error": str(e)})
+                    skipped += 1
+
+        return {
+            "migrated": migrated,
+            "skipped": skipped,
+            "errors": errors,
+            "legacy_statuses_processed": [s.value for s in legacy_statuses],
+        }
 

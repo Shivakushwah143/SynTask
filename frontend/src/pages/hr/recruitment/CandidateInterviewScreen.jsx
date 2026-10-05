@@ -645,7 +645,8 @@ export default function CandidateInterviewScreen() {
     queryClient.invalidateQueries(["recruitment", "candidates"]);
     queryClient.invalidateQueries(["recruitment", "jobs"]);
     queryClient.invalidateQueries(["recruitment", "dashboard"]);
-    queryClient.invalidateQueries(["recruitment", "employees"]);
+    // Employees list lives in People section — use canonical ['employees'] key.
+    queryClient.invalidateQueries(['employees']);
   };
 
   const candidates = candidatesData?.data?.items || candidatesData?.data || [];

@@ -168,7 +168,9 @@ async def test_content_due_today_creates_critical_toast_notification():
     assert created.type == NotificationType.CONTENT_DUE_TODAY
     assert created.priority == ReminderPriority.CRITICAL
     assert created.metadata["show_toast"] is True
-    assert created.action_url == "/content-calendar"
+    # Notifications link to the canonical Content Item (same convention as the
+    # content governance tests), not the legacy calendar page.
+    assert created.action_url == "/content/content-1"
 
 
 @pytest.mark.asyncio

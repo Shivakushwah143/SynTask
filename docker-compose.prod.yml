@@ -1,9 +1,32 @@
+# Reusable Docker log rotation so container stdout/stderr cannot grow without
+# bound. Applied to every service below via the `logging:` key.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Shared, non-secret release + tracing configuration for the app services
+# (Topics 9 & 10). Values are supplied by scripts/deployment/deploy.sh at deploy
+# time; never put credentials here.
+x-app-observability: &app-observability
+  OTEL_TRACES_ENABLED: ${OTEL_TRACES_ENABLED:-true}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4317}
+  OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
+  SYNTASK_RELEASE_COMMIT: ${SYNTASK_RELEASE_COMMIT:-unknown}
+  SYNTASK_RELEASE_VERSION: ${SYNTASK_RELEASE_VERSION:-unknown}
+  SYNTASK_RELEASE_BRANCH: ${SYNTASK_RELEASE_BRANCH:-unknown}
+  SYNTASK_RELEASE_BUILT_AT: ${SYNTASK_RELEASE_BUILT_AT:-unknown}
+
 services:
   backend:
     build:
       context: ./backend
     env_file:
       - ./backend/.env
+    environment:
+      <<: *app-observability
+      OTEL_SERVICE_NAME: syntask-backend
     command: >
       sh -c "python scripts/wait_for_dependencies.py &&
       uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"
@@ -21,6 +44,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 20s
+    logging: *default-logging
     networks:
       - syntask
 
@@ -31,6 +55,8 @@ services:
       - ./backend/.env
     environment:
       BACKEND_HEALTH_URL: http://backend:8000/health
+      <<: *app-observability
+      OTEL_SERVICE_NAME: syntask-worker
     command: >
       sh -c "python scripts/wait_for_dependencies.py &&
       celery -A app.worker.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-4}"
@@ -43,12 +69,12 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      # test: ["CMD", "python", "scripts/check_celery_health.py"]
       test: ["CMD-SHELL", "cd /app && PYTHONPATH=/app python scripts/check_celery_health.py"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
+    logging: *default-logging
     networks:
       - syntask
 
@@ -71,6 +97,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 10s
+    logging: *default-logging
     networks:
       - syntask
 
@@ -91,6 +118,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 10s
+    logging: *default-logging
     networks:
       - syntask
 
@@ -110,10 +138,198 @@ services:
     networks:
       - syntask
 
+  # =========================================================================
+  # Observability stack (Topics 1–9). Production is loopback/internal only:
+  # Grafana, Prometheus and Alertmanager bind to 127.0.0.1, Loki, Alloy and
+  # Tempo publish no ports at all. Nothing here is publicly reachable.
+  # =========================================================================
+
+  prometheus:
+    image: prom/prometheus:v2.53.3
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - alertmanager
+    logging: *default-logging
+    networks:
+      - syntask
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      # Required: fail configuration loudly rather than run with an empty admin
+      # password. Supplied via GitHub Secret / server env, never committed.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_ROOT_URL: "http://localhost:3001"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    logging: *default-logging
+    networks:
+      - syntask
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    command:
+      - "--path.rootfs=/host"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    volumes:
+      - /:/host:ro,rslave
+    pid: host
+    ports: []
+    logging: *default-logging
+    networks:
+      - syntask
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports: []
+    logging: *default-logging
+    networks:
+      - syntask
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    ports: []
+    depends_on:
+      redis:
+        condition: service_healthy
+    logging: *default-logging
+    networks:
+      - syntask
+
+  # -------------------------------------------------------------------------
+  # Topic 5 — centralized logging (internal network only, no published ports).
+  # Loki and Alloy images ship without an HTTP client or shell tooling suitable
+  # for a container healthcheck, so health is tracked by Prometheus instead
+  # (`up{job="loki"}` / `up{job="alloy"}`).
+  # -------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:3.2.2
+    restart: unless-stopped
+    command:
+      - "-config.file=/etc/loki/loki.yml"
+    volumes:
+      - ./observability/loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    ports: []
+    logging: *default-logging
+    networks:
+      - syntask
+
+  alloy:
+    image: grafana/alloy:v1.5.1
+    restart: unless-stopped
+    command:
+      - "run"
+      - "/etc/alloy/config.alloy"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+      - "--storage.path=/var/lib/alloy/data"
+    volumes:
+      # Docker socket access is security-sensitive even when mounted read-only:
+      # it can read container metadata and logs. It is not exposed over TCP and
+      # Alloy runs with all capabilities dropped and no-new-privileges.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      # Mount the parent dir, not the leaf: the named volume must inherit the
+      # image's alloy-owned data/ directory or the non-root Alloy process cannot
+      # create /var/lib/alloy/data (crash loop: permission denied).
+      - alloy_data:/var/lib/alloy
+    ports: []
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Alloy runs as root but must traverse the alloy-owned storage volume;
+    # with all capabilities dropped, root lacks CAP_DAC_OVERRIDE and crash-loops
+    # with "mkdir /var/lib/alloy/data: permission denied". Keep every other
+    # capability dropped and add back only DAC_OVERRIDE.
+    cap_add:
+      - DAC_OVERRIDE
+    depends_on:
+      - loki
+    logging: *default-logging
+    networks:
+      - syntask
+
+  # -------------------------------------------------------------------------
+  # Topic 6 — alerting (loopback-only in production).
+  # -------------------------------------------------------------------------
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    logging: *default-logging
+    networks:
+      - syntask
+
+  # -------------------------------------------------------------------------
+  # Topic 9 — Grafana Tempo distributed tracing store. OTLP receivers (4317
+  # gRPC / 4318 HTTP) and the query API (3200) are internal-only: no published
+  # ports in production.
+  # -------------------------------------------------------------------------
+  tempo:
+    image: grafana/tempo:2.6.1
+    restart: unless-stopped
+    command:
+      - "-config.file=/etc/tempo/tempo.yml"
+    volumes:
+      - ./observability/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo_data:/var/tempo
+    ports: []
+    logging: *default-logging
+    networks:
+      - syntask
+
 volumes:
   backend_uploads:
   redis_data:
   qdrant_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  alloy_data:
+  alertmanager_data:
+  tempo_data:
 
 networks:
   syntask:

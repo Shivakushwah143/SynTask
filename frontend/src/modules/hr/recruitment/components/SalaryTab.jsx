@@ -204,7 +204,7 @@ const SalaryTab = ({ employeeId, canManage = false, onAssign, onRevise }) => {
             {showHistory ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
           {showHistory && (
-            <div className="border-t border-gray-200 dark:border-gray-700">
+            <div className="overflow-x-auto border-t border-gray-200 dark:border-gray-700">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-900/50">
                   <tr>

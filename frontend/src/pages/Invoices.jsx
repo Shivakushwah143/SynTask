@@ -1012,7 +1012,9 @@ const Invoices = () => {
                 
                 <div className="space-y-3">
                   {formData.items.map((item, index) => (
-                    <div key={index} className="grid grid-cols-12 gap-2 items-end">
+                    // Phones stack each line-item field full width; tablet/desktop
+                    // keep the original 12-column layout (col-spans clamp to 1 here).
+                    <div key={index} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-12">
                       <div className="col-span-5 space-y-1">
                         <label className="text-xs text-gray-500 dark:text-gray-400">Description</label>
                         <input
