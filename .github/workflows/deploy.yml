@@ -6,6 +6,15 @@ on:
       - dev
       - main
 
+# Deployment goes through scripts/deployment/deploy.sh, which:
+#   * never tears the stack down (no `docker compose down`),
+#   * builds + updates services in place (volumes/networks/databases preserved),
+#   * verifies the release with scripts/deployment/verify_release.sh before it is
+#     recorded as successful,
+#   * rolls back to the previous recorded release if the update or health gate
+#     fails.
+# Secrets are still written to env files by the runner only; they are never
+# committed and never logged by the deploy script.
 jobs:
   deploy-dev:
     if: github.ref == 'refs/heads/dev'
@@ -34,9 +43,7 @@ jobs:
             git reset --hard origin/dev
             printf '%s\n' "$DEV_BACKEND_ENV" > backend/.env
             printf '%s\n' "$DEV_FRONTEND_ENV" > frontend/.env
-            docker compose -f docker-compose.dev.yml down --remove-orphans || true
-            docker compose -f docker-compose.dev.yml up -d --build --remove-orphans --wait --wait-timeout 300
-            docker compose -f docker-compose.dev.yml ps
+            bash scripts/deployment/deploy.sh --env development --yes
 
   deploy-prod:
     if: github.ref == 'refs/heads/main'
@@ -50,13 +57,15 @@ jobs:
         env:
           PROD_BACKEND_ENV: ${{ secrets.PROD_BACKEND_ENV }}
           PROD_FRONTEND_ENV: ${{ secrets.PROD_FRONTEND_ENV }}
+          # Required by docker-compose.prod.yml for the Grafana admin account.
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.PROD_GRAFANA_ADMIN_PASSWORD }}
         with:
           host: ${{ secrets.PROD_SSH_HOST }}
           username: ${{ secrets.PROD_SSH_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
           port: ${{ secrets.PROD_SSH_PORT }}
           script_stop: true
-          envs: PROD_BACKEND_ENV,PROD_FRONTEND_ENV
+          envs: PROD_BACKEND_ENV,PROD_FRONTEND_ENV,GRAFANA_ADMIN_PASSWORD
           script: |
             set -e
             cd /opt/syntask
@@ -65,6 +74,4 @@ jobs:
             git reset --hard origin/main
             printf '%s\n' "$PROD_BACKEND_ENV" > backend/.env
             printf '%s\n' "$PROD_FRONTEND_ENV" > frontend/.env
-            docker compose -f docker-compose.prod.yml down --remove-orphans || true
-            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans --wait --wait-timeout 300
-            docker compose -f docker-compose.prod.yml ps
+            bash scripts/deployment/deploy.sh --env production --yes

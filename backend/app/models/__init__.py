@@ -30,6 +30,9 @@ from app.models.changelog import ChangeLog
 from app.models.chat import Conversation, ChatMessage, MessageType
 from app.models.page import Page, PageStatus
 from app.models.client import Client, ClientStatus
+from app.models.client_service import ClientService, ClientServiceStatus
+from app.models.client_deliverable import ClientApprovalStatus, ClientDeliverable, ClientDeliverableStatus
+from app.models.client_onboarding import ClientOnboarding, ClientOnboardingItem, ClientOnboardingItemStatus, ClientOnboardingStatus
 from app.models.department import Department, DepartmentType
 from app.models.capability import RoleCapability
 from app.models.ownership_transfer import OwnershipTransfer
@@ -55,13 +58,18 @@ from app.models.creative_review import (
 from app.models.invoice import Invoice, InvoiceType, InvoiceStatus
 from app.models.msa import MSA, MSAStatus
 from app.models.meeting import Meeting, MeetingStatus
-from app.models.content_calendar import ContentCalendarItem, ContentItemType, ContentItemStatus, ContentItemPriority
+from app.models.content_calendar import (
+    ContentCalendarItem, ContentItemType, ContentItemStatus, ContentItemPriority,
+    ContentTemplate, ContentVersion, ContentReviewRecord, ContentReviewDecision,
+    ContentPublishingRecord, ContentPublishingStatus, ContentHistoryEntry,
+)
 from app.models.timesheet import TimesheetEntry, TimesheetSummary, TimesheetStatus
 from app.models.sales_category import SalesCategory
 from app.models.sales_product import SalesProduct
 from app.models.sales_contact import SalesContact, ContactSharing
 from app.models.sales_lead_file import SalesLeadFile
 from app.models.sales_prospect import SalesProspect
+from app.models.sales_discovery_audit import SalesAudit, SalesDiscovery, SalesWorkspaceStatus
 from app.models.sales_lead_note import SalesLeadNote
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.sales_import_job import SalesImportJob
@@ -74,7 +82,7 @@ from app.models.attendance import (
     MonitoringSession, CameraSession, ScreenShareSession
 )
 from app.models.timeline import TimelineEvent, TimelineEventType, TimelineModule
-from app.models.leave import LeaveRequest, LeaveStatus, LeaveType
+from app.models.leave import LeaveBalance, LeaveDuration, LeaveRequest, LeaveStatus, LeaveType, LeaveTypeConfig
 
 
 __all__ = [
@@ -132,7 +140,7 @@ __all__ = [
     # Page models
     "Page", "PageStatus",
     # Client models
-    "Client", "ClientStatus",
+    "Client", "ClientStatus", "ClientService", "ClientServiceStatus", "ClientDeliverable", "ClientDeliverableStatus", "ClientApprovalStatus", "ClientOnboarding", "ClientOnboardingItem", "ClientOnboardingItemStatus", "ClientOnboardingStatus",
     # Department models
     "Department", "DepartmentType", "RoleCapability", "OwnershipTransfer",
     # AI models
@@ -158,7 +166,7 @@ __all__ = [
     "TimesheetEntry", "TimesheetSummary", "TimesheetStatus",
     # Sales models
     "SalesCategory", "SalesProduct", "SalesContact", "ContactSharing", "SalesLeadFile",
-    "SalesProspect", "SalesLeadNote", "SalesPipelineHistory", "SalesImportJob",
+    "SalesProspect", "SalesDiscovery", "SalesAudit", "SalesWorkspaceStatus", "SalesLeadNote", "SalesPipelineHistory", "SalesImportJob",
     "SalesStage", "ReasonForLost", "SalesChannel", "SalesTag",
     "Nationality", "BusinessCategory", "GreetingTemplate",
     # Attendance & Monitoring models
@@ -167,5 +175,5 @@ __all__ = [
     # Timeline models
     "TimelineEvent", "TimelineEventType", "TimelineModule",
     # Leave models
-    "LeaveRequest", "LeaveStatus", "LeaveType",
+    "LeaveRequest", "LeaveStatus", "LeaveType", "LeaveTypeConfig", "LeaveBalance", "LeaveDuration",
 ]

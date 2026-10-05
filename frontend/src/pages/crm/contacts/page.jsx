@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Building2, Search, Users, Plus, Mail, Phone, Briefcase, Award, UserCheck, UserPlus, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
-import { Badge, Button, ConfirmDialog, EmptyState, SkeletonTable, Table, inputClassName } from '../../../components/ui'
+import { Badge, Button, ConfirmDialog, EmptyState, SkeletonTable, Table } from '../../../components/ui'
 import { CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { ContactFormModal } from './components'
 
@@ -20,15 +20,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
-          <Icon className="h-4 w-4" />
+    <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800" title={subtitle}>
+      <div className={`shrink-0 rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow`}>
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
+        <div className="flex items-baseline gap-1.5">
+          <p className="text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <span className="truncate text-[10px] font-medium text-gray-400 dark:text-gray-500">{subtitle}</span>}
         </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -178,36 +180,31 @@ export default function CRMContactsPage() {
   return (
     <CRMPage>
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-sky-600 via-blue-600 to-violet-600 p-6 text-white shadow-xl md:p-8 mb-6">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <Users className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-wider text-indigo-200">CRM</p>
-                <h1 className="text-2xl font-bold md:text-3xl">Contacts</h1>
-                <p className="mt-1 text-indigo-100">Lead and account relationships grouped by CRM company.</p>
-              </div>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-sky-600 via-blue-600 to-violet-600 px-4 py-3.5 text-white shadow-lg md:px-5 mb-5">
+        <div className="absolute right-0 top-0 -mr-10 -mt-10 h-40 w-40 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+              <Users className="h-5 w-5" />
             </div>
-            <div className="flex gap-2">
-              <Button 
-                onClick={() => { setEditingContact(null); setCreateOpen(true) }} 
-                className="bg-white/20 text-white backdrop-blur-sm hover:bg-white/30 border-0"
-              >
-                <Plus className="h-4 w-4" />
-                New Contact
-              </Button>
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-200">CRM</p>
+              <h1 className="text-lg font-bold md:text-xl">Contacts</h1>
+              <p className="truncate text-xs text-indigo-100 md:text-sm">Lead and account relationships grouped by CRM company.</p>
             </div>
           </div>
+          <Button 
+            onClick={() => { setEditingContact(null); setCreateOpen(true) }} 
+            className="bg-white/20 px-3 py-1.5 text-xs text-white backdrop-blur-sm hover:bg-white/30 border-0"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New Contact
+          </Button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-5">
         <StatCard
           label="Total Contacts"
           value={totalContacts}
@@ -255,10 +252,10 @@ export default function CRMContactsPage() {
         </div>
 
         <div className="p-4">
-          <div className="relative mb-4">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <div className="relative mb-3">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
-              className={`${inputClassName} pl-10 bg-gray-50 dark:bg-gray-900/50`}
+              className="input input-sm pl-8"
               placeholder="Search contacts by name, company, email, or phone..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}

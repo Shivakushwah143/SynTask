@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from pymongo import ReturnDocument
 
 from app.crm import documents
+from app.api.v1.endpoints.crm_documents import CRMDocumentPayload
 from app.crm.documents import _hash_token, _next_document_number, _public_url, calculate_totals, public_serialize
 from app.models.crm_document import CRMDocumentStatus, CRMDocumentType
 
@@ -26,6 +27,34 @@ class FakeDatabase:
 
     def __getitem__(self, name):
         assert name == "crm_document_sequences"
+        return self.collection
+
+
+class FakeRawDocumentCursor:
+    def __init__(self, documents):
+        self.documents = documents
+
+    def sort(self, *args):
+        return self
+
+    async def to_list(self, length=None):
+        return self.documents
+
+
+class FakeRawDocumentCollection:
+    def __init__(self, documents):
+        self.documents = documents
+
+    def find(self, query):
+        return FakeRawDocumentCursor(self.documents)
+
+
+class FakeRawDatabase:
+    def __init__(self, collection):
+        self.collection = collection
+
+    def __getitem__(self, name):
+        assert name == "crm_documents"
         return self.collection
 
 
@@ -131,9 +160,160 @@ def test_public_serializer_removes_internal_document_fields():
     assert payload["content_snapshot"]["lead"] == {"name": "Lead", "company_name": "Acme"}
 
 
+def test_serializer_accepts_legacy_string_document_type_and_status():
+    document = SimpleNamespace(
+        id="doc-1",
+        company_id="company-1",
+        lead_id="lead-1",
+        document_type="quotation",
+        document_number="QUO-2026-0001",
+        title="Quotation",
+        currency="INR",
+        subtotal=Decimal("0"),
+        discount_total=Decimal("0"),
+        tax_total=Decimal("0"),
+        grand_total=Decimal("0"),
+        status="draft",
+        valid_until=None,
+        content_snapshot={},
+        terms=None,
+        notes=None,
+        pdf_file_path=None,
+        source_file_path=None,
+        source_file_url=None,
+        source_file_name=None,
+        created_by="user-1",
+        sent_to=None,
+        send_error=None,
+        token_hash=None,
+        token_expires_at=None,
+        token_revoked_at=None,
+        created_at=None,
+        updated_at=None,
+        sent_at=None,
+        viewed_at=None,
+        accepted_at=None,
+        rejected_at=None,
+        expired_at=None,
+        model_dump=lambda: document.__dict__.copy(),
+    )
+
+    payload = documents.serialize(document)
+
+    assert payload["document_type"] == "quotation"
+    assert payload["status"] == "draft"
+
+
+@pytest.mark.asyncio
+async def test_list_documents_falls_back_to_raw_legacy_rows(monkeypatch):
+    lead = SimpleNamespace(id="lead-1", company_id="company-1", deleted=False)
+    raw_documents = [{
+        "_id": "doc-1",
+        "company_id": "company-1",
+        "lead_id": "lead-1",
+        "document_type": "quotation",
+        "document_number": "QUO-2026-0001",
+        "title": "Quotation",
+        "status": "draft",
+    }]
+
+    class BrokenCRMDocument:
+        class Settings:
+            name = "crm_documents"
+
+        @classmethod
+        def find(cls, query):
+            raise RuntimeError("legacy document parse failed")
+
+    async def fake_lead_for_user(current_user, lead_id):
+        return lead
+
+    monkeypatch.setattr(documents, "_lead_for_user", fake_lead_for_user)
+    monkeypatch.setattr(documents, "CRMDocument", BrokenCRMDocument)
+    monkeypatch.setattr(documents, "get_database", lambda: FakeRawDatabase(FakeRawDocumentCollection(raw_documents)))
+
+    result = await documents.list_documents(SimpleNamespace(id="user-1"), "lead-1")
+
+    assert result["documents"] == [{
+        "company_id": "company-1",
+        "lead_id": "lead-1",
+        "document_type": "quotation",
+        "document_number": "QUO-2026-0001",
+        "title": "Quotation",
+        "status": "draft",
+        "id": "doc-1",
+        "subtotal": "0",
+        "discount_total": "0",
+        "tax_total": "0",
+        "grand_total": "0",
+    }]
+
+
 def test_public_url_uses_configured_frontend_origin():
     assert _public_url("abc").endswith("/public/crm-documents/abc")
     assert "api/v1" not in _public_url("abc")
+
+
+def test_crm_document_payload_accepts_html_date_input():
+    payload = CRMDocumentPayload(valid_until="2026-08-14")
+
+    assert payload.valid_until.isoformat() == "2026-08-14T00:00:00"
+
+
+@pytest.mark.asyncio
+async def test_generate_pdf_accepts_legacy_string_document_type(monkeypatch, tmp_path):
+    document = SimpleNamespace(
+        id="doc-1",
+        company_id="company-1",
+        lead_id="lead-1",
+        document_type="quotation",
+        document_number="QUO-2026-0001",
+        title="Quotation",
+        subtotal=Decimal("100"),
+        tax_total=Decimal("18"),
+        grand_total=Decimal("118"),
+        discount_total=Decimal("0"),
+        terms="Terms",
+        notes="Notes",
+        valid_until=None,
+        source_file_path=None,
+        content_snapshot={
+            "lead": {"company_name": "Acme", "email": "buyer@example.com"},
+            "items": [{"description": "SEO", "quantity": "1", "unit_price": "100", "tax_rate": "18", "line_total": "118"}],
+        },
+        updated_at=None,
+    )
+    document.model_dump = lambda: document.__dict__.copy()
+
+    async def fake_document_for_user(current_user, lead_id, document_id):
+        return SimpleNamespace(id=lead_id), document
+
+    class FakeCRMDocumentEvent:
+        inserted = None
+
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        async def insert(self):
+            FakeCRMDocumentEvent.inserted = self
+
+    async def fake_activity(*args, **kwargs):
+        return None
+
+    async def fake_save():
+        document.saved = True
+
+    document.save = fake_save
+    monkeypatch.setattr(documents, "_document_for_user", fake_document_for_user)
+    monkeypatch.setattr(documents, "CRMDocumentEvent", FakeCRMDocumentEvent)
+    monkeypatch.setattr(documents.notification_service, "update_crm_activity", fake_activity)
+    monkeypatch.setattr(documents, "UPLOAD_DIR", tmp_path)
+
+    result = await documents.generate_pdf(SimpleNamespace(id="user-1"), "lead-1", "doc-1")
+
+    assert result["document"]["pdf_file_path"].endswith("QUO-2026-0001.pdf")
+    assert document.saved is True
+    assert FakeCRMDocumentEvent.inserted.event_type == "pdf_generated"
 
 
 @pytest.mark.asyncio
@@ -142,6 +322,7 @@ async def test_create_contract_from_document_uses_fixed_counter(monkeypatch):
         id="quote-1",
         company_id="company-1",
         lead_id="lead-1",
+        document_type=CRMDocumentType.QUOTATION,
         document_number="QUO-2026-0001",
         currency="INR",
         subtotal=Decimal("100"),
@@ -151,10 +332,15 @@ async def test_create_contract_from_document_uses_fixed_counter(monkeypatch):
         terms="Terms",
         notes=None,
         content_snapshot={"items": []},
+        status=CRMDocumentStatus.ACCEPTED,
     )
 
     class FakeCRMDocument:
         inserted = None
+
+        @classmethod
+        async def find_one(cls, query):
+            return None
 
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
@@ -176,9 +362,13 @@ async def test_create_contract_from_document_uses_fixed_counter(monkeypatch):
     async def fake_next_document_number(company_id, document_type):
         return "CON-2026-0001"
 
+    async def fake_sync(*args, **kwargs):
+        return None
+
     monkeypatch.setattr(documents, "_document_for_user", fake_document_for_user)
     monkeypatch.setattr(documents, "_next_document_number", fake_next_document_number)
     monkeypatch.setattr(documents, "_event", fake_event)
+    monkeypatch.setattr(documents, "_sync_lead_status_from_document", fake_sync)
     monkeypatch.setattr(documents, "CRMDocument", FakeCRMDocument)
 
     result = await documents.create_contract_from_document(
@@ -190,3 +380,110 @@ async def test_create_contract_from_document_uses_fixed_counter(monkeypatch):
     assert FakeCRMDocument.inserted.document_number == "CON-2026-0001"
     assert result["document"]["document_type"] == "contract"
     assert result["document"]["document_number"] == "CON-2026-0001"
+
+
+@pytest.mark.asyncio
+async def test_create_contract_from_document_requires_accepted_quotation(monkeypatch):
+    source = SimpleNamespace(
+        id="quote-1",
+        company_id="company-1",
+        lead_id="lead-1",
+        document_type=CRMDocumentType.QUOTATION,
+        document_number="QUO-2026-0001",
+        status=CRMDocumentStatus.DRAFT,
+    )
+
+    async def fake_document_for_user(current_user, lead_id, document_id):
+        return SimpleNamespace(id=lead_id), source
+
+    monkeypatch.setattr(documents, "_document_for_user", fake_document_for_user)
+
+    with pytest.raises(documents.HTTPException) as exc:
+        await documents.create_contract_from_document(SimpleNamespace(id="user-1"), "lead-1", "quote-1")
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Contract can be created only from an accepted quotation"
+
+
+@pytest.mark.asyncio
+async def test_quotation_acceptance_syncs_proposal_status(monkeypatch):
+    document = SimpleNamespace(
+        id="doc-1",
+        company_id="company-1",
+        lead_id="lead-1",
+        document_type=CRMDocumentType.QUOTATION,
+        status=CRMDocumentStatus.ACCEPTED,
+    )
+    lead = SimpleNamespace(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        current_stage="Proposal",
+        proposal_status="sent",
+        current_stage_status="sent",
+        stage_status_history=[],
+        updated_at=None,
+    )
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_save():
+        lead.saved = True
+
+    lead.save = fake_save
+    monkeypatch.setattr(documents.SalesProspect, "get", fake_get)
+
+    await documents._sync_lead_status_from_document(document, SimpleNamespace(id="user-1", first_name="Ada", last_name="Admin"))
+
+    assert lead.proposal_status == "accepted"
+    assert lead.current_stage_status == "accepted"
+    assert lead.stage_status_history[-1]["to_status"] == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_contract_acceptance_syncs_agreement_status(monkeypatch):
+    document = SimpleNamespace(
+        id="doc-1",
+        company_id="company-1",
+        lead_id="lead-1",
+        document_type=CRMDocumentType.CONTRACT,
+        status=CRMDocumentStatus.ACCEPTED,
+    )
+    lead = SimpleNamespace(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        current_stage="Agreement",
+        agreement_status="sent",
+        current_stage_status="sent",
+        stage_status_history=[],
+        updated_at=None,
+    )
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_save():
+        lead.saved = True
+
+    lead.save = fake_save
+    monkeypatch.setattr(documents.SalesProspect, "get", fake_get)
+
+    await documents._sync_lead_status_from_document(document, None)
+
+    assert lead.agreement_status == "signed"
+    assert lead.current_stage_status == "signed"
+
+
+def test_unresolved_pricing_items_flags_required_zero_value_lines():
+    document = SimpleNamespace(
+        content_snapshot={
+            "items": [
+                {"description": "SEO Technical Audit", "requires_pricing": True, "unit_price": "0", "line_total": "0"},
+                {"description": "Website", "requires_pricing": False, "unit_price": "100", "line_total": "118"},
+            ]
+        }
+    )
+
+    assert documents.unresolved_pricing_items(document) == ["SEO Technical Audit"]

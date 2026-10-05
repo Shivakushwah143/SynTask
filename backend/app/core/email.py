@@ -205,14 +205,14 @@ The SynTask Team
 
         if not EMAIL_CONFIGURED:
             logger.warning(
-                f"Email not configured. Password reset link for {email}: {reset_link}\n"
-                f"To enable SMTP email sending, configure MAIL_USERNAME, MAIL_PASSWORD, and MAIL_SERVER in settings."
+                "Email not configured. Password reset requested for user (id=redacted).\n"
+                "To enable SMTP email sending, configure MAIL_USERNAME, MAIL_PASSWORD, and MAIL_SERVER in settings."
             )
             return False
 
         # Check if email can be sent
         if not FASTAPI_MAIL_AVAILABLE or not conf:
-            logger.warning(f"Email not available. Password reset link for {email}: {reset_link}")
+            logger.warning("Email transport not available. Password reset requested for user (id=redacted).")
             return False
         
         # Create message
@@ -231,9 +231,7 @@ The SynTask Team
         return True
         
     except Exception as e:
-        logger.error(f"Failed to send password reset email to {email}: {str(e)}")
-        # Log the reset link as fallback
-        logger.info(f"Password reset link for {email}: {reset_link}")
+        logger.error("Failed to send password reset email: %s", e)
         return False
 
 
@@ -1160,9 +1158,8 @@ async def send_welcome_email(
     # Check if email is configured
     if not EMAIL_CONFIGURED:
         logger.warning(
-            f"Email not configured. Welcome email should be sent to {email}\n"
-            f"Login Credentials - Email: {email}, Password: {password}\n"
-            f"To enable email sending, configure MAIL_USERNAME, MAIL_PASSWORD, and MAIL_SERVER in settings."
+            "Email not configured. Welcome email should be sent.\n"
+            "To enable email sending, configure MAIL_USERNAME, MAIL_PASSWORD, and MAIL_SERVER in settings."
         )
         return False
     
@@ -1381,8 +1378,7 @@ The SynTask Team
         
         # Check if email can be sent
         if not FASTAPI_MAIL_AVAILABLE or not conf:
-            logger.warning(f"Email not available. Welcome email should be sent to {email}")
-            logger.info(f"Login Credentials - Email: {email}, Password: {password}")
+            logger.warning("Email transport not available. Welcome email pending for user (id=redacted).")
             return False
         
         # Create message
@@ -1401,9 +1397,7 @@ The SynTask Team
         return True
         
     except Exception as e:
-        logger.error(f"Failed to send welcome email to {email}: {str(e)}")
-        # Log credentials as fallback
-        logger.info(f"Login Credentials for {email} - Password: {password}")
+        logger.error("Failed to send welcome email: %s", e)
         return False
 
 

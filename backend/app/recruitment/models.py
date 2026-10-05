@@ -186,6 +186,7 @@ class Candidate(Document):
     source: str = "portal"
     full_name: str
     email: Indexed(str)
+    date_of_birth: Optional[str] = None
     phone: Optional[str] = None
     current_company: Optional[str] = None
     experience_years: float = 0
@@ -197,6 +198,7 @@ class Candidate(Document):
     status: CandidateStatus = CandidateStatus.NEW
     assigned_recruiter_id: Optional[str] = None
     resume_id: Optional[str] = None
+    resume_url: Optional[str] = None
     rejection_reason: Optional[str] = None
     employee_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -208,6 +210,26 @@ class Candidate(Document):
         indexes = [IndexModel([("company_id", ASCENDING), ("email", ASCENDING)], unique=True), IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)])]
 
 
+class CandidatePortalCredential(Document):
+    """Temporary public tracking credential for one candidate application."""
+    company_id: Indexed(str)
+    candidate_id: Indexed(str)
+    application_id: Indexed(str)
+    job_id: Indexed(str)
+    tracking_code: Indexed(str, unique=True)
+    secret_hash: str
+    active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: Optional[datetime] = None
+
+    class Settings:
+        name = "recruitment_candidate_portal_credentials"
+        indexes = [
+            IndexModel([("company_id", ASCENDING), ("candidate_id", ASCENDING), ("active", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("application_id", ASCENDING)], unique=True),
+        ]
+
+
 class Application(Document):
     """A candidate's application to one job; candidates are reusable people."""
     company_id: Indexed(str)
@@ -215,9 +237,16 @@ class Application(Document):
     job_id: Indexed(str)
     source: str = "portal"
     status: CandidateStatus = CandidateStatus.NEW
+    # Used only to restore an outcome application. Candidate.status is never a
+    # lifecycle authority for an application.
+    previous_status: Optional[CandidateStatus] = None
     assigned_recruiter_id: Optional[str] = None
     current_resume_id: Optional[str] = None
+    # Role-specific answers; never shared across a candidate's applications.
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
     tracking_code: Indexed(str, unique=True)
+    tracking_secret_hash: Optional[str] = None
+    tracking_secret_created_at: Optional[datetime] = None
     applied_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     deleted_at: Optional[datetime] = None
@@ -227,6 +256,7 @@ class Application(Document):
         indexes = [
             IndexModel([("company_id", ASCENDING), ("candidate_id", ASCENDING), ("job_id", ASCENDING)], unique=True),
             IndexModel([("company_id", ASCENDING), ("job_id", ASCENDING), ("status", ASCENDING), ("applied_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("applied_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("assigned_recruiter_id", ASCENDING), ("status", ASCENDING)]),
         ]
 
@@ -429,6 +459,8 @@ class InterviewFeedback(Document):
 class Offer(Document):
     company_id: Indexed(str)
     candidate_id: str
+    # Canonical ownership. Legacy offers may remain null until safely backfilled.
+    application_id: Optional[str] = None
     job_id: Optional[str] = None
     offer_number: Optional[str] = None
     offered_ctc: float = 0
@@ -471,6 +503,7 @@ class Offer(Document):
         name = "recruitment_offers"
         indexes = [
             IndexModel([("company_id", ASCENDING), ("candidate_id", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("application_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("job_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("offer_expiry", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("offer_number", ASCENDING)], unique=True, sparse=True),
@@ -499,6 +532,7 @@ class OfferAccessToken(Document):
     offer_id: Indexed(str)
     candidate_id: Indexed(str)
     token_hash: Indexed(str, unique=True)
+    access_token_encrypted: Optional[str] = None
     expires_at: datetime
     revoked_at: Optional[datetime] = None
     last_viewed_at: Optional[datetime] = None
@@ -601,6 +635,7 @@ class RecruitmentEmailDelivery(Document):
 class CandidateTimeline(Document):
     company_id: Indexed(str)
     candidate_id: Optional[str] = None
+    application_id: Optional[str] = None
     job_id: Optional[str] = None
     event_type: str
     payload: dict[str, Any] = Field(default_factory=dict)
@@ -609,7 +644,10 @@ class CandidateTimeline(Document):
 
     class Settings:
         name = "recruitment_timeline"
-        indexes = [IndexModel([("company_id", ASCENDING), ("candidate_id", ASCENDING), ("created_at", DESCENDING)])]
+        indexes = [
+            IndexModel([("company_id", ASCENDING), ("candidate_id", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("application_id", ASCENDING), ("created_at", DESCENDING)]),
+        ]
 
 
 class CandidateNote(Document):

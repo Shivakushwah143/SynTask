@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional, List
 from beanie import Document, Indexed
 from pydantic import Field
+from pymongo import DESCENDING, IndexModel
 from enum import Enum
 
 
@@ -72,4 +73,8 @@ class ChatMessage(Document):
             "company_id",
             "sender_id",
             "created_at",
+            # Message-history page scans sort by created_at desc within one
+            # conversation (polled on an 8s interval) — without this compound
+            # index Mongo sorts the whole conversation in memory per page.
+            IndexModel([("conversation_id", 1), ("created_at", DESCENDING)]),
         ]

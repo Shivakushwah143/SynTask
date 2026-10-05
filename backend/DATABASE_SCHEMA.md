@@ -2,17 +2,27 @@
 
 Database: `alphanexis_task_management`
 
-This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **56 unique MongoDB collection names** across **61 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
+This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **63 unique MongoDB collection names** across **68 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
+
+Recruitment models under `backend/app/recruitment/models.py` also define tenant-scoped collections. `recruitment_candidates` stores reusable person/profile data including `date_of_birth` when submitted. `recruitment_applications` stores the canonical job-specific hiring lifecycle with `company_id`, `candidate_id`, `job_id`, `status`, `previous_status`, `custom_fields`, globally unique `tracking_code`, hashed `tracking_secret_hash`, `tracking_secret_created_at`, `applied_at`, `updated_at`, and `deleted_at`. `custom_fields` stores recruiter-defined text answers for the current Job Application; it never modifies the reusable Candidate profile. A unique `(company_id, candidate_id, job_id)` relationship prevents duplicate applications while allowing one candidate to apply to multiple jobs. Offers, Interviews, and CandidateTimeline records carry optional `application_id` for safe legacy migration; all newly created Offers and Interviews require it. `recruitment_candidate_portal_credentials` is a temporary public tracking credential collection keyed by `company_id`, `candidate_id`, `application_id`, `job_id`, and `tracking_code`; it stores only `secret_hash`, never the temporary password. Application outcomes deactivate only the linked credential, preserving tracking for another active application belonging to the same candidate. Public candidate tracking verifies `tracking_code` plus PIN against a temporary credential hash and never exposes the hash or MongoDB id. `recruitment_offer_access_tokens` stores tenant-scoped offer access records with a token hash and optional encrypted raw token used to render public offer links in candidate tracking; public offer routes still verify the token hash and expiry before exposing offer details.
 
 ## Collection Summary
 
 | Collection | Model Class(es) | Purpose |
 |---|---|---|
+| `attendance` | Attendance, AttendanceSession, BreakLog, MonitoringSession, CameraSession, ScreenShareSession, AttendancePolicy, Holiday, AttendanceCorrectionRequest | Attendance check-in/out records, sessions, breaks, monitoring, policies, holidays, correction requests. Attendance rows carry an optional `source` marker (`etimeoffice` when written by the biometric sync). |
+| `attendance_sync_states` | ETimeOfficeSyncState | Company-scoped runtime state of the eTimeOffice biometric attendance sync (connection health, last run summary, in-flight guard). Never stores credentials. |
+| `ai_security_events` | AISecurityEvent | Immutable AI governance security decision audit log. Stores safe metadata only — never raw prompts, tool results, salaries, or credentials. Indexed on (company_id, created_at), (decision), (agent, capability), (user_id, created_at). Write failures must never grant access. |
+| `ai_traces` | AITrace | One AI request trace for the custom LLMOps observability system (tenant-scoped, privacy-safe). The custom `trace_id` remains authoritative; the optional `otel_trace_id` field (no index) cross-references the OpenTelemetry/Grafana Tempo infrastructure trace added in Topic 9. AI observability storage and retention are unchanged. |
 | `automation_executions` | AutomationExecution | AutomationExecution persistence collection. |
 | `automation_rules` | AutomationRule | AutomationRule persistence collection. |
 | `billing_transactions` | BillingTransaction | Billing invoices, payment state, Razorpay metadata. |
 | `changelogs` | ChangeLog | ChangeLog persistence collection. |
 | `chat_messages` | ChatMessage | Chat message records. |
+| `client_onboarding_items` | ClientOnboardingItem | Client onboarding layer items, derived status, validation metadata, links, and audit history. |
+| `client_onboardings` | ClientOnboarding | Client onboarding progress summary and activation blockers. |
+| `client_deliverables` | ClientDeliverable | Client-facing outputs linked to a Client Service, Project, Tasks, files, and approval state. |
+| `client_services` | ClientService | Purchased/active Client service records linked to existing Projects. |
 | `clients` | Client | Client CRM records and linked projects/documents. |
 | `companies` | Company | Tenant/company registration and account metadata. |
 | `company_subscriptions` | CompanySubscription | Company subscription state, module entitlements, usage counters. |
@@ -20,6 +30,11 @@ This document is generated from Beanie `Document` models under `backend/app/mode
 | `contact_sharing` | ContactSharing | Sales contact sharing permissions. |
 | `conversations` | Conversation | Chat conversation metadata. |
 | `epics` | Epic | Project epic records. |
+| `hr_documents` | HRDocument | HR document metadata: owner (employee/candidate), type, visibility, expiry, review status, and version linkage. Company-scoped. |
+| `hr_document_types` | HRDocumentType | Company-scoped document type catalog (Resume, Aadhaar, PAN, etc.) with `required`, `employee_upload_allowed`, and `default_visibility` flags. |
+| `hr_document_versions` | HRDocumentVersion | Stored file references and per-version review history for HR documents. Links to `hr_documents` via `document_id` (stored as str). |
+| `hr_document_requests` | HRDocumentRequest | HR-initiated document requests to employees: request lifecycle (`pending` → `submitted` → `approved`/`rejected`/`cancelled`), priority, due date, and linkage to fulfilled document. |
+| `employee_detail_change_requests` | EmployeeDetailChangeRequest | Employee self-service profile change requests: lifecycle (`pending` → `approved`/`rejected`/`cancelled`), atomic stale-data detection on approval, canonical mutation path. |
 | `invoices` | Invoice | Client invoice records, payments, tax, and PDF generation data. |
 | `issue_links` | IssueLink | IssueLink persistence collection. |
 | `issue_types` | IssueType | IssueType persistence collection. |
@@ -34,10 +49,13 @@ This document is generated from Beanie `Document` models under `backend/app/mode
 | `pages` | Page | Page persistence collection. |
 | `payment_webhooks` | PaymentWebhook | Payment webhook audit records. |
 | `projects` | Project | Project metadata, board columns, files, and settings. |
+| `recruitment_candidate_portal_credentials` | CandidatePortalCredential | Temporary public applicant tracking credentials; stores hashes only and is deleted on terminal candidate lifecycle states. |
 | `sales_business_categories` | BusinessCategory | BusinessCategory persistence collection. |
 | `sales_categories` | SalesCategory | Sales product/contact category master data. |
 | `sales_channels` | SalesChannel | Sales channel master data. |
 | `sales_contacts` | SalesContact | Sales CRM contacts. |
+| `sales_audits` | SalesAudit | Lead-scoped pre-conversion audit workspace and recommendations. |
+| `sales_discoveries` | SalesDiscovery | Lead-scoped pre-conversion discovery workspace. |
 | `sales_greeting_templates` | GreetingTemplate | GreetingTemplate persistence collection. |
 | `sales_nationalities` | Nationality | Nationality persistence collection. |
 | `sales_products` | SalesProduct | Sales product/service catalog entries. |
@@ -208,6 +226,45 @@ Indexes: `['conversation_id', 'company_id', 'sender_id', 'created_at']`
 | `is_edited` | `bool` | No | No | Model field |
 | `is_deleted` | `bool` | No | No | Model field |
 
+### `client_onboardings`
+
+#### Model: `ClientOnboarding`
+
+Indexes include unique `(company_id, client_id)` for one onboarding record per tenant-scoped Client.
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `client_id` | `str` | Yes | Yes | Linked Client id |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `status` | `ClientOnboardingStatus` | No | Yes | `in_progress`, `ready`, or `completed` |
+| `progress_percent` | `int` | No | No | Required item completion percentage |
+| `required_total` | `int` | No | No | Required item count |
+| `required_completed` | `int` | No | No | Completed required item count |
+| `blocking_item_keys` | `List[str]` | No | No | Required item keys currently blocking activation |
+| `next_action` | `Optional[str]` | No | No | Human-readable next action |
+| `started_at`, `completed_at`, `created_at`, `updated_at` | `datetime` | No | No | Lifecycle timestamps |
+
+### `client_onboarding_items`
+
+#### Model: `ClientOnboardingItem`
+
+Indexes include unique `(company_id, client_id, key)` so layer state is updated idempotently.
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `onboarding_id` | `str` | Yes | Yes | Parent onboarding id |
+| `client_id` | `str` | Yes | Yes | Linked Client id |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `key`, `label`, `layer`, `tab` | `str` | Yes | Yes | Layer identity and destination tab |
+| `required` | `bool` | No | Yes | Whether item blocks activation |
+| `status` | `ClientOnboardingItemStatus` | No | Yes | Derived layer status |
+| `completion_percent` | `int` | No | No | Derived completion percentage |
+| `assigned_owner_id` | `Optional[str]` | No | No | Owner reference where relevant |
+| `linked_entity_type`, `linked_entity_id` | `Optional[str]` | No | No | Existing Contact/Document/Project/Meeting/Client link |
+| `validation` | `Dict[str, Any]` | No | No | Validation metadata |
+| `audit_history` | `List[Dict[str, Any]]` | No | No | Actor/timestamp/status changes |
+| `notes`, `completed_at`, `created_at`, `updated_at` | mixed | No | No | Layer notes and timestamps |
+
 ### `clients`
 
 #### Model: `Client`
@@ -242,6 +299,75 @@ Indexes: `['company_id', 'email', 'status', 'assigned_to', 'created_by']`
 | `created_at` | `datetime.datetime` | No | No | Creation timestamp |
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 | `created_by` | `str` | Yes | Yes | Model field |
+
+Onboarding Phase 3 stores additive structured data in `Client.lifecycle_metadata.onboarding` without adding a duplicate business collection. Current keys are `commercial`, `requirements`, `asset_requirements`, `asset_submissions`, legacy-compatible `assets`, `access`, and `start_readiness`. `commercial` includes deal value, billing frequency, payment terms, engagement start date, and optional billing contact details. `requirements` includes business objective, scope, expected deliverables, target audience, important deadlines, competitors/references, preferences, special requirements, and client-facing notes. Asset requirements track name/category, required flag, description, status (`missing`, `requested`, `received`, `verified`, `replacement_required`), requested/received/verified timestamps, verifier, notes, same-client `file_refs`, and hashed per-asset request-link token metadata. Asset submissions track source, received contact/user/date, notes, files stored through existing Client file references, and many-to-many `requirement_ids`. Existing files can be linked to multiple asset requirements without duplicating the physical file. `access` remains a list of safe-reference rows with status and no plaintext secrets. `start_readiness` stores `ready`, `confirmed_by`, `confirmed_at`, and optional note.
+
+Phase 4 stores profile-only details in `Client.lifecycle_metadata.profile` with `commercial_summary` and `relationship_information`. Contact role assignments are stored in `Client.lifecycle_metadata.contact_roles` keyed by existing same-tenant `SalesContact` id; contact identities, primary contact flags, and CRM company membership stay in `sales_contacts`.
+
+Phase 7 stores renewal, churn, and archive workflow metadata in `Client.lifecycle_metadata` instead of introducing duplicate accounting records. `renewal` contains renewal date, contract/service end date, owner, status, value, payment terms, billing frequency, notes, updated actor/time, and append-only `renewal_history`. `churn` contains reason, end date, notes, calculated/provided revenue lost, actor/time, and append-only `churn_history`. `archive` contains reason, actor/time, and append-only `archive_history`. Finance totals are computed from existing `invoices.payments`, `client_services`, and `msas`; payments and invoice truth remain in their source collections.
+
+Phase 8 stores explainable Client Health metadata under `Client.lifecycle_metadata` instead of adding a duplicate health collection. `client_health` contains calculated score, level (`healthy`, `attention_needed`, `at_risk`, `critical`), reasons, source tabs, signal counts, calculated timestamp, next action, and active escalation reference. `client_health_history` and `client_health_level_history` preserve snapshots and level changes. `client_next_action` stores action, owner, due date, priority, related entity, status, and completion metadata. `client_health_escalation` stores one open escalation per unresolved issue key. Health calculations are tenant-scoped and derive from existing Tasks, Projects, Client Deliverables/approvals, Meetings, CRM/Inbox communication, Finance/Invoices, and Renewal metadata; Client lifecycle status is not overwritten by health.
+
+### `client_saved_views`
+| Field | Type | Required | Indexed | Notes |
+|---|---|---|---|---|
+| `name` | `str` | Yes | No | View label |
+| `company_id` | `str` | Yes | Yes | Tenant key |
+| `owner_id` | `str` | Yes | Yes | User who owns the view |
+| `filters` | `Dict[str, Any]` | No | No | Saved Client filters only; no Client records are copied |
+| `is_default` | `bool` | No | No | Reserved for seeded/default views |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `updated_at` | `datetime.datetime` | No | No | Update timestamp |
+
+Phase 9 uses `client_saved_views` for custom Client filter persistence. Built-in views such as My Clients, At Risk, Critical, Renewals This Month, Payment Follow-up, Delayed Delivery, and No Recent Activity are returned by API without duplicating Client rows. Built-in Client automation creates existing `tasks` and `notifications` and records idempotency in `automation_executions`.
+
+Phase 10 AI Client Intelligence does not add a new database collection. Briefs and answers are generated from compact same-tenant context loaded through `ClientWorkspaceService`, which reuses `clients`, `crm_companies`, `sales_contacts`, `client_services`, `projects`, `tasks`, `client_deliverables`, `meetings`, `crm_activities`, `invoices`, file references stored on existing records, and `Client.lifecycle_metadata` for Health, Next Action, Escalation, Renewal, Churn, and history. AI context excludes internal-note bodies and file contents, uses finance aggregates only, and redacts credential-like text before response generation.
+
+### `client_services`
+| Field | Type | Required | Indexed | Notes |
+|---|---|---|---|---|
+| `client_id` | `str` | Yes | Yes | Parent Client id |
+| `company_id` | `str` | Yes | Yes | Tenant key |
+| `name` | `str` | Yes | No | Service name |
+| `service_type` | `str` | No | No | Service category/type |
+| `status` | `str` | Yes | Yes | `planned`, `active`, `paused`, `ended` |
+| `pricing_value` | `float` | No | No | Service value |
+| `billing_cycle` | `str` | No | No | Billing cadence or payment terms |
+| `start_date`, `end_date` | `datetime` | No | No | Service window |
+| `service_owner_id` | `str` | No | Yes | Same-tenant user id |
+| `team_member_ids` | `list[str]` | No | Yes | Same-tenant users where applicable |
+| `linked_project_ids` | `list[str]` | No | Yes | Existing Project document ids |
+| `source_lead_id` | `str` | No | Yes | Sales handoff source for idempotency |
+| `source_category_id` | `str` | No | No | Sold category reference when available |
+| `notes` | `str` | No | No | Internal service notes |
+| `created_by`, `created_at`, `updated_at` | mixed | Yes | No | Audit timestamps/actor |
+
+Indexes include `company_id`, `client_id`, `status`, `service_owner_id`, `team_member_ids`, `linked_project_ids`, `source_lead_id`, compound `(company_id, client_id, updated_at)`, `(company_id, client_id, status)`, and `(company_id, source_lead_id)`. Tenant isolation is enforced by matching `Client.company_id`, `ClientService.company_id`, linked `Project.company_id`, and owner/team user `company_id`; cross-tenant project or user ids are rejected.
+
+### `client_deliverables`
+| Field | Type | Required | Indexed | Notes |
+|---|---|---|---|---|
+| `client_id` | `str` | Yes | Yes | Parent Client id |
+| `service_id` | `str` | Yes | Yes | Parent ClientService id |
+| `project_id` | `str` | Yes | Yes | Existing Project document id |
+| `company_id` | `str` | Yes | Yes | Tenant key |
+| `title` | `str` | Yes | Text | Client-facing output title |
+| `description` | `str` | No | Text | Deliverable description |
+| `owner_id` | `str` | No | Yes | Same-tenant owner |
+| `due_date` | `datetime` | No | Yes | Due date |
+| `status` | `str` | Yes | Yes | `planned`, `in_production`, `internal_review`, `client_review`, `revision_required`, `approved`, `delivered` |
+| `linked_files` | `list[dict]` | No | No | References to existing file/document records or URLs |
+| `linked_task_ids` | `list[str]` | No | Yes | Existing Work Task ids from the same Project |
+| `approval_status` | `str` | Yes | Yes | `not_sent`, `sent`, `viewed`, `approved`, `revision_requested` |
+| `approver_contact_id` | `str` | No | No | Existing CRM/SalesContact id |
+| `sent_at`, `viewed_at`, `approved_at`, `rejected_at`, `delivered_at` | `datetime` | No | No | Lifecycle timestamps |
+| `revision_note` | `str` | No | No | Last revision note |
+| `revision_count` | `int` | Yes | No | Incremented on revision requests |
+| `approval_history` | `list[dict]` | No | No | Approval/revision audit trail |
+| `public_token_hash`, `public_token_created_at` | mixed | No | No | Secure review token hash and creation timestamp |
+| `created_by`, `created_at`, `updated_at` | mixed | Yes | No | Audit timestamps/actor |
+
+Indexes include `company_id`, `client_id`, `service_id`, `project_id`, `status`, `approval_status`, `owner_id`, `due_date`, `linked_task_ids`, compound `(company_id, client_id, updated_at)`, `(company_id, service_id, project_id)`, and `(company_id, approval_status, due_date)`. Relationship validation requires the Service and Project to belong to the same Client tenant; linked Tasks must belong to the selected Project. Safe Project unlinking from a Service is blocked when a `client_deliverables` record references that service/project pair.
 
 ### `companies`
 
@@ -418,6 +544,142 @@ Indexes: `['project_id', 'company_id', 'owner_id']`
 | `created_at` | `datetime.datetime` | No | No | Creation timestamp |
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 
+### `hr_document_types`
+
+#### Model: `HRDocumentType`
+
+Indexes: `[(company_id, code) unique]`, `[(company_id, active)]`
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `id` | `Optional[ObjectId]` | No | Yes | Primary key |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `name` | `str` | Yes | No | Display name (e.g. "Resume", "Aadhaar Card") |
+| `code` | `str` | Yes | Yes | Machine-readable code, unique per company |
+| `description` | `Optional[str]` | No | No | Optional description |
+| `owner_scope` | `str` | No | No | `employee` / `candidate` / `both` |
+| `required` | `bool` | No | No | Whether this type is mandatory for employees |
+| `expiry_supported` | `bool` | No | No | Whether HR-side upload supports expiry date |
+| `default_visibility` | `str` | No | No | `employee_visible` / `hr_only` |
+| `employee_upload_allowed` | `bool` | No | No | Whether employees can self-upload this type |
+| `active` | `bool` | No | Yes | Soft-delete flag (never physically deleted) |
+| `created_by` | `Optional[str]` | No | No | Creator user ID |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `updated_at` | `datetime.datetime` | No | No | Update timestamp |
+
+### `hr_documents`
+
+#### Model: `HRDocument`
+
+Indexes: `company_id`, `[(company_id, employee_id)]`, `[(company_id, candidate_id)]`, `[(company_id, document_type_id)]`, `[(company_id, employee_id, status)]`, `[(company_id, employee_id, status, document_type_id)]`
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `id` | `Optional[ObjectId]` | No | Yes | Primary key |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `employee_id` | `Optional[str]` | No | Yes | Owner employee ID (XOR with candidate_id) |
+| `candidate_id` | `Optional[str]` | No | Yes | Owner candidate ID (XOR with employee_id) |
+| `owner_key` | `Optional[str]` | No | No | Canonical owner key (`employee:<id>` or `candidate:<id>`) |
+| `document_type_id` | `Optional[str]` | No | Yes | FK to `hr_document_types` |
+| `current_version_id` | `Optional[str]` | No | No | FK to active `hr_document_versions` |
+| `current_version_number` | `int` | No | No | Current version counter |
+| `status` | `str` | No | No | `active` / `archived` |
+| `expiry_date` | `Optional[datetime]` | No | No | Date-based expiry (midnight UTC) |
+| `description` | `Optional[str]` | No | No | User-provided description |
+| `visibility` | `str` | No | No | `employee_visible` / `hr_only` |
+| `submission_source` | `Optional[str]` | No | No | `hr` / `employee` |
+| `review_status` | `Optional[str]` | No | No | `pending` / `approved` / `rejected` |
+| `reviewed_by` | `Optional[str]` | No | No | Reviewer user ID |
+| `reviewed_at` | `Optional[datetime]` | No | No | Review timestamp |
+| `review_note` | `Optional[str]` | No | No | Rejection reason |
+| `uploaded_by` | `Optional[str]` | No | No | Uploader user ID |
+| `archived_at` | `Optional[datetime]` | No | No | Archive timestamp |
+| `archived_by` | `Optional[str]` | No | No | Archive actor user ID |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `updated_at` | `datetime.datetime` | No | No | Update timestamp |
+
+### `hr_document_versions`
+
+#### Model: `HRDocumentVersion`
+
+Indexes: `[(document_id, version_number) unique]`, `[(company_id, document_id, uploaded_at)]`
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `id` | `Optional[ObjectId]` | No | Yes | Primary key |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `document_id` | `str` | Yes | Yes | FK to `hr_documents` (stored as str) |
+| `version_number` | `int` | Yes | Yes | Version counter (unique per document) |
+| `original_filename` | `str` | Yes | No | Original upload filename |
+| `mime_type` | `str` | Yes | No | Detected MIME type |
+| `file_size` | `int` | Yes | No | File size in bytes |
+| `storage_provider` | `str` | No | No | `local` / `cloudinary` |
+| `storage_reference` | `Optional[str]` | No | No | Relative path or Cloudinary public_id |
+| `storage_url` | `Optional[str]` | No | No | Cloudinary URL if applicable |
+| `checksum` | `Optional[str]` | No | No | SHA-256 checksum |
+| `submission_source` | `Optional[str]` | No | No | `hr` / `employee` (per-version review history) |
+| `review_status` | `Optional[str]` | No | No | `pending` / `approved` / `rejected` |
+| `reviewed_by` | `Optional[str]` | No | No | Reviewer user ID |
+| `reviewed_at` | `Optional[datetime]` | No | No | Review timestamp |
+| `review_note` | `Optional[str]` | No | No | Rejection reason |
+| `uploaded_by` | `Optional[str]` | No | No | Uploader user ID |
+| `uploaded_at` | `datetime.datetime` | No | No | Upload timestamp |
+| `change_note` | `Optional[str]` | No | No | Why this version was created |
+
+### `hr_document_requests`
+
+#### Model: `HRDocumentRequest`
+
+Indexes: `[(company_id, employee_id, status)]`, `[(company_id, status)]`, `[(company_id, employee_id, document_type_id)]`, `[(company_id, due_date)]`, `[(employee_id, status)]`
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `id` | `Optional[ObjectId]` | No | Yes | Primary key |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `employee_id` | `str` | Yes | Yes | Target employee ID |
+| `document_type_id` | `Optional[str]` | No | Yes | FK to `hr_document_types` (null for free-form) |
+| `document_type_name` | `str` | Yes | No | Display name for the requested document |
+| `requirement_level` | `str` | No | No | `mandatory` / `optional` |
+| `priority` | `str` | No | No | `low` / `normal` / `high` / `urgent` |
+| `instructions` | `Optional[str]` | No | No | HR instructions for the employee |
+| `due_date` | `Optional[datetime]` | No | Yes | Deadline for document submission |
+| `status` | `str` | No | Yes | `pending` → `submitted` → `approved` / `rejected` / `cancelled` |
+| `requested_by` | `str` | Yes | No | HR/Admin user ID who created the request |
+| `requested_at` | `datetime.datetime` | No | No | Request creation timestamp |
+| `submitted_at` | `Optional[datetime]` | No | No | When employee uploaded the document |
+| `reviewed_at` | `Optional[datetime]` | No | No | When HR reviewed the linked document |
+| `fulfilled_document_id` | `Optional[str]` | No | No | FK to `hr_documents` after upload |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `updated_at` | `datetime.datetime` | No | No | Update timestamp |
+
+### `employee_detail_change_requests`
+
+#### Model: `EmployeeDetailChangeRequest`
+
+Indexes: `[(company_id, status, created_at)]`, `[(company_id, employee_id, created_at)]`, `[(company_id, employee_id, status)]`, `[(company_id, requested_by, created_at)]`
+
+Employee self-service change request workflow. Manager/Lead/Employee roles submit change requests for their own profile fields. Admin/SubAdmin can edit directly (bypassing this workflow). Approval uses atomic stale-data detection: the original snapshot is compared against the current profile state before applying.
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `id` | `Optional[ObjectId]` | No | Yes | Primary key |
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `employee_id` | `str` | Yes | Yes | FK to `employee_profiles` |
+| `user_id` | `str` | Yes | No | FK to `users` |
+| `requested_by` | `str` | Yes | Yes | User ID who created the request |
+| `request_type` | `str` | No | No | `personal_info` / `employment_info` / `mixed` |
+| `original_values` | `Dict[str, Any]` | No | No | Snapshot of field values when the request was created |
+| `requested_changes` | `Dict[str, Any]` | No | No | The new values requested |
+| `changed_fields` | `List[str]` | No | No | Field names being changed |
+| `reason` | `Optional[str]` | No | No | Employee-provided reason |
+| `status` | `str` | No | Yes | `pending` → `approved` / `rejected` / `cancelled` |
+| `reviewed_by` | `Optional[str]` | No | No | Reviewer user ID |
+| `reviewed_at` | `Optional[datetime]` | No | No | Review timestamp |
+| `review_comment` | `Optional[str]` | No | No | Reviewer comment |
+| `rejection_reason` | `Optional[str]` | No | No | Rejection reason (including auto-rejection) |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `updated_at` | `datetime.datetime` | No | No | Last update timestamp |
+
 ### `invoices`
 
 #### Model: `Invoice`
@@ -548,7 +810,7 @@ Indexes: `['employee_id', 'company_id', 'employee_role', 'status', 'leave_type',
 
 #### Model: `Meeting`
 
-Indexes: `['company_id', 'created_by', 'meeting_date', 'status']`
+Indexes include `company_id`, `created_by`, `meeting_date`, `status`, `client_id`, `project_id`, `contact_id`, compound `(company_id, client_id, meeting_date)`, `(company_id, project_id, meeting_date)`, and `(company_id, contact_id, meeting_date)`.
 
 | Field | Type | Required | Indexed | Description |
 |---|---|---|---|---|
@@ -560,6 +822,9 @@ Indexes: `['company_id', 'created_by', 'meeting_date', 'status']`
 | `created_by` | `str` | Yes | Yes | Model field |
 | `host_id` | `str` | Yes | No | Model field |
 | `participant_ids` | `List[str]` | No | No | Model field |
+| `client_id` | `Optional[str]` | No | Yes | Explicit linked Client id for Client Workspace meeting history |
+| `project_id` | `Optional[str]` | No | Yes | Explicit linked Project id |
+| `contact_id` | `Optional[str]` | No | Yes | Explicit linked same-tenant CRM Contact id |
 | `meeting_date` | `datetime.datetime` | Yes | Yes | Model field |
 | `meeting_time` | `str` | Yes | No | Model field |
 | `duration` | `int` | No | No | Model field |
@@ -574,6 +839,8 @@ Indexes: `['company_id', 'created_by', 'meeting_date', 'status']`
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 | `started_at` | `Optional[datetime.datetime]` | No | No | Model field |
 | `ended_at` | `Optional[datetime.datetime]` | No | No | Model field |
+
+Phase 6 Client Activity is an aggregation layer, not a new collection. It reads tenant-scoped existing records from Client, CRM Company/Contact, `crm_activities`, Meta Inbox conversations/messages where linked to same-tenant CRM Contacts, Meetings, Projects, Tasks, Client Services, Client Deliverables, Client document references, and Invoices. Internal CRM notes remain separate from client-facing communication.
 
 ### `msas`
 
@@ -919,6 +1186,56 @@ Indexes: `['company_id', 'category_id', 'name', 'deleted']`
 | `created_at` | `datetime.datetime` | No | No | Creation timestamp |
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 
+### `sales_discoveries`
+
+#### Model: `SalesDiscovery`
+
+Indexes: unique `('company_id', 'lead_id')`, plus `('company_id', 'status', 'updated_at')`.
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `lead_id` | `str` | Yes | Yes | Existing `sales_prospects` lead reference |
+| `status` | `SalesWorkspaceStatus` | No | Yes | `draft`, `in_progress`, or `completed` |
+| `business_information` | `Dict[str, Any]` | No | No | Structured business profile; does not duplicate authoritative lead identity fields |
+| `current_marketing` | `Dict[str, Any]` | No | No | Website/social/current activity and spend snapshot |
+| `problems` | `Dict[str, Any]` | No | No | Selected pain points plus notes |
+| `goals` | `Dict[str, Any]` | No | No | Primary goal, secondary goals, expected outcome, timeframe |
+| `budget` | `Dict[str, Any]` | No | No | Budget context; `SalesProspect.budget` remains authoritative for numeric budget |
+| `decision_maker` | `Dict[str, Any]` | No | No | Decision-maker process/details; `SalesProspect.decision_maker` remains authoritative for the primary name |
+| `competitors` | `List[Dict[str, Any]]` | No | No | Structured competitor references |
+| `timeline` | `Dict[str, Any]` | No | No | Start/decision/duration/urgency details; `SalesProspect.timeline` remains authoritative for the primary timeline |
+| `summary` | `Dict[str, Any]` | No | No | Salesperson summary and recommended action |
+| `completion` | `Dict[str, Any]` | No | No | Calculated percent/checklist snapshot |
+| `version` | `int` | No | No | Incremented on partial update for quotation source snapshots |
+| `created_by`, `updated_by`, `completed_by` | `Optional[str]` | No | No | User IDs for auditability |
+| `created_at`, `updated_at`, `completed_at` | `datetime` | No | No | Lifecycle timestamps |
+
+### `sales_audits`
+
+#### Model: `SalesAudit`
+
+Indexes: unique `('company_id', 'lead_id')`, plus `('company_id', 'status', 'updated_at')`.
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `company_id` | `str` | Yes | Yes | Tenant scope key |
+| `lead_id` | `str` | Yes | Yes | Existing `sales_prospects` lead reference |
+| `status` | `SalesWorkspaceStatus` | No | Yes | `draft`, `in_progress`, or `completed` |
+| `audit_source` | `str` | No | No | `manual` now; future-compatible with `ai` or `hybrid` |
+| `website` | `Dict[str, Any]` | No | No | Website audit observations |
+| `google_presence` | `Dict[str, Any]` | No | No | Google Business Profile/local visibility observations |
+| `social_media` | `Dict[str, Any]` | No | No | Channel observations |
+| `seo` | `Dict[str, Any]` | No | No | SEO findings designed for future crawler/AI population |
+| `competitors` | `List[Dict[str, Any]]` | No | No | Competitor audit observations |
+| `swot` | `Dict[str, Any]` | No | No | Strengths, weaknesses, opportunities, risks lists |
+| `recommendations` | `List[Dict[str, Any]]` | No | No | Structured recommendation cards with priority, impact, suggested service, and proposal inclusion flag |
+| `findings` | `List[Dict[str, Any]]` | No | No | Future-compatible finding records with source/confidence/review metadata |
+| `completion` | `Dict[str, Any]` | No | No | Calculated percent/checklist snapshot |
+| `version` | `int` | No | No | Incremented on partial update for quotation source snapshots |
+| `created_by`, `updated_by`, `completed_by` | `Optional[str]` | No | No | User IDs for auditability |
+| `created_at`, `updated_at`, `completed_at` | `datetime` | No | No | Lifecycle timestamps |
+
 ### `sales_prospects`
 
 #### Model: `SalesProspect`
@@ -934,7 +1251,7 @@ Indexes: includes a partial unique `('company_id', 'meta_lead_id')` index for Me
 | `prospect_name` | `str` | Yes | No | Model field |
 | `country_code` | `str` | Yes | Yes | Model field |
 | `phone` | `Optional[Indexed[str]]` | No | Yes | Model field. Optional so bulk file import can create rows without a mobile number (no unique index — duplicates allowed). |
-| `email` | `Optional[EmailStr]` | No | No | Model field |
+| `email` | `Optional[str]` | No | No | Model field. Stored as a plain string on purpose — legacy/imported records may carry non-email values and reads must never 500. Write paths sanitize via `LeadEngine._sanitize_email`; invalid values are stored as `None`. Run `scripts/cleanup_invalid_lead_emails.py` once to clear existing dirty values. |
 | `contact_id` | `Optional[str]` | No | Yes | Model field |
 | `category_id` | `Optional[str]` | No | Yes | Model field |
 | `product_ids` | `List[str]` | No | No | Model field |
@@ -942,6 +1259,7 @@ Indexes: includes a partial unique `('company_id', 'meta_lead_id')` index for Me
 | `estimated_close_date` | `Optional[datetime.datetime]` | No | No | Model field |
 | `assigned_to` | `str` | Yes | Yes | Model field |
 | `assigned_by` | `Optional[str]` | No | Yes | Model field |
+| `referred_by` | `Optional[str]` | No | No | User ID of the employee/manager who referred the lead (optional) |
 | `current_stage` | `str` | No | Yes | Model field |
 | `due_date` | `Optional[datetime.datetime]` | No | No | Model field |
 | `due_time` | `Optional[str]` | No | No | Model field |
@@ -968,7 +1286,15 @@ Indexes: includes a partial unique `('company_id', 'meta_lead_id')` index for Me
 | `closed_date` | `Optional[datetime.datetime]` | No | No | Model field |
 | `closed_by` | `Optional[str]` | No | No | Model field |
 | `reason_for_lost` | `Optional[str]` | No | No | Model field |
-| `won_amount` | `Optional[float]` | No | No | Model field |
+| `won_amount` | `Optional[float]` | No | No | Deal amount; also reused as Negotiation final agreed amount |
+| `negotiation_status` | `Optional[str]` | No | No | Negotiation inner status (`negotiation_started`, `waiting_client`, `waiting_internal`, `discount_approval`, `final_offer`, `accepted`, `rejected`) |
+| `negotiation_notes` | `Optional[str]` | No | No | Negotiation notes |
+| `customer_counter_offer` | `Optional[float]` | No | No | Customer counter-offer amount |
+| `discount` | `Optional[float]` | No | No | Negotiated discount amount |
+| `final_scope` | `Optional[str]` | No | No | Final negotiated scope |
+| `payment_terms` | `Optional[str]` | No | No | Final negotiated payment terms |
+| `client_conditions` | `Optional[str]` | No | No | Client conditions captured during negotiation |
+| `accepted_quotation_reference` | `Optional[str]` | No | No | Accepted quotation/document reference shown in Negotiation workspace |
 | `company_id` | `Optional[str]` | No | Yes | Tenant scope key |
 | `created_by` | `Optional[str]` | No | No | Model field |
 | `deleted` | `bool` | No | Yes | Model field |
@@ -1159,9 +1485,13 @@ Indexes: `['company_id', 'created_by', 'assigned_to', 'status', 'priority', 'pro
 | `assigned_by` | `Optional[str]` | No | No | Model field |
 | `status` | `<enum 'TaskStatus` | No | Yes | Model field |
 | `priority` | `<enum 'TaskPriority` | No | Yes | Model field |
-| `due_date` | `Optional[datetime.datetime]` | No | No | Model field |
+| `due_date` | `Optional[datetime.datetime]` | No | No | Original commitment; never rewritten by carry forward, and the source for task health, overdue filters, and at-risk analysis. |
 | `start_date` | `Optional[datetime.datetime]` | No | No | Model field |
 | `completed_at` | `Optional[datetime.datetime]` | No | No | Model field |
+| `carry_forward_due_date` | `Optional[datetime.datetime]` | No | No | Effective deadline after automatic carry forward (midnight of the day it was carried); null until a task's first carry forward. |
+| `carry_forward_days` | `int` | No | No | Accumulated days the effective deadline has been moved; grows by one for every further day an open task stays past its original due date. |
+| `carry_forward_count` | `int` | No | No | Number of carry-forward adjustments applied to the task. |
+| `carry_forward_last_at` | `Optional[datetime.datetime]` | No | No | When the last carry-forward adjustment was applied; also the per-day idempotency guard shared by the daily job and read-time catch-up. |
 | `attachments` | `List[str]` | No | No | Model field |
 | `tags` | `List[str]` | No | No | Model field |
 | `parent_task_id` | `Optional[str]` | No | No | Model field |
@@ -1719,6 +2049,39 @@ Indexes: `['company_id', 'project_id', 'is_active']`
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 | `created_by` | `str` | Yes | No | Model field |
 
+### `attendance`
+
+#### Model: `Attendance` (fields relevant to the eTimeOffice sync)
+
+Indexes: `['employee_id', 'company_id', 'date', 'status', unique (company_id, employee_id, date)]`
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `employee_id` | `str` | Yes | Yes | SynTask User id (the employee). |
+| `company_id` | `str` | Yes | Yes | Tenant scope key; every query must filter by it. |
+| `date` | `str` (`YYYY-MM-DD`) | Yes | Yes | Calendar day in the company timezone. |
+| `login_time` / `logout_time` | `datetime.datetime` | No | No | Naive-UTC check-in/out instants (converted from the device wall clock in `ETIMEOFFICE_TIMEZONE`). |
+| `total_working_hours` / `break_duration` | `float` | Yes | No | Seconds (work excludes break time, matching vendor arithmetic). |
+| `status` | `AttendanceStatus` | Yes | Yes | `Checked Out` for closed days, `Working` for an in-progress day. |
+| `source` | `Optional[str]` | No | No | `None` (manual app check-in) or `etimeoffice` (biometric sync). The sync never overwrites manual records and manual flows never overwrite biometric records. |
+| `external_employee_code` | `Optional[str]` | No | No | Provider employee identifier (eTimeOffice `Empcode`) that produced the record — audit/reconciliation only, never RBAC. Employees appear in rows for the employee they were mapped to when the row was synced; reassignment of historical rows is an audited one-time operation (`scripts/reconcile_etimeoffice_mappings.py`). |
+
+### `etimeoffice_employee_mappings`
+
+#### Model: `ETimeOfficeEmployeeMapping`
+
+Indexes: `unique (company_id, provider, external_employee_code)`; `unique (company_id, provider, employee_id)` (partial — only when `employee_id` is set, so one SynTask employee maps to at most one eTimeOffice code).
+
+One document per eTimeOffice employee of a company. `external_employee_name` is directory metadata refreshed from every provider fetch (never used for resolution); `employee_id` (SynTask User id) is set only when HR explicitly confirms the mapping in the Attendance UI. Attendance sync resolves punches **only** through this table — numeric-suffix inference from `employee_number` was removed. Company B can never see or map Company A's rows.
+
+### `attendance_sync_states`
+
+#### Model: `ETimeOfficeSyncState`
+
+Indexes: `unique (company_id, provider)`
+
+One document per (company, `etimeoffice` provider). Stores only safe metadata: `connected`, `last_attempted_at`, `last_successful_at`, `last_error`, `last_summary` (last run outcome), and the `syncing` in-flight guard. Credentials, cookies, CSRF tokens, and session ids are never stored.
+
 ## Relationships Diagram
 
 ```mermaid
@@ -1746,3 +2109,99 @@ Indexes are listed under each model above. Most tenant-owned collections include
 
 ## Missing Indexes and Technical Debt
 No automated index audit exists yet. Phase 6 should review compound indexes for common dashboard, board, ticket, sales report, and time tracking queries.
+# Project Foundation Phase 1
+
+`projects` keeps logical `project_id` as the user-visible identifier and MongoDB `_id` as the internal identifier. Phase 1 adds `priority` with allowed values `low`, `medium`, `high`, and `critical`; missing legacy values are treated as `medium`. `client_id` is the canonical client relationship, while `clients.project_ids` remains a compatibility reference maintained during create/update/delete.
+
+`project_type_configurations` stores company-scoped project type options:
+
+- `company_id`
+- `value`
+- `label`
+- `is_default`
+- `active`
+- `created_by`
+- timestamps
+
+# Task Workflow Phase 2
+
+`tasks` remains tenant-scoped by `company_id`. Phase 2 adds the strict execution/review lifecycle statuses `todo`, `assigned`, `in_progress`, `in_review`, `revision_required`, `approved`, `completed`, and `cancelled`.
+
+Generated template and recurring scheduled-work task markers use partial unique index `tasks_template_and_schedule_source_marker` on `company_id`, `source_type`, `related_entity_type`, and `related_entity_id`. The partial filter includes only `source_type in ["project_template", "scheduled_work"]` with string `related_entity_id`; Sales follow-up tasks are excluded because multiple follow-up tasks for the same lead are valid history.
+
+Task workflow fields:
+
+- `assigned_at`: timestamp set when an assignee is assigned.
+- `review_required`: nullable boolean; missing legacy values resolve from source/project context.
+- `reviewer_id`: same-tenant reviewer user id.
+- `review_round`: count of review submissions.
+- `submitted_for_review_at`, `submitted_for_review_by`
+- `revision_requested_at`, `revision_requested_by`, `latest_revision_reason`
+- `approved_at`, `approved_by`
+- `completed_by`
+- `status_changed_at`
+
+Checklist entries are stored in `tasks.checklist` as objects with `id`, `text`, `completed`, `required`, `created_at`, `completed_at`, and `completed_by`. Dependencies remain stored as task-id strings in `tasks.dependencies`; write paths reject self-dependencies, cross-tenant dependencies, and dependency cycles.
+
+Additional task indexes support review queues and status filtering:
+
+- `reviewer_id`
+- compound `company_id`, `reviewer_id`, `status`
+
+# Work Requests and Recurring Scheduled Work Phase 4
+
+`work_requests` is tenant-scoped by `company_id`. Each record has a logical `request_id`, `type`, `title`, `description`, `status`, `priority`, requester/reviewer/resolver user ids, optional project/task/client context, reason/change metadata, timestamps for review/decision/conversion/cancel, and converted Task/Project references.
+
+Work Request statuses are `submitted`, `under_review`, `approved`, `rejected`, `converted`, and `cancelled`. Request types are `new_work`, `change_request`, `approval_request`, `deadline_extension`, `resource_request`, `blocker`, `leave_availability`, `client_request`, and `other`.
+
+Work Request indexes:
+
+- unique `request_id`
+- compound `company_id`, `status`, `updated_at`
+- compound `company_id`, `requested_by`
+- compound `company_id`, `assigned_reviewer_id`, `status`
+- compound `company_id`, `project_id`, `status`
+- text index on title and description
+
+`scheduled_jobs` now supports `schedule_type` values `one_time` and `recurring`, `enabled`, `recurrence`, `timezone`, `next_run_at`, `last_run_at`, and `occurrence_count`. Existing status, payload, retry, result, creator, and tenant fields remain.
+
+`scheduled_job_occurrences` stores execution history per scheduled run. Each occurrence is scoped by `company_id` and has `scheduled_job_id`, unique `occurrence_id`, `scheduled_at`, status, result type/id, error, retry count, started/completed timestamps, and created/updated timestamps. A unique compound index on `scheduled_job_id` and `scheduled_at` prevents duplicate occurrence rows for the same scheduled run.
+
+# Time Tracking and Project Control Phase 5
+
+`active_time_sessions` stores backend-authoritative live timers. Each user can have one active session per company through a unique compound `company_id`, `user_id` index. Fields include `task_id`, optional `project_id` and `client_id`, `started_at`, `last_resumed_at`, `paused_at`, `accumulated_seconds`, `status` (`running` or `paused`), and timestamps.
+
+`time_logs` remains the source of truth for finalized recorded time. Phase 5 adds `source` (`timer`, `manual`, `system`), optional `project_id` and `client_id`, creator/updater audit fields, and void metadata (`voided`, `voided_at`, `voided_by`, `void_reason`) so corrections do not silently erase history.
+
+Additional time indexes:
+
+- compound `company_id`, `user_id`, `date`
+- compound `company_id`, `project_id`, `date`
+- compound `company_id`, `task_id`, `date`
+- `project_id`, `client_id`, and `source`
+
+`tasks.required_for_project_completion` defaults to true. Optional compatibility work can set it false so it does not block project completion readiness.
+
+`projects` stores completion metadata: `completed_at`, `completed_by`, `client_delivery_completed`, `client_delivery_completed_at`, and `client_delivery_completed_by`.
+# Project Resources and Task Proofs
+
+`project_resources`: `_id`, `company_id`, `project_id` (logical Project id),
+`name`, `value`, `created_by`, `created_at`, `updated_at`. Indexed by
+`(company_id, project_id, created_at)`.
+
+`task_proofs`: `_id`, `company_id`, `task_id`, `submitted_by`, `name`, `value`,
+`context` (`progress_update` or `review_submission`), `created_at`. Indexed by
+`(company_id, task_id, created_at)`. There is no draft-progress collection;
+draft quantity is frontend-only.
+
+# Content Publishing Index Migration
+
+`content_publishing_records.content_item_id` has a unique index
+(`content_item_id_1`) because a content item has one canonical publishing
+record. At startup the database preflight upgrades a legacy non-unique index
+with the same name after checking for duplicates. The migration only drops the
+old index; Beanie recreates the unique canonical index. If duplicates exist,
+startup stops with the affected item id and no index is changed. Resolve or
+merge those duplicate publishing records before restarting. To roll back, drop
+the unique index manually and recreate a non-unique `content_item_id_1` index;
+this is only appropriate while rolling back the application code as well.

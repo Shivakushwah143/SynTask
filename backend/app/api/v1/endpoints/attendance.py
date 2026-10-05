@@ -34,6 +34,23 @@ ws_router = APIRouter()
 STANDARD_WORK_SECONDS = 8 * 3600  # 28800 seconds = 8 hours
 LATE_CLOCK_IN_HOUR_UTC = 9        # 9:00 AM UTC
 
+# Attendance rows written by the eTimeOffice biometric sync. Manual flows
+# (check-in, breaks, check-out) must never mutate them — the UI hides those
+# actions for biometric days, and the server rejects them as defense in depth
+# so biometric records are never overwritten, reopened, or deleted manually.
+BIOMETRIC_SOURCE = "etimeoffice"
+
+
+def _is_biometric(attendance: Optional[Attendance]) -> bool:
+    """True when the row was written by the biometric provider sync."""
+    return attendance is not None and getattr(attendance, "source", None) == BIOMETRIC_SOURCE
+
+
+def _reject_biometric_mutation(attendance: Optional[Attendance], detail: str) -> None:
+    """Raise 409 when a manual action targets a biometric attendance row."""
+    if _is_biometric(attendance):
+        raise HTTPException(status_code=409, detail=detail)
+
 
 def compute_work_type(total_seconds: float) -> dict:
     """Compute work type and overtime from total working seconds."""
@@ -104,6 +121,7 @@ def _attendance_response(attendance: Optional[Attendance], current_user: User, n
         "date": attendance.date,
         "status": mvp_status,
         "legacy_status": attendance.status.value,
+        "is_late": attendance.is_late,
         "check_in_at": attendance.login_time.isoformat() if attendance.login_time else None,
         "check_out_at": attendance.logout_time.isoformat() if attendance.logout_time else None,
         "login_time": attendance.login_time.isoformat() if attendance.login_time else None,
@@ -116,6 +134,8 @@ def _attendance_response(attendance: Optional[Attendance], current_user: User, n
         "overtime_seconds": wt["overtime_seconds"],
         "work_type": "Completed" if mvp_status == "checked_out" else ("On Break" if mvp_status == "on_break" else "Working"),
         "server_time": server_time,
+        "source": getattr(attendance, "source", None),
+        "external_employee_code": getattr(attendance, "external_employee_code", None),
         "camera_permission_status": attendance.camera_permission_status,
         "screen_sharing_status": attendance.screen_sharing_status,
     }
@@ -765,6 +785,10 @@ async def check_in(current_user: User = Depends(get_current_user)):
         Attendance.date == today_str,
     )
     if attendance:
+        _reject_biometric_mutation(
+            attendance,
+            "Checked in via biometric — manual check-in is not available for this day",
+        )
         if attendance.status in [AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK]:
             return {"success": True, "data": _attendance_response(attendance, current_user, now_utc)}
         raise HTTPException(status_code=409, detail="Attendance already exists for today")
@@ -787,6 +811,10 @@ async def check_in(current_user: User = Depends(get_current_user)):
         await attendance.insert()
     except DuplicateKeyError:
         attendance = await _get_today_record(current_user)
+        _reject_biometric_mutation(
+            attendance,
+            "Checked in via biometric — manual check-in is not available for this day",
+        )
         if attendance and attendance.status in [AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK]:
             return {"success": True, "data": _attendance_response(attendance, current_user, now_utc)}
         raise HTTPException(status_code=409, detail="Attendance already exists for today")
@@ -798,6 +826,10 @@ async def start_break(current_user: User = Depends(get_current_user)):
     company_id = _company_required(current_user)
     now_utc = utc_now()
     today_str = ClockService.user_today_str(current_user)
+    _reject_biometric_mutation(
+        await _get_today_record(current_user),
+        "Biometric attendance is managed by eTimeOffice and cannot be paused manually",
+    )
     collection = Attendance.get_pymongo_collection()
     result = await collection.find_one_and_update(
         {
@@ -807,6 +839,7 @@ async def start_break(current_user: User = Depends(get_current_user)):
             "status": AttendanceStatus.WORKING.value,
             "current_break_started_at": None,
             "logout_time": None,
+            "source": {"$ne": BIOMETRIC_SOURCE},
         },
         {"$set": {"status": AttendanceStatus.ON_BREAK.value, "current_break_started_at": now_utc, "updated_at": now_utc}},
         return_document=ReturnDocument.AFTER,
@@ -822,6 +855,10 @@ async def end_break(current_user: User = Depends(get_current_user)):
     company_id = _company_required(current_user)
     now_utc = utc_now()
     attendance = await _get_today_record(current_user)
+    _reject_biometric_mutation(
+        attendance,
+        "Biometric attendance is managed by eTimeOffice and cannot be changed manually",
+    )
     if not attendance or attendance.status != AttendanceStatus.ON_BREAK or not attendance.current_break_started_at:
         raise HTTPException(status_code=409, detail="Resume requires an open break")
     elapsed_break = int(max(0, (now_utc - attendance.current_break_started_at).total_seconds()))
@@ -833,6 +870,7 @@ async def end_break(current_user: User = Depends(get_current_user)):
             "employee_id": str(current_user.id),
             "status": AttendanceStatus.ON_BREAK.value,
             "current_break_started_at": attendance.current_break_started_at,
+            "source": {"$ne": BIOMETRIC_SOURCE},
         },
         {
             "$inc": {"break_duration": elapsed_break},
@@ -853,6 +891,10 @@ async def check_out(current_user: User = Depends(get_current_user)):
     attendance = await _get_today_record(current_user)
     if not attendance:
         raise HTTPException(status_code=409, detail="Check out requires an active attendance record")
+    _reject_biometric_mutation(
+        attendance,
+        "Biometric attendance is managed by eTimeOffice and cannot be checked out manually",
+    )
     if attendance.logout_time:
         return {"success": True, "data": _attendance_response(attendance, current_user, now_utc)}
     if attendance.status not in [AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK]:
@@ -871,6 +913,7 @@ async def check_out(current_user: User = Depends(get_current_user)):
             "employee_id": str(current_user.id),
             "status": {"$in": [AttendanceStatus.WORKING.value, AttendanceStatus.ON_BREAK.value]},
             "logout_time": None,
+            "source": {"$ne": BIOMETRIC_SOURCE},
         },
         {
             "$set": {
@@ -899,7 +942,18 @@ async def get_my_attendance_history(
     end_date: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
 ):
-    return await get_attendance_history(start_date=start_date, end_date=end_date, employee_id=None, status=None, current_user=current_user)
+    """The caller's own attendance history — strictly self-scoped for every
+    role so the personal Attendance page shows exactly one row per date and
+    never another employee's records."""
+    records = await _attendance_history_records(
+        current_user,
+        start_date,
+        end_date,
+        employee_id=None,
+        status=None,
+        self_only=True,
+    )
+    return {"success": True, "data": records}
 
 
 @router.get("/today")
@@ -1039,31 +1093,40 @@ async def get_live_monitoring(current_user: User = Depends(get_current_user)):
 # -----------------------------------------------------------------------------
 # HTTP Endpoints - Attendance History & Reports
 # -----------------------------------------------------------------------------
-@router.get("/history")
-async def get_attendance_history(
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None),
-    employee_id: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user)
-):
-    """Fetch attendance record history logs"""
+async def _attendance_history_records(
+    current_user: User,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    employee_id: Optional[str],
+    status: Optional[str],
+    *,
+    self_only: bool,
+) -> list:
+    """Shared attendance-history loader.
+
+    ``self_only`` (used by /me/history) pins the query to the authenticated
+    user's own rows for every role, so a manager/admin's personal Attendance
+    page can never leak other employees' records into their self view. The
+    company-wide/team /history endpoint passes ``self_only=False`` and keeps
+    role-based scoping for HR Reports. Managers can review their company's
+    attendance records; Leads remain limited to their reporting hierarchy.
+    """
     company_id = current_user.company_id
 
     query = {}
     if current_user.role != UserRole.SUPER_ADMIN:
         query["company_id"] = company_id
 
-    if current_user.role == UserRole.EMPLOYEE:
+    if self_only or current_user.role == UserRole.EMPLOYEE:
         query["employee_id"] = str(current_user.id)
     elif employee_id:
         employee = await User.get(employee_id)
         if not employee or (current_user.role != UserRole.SUPER_ADMIN and employee.company_id != company_id):
             raise HTTPException(status_code=404, detail="Employee not found")
-        if current_user.role in [UserRole.MANAGER, UserRole.LEAD] and not await user_can_monitor(current_user, employee):
+        if current_user.role == UserRole.LEAD and not await user_can_monitor(current_user, employee):
             raise HTTPException(status_code=403, detail="You are not allowed to view this employee")
         query["employee_id"] = employee_id
-    elif current_user.role in [UserRole.MANAGER, UserRole.LEAD]:
+    elif current_user.role == UserRole.LEAD:
         query["employee_id"] = {"$in": [str(user.id) for user in await get_monitorable_users(current_user)]}
 
     if status:
@@ -1109,9 +1172,31 @@ async def get_attendance_history(
             "status": response["status"],
             "camera_permission_status": r.camera_permission_status,
             "screen_sharing_status": r.screen_sharing_status,
+            "source": getattr(r, "source", None),
+            "external_employee_code": getattr(r, "external_employee_code", None),
         })
 
-    return {"success": True, "data": enriched_records}
+    return enriched_records
+
+
+@router.get("/history")
+async def get_attendance_history(
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    employee_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user)
+):
+    """Fetch attendance history (company-scoped for managers, team-scoped for leads)."""
+    records = await _attendance_history_records(
+        current_user,
+        start_date,
+        end_date,
+        employee_id,
+        status,
+        self_only=False,
+    )
+    return {"success": True, "data": records}
 
 
 @router.get("/reports/export")

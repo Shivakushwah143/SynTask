@@ -46,13 +46,15 @@ class UsageTracking(Document):
     class Settings:
         name = "usage_tracking"
 
-        indexes = [
-            IndexModel(
-                [
-                    ("company_id", ASCENDING),
-                    ("period_year", ASCENDING),
-                    ("period_month", ASCENDING),
-                ],
-                name="usage_company_period_idx",
-            ),
+        indexes = [                IndexModel(
+                    [
+                        ("company_id", ASCENDING),
+                        ("period_year", ASCENDING),
+                        ("period_month", ASCENDING),
+                    ],
+                    # NOTE: no custom name here on purpose — existing databases
+                    # already carry this index under MongoDB's default name
+                    # (company_id_1_period_year_1_period_month_1). A custom
+                    # name makes init_beanie fail with IndexOptionsConflict.
+                ),
         ]

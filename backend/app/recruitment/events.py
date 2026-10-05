@@ -11,6 +11,7 @@ RECRUITMENT_EVENTS = (
     "OfferRejected", "CandidateConverted",
     "RecruitmentCandidateCreated",
     "RecruitmentApplicationCreated",
+    "ApplicationLifecycleTransitioned", "ApplicationRestored", "ApplicationRecruiterAssigned",
     "RecruitmentResumeStored",
     "RecruitmentEntityUpdated",
     "RecruitmentEntityArchived",

@@ -80,10 +80,12 @@ def _serialize_proposal(proposal: CRMProposal) -> Dict[str, Any]:
         "summary": proposal.summary,
         "status": proposal.status.value if proposal.status else CRMProposalStatus.DRAFT.value,
         "draft_at": proposal.draft_at,
+        "generated_at": proposal.generated_at,
         "sent_at": proposal.sent_at,
         "viewed_at": proposal.viewed_at,
         "accepted_at": proposal.accepted_at,
         "rejected_at": proposal.rejected_at,
+        "revision_requested_at": proposal.revision_requested_at,
         "expired_at": proposal.expired_at,
         "deal_value": proposal.deal_value,
         "expected_close_date": proposal.expected_close_date,
@@ -118,24 +120,42 @@ def _proposal_timeline_event(status: CRMProposalStatus, archived: bool = False) 
         return "ProposalArchived"
     mapping = {
         CRMProposalStatus.DRAFT: "ProposalCreated",
+        CRMProposalStatus.GENERATED: "ProposalGenerated",
         CRMProposalStatus.SENT: "ProposalSent",
         CRMProposalStatus.VIEWED: "ProposalViewed",
         CRMProposalStatus.ACCEPTED: "ProposalAccepted",
         CRMProposalStatus.REJECTED: "ProposalRejected",
+        CRMProposalStatus.REVISION_REQUESTED: "ProposalRevisionRequested",
         CRMProposalStatus.EXPIRED: "ProposalExpired",
     }
     return mapping.get(status, "ProposalCreated")
 
 
 _PROPOSAL_STATUS_TRANSITIONS: Dict[CRMProposalStatus, set[CRMProposalStatus]] = {
-    CRMProposalStatus.DRAFT: {CRMProposalStatus.SENT, CRMProposalStatus.ARCHIVED},
-    CRMProposalStatus.SENT: {CRMProposalStatus.VIEWED, CRMProposalStatus.ACCEPTED, CRMProposalStatus.REJECTED, CRMProposalStatus.EXPIRED, CRMProposalStatus.ARCHIVED},
-    CRMProposalStatus.VIEWED: {CRMProposalStatus.ACCEPTED, CRMProposalStatus.REJECTED, CRMProposalStatus.EXPIRED, CRMProposalStatus.ARCHIVED},
+    CRMProposalStatus.DRAFT: {CRMProposalStatus.GENERATED, CRMProposalStatus.SENT, CRMProposalStatus.REVISION_REQUESTED, CRMProposalStatus.ARCHIVED},
+    CRMProposalStatus.GENERATED: {CRMProposalStatus.SENT, CRMProposalStatus.VIEWED, CRMProposalStatus.ACCEPTED, CRMProposalStatus.REJECTED, CRMProposalStatus.REVISION_REQUESTED, CRMProposalStatus.EXPIRED, CRMProposalStatus.ARCHIVED},
+    CRMProposalStatus.SENT: {CRMProposalStatus.VIEWED, CRMProposalStatus.ACCEPTED, CRMProposalStatus.REJECTED, CRMProposalStatus.EXPIRED, CRMProposalStatus.REVISION_REQUESTED, CRMProposalStatus.ARCHIVED},
+    CRMProposalStatus.VIEWED: {CRMProposalStatus.ACCEPTED, CRMProposalStatus.REJECTED, CRMProposalStatus.EXPIRED, CRMProposalStatus.REVISION_REQUESTED, CRMProposalStatus.ARCHIVED},
+    CRMProposalStatus.REVISION_REQUESTED: {CRMProposalStatus.GENERATED, CRMProposalStatus.SENT, CRMProposalStatus.VIEWED, CRMProposalStatus.ACCEPTED, CRMProposalStatus.REJECTED, CRMProposalStatus.ARCHIVED},
     CRMProposalStatus.ACCEPTED: {CRMProposalStatus.ARCHIVED},
     CRMProposalStatus.REJECTED: {CRMProposalStatus.ARCHIVED},
     CRMProposalStatus.EXPIRED: {CRMProposalStatus.ARCHIVED},
     CRMProposalStatus.ARCHIVED: set(),
 }
+
+
+async def _sync_lead_proposal_status(prospect: SalesProspect, proposal: CRMProposal, current_user: User, now: datetime) -> None:
+    """Mirror the canonical proposal status onto the lead's Proposal stage status.
+
+    The Proposal stage inner status is a synchronized snapshot of the CRMProposal
+    record (single source of truth), so a status change here can never conflict
+    with the proposal's own status.
+    """
+    from app.crm.pipeline import apply_stage_status_change
+
+    apply_stage_status_change(prospect, stage_key="proposal", new_status=proposal.status.value, user=current_user, now=now)
+    prospect.updated_at = now
+    await prospect.save()
 
 
 def _apply_proposal_status_transition(proposal: CRMProposal, next_status: CRMProposalStatus, now: datetime) -> None:
@@ -148,6 +168,8 @@ def _apply_proposal_status_transition(proposal: CRMProposal, next_status: CRMPro
     proposal.status = next_status
     if next_status == CRMProposalStatus.DRAFT:
         proposal.draft_at = proposal.draft_at or now
+    elif next_status == CRMProposalStatus.GENERATED:
+        proposal.generated_at = proposal.generated_at or now
     elif next_status == CRMProposalStatus.SENT:
         proposal.sent_at = proposal.sent_at or now
     elif next_status == CRMProposalStatus.VIEWED:
@@ -156,6 +178,8 @@ def _apply_proposal_status_transition(proposal: CRMProposal, next_status: CRMPro
         proposal.accepted_at = proposal.accepted_at or now
     elif next_status == CRMProposalStatus.REJECTED:
         proposal.rejected_at = proposal.rejected_at or now
+    elif next_status == CRMProposalStatus.REVISION_REQUESTED:
+        proposal.revision_requested_at = proposal.revision_requested_at or now
     elif next_status == CRMProposalStatus.EXPIRED:
         proposal.expired_at = proposal.expired_at or now
 
@@ -300,6 +324,7 @@ class CRMDealService:
         else:
             _apply_proposal_status_transition(proposal, target_status, now)
         await proposal.insert()
+        await _sync_lead_proposal_status(prospect, proposal, current_user, now)
         await publish_crm_timeline_event(
             event_name=_proposal_timeline_event(proposal.status),
             aggregate_type="sales_prospect",
@@ -346,6 +371,7 @@ class CRMDealService:
         proposal.updated_by_name = _display_name(current_user, str(current_user.id))
         proposal.updated_at = now
         await proposal.save()
+        await _sync_lead_proposal_status(prospect, proposal, current_user, now)
 
         await publish_crm_timeline_event(
             event_name=_proposal_timeline_event(proposal.status),

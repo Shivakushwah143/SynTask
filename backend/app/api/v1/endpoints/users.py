@@ -19,13 +19,22 @@ from app.core.hierarchy import (
 from app.api.dependencies import (
     get_current_user, get_current_super_admin,
     get_current_company_admin, get_current_company_admin_or_lead,
-    check_company_access
+    check_company_access, _module_access_allowed
 )
 from app.services.user_service import UserService
 from app.api.deps import Pagination20, PaginationParams
-from app.core.assignable_users import load_assignable_users_for_company
+from app.core.assignable_users import (
+    load_assignable_users_for_company,
+    resolve_sales_assignment_department,
+)
+from app.core.cache import cache_get, cache_set
 from app.core.clock import utc_now
+from app.core.config import settings
 from app.schemas.admin_permissions import normalize_modules
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -192,23 +201,30 @@ async def list_users(
     elif current_user.role in [UserRole.MANAGER, UserRole.LEAD]:
         subordinates = await current_user.get_all_subordinates()
         visible_ids = {str(current_user.id), *[str(user.id) for user in subordinates]}
-        # Also include users from the same department
+        # Also include users from the same department (ids-only round trip — the
+        # previous code loaded the ENTIRE company roster into memory and then
+        # filtered it in Python; the $in query below does the filtering in Mongo).
         department_id = getattr(current_user, "department_id", None)
         if department_id:
-            dept_users = await User.find({
-                "company_id": current_user.company_id,
-                "department_id": department_id,
-            }).to_list()
-            for dept_user in dept_users:
-                visible_ids.add(str(dept_user.id))
-        all_users = await User.find({"company_id": current_user.company_id}).to_list()
-        filtered_users = [user for user in all_users if str(user.id) in visible_ids]
+            dept_docs = await User.get_pymongo_collection().find(
+                {"company_id": current_user.company_id, "department_id": department_id},
+                {"_id": 1},
+            ).to_list(length=None)
+            visible_ids.update(str(doc["_id"]) for doc in dept_docs)
+
+        from bson import ObjectId
+        id_candidates: list = []
+        for raw_id in visible_ids:
+            id_candidates.append(raw_id)
+            if ObjectId.is_valid(raw_id):
+                id_candidates.append(ObjectId(raw_id))
+        query = {"company_id": current_user.company_id, "_id": {"$in": id_candidates}}
         if role:
-            filtered_users = [user for user in filtered_users if user.role.value == role]
+            query["role"] = role
         if status_filter:
-            filtered_users = [user for user in filtered_users if user.status.value == status_filter]
-        users = filtered_users[skip:skip + limit]
-        total = len(filtered_users)
+            query["status"] = status_filter
+        total = await User.find(query).count()
+        users = await User.find(query).skip(skip).limit(limit).to_list()
         department_name_map = await _build_department_name_map(current_user.company_id, users)
         return {
             "users": [_serialize_user_for_list(user, department_name_map) for user in users],
@@ -243,6 +259,41 @@ async def list_users(
     }
 
 
+def _assignable_user_row(user: User) -> dict:
+    """Minimal, JSON-safe row for the assignable-users cache (no sensitive fields)."""
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+        "status": user.status.value if hasattr(user.status, "value") else str(user.status),
+        "department_id": getattr(user, "department_id", None),
+        "department": getattr(user, "department", None),
+    }
+
+
+class _AssignableUserView:
+    """Lightweight view over a cached assignable-user row (supports the same
+    attribute access the endpoint uses: ``.id``/``.email``/``.role.value``...)."""
+
+    def __init__(self, row: dict):
+        self.id = row.get("id")
+        self.email = row.get("email")
+        self.first_name = row.get("first_name")
+        self.last_name = row.get("last_name")
+        self.department_id = row.get("department_id")
+        self.department = row.get("department")
+        role = row.get("role")
+        self.role = UserRole(role) if isinstance(role, str) else (role or UserRole.EMPLOYEE)
+        status = row.get("status")
+        self.status = UserStatus(status) if isinstance(status, str) else (status or UserStatus.ACTIVE)
+
+
+def _row_to_assignable_user(row: dict) -> _AssignableUserView:
+    return _AssignableUserView(row)
+
+
 def _serialize_user_for_list(user: User, department_name_map: dict[str, str]) -> dict:
     department_id = _department_id_value(user)
     return {
@@ -267,13 +318,40 @@ async def get_assignable_users(
     current_user: User = Depends(get_current_user),
     for_tickets: bool = Query(False, description="If True, include broader ticket assignment options"),
     project_id: Optional[str] = Query(None, description="Filter assignable users by project"),
+    context: Optional[str] = Query(None, description="Assignment context, e.g. 'sales_lead' for Sales lead ownership"),
+    department_id: Optional[str] = Query(None, description="Optional department scope for the assignment context"),
 ):
-    """Get users that can be assigned work. Project lead is assignment-level, not a user role."""
-    # Valid owner roles remain: UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE.
-    users: list[User] = []
+    """Get users that can be assigned work. Project lead is assignment-level, not a user role.
 
+    For ``context=sales_lead`` the list is scoped exactly like the Sales lead
+    engine's ``validate_target_user`` (company-wide for Admin/Sub Admin/Super
+    Admin, otherwise the actor's department or the explicit ``department_id``),
+    so the owner dropdown always matches what lead creation will accept.
+    """
+    # Valid owner roles remain: UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE.
+    # The dropdown reads the whole (potentially large) active roster on every
+    # modal open. Only the fields the dropdown renders are loaded, and the
+    # serialized roster is cached per company/context/department with a short
+    # TTL. Assignment VALIDATION (lead_engine) intentionally stays live — it
+    # never goes through this cache.
+    users: list[User] = []
     if current_user.company_id:
-        users = await load_assignable_users_for_company(current_user.company_id)
+        dept_scope = (
+            resolve_sales_assignment_department(current_user, department_id=department_id)
+            if context == "sales_lead"
+            else department_id
+        )
+        cache_key = (
+            f"dashboard:data:{current_user.company_id}:assignable:"
+            f"{context or 'default'}:{dept_scope or 'all'}"
+        )
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            users = [_row_to_assignable_user(row) for row in cached]
+        else:
+            users = await load_assignable_users_for_company(current_user.company_id, department_id=dept_scope)
+            rows = [_assignable_user_row(user) for user in users]
+            await cache_set(cache_key, rows, ttl=settings.DASHBOARD_CACHE_TTL)
 
     if project_id:
         project = await Project.get(project_id)
@@ -372,23 +450,33 @@ async def get_my_team(
         from app.models.task import Task
         from app.models.ticket import Ticket
 
+        # Batch task/ticket counts with two aggregations instead of two
+        # sequential count queries per team member (N+1 over the roster).
+        employee_ids = [str(employee.id) for employee in team_members]
+        task_counts = {}
+        ticket_counts = {}
+        if employee_ids:
+            try:
+                for row in await Task.get_pymongo_collection().aggregate([
+                    {"$match": {"assigned_to": {"$in": employee_ids}, "company_id": current_user.company_id}},
+                    {"$group": {"_id": "$assigned_to", "count": {"$sum": 1}}},
+                ]).to_list(length=None):
+                    task_counts[row["_id"]] = int(row["count"])
+            except Exception:
+                task_counts = {}
+            try:
+                for row in await Ticket.get_pymongo_collection().aggregate([
+                    {"$match": {"assigned_to": {"$in": employee_ids}, "company_id": current_user.company_id}},
+                    {"$group": {"_id": "$assigned_to", "count": {"$sum": 1}}},
+                ]).to_list(length=None):
+                    ticket_counts[row["_id"]] = int(row["count"])
+            except Exception:
+                ticket_counts = {}
+
         team_data = []
         for employee in team_members:
-            try:
-                task_count = await Task.find({
-                    "assigned_to": str(employee.id),
-                    "company_id": current_user.company_id
-                }).count()
-            except Exception:
-                task_count = 0
-
-            try:
-                ticket_count = await Ticket.find({
-                    "assigned_to": str(employee.id),
-                    "company_id": current_user.company_id
-                }).count()
-            except Exception:
-                ticket_count = 0
+            task_count = task_counts.get(str(employee.id), 0)
+            ticket_count = ticket_counts.get(str(employee.id), 0)
 
             team_data.append({
                 "id": str(employee.id),
@@ -516,25 +604,14 @@ async def create_employee(
     first_name: str = Form(...),
     last_name: str = Form(...),
     lead_id: Optional[str] = Form(None),
+    reports_to: Optional[str] = Form(None),
     department_id: Optional[str] = Form(None),
     designation: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
+    modules: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
 
-    print("\n========== CREATE EMPLOYEE API ==========")
-    print(f"[DEBUG] Email          : {email}")
-    print(f"[DEBUG] Password       : {password}")
-    print(f"[DEBUG] First Name     : {first_name}")
-    print(f"[DEBUG] Last Name      : {last_name}")
-    print(f"[DEBUG] Lead ID        : {lead_id}")
-    print(f"[DEBUG] Department ID  : {department_id}")
-    print(f"[DEBUG] Designation    : {designation}")
-    print(f"[DEBUG] Phone          : {phone}")
-    print(f"[DEBUG] Current User ID: {current_user.id}")
-    print(f"[DEBUG] Current User Email: {current_user.email}")
-    print(f"[DEBUG] Current User Role : {current_user.role}")
-    print("=========================================\n")
     """Create an Employee (Company Admin or Lead)"""
     # Check if email already exists
     existing = await User.find_one({"email": email})
@@ -545,11 +622,26 @@ async def create_employee(
         )
 
     department_doc = await _resolve_department(current_user.company_id, department_id)
-    
+
+    # Reporting manager: explicit selection wins, otherwise default to the
+    # creator for Manager/Lead. Legacy lead_id stays in sync when the chosen
+    # reporting manager is a Lead.
     final_lead_id = None
-    reports_to_id = str(current_user.id) if current_user.role in [UserRole.MANAGER, UserRole.LEAD] else None
-    
+    reports_to_id = reports_to or (str(current_user.id) if current_user.role in [UserRole.MANAGER, UserRole.LEAD] else None)
+    if reports_to:
+        reports_to_user = await User.get(reports_to)
+        if not reports_to_user or reports_to_user.company_id != current_user.company_id:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Invalid reporting manager",
+            )
+        if reports_to_user.role == UserRole.LEAD:
+            final_lead_id = reports_to
+
     # Create Employee
+    # Permissions: normalize + privilege-limit the requested modules. When the
+    # creator sends none, the legacy employee defaults are preserved.
+    parsed_modules = _resolve_new_user_modules(current_user, _form_or_none(modules))
     employee = Employee(
         email=email,
         password_hash=get_password_hash(password),
@@ -562,11 +654,20 @@ async def create_employee(
         designation=designation,
         phone=phone,
         status=UserStatus.ACTIVE,
-        modules=["task", "attendance_leaves"],
-        active_module="task"
+        modules=parsed_modules,
+        active_module=parsed_modules[0] if parsed_modules else "task"
     )
     await UserService.update_hierarchy_ancestors(employee)
     await employee.insert()
+    
+    # Phase 1 HRMS: every created company employee gets an HR Employee Profile
+    # automatically so People → Employees is always populated.
+    try:
+        from app.services.employee_profile_service import ensure_employee_profile
+        await ensure_employee_profile(employee)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(f"Failed to create employee profile for {email}")
     
     if department_doc:
         await _notify_department_assignment(
@@ -723,9 +824,11 @@ async def update_user(
     phone: Optional[str] = Form(None),
     department_id: Optional[str] = Form(None),
     designation: Optional[str] = Form(None),
+    reports_to: Optional[str] = Form(None),
+    modules: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
-    """Update basic user profile fields"""
+    """Update basic user profile fields (and module permissions when provided)"""
     user = await User.get(user_id)
 
     if not user:
@@ -734,15 +837,11 @@ async def update_user(
             detail="User not found"
         )
 
-    # Access control
+    # Access control: company-scoped roles (Admin/Sub Admin/Manager/Lead per
+    # get_current_company_admin_or_lead) may update any user in their company.
+    # No creator/department/team restriction - a manager (or lead) can edit an
+    # employee regardless of who created them or which department they belong to.
     check_company_access(current_user, user.company_id)
-    if current_user.role == UserRole.LEAD:
-        # Leads can only update their own team employees
-        if user.role != UserRole.EMPLOYEE or user.lead_id != str(current_user.id):
-            raise HTTPException(
-                status_code=http_status.HTTP_403_FORBIDDEN,
-                detail="Leads can only edit their own team members"
-            )
 
     # Update fields if provided
     if first_name:
@@ -777,6 +876,30 @@ async def update_user(
                 assigned_by=current_user,
                 previous_department_name=previous_department_name,
             )
+    if reports_to is not None:
+        reports_to_value = reports_to or None
+        if reports_to_value:
+            reports_to_user = await User.get(reports_to_value)
+            if not reports_to_user or reports_to_user.company_id != current_user.company_id:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid reporting manager",
+                )
+            user.reports_to = reports_to_value
+            # Legacy: keep lead_id in sync when the reporting manager is a Lead.
+            # lead_id only exists on the Employee subclass, so guard for it.
+            if hasattr(user, "lead_id"):
+                user.lead_id = reports_to_value if reports_to_user.role == UserRole.LEAD else None
+        else:
+            user.reports_to = None
+            if hasattr(user, "lead_id"):
+                user.lead_id = None
+        await UserService.update_hierarchy_ancestors(user)
+    modules = _form_or_none(modules)
+    if modules is not None:
+        parsed_modules = normalize_modules(modules, require_tasks_projects=False)
+        user.modules = _restrict_modules_for_creator(current_user, parsed_modules)
+        user.active_module = user.modules[0] if user.modules else "task"
     user.updated_at = utc_now()
     await user.save()
 
@@ -784,10 +907,51 @@ async def update_user(
 
 
 
+def _form_or_none(value):
+    """FastAPI Form defaults bind a ``Form()`` sentinel on direct function
+    calls (e.g. unit tests); FastAPI injection always provides str or None.
+    Only ``None`` / ``str`` / ``list`` are valid module values, so anything
+    else (the sentinel) is treated as "not provided"."""
+    if value is None or isinstance(value, (str, list)):
+        return value
+    return None
+
+
 def _module_allowed_for_user(user: User, module_id: str) -> bool:
     if user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
         return True
     return module_id in (getattr(user, "modules", []) or [])
+
+
+def _restrict_modules_for_creator(creator: User, requested: List[str]) -> List[str]:
+    """Privilege-escalation guard for module assignment.
+
+    Admins and Super Admins may grant any catalog module. Every other creator
+    (Sub Admin / Manager / Lead / Employee) may only grant modules they are
+    allowed to access themselves (alias-aware, e.g. "task" covers
+    "tasks_projects"). If nothing the creator requested survives, fall back to
+    the modules the creator holds themselves, so the new account stays usable
+    without ever exceeding the creator's own authority.
+    """
+    if creator.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
+        return requested
+    creator_modules = getattr(creator, "modules", []) or []
+    restricted = [module for module in requested if _module_access_allowed(module, creator_modules)]
+    if not restricted:
+        restricted = list(creator_modules)
+    return restricted
+
+
+def _resolve_new_user_modules(creator: User, modules: Optional[str]) -> List[str]:
+    """Normalize + privilege-limit the module list for a newly created user.
+
+    ``None`` (creator did not send modules) keeps the legacy employee defaults
+    so existing callers/behavior are untouched.
+    """
+    if modules is None:
+        return ["task", "attendance_leaves"]
+    parsed = normalize_modules(modules, require_tasks_projects=False)
+    return _restrict_modules_for_creator(creator, parsed)
 # ==================== CREATE USER ENDPOINT ====================
 
 @router.post("/create-user")
@@ -850,12 +1014,14 @@ async def create_user_hierarchical(
     # Determine company_id
     company_id = current_user.company_id if current_user.company_id else None
     
-    parsed_modules = normalize_modules(modules or [], require_tasks_projects=False)
+    parsed_modules = normalize_modules(_form_or_none(modules) or [], require_tasks_projects=False)
     if target_role == UserRole.SUB_ADMIN and not parsed_modules:
         parsed_modules = normalize_modules(["tasks_projects"], require_tasks_projects=False)
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
+        # Privilege-escalation guard: the creator can only grant modules they
+        # are allowed to access themselves (alias-aware). Admins are unrestricted.
+        parsed_modules = _restrict_modules_for_creator(current_user, parsed_modules)
     if current_user.role == UserRole.SUB_ADMIN:
-        allowed_modules = set(getattr(current_user, "modules", []) or [])
-        parsed_modules = [module for module in parsed_modules if module in allowed_modules]
         if target_role == UserRole.SUB_ADMIN:
             raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Sub-admins cannot create other sub-admins")
         if target_role == UserRole.MANAGER and not _module_allowed_for_user(current_user, "tasks_projects"):
@@ -946,6 +1112,16 @@ async def create_user_hierarchical(
     from app.services.user_service import UserService
     await UserService.update_hierarchy_ancestors(user)
     await user.insert()
+    
+    # Phase 1 HRMS: company staff (any authorization role) receive an HR Employee
+    # Profile automatically. Platform Super Admins are skipped.
+    if company_id and target_role != UserRole.SUPER_ADMIN:
+        try:
+            from app.services.employee_profile_service import ensure_employee_profile
+            await ensure_employee_profile(user)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(f"Failed to create employee profile for {email}")
     
     # Update Lead's managed_employee_ids if Employee reports to Lead
     if target_role == UserRole.EMPLOYEE and reports_to:

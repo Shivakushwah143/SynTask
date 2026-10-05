@@ -1,4 +1,71 @@
+import { buildTaskQueryParams } from './tasksLifecycle'
 import { normalizeRole } from '../utils/roles'
+
+export const DEFAULT_STATUSES = [
+  { id: 'todo', label: 'To Do' },
+  { id: 'assigned', label: 'Assigned' },
+  { id: 'in_progress', label: 'In Progress' },
+  { id: 'in_review', label: 'Review' },
+  { id: 'revision_required', label: 'Revision' },
+  { id: 'approved', label: 'Approved' },
+  { id: 'completed', label: 'Completed' },
+]
+
+export const normalizeStatusId = (value) => String(value || '').trim().toLowerCase()
+
+const normalizeBoardColumns = (columns) => {
+  const source = Array.isArray(columns) && columns.length ? columns : DEFAULT_STATUSES
+  return source.map((column) => ({
+    ...column,
+    id: normalizeStatusId(column.id || column.status || column.key),
+    label: column.label || column.name || String(column.id || column.status || column.key || '').replace(/_/g, ' '),
+  })).filter((column) => column.id)
+}
+
+export const normalizeBoardPayload = (payload) => {
+  const data = payload?.data?.data || payload?.data || payload || {}
+  const sourceTasksByStatus = data.tasks_by_status || data.tasksByStatus || data.board || {}
+  const tasksByStatus = {}
+
+  if (Array.isArray(data.tasks)) {
+    data.tasks.forEach((task) => {
+      const status = normalizeStatusId(task.status || task.status_id)
+      if (!tasksByStatus[status]) tasksByStatus[status] = []
+      tasksByStatus[status].push({ ...task, status })
+    })
+  } else {
+    Object.entries(sourceTasksByStatus).forEach(([status, tasks]) => {
+      const normalizedStatus = normalizeStatusId(status)
+      if (!tasksByStatus[normalizedStatus]) tasksByStatus[normalizedStatus] = []
+      tasksByStatus[normalizedStatus].push(...(Array.isArray(tasks) ? tasks : []).map((task) => ({
+        ...task,
+        id: task.id || task._id,
+        status: normalizeStatusId(task.status || normalizedStatus),
+      })))
+    })
+  }
+
+  // Stage cards are driven by TASK STATUS, not by the project's configured
+  // board columns. The standard kanban columns always render and any extra
+  // status that actually has tasks gets its own card, so empty custom phase
+  // columns (e.g. PLANNING/EXECUTION/DELIVERY) never mask real task statuses.
+  const boardColumns = normalizeBoardColumns(DEFAULT_STATUSES)
+  const standardIds = new Set(boardColumns.map((column) => column.id))
+  Object.entries(tasksByStatus).forEach(([status, tasks]) => {
+    if (tasks.length && !standardIds.has(status)) {
+      boardColumns.push({
+        id: status,
+        label: status.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+      })
+    }
+  })
+
+  return {
+    ...data,
+    board_columns: boardColumns,
+    tasks_by_status: tasksByStatus,
+  }
+}
 
 export function normalizeEstimatedHours(value) {
   const hours = Number(value)
@@ -86,3 +153,45 @@ export const getProjectRoleAssignmentIds = (projectRecord = {}, assignableUsers 
   if (projectRecord.lead_id) result.lead = String(projectRecord.lead_id)
   return result
 }
+
+// Project Workspace tab (tab= URL param) <-> active workspace tab mapping.
+// Accepts summary|tasks|board|files|pages and defaults to the Tasks tab.
+export const resolveWorkspaceTab = (tabParam) => {
+  const map = { summary: 'summary', tasks: 'board', board: 'board', files: 'pages', pages: 'pages' }
+  return map[tabParam] || 'board'
+}
+
+export const workspaceTabParam = (activeTab) => {
+  const map = { summary: 'summary', board: 'tasks', pages: 'files' }
+  return map[activeTab] || 'summary'
+}
+
+// Group a backend-filtered task list into status buckets for kanban columns.
+export const groupTasksByStatus = (tasks = []) => {
+  const grouped = {}
+  tasks.forEach((task) => {
+    const key = normalizeStatusId(task.status)
+    if (!grouped[key]) grouped[key] = []
+    grouped[key].push(task)
+  })
+  return grouped
+}
+
+// Build backend query params for the Project Task workspace. The active
+// lifecycle status is merged into the shared query builder (which reads
+// filters.status), and project_id is fixed to the current Project so the
+// workspace can never leak into other projects. Every tab click must reach
+// the backend as status_filter - without the merge the list silently shows
+// every Project Task regardless of the selected tab.
+export const buildProjectTaskQuery = ({
+  filters = {},
+  taskStatus = '',
+  attention = '',
+  search = '',
+  page = 1,
+  pageSize = 20,
+  projectId = '',
+} = {}) => ({
+  ...buildTaskQueryParams({ filters: { ...filters, status: taskStatus }, attention, search, page, pageSize }),
+  project_id: projectId,
+})

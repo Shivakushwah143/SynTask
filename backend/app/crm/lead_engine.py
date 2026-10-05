@@ -22,10 +22,15 @@ from app.models.sales_masters import SalesStage
 from app.models.sales_import_job import SalesImportJob
 from app.models.ownership_transfer import OwnershipTransfer
 from app.models.sales_pipeline_history import SalesPipelineHistory
+from app.models.client import Client
 from app.crm.models import InterestLevel, ProspectStatus, SalesProspect
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, UserStatus
 from app.core.rbac_visibility import require_owned_record_access
-from app.core.assignable_users import load_assignable_users_for_company
+from app.core.assignable_users import (
+    ASSIGNABLE_USER_ROLE_VALUES,
+    load_assignable_users_for_company,
+    resolve_sales_assignment_department,
+)
 from app.core.clock import utc_now
 
 
@@ -47,12 +52,12 @@ DEFAULT_SOURCE_LABELS = {
     "website": "website_form",
 }
 DEFAULT_STAGE_LOOKUP = {
-    "new": "New",
-    "lead": "New",
-    "contacted": "Contacted",
-    "follow up": "Contacted",
-    "follow up call": "Contacted",
-    "qualified": "Qualified",
+    "new": "Acquire",
+    "lead": "Acquire",
+    "contacted": "Qualify",
+    "follow up": "Qualify",
+    "follow up call": "Qualify",
+    "qualified": "Qualify",
     "discovery": "Discovery",
     "discovery scheduled": "Discovery",
     "discovery completed": "Discovery",
@@ -61,17 +66,61 @@ DEFAULT_STAGE_LOOKUP = {
     "proposal": "Proposal",
     "proposal sent": "Proposal",
     "negotiation": "Negotiation",
+    "agreement": "Agreement",
     "won": "Won",
     "closed won": "Won",
     "lost": "Lost",
     "closed lost": "Lost",
 }
 
-COMPANY_WIDE_ASSIGNMENT_ROLES = {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}
-
-
 def _now() -> datetime:
     return utc_now()
+
+
+def _initial_stage_status(stage_value: Optional[str], source_value: Optional[str], provided: Optional[str] = None) -> Optional[str]:
+    """Source-aware inner status for a newly created lead.
+
+    Manual/integration leads in Acquire begin as `new`; CSV/bulk-imported leads
+    begin as `imported`. Other stages use their documented default (Discovery
+    stays unset). An explicitly provided status always wins.
+    """
+    from app.crm.pipeline import STAGE_DEFAULT_STATUS, stage_status_key
+
+    if provided:
+        return _normalize_text(provided)
+    stage_key = stage_status_key(stage_value)
+    if not stage_key:
+        return None
+    if stage_key == "acquire":
+        source_key = str(source_value or "").lower()
+        return "imported" if ("csv" in source_key or "excel" in source_key) else "new"
+    return STAGE_DEFAULT_STATUS.get(stage_key)
+
+
+def _promote_assignment_status(stage_value: Optional[str], assigned_to: Optional[str], current_status: Optional[str]) -> Optional[str]:
+    """In Acquire, an owned lead is Assigned — never left on the intake defaults.
+
+    `new`/`imported` describe un-owned intake; the moment a lead has an owner the
+    inner status must read `assigned` (mirrors the reassignment rule in the lead
+    update path and the read-time rule in `resolved_stage_status`). Explicit
+    non-default statuses (duplicate, spam, ...) are preserved.
+    """
+    from app.crm.pipeline import stage_status_key
+
+    if stage_status_key(stage_value) == "acquire" and assigned_to:
+        current = _normalize_text(current_status or "").lower()
+        if current in ("", "new", "imported"):
+            return "assigned"
+    return current_status
+
+
+def _role_is_assignable(role: Any) -> bool:
+    """True when the role may own leads (admin, sub_admin, manager, lead, employee)."""
+    try:
+        normalized = role if isinstance(role, UserRole) else UserRole.from_legacy(str(role))
+    except Exception:
+        return False
+    return normalized in ASSIGNABLE_USER_ROLE_VALUES
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -85,6 +134,48 @@ def _display_name(user: Optional[User], fallback: str = "System") -> str:
 
 def _normalize_text(value: Optional[str]) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())
+
+
+def _role_value(role: Any) -> Any:
+    return role.value if hasattr(role, "value") else role
+
+
+async def _owner_rejection_detail(
+    current_user: User,
+    target_user_id: str,
+    *,
+    department_id: Optional[str],
+) -> str:
+    """Safe frontend-facing reason a target owner is not assignable.
+
+    The message never leaks cross-company user information: a user from another
+    company is reported with the same generic wording as a missing user.
+    """
+    if not target_user_id:
+        return "Selected owner is no longer available. Please choose another owner."
+    try:
+        target = await User.get(target_user_id)
+    except Exception:
+        target = None
+    if target is None:
+        return "Selected owner is inactive or no longer exists."
+    if str(getattr(target, "company_id", "")) != str(getattr(current_user, "company_id", "")):
+        return "Selected owner is no longer available. Please choose another owner."
+    is_active = _role_value(getattr(target, "status", None)) == UserStatus.ACTIVE.value
+    is_assignable_role = _role_value(getattr(target, "role", None)) in ASSIGNABLE_USER_ROLE_VALUES
+    legacy_active = (
+        getattr(target, "isActive", True) is not False
+        and getattr(target, "is_active", True) is not False
+    )
+    not_deleted = (
+        getattr(target, "deleted", False) in (False, None)
+        and getattr(target, "deleted_at", None) is None
+    )
+    if not (is_active and is_assignable_role and legacy_active and not_deleted):
+        return "Selected owner is inactive or no longer exists."
+    if department_id:
+        return "Selected owner is outside your permitted department."
+    return "Selected owner is no longer available. Please choose another owner."
 
 
 def _normalize_lead_csv_header(header: str) -> str:
@@ -292,7 +383,9 @@ class LeadNormalizer:
         normalized["prospect_name"] = _normalize_text(normalized.get("prospect_name")) or full_name or "Unknown Lead"
         normalized["country_code"] = _normalize_text(normalized.get("country_code")) or "+91"
         normalized["phone"] = _normalize_text(normalized.get("phone"))
-        normalized["email"] = _normalize_text(normalized.get("email")).lower() or None
+        # Dirty email values (e.g. 'vghygcvghgv') are cleared to None so they can
+        # never poison later reads of the pipeline / leads endpoints.
+        normalized["email"] = _sanitize_email(normalized.get("email"))
         normalized["remark"] = _normalize_text(normalized.get("remark")) or None
         normalized["company_name"] = _normalize_text(normalized.get("company_name")) or None
         normalized["crm_company_id"] = _normalize_text(normalized.get("crm_company_id")) or None
@@ -305,6 +398,7 @@ class LeadNormalizer:
         normalized["owner_contact_no"] = _normalize_text(normalized.get("owner_contact_no")) or None
         normalized["assigned_to"] = _normalize_text(normalized.get("assigned_to")) or None
         normalized["assigned_by"] = _normalize_text(normalized.get("assigned_by")) or None
+        normalized["referred_by"] = _normalize_text(normalized.get("referred_by")) or None
         normalized["due_date"] = _normalize_text(normalized.get("due_date")) or None
         normalized["due_time"] = _normalize_text(normalized.get("due_time")) or None
         normalized["tag"] = _parse_multi_value(normalized.get("tag")) if isinstance(normalized.get("tag"), str) else list(normalized.get("tag") or [])
@@ -315,6 +409,43 @@ class LeadNormalizer:
         normalized["source"] = normalized.get("source") or source
         normalized["current_stage"] = _normalize_text(normalized.get("current_stage") or "new")
         normalized["status"] = _normalize_text(normalized.get("status") or ProspectStatus.ACTIVE.value).lower()
+
+        # ── Sales journey fields (passed through, kept lenient) ──
+        for key in [
+            "industry", "requirement", "timeline", "decision_maker", "location",
+            "pain_points", "current_agency", "num_employees",
+            "qualify_status", "discovery_outcome", "discovery_notes",
+            "proposal_status", "negotiation_status", "negotiation_notes",
+            "final_scope", "payment_terms", "client_conditions", "accepted_quotation_reference",
+            "agreement_status", "next_action", "current_stage_status",
+        ]:
+            value = normalized.get(key)
+            normalized[key] = _normalize_text(value) if value is not None else None
+        budget = normalized.get("budget")
+        if budget is not None and budget != "":
+            try:
+                normalized["budget"] = float(budget)
+            except (TypeError, ValueError):
+                normalized["budget"] = None
+        else:
+            normalized["budget"] = None
+        won_amount = normalized.get("won_amount")
+        if won_amount is not None and won_amount != "":
+            try:
+                normalized["won_amount"] = float(won_amount)
+            except (TypeError, ValueError):
+                normalized["won_amount"] = None
+        else:
+            normalized["won_amount"] = None
+        for key in ["customer_counter_offer", "discount"]:
+            value = normalized.get(key)
+            if value is not None and value != "":
+                try:
+                    normalized[key] = float(value)
+                except (TypeError, ValueError):
+                    normalized[key] = None
+            else:
+                normalized[key] = None
         return normalized
 
     @staticmethod
@@ -327,7 +458,12 @@ class LeadNormalizer:
             parts = name.split()
             first_name = parts[0]
             last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
-        # Detect known fields to separate unknown columns into custom_fields
+        # Detect known fields to separate unknown columns into custom_fields.
+        # Sales-journey columns (budget, decision maker, timeline, ...) map onto
+        # the real lead fields — otherwise an imported "budget" only lived in
+        # custom_fields and was invisible to the pipeline Value column and the
+        # stage gates (the reported sync bug: budget defined in the import but
+        # shown as Rs 0 / asked again by the move popup).
         KNOWN_KEYS = {
             "first_name", "last_name", "prospect_name", "name",
             "country_code", "phone", "email",
@@ -340,7 +476,10 @@ class LeadNormalizer:
             "designation", "nationality", "language",
             "owner_name", "owner_contact_no",
             "tag", "crm_company_id", "contact_id",
-            "due_date", "due_time",
+            "due_date", "due_time", "referred_by",
+            "budget", "timeline", "decision_maker", "industry",
+            "requirement", "location", "pain_points",
+            "won_amount", "deal_value", "dealValue", "value", "amount",
         }
         custom_fields = {}
         for key, value in row_norm.items():
@@ -370,9 +509,27 @@ class LeadNormalizer:
                 "language": row_norm.get("language"),
                 "owner_name": row_norm.get("owner_name"),
                 "owner_contact_no": row_norm.get("owner_contact_no"),
+                "referred_by": row_norm.get("referred_by"),
                 "tag": row_norm.get("tag"),
                 "crm_company_id": row_norm.get("crm_company_id"),
                 "contact_id": row_norm.get("contact_id"),
+                # Sales-journey fields land on the real lead fields (not custom_fields).
+                "budget": row_norm.get("budget"),
+                "timeline": row_norm.get("timeline"),
+                "decision_maker": row_norm.get("decision_maker"),
+                "industry": row_norm.get("industry"),
+                "requirement": row_norm.get("requirement"),
+                "location": row_norm.get("location"),
+                "pain_points": row_norm.get("pain_points"),
+                # Deal-size aliases ("won amount", "deal value", "value",
+                # "amount") map onto won_amount, matching DEAL_VALUE_FIELDS.
+                "won_amount": (
+                    row_norm.get("won_amount")
+                    or row_norm.get("deal_value")
+                    or row_norm.get("dealValue")
+                    or row_norm.get("value")
+                    or row_norm.get("amount")
+                ),
                 "custom_fields": custom_fields,
             },
             source=source,
@@ -382,9 +539,8 @@ class LeadNormalizer:
 class LeadValidator:
     @staticmethod
     def validate_lead_payload(payload: Dict[str, Any]) -> None:
-        # Only phone is required - all other fields are optional for partial lead creation
-        if not payload.get("phone"):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone is required")
+        # Every field is optional for partial lead creation (phone included) -
+        # a lead may be captured with only a name, only a phone, or both empty.
         # If first_name is provided but last_name is not, that's okay
         # If last_name is provided but first_name is not, that's okay
         # prospect_name will be auto-generated from first_name + last_name
@@ -524,7 +680,11 @@ class AssignmentEngine:
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Target user must be an active user in your company",
+            detail=await _owner_rejection_detail(
+                current_user,
+                normalized_target_user_id,
+                department_id=department_id,
+            ),
         )
 
     @staticmethod
@@ -551,7 +711,7 @@ class AssignmentEngine:
                     getattr(current_user, "id", None) if current_user else None,
                     user_ids,
                 )
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target user must be an active user in your company")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected owner is no longer available. Please choose another owner.")
             return target_user_id
         if strategy == "round-robin":
             return user_ids[index % len(user_ids)]
@@ -626,6 +786,12 @@ class LeadEngine:
             normalized.get("current_stage") or "new",
             _parse_stage_lookup([]),
         )
+        # Source-aware inner status for the lead's starting stage.
+        normalized["current_stage_status"] = _initial_stage_status(
+            normalized.get("current_stage"),
+            normalized.get("source") or source,
+            normalized.get("current_stage_status"),
+        )
         normalized["company_id"] = normalized.get("company_id") or current_user.company_id
         normalized["created_by"] = str(getattr(current_user, "id", ""))
         normalized["assigned_by"] = str(getattr(current_user, "id", ""))
@@ -650,31 +816,72 @@ class LeadEngine:
         if contact_id:
             normalized["contact_id"] = contact_id
         assigned_to = normalized.get("assigned_to")
-        department_id = normalized.get("department_id")
-        if not department_id and current_user.role not in COMPANY_WIDE_ASSIGNMENT_ROLES:
-            department_id = getattr(current_user, "department_id", None)
+        department_id = resolve_sales_assignment_department(
+            current_user,
+            department_id=normalized.get("department_id"),
+        )
+        # Owner resolution must never block lead creation. When no valid
+        # assignable user can be found (e.g. an employee whose department has no
+        # other assignable members, or a fresh company with a single user), the
+        # lead is owned by its creator instead of failing the request with a 400
+        # (reported: POST /api/v1/sales/prospects/ returns 400 for employees).
+        fallback_assignee = (
+            str(getattr(current_user, "id", ""))
+            if _role_is_assignable(getattr(current_user, "role", None))
+            else ""
+        )
         if assigned_to:
-            _, assignable_users = await AssignmentEngine.validate_target_user(
-                current_user,
-                assigned_to,
-                department_id=department_id,
-            )
-            normalized["assigned_to"] = AssignmentEngine.choose_assignee(
-                "manual",
-                assignable_users,
-                target_user_id=str(assigned_to),
-                current_user=current_user,
-            )
-        else:
-            assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
-            if current_user.role == UserRole.MANAGER and str(current_user.id) in {str(user.id) for user in assignable_users}:
-                normalized["assigned_to"] = str(getattr(current_user, "id", ""))
-            else:
-                normalized["assigned_to"] = AssignmentEngine.choose_assignee(
-                    "least-loaded",
-                    assignable_users,
-                    assignment_counts={str(user.id): 0 for user in assignable_users},
+            # Explicit owner selection is company-wide — department scoping
+            # only applies to automatic assignment strategies.
+            try:
+                _, assignable_users = await AssignmentEngine.validate_target_user(
+                    current_user,
+                    assigned_to,
+                    department_id=None,
                 )
+                normalized["assigned_to"] = AssignmentEngine.choose_assignee(
+                    "manual",
+                    assignable_users,
+                    target_user_id=str(assigned_to),
+                    current_user=current_user,
+                )
+            except HTTPException:
+                logger.warning(
+                    "Lead owner validation failed ownerId=%s companyId=%s actorId=%s — falling back to creator ownership",
+                    assigned_to,
+                    getattr(current_user, "company_id", None),
+                    getattr(current_user, "id", None),
+                )
+                normalized["assigned_to"] = fallback_assignee
+        else:
+            try:
+                assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
+            except HTTPException:
+                logger.warning(
+                    "No assignable users for lead create companyId=%s departmentId=%s actorId=%s — falling back to creator ownership",
+                    getattr(current_user, "company_id", None),
+                    department_id,
+                    getattr(current_user, "id", None),
+                )
+                assignable_users = []
+            if assignable_users:
+                if current_user.role == UserRole.MANAGER and str(current_user.id) in {str(user.id) for user in assignable_users}:
+                    normalized["assigned_to"] = str(getattr(current_user, "id", ""))
+                else:
+                    normalized["assigned_to"] = AssignmentEngine.choose_assignee(
+                        "least-loaded",
+                        assignable_users,
+                        assignment_counts={str(user.id): 0 for user in assignable_users},
+                    )
+            else:
+                normalized["assigned_to"] = fallback_assignee
+        # An owned Acquire lead starts as Assigned, never the new/imported intake
+        # defaults (the reported pipeline bug: assigned leads showing "New").
+        normalized["current_stage_status"] = _promote_assignment_status(
+            normalized.get("current_stage"),
+            normalized.get("assigned_to"),
+            normalized.get("current_stage_status"),
+        )
 
         # Handle partial data - ensure prospect_name is set properly
         first_name = normalized.get("first_name") or ""
@@ -687,7 +894,7 @@ class LeadEngine:
             last_name=normalized.get("last_name"),
             prospect_name=prospect_name,
             country_code=normalized.get("country_code") or "+91",
-            phone=normalized["phone"],
+            phone=normalized.get("phone") or None,
             email=normalized.get("email"),
             contact_id=normalized.get("contact_id"),
             category_id=normalized.get("category_id"),
@@ -696,6 +903,7 @@ class LeadEngine:
             estimated_close_date=_parse_datetime(normalized.get("estimated_close_date")),
             assigned_to=str(normalized.get("assigned_to")),
             assigned_by=str(normalized.get("assigned_by")),
+            referred_by=normalized.get("referred_by"),
             current_stage=normalized.get("current_stage") or "new",
             due_date=_parse_datetime(normalized.get("due_date"), normalized.get("due_time")),
             due_time=normalized.get("due_time"),
@@ -726,6 +934,31 @@ class LeadEngine:
             deleted=False,
             created_at=normalized["created_at"],
             updated_at=normalized["updated_at"],
+            # Sales journey fields
+            industry=normalized.get("industry"),
+            requirement=normalized.get("requirement"),
+            budget=normalized.get("budget"),
+            timeline=normalized.get("timeline"),
+            decision_maker=normalized.get("decision_maker"),
+            location=normalized.get("location"),
+            pain_points=normalized.get("pain_points"),
+            current_agency=normalized.get("current_agency"),
+            num_employees=normalized.get("num_employees"),
+            qualify_status=normalized.get("qualify_status"),
+            discovery_outcome=normalized.get("discovery_outcome"),
+            discovery_notes=normalized.get("discovery_notes"),
+            proposal_status=normalized.get("proposal_status"),
+            negotiation_status=normalized.get("negotiation_status"),
+            negotiation_notes=normalized.get("negotiation_notes"),
+            customer_counter_offer=normalized.get("customer_counter_offer"),
+            discount=normalized.get("discount"),
+            final_scope=normalized.get("final_scope"),
+            payment_terms=normalized.get("payment_terms"),
+            client_conditions=normalized.get("client_conditions"),
+            accepted_quotation_reference=normalized.get("accepted_quotation_reference"),
+            agreement_status=normalized.get("agreement_status"),
+            next_action=normalized.get("next_action"),
+            current_stage_status=normalized.get("current_stage_status"),
         )
         await prospect.insert()
 
@@ -753,6 +986,7 @@ class LeadEngine:
             "estimated_close_date": prospect.estimated_close_date.isoformat() if prospect.estimated_close_date else None,
             "assigned_to": prospect.assigned_to,
             "assigned_by": prospect.assigned_by,
+            "referred_by": getattr(prospect, "referred_by", None),
             "current_stage": prospect.current_stage,
             "due_date": prospect.due_date.isoformat() if prospect.due_date else None,
             "due_time": prospect.due_time,
@@ -773,11 +1007,23 @@ class LeadEngine:
             "closed_by": prospect.closed_by,
             "reason_for_lost": prospect.reason_for_lost,
             "won_amount": prospect.won_amount,
+            "accepted_quotation_reference": getattr(prospect, "accepted_quotation_reference", None),
+            "negotiation_status": getattr(prospect, "negotiation_status", None),
+            "negotiation_notes": getattr(prospect, "negotiation_notes", None),
+            "customer_counter_offer": getattr(prospect, "customer_counter_offer", None),
+            "final_agreed_amount": getattr(prospect, "won_amount", None),
+            "discount": getattr(prospect, "discount", None),
+            "final_scope": getattr(prospect, "final_scope", None),
+            "payment_terms": getattr(prospect, "payment_terms", None),
+            "delivery_timeline": getattr(prospect, "timeline", None),
+            "client_conditions": getattr(prospect, "client_conditions", None),
             "created_at": prospect.created_at,
             "updated_at": prospect.updated_at,
             "stage_entered_at": prospect.stage_entered_at,
             "stage_last_changed_at": prospect.stage_last_changed_at,
             "days_in_stage": prospect.days_in_stage,
+            "current_stage_status": getattr(prospect, "current_stage_status", None),
+            "stage_status_history": list(getattr(prospect, "stage_status_history", None) or []),
             "department_id": getattr(prospect, "department_id", None),
             "meta_lead_id": getattr(prospect, "meta_lead_id", None),
             "meta_campaign_id": getattr(prospect, "meta_campaign_id", None),
@@ -794,6 +1040,7 @@ class LeadEngine:
         prospect = await SalesProspect.get(lead_id)
         if not prospect or prospect.deleted:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prospect not found")
+        assigned_before = getattr(prospect, "assigned_to", None)
         await require_owned_record_access(
             current_user,
             prospect,
@@ -813,7 +1060,9 @@ class LeadEngine:
         if "phone" in payload and payload["phone"] is not None:
             prospect.phone = _normalize_text(payload["phone"])
         if "email" in payload:
-            prospect.email = _normalize_text(payload["email"]).lower() or None
+            # Same sanitization as creation/import: invalid values become None
+            # instead of being persisted as junk that breaks future reads.
+            prospect.email = _sanitize_email(payload["email"])
         if "contact_id" in payload:
             prospect.contact_id = payload["contact_id"] or None
         if "category_id" in payload:
@@ -824,6 +1073,8 @@ class LeadEngine:
             prospect.interest_level = _parse_interest_level(payload.get("interest_level"))
         if "estimated_close_date" in payload:
             prospect.estimated_close_date = _parse_datetime(payload.get("estimated_close_date"))
+        if "referred_by" in payload:
+            prospect.referred_by = _normalize_text(payload.get("referred_by")) or None
         if "assigned_to" in payload:
             target_assignee = payload.get("assigned_to") or prospect.assigned_to
             # Only re-validate/reassign when the owner is actually changing.
@@ -881,10 +1132,154 @@ class LeadEngine:
             prospect.tag = list(payload.get("tag") or [])
         if "greeting_preference" in payload:
             prospect.greeting_preference = _normalize_text(payload.get("greeting_preference")) or None
+        if "custom_fields" in payload:
+            # The payload carries the complete custom-field set (the overview
+            # Add-field flow sends existing + new, the sidebar editor sends the
+            # full edited JSON), so the stored set is replaced, never merged.
+            incoming = payload.get("custom_fields") or {}
+            prospect.custom_fields = dict(incoming) if isinstance(incoming, dict) else {}
         if "reason_for_lost" in payload:
             prospect.reason_for_lost = _normalize_text(payload.get("reason_for_lost")) or None
         if "won_amount" in payload:
             prospect.won_amount = float(payload.get("won_amount") or 0) if payload.get("won_amount") is not None else None
+
+        # ── Sales journey fields ──
+        text_field_keys = [
+            "industry", "requirement", "timeline", "decision_maker", "location",
+            "pain_points", "current_agency", "num_employees",
+            "qualify_status", "discovery_outcome", "discovery_notes",
+            "proposal_status", "negotiation_status", "negotiation_notes",
+            "final_scope", "payment_terms", "client_conditions", "accepted_quotation_reference",
+            "agreement_status", "next_action",
+        ]
+        for key in text_field_keys:
+            if key in payload:
+                setattr(prospect, key, _normalize_text(payload.get(key)) or None)
+        if "budget" in payload:
+            budget_value = payload.get("budget")
+            if budget_value is None or budget_value == "":
+                prospect.budget = None
+            else:
+                try:
+                    prospect.budget = float(budget_value)
+                except (TypeError, ValueError):
+                    prospect.budget = None
+        for key in ["customer_counter_offer", "discount"]:
+            if key in payload:
+                value = payload.get(key)
+                if value is None or value == "":
+                    setattr(prospect, key, None)
+                else:
+                    try:
+                        setattr(prospect, key, float(value))
+                    except (TypeError, ValueError):
+                        setattr(prospect, key, None)
+        if "source" in payload:
+            prospect.source = _normalize_text(payload.get("source")) or prospect.source
+        if "first_contact_at" in payload:
+            prospect.first_contact_at = _parse_datetime(payload.get("first_contact_at"))
+        if "last_contacted_at" in payload:
+            prospect.last_contacted_at = _parse_datetime(payload.get("last_contacted_at"))
+        if "next_follow_up_at" in payload:
+            prospect.next_follow_up_at = _parse_datetime(payload.get("next_follow_up_at"))
+        if "agreement_expiry_date" in payload:
+            prospect.agreement_expiry_date = _parse_datetime(payload.get("agreement_expiry_date"))
+        if "agreement_signed_at" in payload:
+            prospect.agreement_signed_at = _parse_datetime(payload.get("agreement_signed_at"))
+        # Recording any contact auto-fills the first-contact gate used by Acquire -> Qualify.
+        if prospect.last_contacted_at and not prospect.first_contact_at:
+            prospect.first_contact_at = prospect.last_contacted_at
+
+        # ── Stage inner-status sync (single write path keeps snapshot + domain in lockstep) ──
+        requested_stage = _normalize_text(payload.get("current_stage") or "").lower().replace(" ", "_")
+        requested_status = _normalize_text(payload.get("status") or "").lower().replace(" ", "_")
+        should_convert_to_client = requested_stage in {"won", "closed_won"} or requested_status in {"won", "closed_won"}
+        # Preserve both sides of the merge:
+        # 1. Current behavior: moving a lead to Won must run the Won automation
+        #    when no usable client exists and fail loudly if conversion fails.
+        # 2. Incoming behavior: reuse a valid same-company client, repair stale or
+        #    cross-company client references, and record successful transfer metadata.
+        existing_client_id = getattr(prospect, "client_id", None)
+        existing_client = None
+        if should_convert_to_client and existing_client_id:
+            try:
+                existing_client = await Client.get(existing_client_id)
+            except Exception:
+                existing_client = None
+
+        existing_client_company_id = (
+            str(getattr(existing_client, "company_id", "") or "")
+            if existing_client
+            else None
+        )
+        current_company_id = str(getattr(prospect, "company_id", "") or "")
+
+        if should_convert_to_client:
+            prospect.current_stage = "Won"
+            prospect.status = ProspectStatus.WON
+            prospect.closed_date = now
+            prospect.closed_by = str(getattr(current_user, "id", ""))
+            prospect.reason_for_lost = None
+            prospect.won_amount = float(
+                getattr(prospect, "won_amount", None)
+                or getattr(prospect, "budget", None)
+                or 0
+            )
+            prospect.won_status = getattr(prospect, "won_status", None) or "payment_pending"
+            prospect.converted_at = getattr(prospect, "converted_at", None) or now
+
+            # Keep an existing client only when it really exists and belongs to
+            # the same company as the lead. Otherwise recreate/repair conversion.
+            if existing_client and existing_client_company_id == current_company_id:
+                prospect.client_id = str(existing_client.id)
+            else:
+                from app.crm.pipeline import _run_won_automation
+
+                automation_result = await _run_won_automation(
+                    current_user,
+                    prospect,
+                    current_company_id,
+                )
+                if automation_result.get("status") == "failed" or not automation_result.get("client_id"):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=(
+                            "Won lead conversion failed: "
+                            f"{automation_result.get('error') or 'client was not created'}"
+                        ),
+                    )
+
+                prospect.client_id = automation_result["client_id"]
+                if automation_result.get("project_id"):
+                    prospect.project_id = automation_result["project_id"]
+
+            # Incoming feature: once a valid client is linked, record that the
+            # Won lead was successfully transferred without deleting the lead.
+            if getattr(prospect, "client_id", None):
+                prospect.won_status = "transferred"
+                prospect.transferred_at = getattr(prospect, "transferred_at", None) or now
+                prospect.transferred_by = str(getattr(current_user, "id", ""))
+
+        from app.crm.pipeline import STAGE_STATUS_DOMAIN_FIELD, apply_stage_status_change, stage_status_key
+
+        stage_key = stage_status_key(prospect.current_stage)
+        if stage_key:
+            if stage_key == "acquire":
+                # A real owner reassignment marks the lead Assigned (Acquire flow).
+                if prospect.assigned_to and prospect.assigned_to != assigned_before:
+                    current = _normalize_text(getattr(prospect, "current_stage_status", "") or "").lower()
+                    if current in ("", "new", "imported"):
+                        apply_stage_status_change(
+                            prospect, stage_key=stage_key, new_status="assigned", user=current_user, now=now
+                        )
+            elif STAGE_STATUS_DOMAIN_FIELD.get(stage_key):
+                domain_value = getattr(prospect, STAGE_STATUS_DOMAIN_FIELD[stage_key], None)
+                normalized_domain = _normalize_text(domain_value or "").lower()
+                current = _normalize_text(getattr(prospect, "current_stage_status", "") or "").lower()
+                if normalized_domain and normalized_domain != current:
+                    apply_stage_status_change(
+                        prospect, stage_key=stage_key, new_status=normalized_domain, user=current_user, now=now
+                    )
 
         prospect.updated_at = now
         await prospect.save()
@@ -1031,12 +1426,33 @@ class LeadEngine:
                     tag=list(row.get("tag") or []),
                     greeting_preference=row.get("greeting_preference"),
                     status=_parse_status(row.get("status")),
+                    # Sales-journey columns land on the real lead fields so the
+                    # pipeline Value column and the stage gates see them (the
+                    # reported sync bug: an imported budget shown as Rs 0 and
+                    # re-asked by the move popup).
+                    budget=row.get("budget"),
+                    timeline=row.get("timeline"),
+                    decision_maker=row.get("decision_maker"),
+                    industry=row.get("industry"),
+                    requirement=row.get("requirement"),
+                    location=row.get("location"),
+                    pain_points=row.get("pain_points"),
+                    won_amount=row.get("won_amount"),
                     company_id=current_user.company_id,
                     created_by=str(current_user.id),
                     deleted=False,
                     created_at=row["created_at"],
                     updated_at=row["updated_at"],
                     custom_fields=dict(row.get("custom_fields") or {}),
+                    # Imported rows are auto-assigned, so owned Acquire leads
+                    # persist as Assigned (never the imported intake default).
+                    current_stage_status=_promote_assignment_status(
+                        row.get("current_stage"),
+                        row.get("assigned_to"),
+                        _initial_stage_status(
+                            row.get("current_stage"), row.get("source") or source_label, None
+                        ),
+                    ),
                 )
             except (ValidationError, ValueError) as exc:
                 if isinstance(exc, ValidationError) and exc.errors():
@@ -1124,6 +1540,9 @@ class LeadEngine:
             "owner_name": "Owner Name", "owner_contact_no": "Owner Contact",
             "tag": "Tags", "crm_company_id": "CRM Company",
             "contact_id": "Contact", "due_date": "Due Date", "due_time": "Due Time",
+            "budget": "Budget", "timeline": "Timeline", "decision_maker": "Decision Maker",
+            "industry": "Industry", "requirement": "Requirement", "location": "Location",
+            "pain_points": "Pain Points",
         }
         field_recommendations = []
         for header in normalized_headers:

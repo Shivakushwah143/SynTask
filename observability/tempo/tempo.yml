@@ -1,0 +1,57 @@
+# Grafana Tempo configuration — SynTask single-VPS deployment (Topic 9).
+#
+# Deployment mode : single binary (the image default "all" target).
+# Storage         : local filesystem on a persistent Docker volume (/var/tempo).
+# Networking      : OTLP receivers and the HTTP query API listen inside the
+#                   `syntask` Docker network only. Production publishes no
+#                   public port; telemetry endpoints are never exposed.
+# Retention       : trace blocks are compacted and dropped after 48h.
+#
+# Keep this file free of secrets. Tempo has no authentication here on purpose:
+# it is only reachable by other containers on the internal network plus the
+# loopback-bound Grafana datasource.
+
+# Serve search/tag queries over the HTTP API (Grafana 10+ TraceQL search).
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+  log_level: warn
+
+# ---------------------------------------------------------------------------
+# Receivers — native OTLP ingest from the SynTask backend and Celery worker.
+# ---------------------------------------------------------------------------
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  max_block_duration: 5m
+
+# ---------------------------------------------------------------------------
+# Retention — only the Compactor can delete trace blocks.
+# ---------------------------------------------------------------------------
+compactor:
+  compaction:
+    block_retention: 48h
+
+# ---------------------------------------------------------------------------
+# Local persistent storage (backed by the tempo_data Docker volume).
+# ---------------------------------------------------------------------------
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+# Do not phone usage statistics home from production.
+usage_report:
+  reporting_enabled: false

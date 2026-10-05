@@ -179,6 +179,24 @@ Behavior:
 - A fetch wrapper is available for future fetch usage.
 - The browser dashboard is available at `/dev/api-performance`.
 
+## Dashboard follow-up (Sep 2026)
+
+A follow-up pass on the Dashboard request/render path (`frontend/src/pages/Dashboard.jsx` + the endpoints it calls) confirmed and fixed the root causes below. See the Dashboard performance change summary for before/after request counts.
+
+| Finding | Status | Fix |
+|---|---|---|
+| Whole-page loader gated every section (one slow endpoint blocked the shell) | Fixed | Shell (hero + static guides) renders immediately; each data section shows its own `SectionSkeleton` until the slices it reads settle (`renderSection`/`ready` map). |
+| Sequential waves: ~9 role-dependent requests waited on `/dashboard/stats` | Fixed | Role is read from the session; every slice is fired in ONE parallel wave. `/dashboard/stats` is now requested only for Super Admins (it returns `null` for every other role). |
+| Stuck full-page loader under React StrictMode (in-flight refresh shared with a dead `isMounted` closure) | Fixed | Deduped refresh commits via a component-lifetime `isMountedRef` that StrictMode remounts re-arm, so the shared in-flight run still applies results. |
+| Duplicate StrictMode fetches (calendar, refresh fan-out) | Fixed | Both effects are deduped with in-flight refs (single request per mount cycle). |
+| Unused 30-day `/content-calendar` request fed only an unrendered state | Removed | Dashboard now fetches only the workspace calendar events it renders. |
+| Meetings list N+1 user queries (`User.get` per host + per participant) | Fixed | One batched `_id: {$in}` user query per list page. |
+| Projects list N+1 (task-count query + `User.get` per assignee per project) | Fixed | One task-count aggregation + one batched user query; falls back to the old loop if the aggregation is unavailable. |
+| Task Health endpoints re-scanned the same task dataset 3× per dashboard load | Fixed | New `GET /tasks/health/dashboard` (summary + team completion + extension counts in ONE scan). Dashboard calls it once instead of `health/summary` + `health/team-completion` + `health/extensions`. |
+| Cross-origin `Content-Type: application/json` default forced CORS preflights when `VITE_API_URL` points at a dev backend | Fixed | Removed the static header (Axios sets it only for JSON bodies); `.env.example` now documents the same-origin Vite proxy default. |
+| Redis init/retry stalling requests when Redis is down | Already fixed | `backend/app/core/redis_client.py` caches failure with a 30s cooldown + per-attempt timeouts; no change needed. |
+| Notification cascade / polling | Already fixed | Poll pauses when the tab is hidden and never dispatches page-refresh events; no change needed. |
+
 ## Validation
 
 - `npm -C frontend run build` passed.

@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { tasksAPI } from '../../api/tasks'
 import { Button, inputClassName } from '../ui'
 
-export default function QuickAssignPanel({ users, onTaskCreated }) {
+export default function QuickAssignPanel({ users, projectId, onTaskCreated }) {
   const [title, setTitle] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -27,6 +27,11 @@ export default function QuickAssignPanel({ users, onTaskCreated }) {
         title: trimmed,
         assigned_to: assigneeId,
         priority: 'medium',
+      }
+      // When the panel is embedded in a project board, link the new task to
+      // that project so it immediately appears on the board.
+      if (projectId) {
+        payload.project_id = projectId
       }
       await tasksAPI.createTask(payload)
       toast.success(`Task assigned successfully`)

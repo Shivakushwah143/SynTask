@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Download, Plus, RefreshCw, Upload, UserPlus, X, Users as UsersIcon, UserCheck, UserCog, Briefcase, Mail, Phone, Shield, Building, Calendar, Activity } from 'lucide-react'
 import Papa from 'papaparse'
 import { useConfirmation } from '../hooks/useConfirmation'
@@ -9,21 +9,12 @@ import { hasCompanyAdminAccess, isLeadRole, normalizeRole, getRoleLabel } from '
 import { EmptyState, Modal, PasswordInput, PhoneInput, phoneValidationMessage } from '../components/ui'
 import { getDesignationOptions } from '../constants/designations'
 import toast from 'react-hot-toast'
+import { getRoleModuleDefaults, getMemberEditDefaults } from '../config/modulePermissions'
+import { UserAccessEditor } from '../components/permissions'
+import { saveUserAccess, getPermissionCatalog } from '../api/permissions'
 
 const BULK_HEADERS = ['role', 'first_name', 'last_name', 'email', 'password', 'phone', 'department', 'designation', 'team_name', 'lead_email']
 const makeTempPassword = () => `SynTask@${Math.random().toString(36).slice(2, 8)}1`
-const SUB_ADMIN_MODULE_OPTIONS = [
-  { id: 'tasks_projects', label: 'Tasks & Projects' },
-  { id: 'tickets', label: 'Tickets' },
-  { id: 'chat', label: 'Chat' },
-  { id: 'meetings_calendar', label: 'Meetings & Calendar' },
-  { id: 'invoicing_ledger', label: 'Invoicing & Ledger' },
-  { id: 'sales_crm', label: 'Sales & CRM' },
-  { id: 'attendance_leaves', label: 'Attendance & Leaves' },
-  { id: 'recruitment', label: 'Recruitment' },
-  { id: 'reports', label: 'Reports' },
-  { id: 'ai_agents', label: 'AI & Agents' },
-]
 
 // Stat Card Component
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
@@ -37,15 +28,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
+    <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-center gap-3">
+        <div className={`shrink-0 rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
           <Icon className="h-4 w-4" />
         </div>
+        <div className="min-w-0">
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
+          <p className="mt-0.5 truncate text-lg font-bold text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+        </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -55,6 +48,11 @@ const Users = () => {
   const currentUser = user
   const { confirm } = useConfirmation()
   const [users, setUsers] = useState([])
+  // Full company roster (Admin/Sub Admin/Manager/Lead/Employee, any department)
+  // for the Reporting Manager dropdown. The main `users` list is paginated to
+  // 20 rows and hierarchy-scoped (managers only see subordinates + their
+  // department), so it cannot feed that dropdown.
+  const [companyRoster, setCompanyRoster] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -78,7 +76,13 @@ const Users = () => {
   const [bulkRows, setBulkRows] = useState([])
   const [bulkErrors, setBulkErrors] = useState([])
   const [bulkImporting, setBulkImporting] = useState(false)
-  const [selectedSubAdminModules, setSelectedSubAdminModules] = useState(['tasks_projects'])
+  const [selectedModules, setSelectedModules] = useState(() => getRoleModuleDefaults('employee'))
+  const [modulesTouched, setModulesTouched] = useState(false)
+  const [permissionCatalog, setPermissionCatalog] = useState([])
+  const [permissionModuleCatalog, setPermissionModuleCatalog] = useState([])
+  const [accessOverrides, setAccessOverrides] = useState([])
+  const [accessTouched, setAccessTouched] = useState(false)
+  const [savingAccess, setSavingAccess] = useState(false)
 
   const isLead = isLeadRole(user?.role)
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
@@ -95,13 +99,11 @@ const Users = () => {
     if (isLead) return ['employee']
     return []
   }, [isFullCompanyAdmin, isLead, isManager, isSubAdmin])
-  const managerOptions = useMemo(
-    () => users.filter((item) => item.status === 'active'),
-    [users],
-  )
-  const leadOptions = useMemo(
-    () => users.filter((item) => normalizeRole(item.role) === 'lead' && item.status === 'active'),
-    [users],
+  // All active company members (Admin/Sub Admin/Manager/Lead/Employee), any
+  // department or seniority, can be chosen as an employee's reporting manager.
+  const reportingManagerOptions = useMemo(
+    () => (companyRoster.length ? companyRoster : users.filter((item) => item.status === 'active')),
+    [companyRoster, users],
   )
   const designationOptions = useMemo(() => {
     return getDesignationOptions(customDesignations, editingUser?.designation || '')
@@ -144,6 +146,21 @@ const Users = () => {
     }
   }, [])
 
+  // The Reporting Manager dropdown needs every company member regardless of
+  // department/seniority (admins included). /users/assignable returns the full
+  // active roster for the current user's company.
+  const fetchCompanyRoster = useCallback(async () => {
+    try {
+      const data = await usersAPI.getAssignableUsers()
+      if (data && Array.isArray(data.users)) {
+        setCompanyRoster(data.users)
+      }
+    } catch (error) {
+      console.error('Error loading company roster:', error)
+      setCompanyRoster([])
+    }
+  }, [])
+
   const fetchDepartments = useCallback(async () => {
     if (!canReadDepartments) return
     try {
@@ -158,10 +175,11 @@ const Users = () => {
 
   useEffect(() => {
     fetchUsers()
+    fetchCompanyRoster()
     if (canReadDepartments) {
       fetchDepartments()
     }
-  }, [fetchUsers, fetchDepartments, canReadDepartments])
+  }, [fetchUsers, fetchCompanyRoster, fetchDepartments, canReadDepartments])
 
   if (isEmployee) {
     return (
@@ -218,9 +236,9 @@ const Users = () => {
       if (phoneError) errors.phone = phoneError
     }
 
-    const leadId = formData.get('lead_id')?.trim()
-    if (leadId && !/^[0-9a-fA-F]{24}$/.test(leadId)) {
-      errors.lead_id = 'Please enter a valid Lead ID'
+    const reportsTo = formData.get('reports_to')?.trim()
+    if (reportsTo && !/^[0-9a-fA-F]{24}$/.test(reportsTo)) {
+      errors.reports_to = 'Please select a valid reporting manager'
     }
 
     return errors
@@ -260,9 +278,11 @@ const Users = () => {
         userData.department = formData.get('department')?.trim() || ''
       }
 
+      // Member-level module permissions are sent on every creation flow.
+      userData.modules = selectedModules.join(',')
+
       if (userType === 'sub_admin') {
         userData.role = 'sub_admin'
-        userData.modules = selectedSubAdminModules.join(',')
         await usersAPI.createUser(userData)
       } else if (userType === 'manager') {
         userData.role = 'manager'
@@ -273,7 +293,7 @@ const Users = () => {
         await usersAPI.createLead(userData)
       } else {
         if (isCompanyAdmin || isManager) {
-          userData.lead_id = formData.get('lead_id') || ''
+          userData.reports_to = formData.get('reports_to') || ''
         }
         userData.designation = formData.get('designation') || ''
         await usersAPI.createEmployee(userData)
@@ -283,6 +303,7 @@ const Users = () => {
 
       closeUserModal()
       await fetchUsers()
+      fetchCompanyRoster()
 
       e.target.reset()
     } catch (error) {
@@ -309,15 +330,23 @@ const Users = () => {
     }
   }
 
+  const handleUserTypeChange = (nextType) => {
+    setUserType(nextType)
+    // Changing the role loads that role's default permissions so the creator
+    // starts from a sensible baseline and can customize afterwards.
+    setSelectedModules(getRoleModuleDefaults(nextType))
+    setModulesTouched(false)
+  }
+
   const handleEdit = (userToEdit) => {
-    // Permission: allow editing if self or company admin, or manager/lead over the user
+    // Company-scoped roles (Admin/Sub Admin/Manager/Lead) may edit any user in
+    // the company - no creator or department restriction. Employees may only
+    // edit themselves (handled by their profile view).
     const isSelf = String(userToEdit.id || userToEdit._id) === String(user.id || user._id)
     const isAdmin = hasCompanyAdminAccess(user?.role)
     const isManagerRole = normalizeRole(user?.role) === 'manager'
     const isLeadRoleLocal = isLeadRole(user?.role)
-    const managerCanEdit = isManagerRole && userToEdit.department_id && userToEdit.department_id === user.department_id
-    const leadCanEdit = isLeadRoleLocal && userToEdit.lead_id && String(userToEdit.lead_id) === String(user.id || user._id)
-    if (!(isSelf || isAdmin || managerCanEdit || leadCanEdit)) {
+    if (!(isSelf || isAdmin || isManagerRole || isLeadRoleLocal)) {
       toast.error('You do not have permission to edit this user')
       return
     }
@@ -333,14 +362,41 @@ const Users = () => {
     setDesignationError('')
     const normalizedRole = normalizeRole(userToEdit.role)
     setUserType(normalizedRole === 'sub_admin' ? 'sub_admin' : normalizedRole === 'manager' ? 'manager' : normalizedRole === 'lead' ? 'lead' : 'employee')
+    // Preload the member's existing permissions. Legacy members (no explicit
+    // module list) get their full effective access so a routine edit never
+    // silently strips permissions they already had.
+    setSelectedModules(getMemberEditDefaults(normalizedRole, userToEdit.modules))
+    setModulesTouched(false)
+    setAccessOverrides(userToEdit.permission_overrides || [])
+    setAccessTouched(false)
     setShowAddModal(true)
+    // Fetch the permission catalog so UserAccessEditor can render action permissions
+    getPermissionCatalog()
+      .then((data) => {
+        setPermissionCatalog(data.permissions || [])
+        const seen = new Map()
+        for (const entry of data.permissions || []) {
+          if (!seen.has(entry.module_id)) {
+            seen.set(entry.module_id, { id: entry.module_id, label: entry.module_label })
+          }
+        }
+        setPermissionModuleCatalog(Array.from(seen.values()))
+      })
+      .catch(() => {
+        // Catalog load failure is non-fatal — UserAccessEditor handles its own error state
+      })
   }
 
   const closeUserModal = () => {
     setShowAddModal(false)
     setEditingUser(null)
     setUserType('employee')
-    setSelectedSubAdminModules(['tasks_projects'])
+    setSelectedModules(getRoleModuleDefaults('employee'))
+    setModulesTouched(false)
+    setAccessOverrides([])
+    setAccessTouched(false)
+    setPermissionCatalog([])
+    setPermissionModuleCatalog([])
     setFormErrors({})
     setSelectedDepartmentId('')
     setShowDepartmentCreate(false)
@@ -438,6 +494,17 @@ const Users = () => {
       if (formData.get('designation')) {
         updateData.designation = formData.get('designation')
       }
+      const reportsTo = formData.get('reports_to')
+      if (reportsTo !== null && reportsTo !== undefined) {
+        updateData.reports_to = reportsTo
+      }
+    }
+
+    // Member-level module permissions are editable through the same modal.
+    // Only send them when the admin actually changed the selection, so a
+    // routine edit (name/email/etc.) never silently rewrites permissions.
+    if (modulesTouched) {
+      updateData.modules = selectedModules.join(',')
     }
 
     const password = formData.get('password')
@@ -448,9 +515,27 @@ const Users = () => {
     try {
       setSubmitting(true)
       await usersAPI.updateUser(editingUser.id, updateData)
+
+      // Save granular permissions if the user changed them in UserAccessEditor
+      if (accessTouched && accessOverrides.length >= 0) {
+        try {
+          await saveUserAccess(editingUser.id, {
+            modules: modulesTouched ? selectedModules : (editingUser.modules || []),
+            overrides: accessOverrides,
+          })
+        } catch (permError) {
+          // Profile was saved but permissions failed — inform the admin
+          const permMsg = permError.response?.data?.detail || 'Permission save failed'
+          toast.error(`Profile saved, but permissions failed: ${permMsg}`)
+          setSubmitting(false)
+          return
+        }
+      }
+
       toast.success('User updated successfully')
       closeUserModal()
       await fetchUsers()
+      fetchCompanyRoster()
       const form = document.querySelector('form')
       if (form) form.reset()
     } catch (error) {
@@ -475,6 +560,7 @@ const Users = () => {
       await usersAPI.deleteUser(userId)
       toast.success('User deleted successfully')
       await fetchUsers()
+      fetchCompanyRoster()
     } catch (error) {
       const errorMessage = error.response?.data?.detail || 'Failed to delete user'
       toast.error(errorMessage)
@@ -607,28 +693,33 @@ const Users = () => {
           department_id: department?.id || '',
         }
 
+        // Every bulk-imported member gets that role's default module permissions.
+        const roleModules = getRoleModuleDefaults(row.data.role)
         if (row.data.role === 'sub_admin') {
           await usersAPI.createUser({
             ...userData,
             role: 'sub_admin',
-            modules: 'tasks_projects',
+            modules: roleModules.join(','),
           })
         } else if (row.data.role === 'manager') {
           await usersAPI.createUser({
             ...userData,
             role: 'manager',
+            modules: roleModules.join(','),
             reports_to: String(user.id),
           })
         } else if (row.data.role === 'lead') {
           await usersAPI.createLead({
             ...userData,
             team_name: row.data.team_name,
+            modules: roleModules.join(','),
           })
         } else {
           await usersAPI.createEmployee({
             ...userData,
             designation: row.data.designation,
-            lead_id: isCompanyAdmin ? lead?.id || '' : '',
+            modules: roleModules.join(','),
+            reports_to: isCompanyAdmin ? lead?.id || '' : '',
           })
         }
       }
@@ -637,6 +728,7 @@ const Users = () => {
       setBulkRows([])
       setBulkErrors([])
       await fetchUsers()
+      fetchCompanyRoster()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Bulk import failed')
     } finally {
@@ -666,7 +758,7 @@ const Users = () => {
           </div>
           <p className="font-semibold text-rose-800 dark:text-rose-400">Failed to load users</p>
           <p className="mt-1 text-sm text-rose-600 dark:text-rose-500">{error}</p>
-          <button onClick={fetchUsers} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700">
+          <button onClick={() => { fetchUsers(); fetchCompanyRoster() }} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700">
             <RefreshCw className="h-4 w-4" />
             Try Again
           </button>
@@ -678,26 +770,26 @@ const Users = () => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-4 text-white shadow-xl md:p-5">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="rounded-xl bg-white/20 p-3 backdrop-blur-md shadow-lg border border-white/20">
-              <UsersIcon className="h-7 w-7 text-white" />
+        <div className="relative z-10 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-white/20 p-2 backdrop-blur-md shadow-lg border border-white/20">
+              <UsersIcon className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold md:text-3xl text-white tracking-tight">Team & User Directory</h1>
-              <p className="mt-1 text-indigo-100 text-sm">{isLead ? 'Manage your team members, departments & permissions' : 'Manage company team members, roles, departments & access'}</p>
+              <h1 className="text-xl font-bold md:text-2xl text-white tracking-tight">Team & User Directory</h1>
+              <p className="mt-0.5 text-indigo-100 text-sm">{isLead ? 'Manage your team members, departments & permissions' : 'Manage company team members, roles, departments & access'}</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
+          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
             {(isCompanyAdmin || isManager || isLead) && (
               <>
                 <button
                   type="button"
                   onClick={() => setShowBulkModal(true)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 border border-white/10 shadow-md"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 border border-white/10 shadow-md"
                 >
                   <Upload className="h-4 w-4" />
                   <span>Bulk Add</span>
@@ -715,15 +807,9 @@ const Users = () => {
                     setShowDesignationCreate(false)
                     setNewDesignationName('')
                     setDesignationError('')
-                    if (isLead) {
-                      setUserType('employee')
-                    } else if (isSubAdmin) {
-                      setUserType('manager')
-                    } else if (isManager) {
-                      setUserType('employee')
-                    }
+                    handleUserTypeChange(isLead ? 'employee' : isSubAdmin ? 'manager' : 'employee')
                   }}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20"
                 >
                   <Plus className="h-4 w-4" />
                   <span>{isLead ? 'Add Employee' : 'Add User'}</span>
@@ -787,7 +873,7 @@ const Users = () => {
               </div>
             </div>
             <button
-              onClick={fetchUsers}
+              onClick={() => { fetchUsers(); fetchCompanyRoster() }}
               className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
             >
               <RefreshCw className="h-3.5 w-3.5" />
@@ -1026,6 +1112,81 @@ const Users = () => {
         </div>
       </Modal>
 
+      <Modal
+        isOpen={showDepartmentCreate}
+        onClose={() => {
+          if (departmentSubmitting) return
+          setShowDepartmentCreate(false)
+          setNewDepartmentName('')
+          setNewDepartmentManagerId('')
+          setDepartmentError('')
+        }}
+        title="Create Department"
+        description="Add a department and select it for this user."
+        size="md"
+        zIndexClass="z-[70]"
+        footer={(
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setShowDepartmentCreate(false)
+                setNewDepartmentName('')
+                setNewDepartmentManagerId('')
+                setDepartmentError('')
+              }}
+              disabled={departmentSubmitting}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleCreateDepartment}
+              disabled={departmentSubmitting}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {departmentSubmitting ? 'Creating...' : 'Create Department'}
+            </button>
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Department Name *</label>
+            <input
+              type="text"
+              value={newDepartmentName}
+              onChange={(event) => {
+                setNewDepartmentName(event.target.value)
+                if (departmentError) setDepartmentError('')
+              }}
+              className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${departmentError ? 'border-red-500' : ''}`}
+              placeholder="Enter department name"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Department Manager</label>
+            <select
+              value={newDepartmentManagerId}
+              onChange={(event) => setNewDepartmentManagerId(event.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            >
+              <option value="">No manager</option>
+              {reportingManagerOptions.map((member) => (
+                <option key={member.id || member._id} value={member.id || member._id}>
+                  {member.first_name} {member.last_name} ({member.email})
+                </option>
+              ))}
+            </select>
+          </div>
+          {departmentError && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">{departmentError}</p>
+          )}
+        </div>
+      </Modal>
+
       {/* Add/Edit User Modal - Keep existing modal code */}
       {showAddModal && (
         <div
@@ -1070,11 +1231,12 @@ const Users = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     User Type
                   </label>
-                  <div className={`grid gap-2 ${isFullCompanyAdmin ? 'grid-cols-4' : (isSubAdmin ? 'grid-cols-3' : 'grid-cols-2')}`}>
+                  {/* Phones: two columns (wraps for 3–4 roles); tablet/desktop keep the original row. */}
+                <div className={`grid grid-cols-2 gap-2 ${isFullCompanyAdmin ? 'sm:grid-cols-4' : (isSubAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-2')}`}>
                     {isFullCompanyAdmin && (
                       <button
                         type="button"
-                        onClick={() => setUserType('sub_admin')}
+                        onClick={() => handleUserTypeChange('sub_admin')}
                         className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                           userType === 'sub_admin'
                             ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm dark:bg-indigo-500'
@@ -1087,7 +1249,7 @@ const Users = () => {
                     {(isFullCompanyAdmin || isSubAdmin) && (
                       <button
                         type="button"
-                        onClick={() => setUserType('manager')}
+                        onClick={() => handleUserTypeChange('manager')}
                         className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                           userType === 'manager'
                             ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm dark:bg-indigo-500'
@@ -1100,7 +1262,7 @@ const Users = () => {
                     {(isFullCompanyAdmin || isSubAdmin || isManager) && (
                       <button
                         type="button"
-                        onClick={() => setUserType('lead')}
+                        onClick={() => handleUserTypeChange('lead')}
                         className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                           userType === 'lead'
                             ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm dark:bg-indigo-500'
@@ -1112,7 +1274,7 @@ const Users = () => {
                     )}
                     <button
                       type="button"
-                      onClick={() => setUserType('employee')}
+                      onClick={() => handleUserTypeChange('employee')}
                       className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                         userType === 'employee'
                           ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm dark:bg-indigo-500'
@@ -1228,7 +1390,7 @@ const Users = () => {
                     name="phone"
                     defaultValue={editingUser?.phone || ''}
                     className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${formErrors.phone ? 'border-red-500' : ''}`}
-                    placeholder="+919876543210"
+                    placeholder="Enter Number"
                     onChange={() => {
                       if (formErrors.phone) {
                         setFormErrors({ ...formErrors, phone: '' })
@@ -1281,30 +1443,35 @@ const Users = () => {
                   )}
                 </div>
 
-                {userType === 'sub_admin' && (
-                  <div className="sm:col-span-2 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-500/25 dark:bg-indigo-500/10">
-                    <label className="block text-sm font-semibold text-gray-800 dark:text-gray-100">Sub-admin authority</label>
-                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">Select modules this sub-admin can manage. They cannot grant authority outside this list.</p>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      {SUB_ADMIN_MODULE_OPTIONS.map((module) => {
-                        const checked = selectedSubAdminModules.includes(module.id)
-                        return (
-                          <label key={module.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${checked ? 'border-indigo-400 bg-white text-indigo-800 dark:bg-gray-800 dark:text-indigo-200' : 'border-gray-200 bg-white/70 text-gray-700 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300'}`}>
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => setSelectedSubAdminModules((current) => {
-                                if (current.includes(module.id)) return current.filter((item) => item !== module.id)
-                                return [...current, module.id]
-                              })}
-                            />
-                            {module.label}
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
+                <div className="sm:col-span-2 border-t border-gray-200 pt-4 dark:border-gray-700">
+                  <UserAccessEditor
+                    user={{
+                      ...editingUser,
+                      modules: selectedModules,
+                      permission_overrides: accessOverrides,
+                      effective_permissions: editingUser?.effective_permissions || {},
+                    }}
+                    initialCatalog={permissionCatalog}
+                    initialModuleCatalog={permissionModuleCatalog}
+                    disabled={submitting}
+                    saving={savingAccess}
+                    onDirtyChange={(dirty) => setAccessTouched(dirty)}
+                    onSave={async ({ modules: newModules, overrides }) => {
+                      setSavingAccess(true)
+                      try {
+                        await saveUserAccess(editingUser.id, { modules: newModules, overrides })
+                        toast.success('Access permissions updated')
+                        setAccessOverrides(overrides)
+                        setSelectedModules(newModules)
+                        setModulesTouched(true)
+                        setAccessTouched(false)
+                      } finally {
+                        setSavingAccess(false)
+                      }
+                    }}
+                    onCancel={closeUserModal}
+                  />
+                </div>
                 {userType === 'lead' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Team Name</label>
@@ -1322,21 +1489,21 @@ const Users = () => {
                   <>
                     {(isCompanyAdmin || isManager) && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Lead</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Reporting Manager</label>
                         <select
-                          name="lead_id"
-                          defaultValue={editingUser?.lead_id || ''}
-                          className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${formErrors.lead_id ? 'border-red-500' : ''}`}
+                          name="reports_to"
+                          defaultValue={editingUser?.reports_to || ''}
+                          className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${formErrors.reports_to ? 'border-red-500' : ''}`}
                         >
-                          <option value="">No lead</option>
-                          {leadOptions.map((lead) => (
-                            <option key={lead.id || lead._id} value={lead.id || lead._id}>
-                              {lead.first_name} {lead.last_name} ({lead.email})
+                          <option value="">No reporting manager</option>
+                          {reportingManagerOptions.map((member) => (
+                            <option key={member.id || member._id} value={member.id || member._id}>
+                              {member.first_name} {member.last_name} ({member.email})
                             </option>
                           ))}
                         </select>
-                        {formErrors.lead_id && (
-                          <p className="text-red-500 text-xs mt-1">{formErrors.lead_id}</p>
+                        {formErrors.reports_to && (
+                          <p className="text-red-500 text-xs mt-1">{formErrors.reports_to}</p>
                         )}
                       </div>
                     )}

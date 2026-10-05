@@ -87,6 +87,13 @@ def dashboard_metrics_cache_key(user_id: str, role: str, company_id: Optional[st
     return f"{DASHBOARD_KEY_PREFIX}:{company_id or 'platform'}:{role}:{user_id}:metrics"
 
 
-def company_dashboard_pattern(company_id: str) -> str:
-    """Matches ALL dashboard keys for a company – both :stats and :metrics."""
-    return f"{DASHBOARD_KEY_PREFIX}:{company_id}:*"
+def company_dashboard_pattern(company_id: Optional[str]) -> str:
+    """Matches ALL dashboard cache keys for a company (stats, metrics, canvas).
+
+    Uses the same ``or 'platform'`` fallback as the key builders so writes by
+    platform (super-admin, no company) users invalidate exactly the keys their
+    reads cache under. Note: legacy write paths used ``dashboard:stats:...``
+    which never matched the canonical ``dashboard:data:...`` keys — all
+    invalidation must go through this helper.
+    """
+    return f"{DASHBOARD_KEY_PREFIX}:{company_id or 'platform'}:*"

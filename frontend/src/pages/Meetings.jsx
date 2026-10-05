@@ -80,7 +80,9 @@ export default function Meetings() {
   const columns = useMemo(() => [
     { key: 'title', header: 'Title', render: (row) => (
       <div className="flex items-center gap-2">
-        <Video className="h-4 w-4 text-indigo-500" />
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-[10px] font-bold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+          {String(row.title || 'M').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}
+        </span>
         <span className="font-medium text-gray-900 dark:text-white">{row.title}</span>
       </div>
     )},

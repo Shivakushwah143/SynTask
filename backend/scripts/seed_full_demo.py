@@ -56,6 +56,16 @@ from app.models.sales_prospect import InterestLevel, ProspectStatus, SalesProspe
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.ticket import Ticket, TicketPriority, TicketStatus, TicketType
 from app.models.user import User, UserRole, UserStatus
+from app.models.employee_profile import (
+    EmployeeProfile,
+    EmploymentStatus,
+    EmploymentType,
+    EmployeeWorkMode,
+)
+from app.models.attendance import Attendance, AttendanceStatus
+from app.models.leave import LeaveRequest, LeaveStatus, LeaveType
+from app.models.salary import PayFrequency, SalaryStatus, SalaryStructure
+
 from app.recruitment.models import (
     Application,
     Candidate,
@@ -1365,6 +1375,234 @@ def pick_by_index(items: list[Any], index: int) -> Any:
     return items[index % len(items)]
 
 
+# ---------------------------------------------------------------------------
+# Employee profiles + deterministic HR records (attendance / leave / salary)
+#
+# The AI Evaluation & Regression datasets assert on real tool results, so the
+# demo tenant needs stable EmployeeProfile/attendance/leave/salary records in
+# addition to the CRM/task data above. All upserts are idempotent and keyed by
+# natural identifiers so reruns never duplicate.
+# ---------------------------------------------------------------------------
+
+DESIGNATIONS = {
+    "admin": "Company Administrator",
+    "hr_manager": "HR Manager",
+    "manager": "Delivery Manager",
+    "lead": "Team Lead",
+    "recruiter": "Talent Acquisition Lead",
+    "employee": "Associate",
+}
+
+
+async def upsert_employee_profiles(company_id: str, staff: list[User]) -> list[EmployeeProfile]:
+    """Create one EmployeeProfile per company staff member (deterministic)."""
+    profiles: list[EmployeeProfile] = []
+    role_keys = [
+        u.role.value if hasattr(u.role, "value") else str(u.role)
+        for u in staff
+    ]
+    for idx, user in enumerate(staff):
+        existing = await EmployeeProfile.find_one({
+            "company_id": company_id,
+            "user_id": str(user.id),
+        })
+        role_key = role_keys[idx]
+        if role_key == UserRole.ADMIN.value:
+            designation = DESIGNATIONS["admin"]
+        elif role_key == UserRole.MANAGER.value:
+            designation = DESIGNATIONS["hr_manager"] if user.email.startswith("hr") else DESIGNATIONS["manager"]
+        elif role_key == UserRole.LEAD.value:
+            designation = DESIGNATIONS["recruiter"] if user.email.startswith("recruiter") else DESIGNATIONS["lead"]
+        else:
+            designation = DESIGNATIONS["employee"]
+        now = datetime.utcnow()
+        payload = dict(
+            company_id=company_id,
+            user_id=str(user.id),
+            department_id=getattr(user, "department_id", None),
+            designation=designation,
+            reports_to=getattr(user, "reports_to", None),
+            employment_type=EmploymentType.FULL_TIME,
+            joining_date=now - timedelta(days=900 - idx * 60),
+            work_mode=EmployeeWorkMode.HYBRID if idx % 2 else EmployeeWorkMode.ONSITE,
+            work_location="Mumbai",
+            employment_status=EmploymentStatus.ACTIVE,
+        )
+        if existing:
+            for key, value in payload.items():
+                if key in ("company_id", "user_id"):
+                    continue
+                if value is not None:
+                    setattr(existing, key, value)
+            existing.updated_at = now
+            await existing.save()
+            profiles.append(existing)
+        else:
+            profile = EmployeeProfile(
+                employee_number=f"DEMO-EMP-{idx + 1:03d}",
+                **payload,
+            )
+            await profile.insert()
+            profiles.append(profile)
+    return profiles
+
+
+async def upsert_attendance_records(company_id: str, employees: list[User]) -> int:
+    """Seed attendance for the first three employees over yesterday+today.
+
+    Emp1X demo records keep the HR agent deterministic no-data tests meaningful:
+    employees outside this list have NO attendance records.
+    """
+    written = 0
+    now = datetime.utcnow()
+    for day_offset in (1, 0):
+        day = (now - timedelta(days=day_offset)).date()
+        for idx, employee in enumerate(employees[:3]):
+            employee_id = str(employee.id)
+            record = await Attendance.find_one({
+                "company_id": company_id,
+                "employee_id": employee_id,
+                "date": day.isoformat(),
+            })
+            login_time = datetime.combine(day, datetime.min.time()).replace(hour=9, minute=15 + idx)
+            logout_time = datetime.combine(day, datetime.min.time()).replace(hour=18, minute=15)
+            total_hours = (8 * 3600) if day_offset == 1 else (4 * 3600)  # closed day vs in-progress day
+            if record:
+                record.status = AttendanceStatus.WORKING
+                record.login_time = login_time
+                record.logout_time = logout_time if day_offset == 1 else None
+                record.total_working_hours = total_hours
+                record.break_duration = 1800.0
+                record.is_late = day_offset == 0 and idx == 2
+                record.work_type = "Full Time"
+                record.updated_at = now
+                await record.save()
+            else:
+                await Attendance(
+                    employee_id=employee_id,
+                    company_id=company_id,
+                    date=day.isoformat(),
+                    login_time=login_time,
+                    logout_time=logout_time if day_offset == 1 else None,
+                    total_working_hours=total_hours,
+                    break_duration=1800.0,
+                    status=AttendanceStatus.WORKING,
+                    is_late=day_offset == 0 and idx == 2,
+                    work_type="Full Time",
+                ).insert()
+            written += 1
+    return written
+
+
+async def upsert_leave_records(company_id: str, staff: list[User]) -> int:
+    """Seed deterministic leave requests for the demo tenant.
+
+    Layout per company (employees are the last five members of ``staff``):
+      emp11 -> 1 PENDING leave (leave correctness case)
+      emp12 -> 1 APPROVED leave
+    Everyone else has NO leave requests (leave no-data grounding case).
+    """
+    employees = [user for user in staff if user.email.startswith("emp")]
+    if len(employees) < 2:
+        return 0
+    now = datetime.utcnow()
+    admin_id = next((str(user.id) for user in staff if user.role == UserRole.ADMIN), None)
+    specs = [
+        {
+            "employee": employees[0],
+            "status": LeaveStatus.PENDING,
+            "leave_type": LeaveType.CASUAL_LEAVE,
+            "start": (now + timedelta(days=2)).date(),
+            "end": (now + timedelta(days=3)).date(),
+            "reason": "Personal family function",
+        },
+        {
+            "employee": employees[1],
+            "status": LeaveStatus.APPROVED,
+            "leave_type": LeaveType.SICK_LEAVE,
+            "start": (now - timedelta(days=1)).date(),
+            "end": (now - timedelta(days=1)).date(),
+            "reason": "Medical appointment",
+        },
+    ]
+    written = 0
+    for spec in specs:
+        employee = spec["employee"]
+        start = spec["start"]
+        end = spec["end"]
+        record = await LeaveRequest.find_one({
+            "company_id": company_id,
+            "employee_id": str(employee.id),
+            "reason": spec["reason"],
+        })
+        if record:
+            record.status = spec["status"]
+            record.leave_type = spec["leave_type"]
+            record.start_date = datetime.combine(start, datetime.min.time())
+            record.end_date = datetime.combine(end, datetime.min.time())
+            record.requested_by = str(employee.id)
+            record.reviewed_by = admin_id if spec["status"] == LeaveStatus.APPROVED else None
+            record.reviewed_at = now if spec["status"] == LeaveStatus.APPROVED else None
+            record.updated_at = now
+            await record.save()
+        else:
+            await LeaveRequest(
+                employee_id=str(employee.id),
+                employee_role=employee.role.value if hasattr(employee.role, "value") else str(employee.role),
+                company_id=company_id,
+                leave_type=spec["leave_type"],
+                duration="full_day",
+                requested_units=1.0,
+                start_date=datetime.combine(start, datetime.min.time()),
+                end_date=datetime.combine(end, datetime.min.time()),
+                reason=spec["reason"],
+                status=spec["status"],
+                requested_by=str(employee.id),
+                reviewed_by=admin_id if spec["status"] == LeaveStatus.APPROVED else None,
+                reviewed_at=now if spec["status"] == LeaveStatus.APPROVED else None,
+            ).insert()
+        written += 1
+    return written
+
+
+async def upsert_salary_structure(company_id: str, staff: list[User]) -> int:
+    """Seed ONE deterministic salary structure (emp14) so both the 'salary
+    present' (Emp14) and 'salary no-data' (Emp15) HR eval cases are stable.
+    """
+    employees = [user for user in staff if user.email.startswith("emp")]
+    if len(employees) < 5:
+        return 0
+    employee = employees[3]  # emp14 — the remaining staff keep no salary data
+    now = datetime.utcnow()
+    existing = await SalaryStructure.find_one({
+        "company_id": company_id,
+        "employee_id": str(employee.id),
+        "status": SalaryStatus.ACTIVE,
+    })
+    if existing:
+        existing.effective_from = now - timedelta(days=180)
+        existing.currency = "INR"
+        existing.updated_at = now
+        await existing.save()
+        return 1
+    await SalaryStructure(
+        company_id=company_id,
+        employee_id=str(employee.id),
+        effective_from=now - timedelta(days=180),
+        currency="INR",
+        pay_frequency=PayFrequency.MONTHLY,
+        status=SalaryStatus.ACTIVE,
+        items=[],
+        total_earnings=0.0,
+        total_configured_deductions=0.0,
+        configured_net=0.0,
+        source="demo_seed",
+        notes=DEMO_TAG,
+        created_by=staff[0].id if staff else None,
+    ).insert()
+    return 1
+
+
 async def build_company_bundle(company_record: dict[str, Any], company_index: int) -> dict[str, Any]:
     company = await upsert_company(company_record)
     company_id = str(company.id)
@@ -1465,6 +1703,13 @@ async def build_company_bundle(company_record: dict[str, Any], company_index: in
         hr_department_id=str(dept_hr.id),
     )
 
+    # Stable HR records for deterministic AI Evaluation runs.
+    staff = [admin, hr_manager, manager, lead_user, recruiter, *employees]
+    profiles = await upsert_employee_profiles(company_id, staff)
+    attendance_count = await upsert_attendance_records(company_id, employees)
+    leave_count = await upsert_leave_records(company_id, staff)
+    salary_count = await upsert_salary_structure(company_id, staff)
+
     return {
         "company": company,
         "admin": admin,
@@ -1473,6 +1718,8 @@ async def build_company_bundle(company_record: dict[str, Any], company_index: in
         "lead": lead_user,
         "recruiter": recruiter,
         "employees": employees,
+        "profiles": profiles,
+        "hr_counts": {"attendance": attendance_count, "leaves": leave_count, "salary_structures": salary_count},
         "crm_company": crm_company,
         "categories": categories,
         "products": products,
@@ -1568,6 +1815,14 @@ async def main() -> None:
         print(f"Tickets:             {len(all_tickets)}")
         print(f"Notifications:       {len(all_notifications)}")
         print(f"Content calendar:    {len(all_content_items)}")
+        total_profiles = sum(len(bundle.get("profiles") or []) for bundle in bundles)
+        total_attendance = sum((bundle.get("hr_counts") or {}).get("attendance", 0) for bundle in bundles)
+        total_leaves = sum((bundle.get("hr_counts") or {}).get("leaves", 0) for bundle in bundles)
+        total_salaries = sum((bundle.get("hr_counts") or {}).get("salary_structures", 0) for bundle in bundles)
+        print(f"Employee profiles:   {total_profiles}")
+        print(f"Attendance records:  {total_attendance}")
+        print(f"Leave requests:      {total_leaves}")
+        print(f"Salary structures:   {total_salaries}")
         print(f"Demo password:       {DEMO_PASSWORD}")
     finally:
         await close_db()

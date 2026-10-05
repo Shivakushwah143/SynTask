@@ -1,11 +1,14 @@
 import { useNavigate } from 'react-router-dom'
 import { useTasks } from '@/hooks/useTasks'
-import { timeService } from '@/services/timeService'
+import CarryForwardDueDate from './CarryForwardDueDate'
 
 const statuses = [
   { id: 'todo', label: 'To Do' },
+  { id: 'assigned', label: 'Assigned' },
   { id: 'in_progress', label: 'In Progress' },
   { id: 'in_review', label: 'In Review' },
+  { id: 'revision_required', label: 'Revision' },
+  { id: 'approved', label: 'Approved' },
   { id: 'completed', label: 'Completed' },
   { id: 'cancelled', label: 'Cancelled' },
 ]
@@ -17,7 +20,7 @@ export default function BoardView() {
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {statuses.map((status) => (
           <div key={status.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
             <div className="mb-3 h-4 w-20 animate-pulse rounded bg-gray-200" />
@@ -32,7 +35,7 @@ export default function BoardView() {
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       {statuses.map((status) => {
         const statusTasks = tasks.filter((task) => task.status === status.id)
 
@@ -60,9 +63,9 @@ export default function BoardView() {
                     {task.priority && (
                       <p className="mt-1 text-xs text-gray-500">Priority: {task.priority}</p>
                     )}
-                    {task.due_date && (
+                    {(task.due_date || task.carry_forward_due_date) && (
                       <p className="mt-1 text-xs text-gray-500">
-                        Due: {timeService.format(task.due_date, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        Due: <CarryForwardDueDate task={task} />
                       </p>
                     )}
                   </div>

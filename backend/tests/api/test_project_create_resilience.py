@@ -13,7 +13,11 @@ os.environ.setdefault("SUPER_ADMIN_PASSWORD", "SuperAdmin123!")
 import pytest
 from bson import ObjectId
 
+from fastapi import HTTPException
+
 from app.api.v1.endpoints.projects import project_create
+from app.models.user import UserRole
+from app.services import project_service
 
 
 class DummyProject:
@@ -74,8 +78,9 @@ class DummyDB(dict):
 
 
 @pytest.mark.asyncio
-async def test_create_project_returns_success_when_publish_event_fails(monkeypatch):
+async def test_create_project_rejects_missing_phase1_owner(monkeypatch):
     monkeypatch.setattr(project_create, "Project", DummyProject)
+    monkeypatch.setattr(project_service, "Project", DummyProject)
     monkeypatch.setattr(project_create, "ProjectType", lambda value: SimpleNamespace(value=value))
     async def noop(*args, **kwargs):
         return None
@@ -84,23 +89,28 @@ async def test_create_project_returns_success_when_publish_event_fails(monkeypat
     monkeypatch.setattr("app.core.database.get_database", lambda: DummyDB())
     monkeypatch.setattr(project_create, "publish_event", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("redis down")))
     monkeypatch.setattr(project_create, "User", SimpleNamespace(get=lambda *args, **kwargs: None))
+    async def project_type_stub(*_args, **_kwargs):
+        return "software"
+    monkeypatch.setattr(project_service.ProjectService, "ensure_project_type", project_type_stub)
 
-    current_user = SimpleNamespace(company_id="company-1", id="user-1")
+    current_user = SimpleNamespace(company_id="company-1", id="user-1", role=UserRole.ADMIN)
 
-    result = await project_create.create_project(
-        name="Project One",
-        key="PROJ",
-        description="Example",
-        type="software",
-        client_id=None,
-        lead_id=None,
-        assigned_to=None,
-        start_date=None,
-        delivery_date=None,
-        project_id="PROJ-001",
-        current_user=current_user,
-    )
+    with pytest.raises(HTTPException) as exc:
+        await project_create.create_project(
+            name="Project One",
+            key="PROJ",
+            description="Example",
+            type="software",
+            client_id=None,
+            lead_id=None,
+            assigned_to=None,
+            assigned_user_ids=None,
+            start_date=None,
+            delivery_date=None,
+            priority="medium",
+            project_id="PROJ-001",
+            current_user=current_user,
+        )
 
-    assert result["message"] == "Project created successfully"
-    assert result["project_id"] == "PROJ-001"
-    assert result["warnings"] == ["Project created, but background processing is degraded."]
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Project owner is required"

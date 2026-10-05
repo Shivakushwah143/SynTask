@@ -25,20 +25,25 @@ import { timeService } from '@/services/timeService'
 import { aiAPI } from '../api/ai'
 import toast from 'react-hot-toast'
 import { Badge, Button, FormField, inputClassName } from '../components/ui'
+import { useCreateChangeRequest } from '../hooks/useChangeRequests'
+import { useMyChangeRequests } from '../hooks/useChangeRequests'
+import { useMyProfile, useUpdateMyProfile } from '../hooks/useMyHr'
+import { ChangeRequestModal, EditProfileModal } from './hr/me/MyProfile'
+import { isAdminRole, isSubAdminRole } from '../utils/roles'
 
 // ============================================================
 // SECTION HEADER COMPONENT
 // ============================================================
 const SectionHeader = ({ icon: Icon, title, description, action }) => (
-  <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+  <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-3 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
     <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-          <Icon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+      <div className="flex items-center gap-2.5">
+        <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+          <Icon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
         </div>
         <div>
           <h2 className="font-bold text-gray-900 dark:text-white">{title}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{description}</p>
         </div>
       </div>
       {action}
@@ -52,7 +57,7 @@ const SectionHeader = ({ icon: Icon, title, description, action }) => (
 const TabButton = ({ id, label, icon: Icon, active, onClick }) => (
   <button
     onClick={() => onClick(id)}
-    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
+    className={`inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-medium transition-all ${
       active 
         ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg' 
         : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
@@ -154,6 +159,13 @@ const getInitials = (user) => `${user?.first_name?.[0] || ''}${user?.last_name?.
 // ============================================================
 const Settings = () => {
   const { user, updateUser } = useAuthStore()
+  const { data: employeeProfile } = useMyProfile()
+  const updateMyProfile = useUpdateMyProfile()
+  const createChangeRequest = useCreateChangeRequest()
+  const { data: myChangeRequests } = useMyChangeRequests({ page_size: 5 })
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false)
+  const [changeRequestOpen, setChangeRequestOpen] = useState(false)
+  const [savingEmployeeProfile, setSavingEmployeeProfile] = useState(false)
   const [activeTab, setActiveTab] = useState('profile')
   const fileInputRef = useRef(null)
   const [avatarFile, setAvatarFile] = useState(null)
@@ -205,6 +217,8 @@ const Settings = () => {
   }, [avatarPreview, avatarRemoved, currentAvatarUrl, imageError]);
 
   const profileChanged = Boolean(avatarFile || avatarRemoved)
+  const canEditEmployeeDetails = isAdminRole(user?.role) || isSubAdminRole(user?.role)
+  const hasPendingDetailRequest = myChangeRequests?.items?.some((request) => request.status === 'pending') || false
 
   // Clean up object URLs on unmount
   useEffect(() => {
@@ -463,21 +477,21 @@ const Settings = () => {
       {/* ============================================================ */}
       {/* HERO SECTION - Gradient with Glassmorphism */}
       {/* ============================================================ */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-stone-600 via-amber-600 to-orange-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-stone-600 via-amber-600 to-orange-600 p-4 text-white shadow-xl md:p-5">
         {/* Decorative blur circles */}
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
         
         <div className="relative z-10">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <SettingsIcon className="h-6 w-6" />
+              <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+                <SettingsIcon className="h-5 w-5" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Settings</h1>
-                <p className="mt-1 text-indigo-100">
+                <h1 className="text-xl font-bold md:text-2xl">Settings</h1>
+                <p className="mt-0.5 text-indigo-100">
                   Account, security, and notification preferences.
                 </p>
               </div>
@@ -495,7 +509,7 @@ const Settings = () => {
       {/* ============================================================ */}
       {/* TABS */}
       {/* ============================================================ */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-2 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div className="rounded-2xl border border-gray-200 bg-white p-1.5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div className="flex flex-wrap gap-1">
           {tabs.map((tab) => (
             <TabButton
@@ -518,17 +532,37 @@ const Settings = () => {
           <SectionHeader 
             icon={UserCog}
             title="Profile Information"
-            description="Manage your profile photo and view account details"
+            description="Manage your profile photo and personal details"
+            action={(
+              canEditEmployeeDetails ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => employeeProfile ? setProfileEditorOpen(true) : toast.error('No employee profile is linked to this account')}
+                >
+                  Edit Profile
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => employeeProfile ? setChangeRequestOpen(true) : toast.error('No employee profile is linked to this account')}
+                  disabled={hasPendingDetailRequest}
+                >
+                  {hasPendingDetailRequest ? 'Request Pending…' : 'Request Detail Change'}
+                </Button>
+              )
+            )}
           />
-          <div className="space-y-6 p-4">
-            <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5 dark:border-indigo-900/50 dark:from-indigo-950/20 dark:to-gray-900/30">
-              <div className="flex flex-col items-center gap-5 text-center sm:flex-row sm:text-left">
+          <div className="space-y-4 p-3">
+            <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-4 dark:border-indigo-900/50 dark:from-indigo-950/20 dark:to-gray-900/30">
+              <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
                 <div className="relative">
                   {displayedAvatar ? (
                     <img
                       src={displayedAvatar}
                       alt={`${user?.first_name || 'User'} profile`}
-                      className="h-32 w-32 rounded-full border-4 border-white object-cover shadow-xl shadow-indigo-500/15 dark:border-gray-800"
+                      className="h-24 w-24 rounded-full border-4 border-white object-cover shadow-xl shadow-indigo-500/15 dark:border-gray-800"
                       onError={() => {
                         console.error('❌ Image failed to load:', displayedAvatar);
                         setImageError(true);
@@ -539,7 +573,7 @@ const Settings = () => {
                       }}
                     />
                   ) : (
-                    <div className="flex h-32 w-32 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-3xl font-bold text-white shadow-xl shadow-indigo-500/15 dark:border-gray-800">
+                    <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-2xl font-bold text-white shadow-xl shadow-indigo-500/15 dark:border-gray-800">
                       {getInitials(user)}
                     </div>
                   )}
@@ -596,7 +630,7 @@ const Settings = () => {
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Account fields</h3>
                 <Badge label="Read-only" colorKey="scheduled" />
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-2">
                 <ReadOnly label="First Name" value={user?.first_name} />
                 <ReadOnly label="Last Name" value={user?.last_name} />
                 <ReadOnly label="Email" value={user?.email} />
@@ -606,7 +640,7 @@ const Settings = () => {
               </div>
             </div>
 
-            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-4 sm:flex-row sm:justify-end dark:border-gray-700">
+            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-3 sm:flex-row sm:justify-end dark:border-gray-700">
               <button
                 type="button"
                 onClick={resetProfileDraft}
@@ -627,6 +661,44 @@ const Settings = () => {
               </Button>
             </div>
           </div>
+          {employeeProfile ? (
+            <>
+              <EditProfileModal
+                isOpen={profileEditorOpen}
+                onClose={() => setProfileEditorOpen(false)}
+                profile={employeeProfile}
+                saving={savingEmployeeProfile}
+                onSave={async (payload) => {
+                  setSavingEmployeeProfile(true)
+                  try {
+                    await updateMyProfile.mutateAsync(payload)
+                    updateUser({ ...user, first_name: payload.first_name, last_name: payload.last_name })
+                    toast.success('Personal details updated')
+                    setProfileEditorOpen(false)
+                  } catch (error) {
+                    toast.error(error?.response?.data?.detail || 'Failed to update your details')
+                  } finally {
+                    setSavingEmployeeProfile(false)
+                  }
+                }}
+              />
+              <ChangeRequestModal
+                isOpen={changeRequestOpen}
+                onClose={() => setChangeRequestOpen(false)}
+                profile={employeeProfile}
+                submitting={createChangeRequest.isLoading}
+                onSubmit={async (payload) => {
+                  try {
+                    await createChangeRequest.mutateAsync(payload)
+                    toast.success('Change request submitted. Your manager will review it.')
+                    setChangeRequestOpen(false)
+                  } catch (error) {
+                    toast.error(error?.response?.data?.detail || 'Failed to submit change request')
+                  }
+                }}
+              />
+            </>
+          ) : null}
         </SettingsCard>
       )}
 
@@ -634,7 +706,7 @@ const Settings = () => {
       {/* SECURITY TAB */}
       {/* ============================================================ */}
       {activeTab === 'security' && (
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className="grid gap-4 xl:grid-cols-2">
           {/* Change Password */}
           <SettingsCard>
             <SectionHeader 
@@ -642,7 +714,7 @@ const Settings = () => {
               title="Change Password"
               description="Update your account password"
             />
-            <div className="p-4">
+            <div className="p-3">
               <form onSubmit={handleChangePassword} className="space-y-4">
                 <PasswordField 
                   label="Current Password" 
@@ -692,8 +764,8 @@ const Settings = () => {
               title="Two-Factor Authentication"
               description="Add an extra layer of security"
             />
-            <div className="p-4">
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+            <div className="p-3">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
                 <div className="flex items-start gap-3">
                   <Shield className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
                   <div>
@@ -742,10 +814,10 @@ const Settings = () => {
               </button>
             }
           />
-          <div className="p-4">
-            <div className="space-y-4">
+          <div className="p-3">
+            <div className="space-y-3">
               {Object.entries(notificationPrefs).map(([key, value]) => (
-                <div key={key} className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-0 last:pb-0 dark:border-gray-700">
+                <div key={key} className="flex items-center justify-between border-b border-gray-100 pb-2 last:border-0 last:pb-0 dark:border-gray-700">
                   <ToggleSwitch
                     id={key}
                     checked={value}
@@ -783,12 +855,12 @@ const Settings = () => {
               </button>
             }
           />
-          <div className="space-y-5 p-4">
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
+          <div className="space-y-4 p-3">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
               Conversation memory is short-lived session context. Saved personal memory is user-controlled preference data such as language, response detail, tone, and report layout. It cannot change permissions, facts, approvals, or safety policy.
             </div>
 
-            <form onSubmit={saveAiPreference} className="grid gap-4 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40 md:grid-cols-[0.8fr_0.8fr_1.4fr_auto]">
+            <form onSubmit={saveAiPreference} className="grid gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40 md:grid-cols-[0.8fr_0.8fr_1.4fr_auto]">
               <label className="space-y-1">
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Preference</span>
                 <select
@@ -839,7 +911,7 @@ const Settings = () => {
             ) : aiMemory.memories?.length ? (
               <div className="space-y-3">
                 {aiMemory.memories.map((memory) => (
-                  <div key={memory.memory_id} className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 sm:flex-row sm:items-start sm:justify-between">
+                  <div key={memory.memory_id} className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-gray-900 dark:text-white">{memory.title}</p>
@@ -873,8 +945,8 @@ const Settings = () => {
             title="Mail Sync Settings"
             description="Configure IMAP settings for email synchronization"
           />
-          <div className="p-4">
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
+          <div className="p-3">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-950/20">
               <div className="flex items-start gap-3">
                 <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
                 <div>
@@ -886,8 +958,8 @@ const Settings = () => {
               </div>
             </div>
 
-            <form onSubmit={handleSaveMailSync} className="mt-4 space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
+            <form onSubmit={handleSaveMailSync} className="mt-3 space-y-3">
+              <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">IMAP Enabled</label>
                   <select

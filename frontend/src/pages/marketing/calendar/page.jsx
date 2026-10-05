@@ -13,23 +13,30 @@ import { asArray } from '../../phase4Utils'
 const QUERY_KEY = 'marketing-calendar'
 
 const TAB_DEFS = [
-  { key: 'plan', label: 'Plan', statuses: ['draft', 'planned', 'shoot_scheduled'], icon: PencilLine },
-  { key: 'review', label: 'Review', statuses: ['shot', 'editing', 'internal_review'], icon: LayoutGrid },
-  { key: 'approve', label: 'Approve', statuses: ['client_review', 'approved'], icon: CheckCircle2 },
-  { key: 'publish', label: 'Publish', statuses: ['scheduled', 'published'], icon: Send },
+  { key: 'plan', label: 'Plan', statuses: ['idea', 'briefing', 'script'], icon: PencilLine },
+  { key: 'produce', label: 'Produce', statuses: ['production'], icon: LayoutGrid },
+  { key: 'review', label: 'Review', statuses: ['internal_review', 'client_review', 'revision_required'], icon: CheckCircle2 },
+  { key: 'publish', label: 'Publish', statuses: ['approved', 'ready_to_publish', 'published'], icon: Send },
 ]
 
 const STATUS_TONE = {
+  idea: 'draft',
+  briefing: 'scheduled',
+  script: 'scheduled',
+  production: 'scheduled',
+  internal_review: 'draft',
+  client_review: 'warning',
+  revision_required: 'draft',
+  approved: 'completed',
+  ready_to_publish: 'scheduled',
+  published: 'completed',
+  // Legacy fallback
   draft: 'draft',
   planned: 'scheduled',
   shoot_scheduled: 'scheduled',
   shot: 'completed',
   editing: 'draft',
-  internal_review: 'draft',
-  client_review: 'warning',
-  approved: 'completed',
   scheduled: 'scheduled',
-  published: 'completed',
 }
 
 const ROLE_LABEL = {
@@ -84,7 +91,7 @@ export default function MarketingCalendarPage() {
 
   const visibleFields = (item) => ({
     title: item.title || 'Untitled',
-    status: String(item.status || 'draft').toLowerCase(),
+    status: String(item.status || 'idea').toLowerCase(),
     publishDate: safeDate(item.publish_date),
     dueDate: safeDate(item.due_date),
     clientApprovalStatus: item.clientApprovalStatus || item.client_approval_status || item.status || 'pending',
@@ -156,7 +163,7 @@ export default function MarketingCalendarPage() {
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Status</span>
             <select className="input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
               <option value="">All statuses</option>
-              {['draft', 'planned', 'shoot_scheduled', 'shot', 'editing', 'internal_review', 'client_review', 'approved', 'scheduled', 'published'].map((status) => (
+              {['idea', 'briefing', 'script', 'production', 'internal_review', 'client_review', 'revision_required', 'approved', 'ready_to_publish', 'published'].map((status) => (
                 <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>
               ))}
             </select>
@@ -225,7 +232,7 @@ function MarketingCalendarCard({ isClient, fields }) {
           <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{fields.title}</p>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{fields.platform} · {fields.campaign}</p>
         </div>
-        <Badge label={fields.status.replace(/_/g, ' ')} colorKey={STATUS_TONE[fields.status] || 'draft'} />
+        <Badge label={fields.status.replace(/_/g, ' ')} colorKey={STATUS_TONE[fields.status] || 'idea'} />
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">

@@ -102,3 +102,9 @@ async def update_item(item_id: str, payload: ContentCalendarItemUpdatePayload, c
 @router.delete("/items/{item_id}")
 async def delete_item(item_id: str, current_user: User = Depends(get_current_user)):
     return await ContentCalendarService.delete_item(current_user, item_id)
+
+
+@router.post("/migrate-legacy-statuses")
+async def migrate_legacy_statuses(current_user: User = Depends(get_current_user)):
+    """One-time migration: convert all legacy statuses to canonical statuses."""
+    return await ContentCalendarService.migrate_legacy_statuses(current_user)

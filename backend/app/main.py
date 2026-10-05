@@ -1,22 +1,72 @@
 """
 Main Application Entry Point
 """
+
+
+
+import asyncio
+import os
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 import logging
 import time
 from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-# Configure logging early so optional imports can report failures safely.
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Prometheus multiprocess mode — must be set BEFORE any prometheus_client
+# import or metric registration.  When PROMETHEUS_MULTIPROC_DIR is set,
+# each worker writes to a shared directory; generate_latest() merges them.
+_PROM_MULTIPROC_DIR = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+if _PROM_MULTIPROC_DIR:
+    import atexit
+    import glob as _glob
+    import prometheus_client
+
+    # Ensure the multiprocess directory exists
+    os.makedirs(_PROM_MULTIPROC_DIR, exist_ok=True)
+
+    # Clear stale metric files from a previous container/process on startup
+    for stale_file in _glob.glob(os.path.join(_PROM_MULTIPROC_DIR, "*.db")):
+        try:
+            os.remove(stale_file)
+        except OSError:
+            pass
+
+    # Register atexit handler so the worker's metric files are cleaned up
+    # when the process terminates (graceful shutdown or crash).
+    atexit.register(
+        prometheus_client.multiprocess.mark_process_dead, os.getpid()
+    )
+
+# Centralised logging — called once at process start.
+from app.core.logging_config import configure_logging
+from app.middleware.request_id import RequestIDMiddleware, request_id_filter
+from app.core.health import router as health_router
+from app.middleware.prometheus import PrometheusMiddleware, metrics_endpoint
+
+configure_logging(service="syntask-backend")
 logger = logging.getLogger(__name__)
+
+# Attach the X-Request-ID filter to the root logger so every log line
+# includes the current request_id when inside an HTTP handler.
+logging.getLogger().addFilter(request_id_filter)
+
+# OpenTelemetry distributed tracing (Topic 9). Configured before other app
+# modules are imported so this process keeps service.name=syntask-backend even
+# though it transitively imports the Celery app (which sets syntask-worker in
+# its own process). Safe no-op when tracing is disabled or the SDK is absent.
+from app.observability.tracing import (
+    instrument_dependencies,
+    instrument_fastapi_app,
+    setup_tracing,
+    shutdown_tracing,
+)
+
+setup_tracing("syntask-backend")
+instrument_dependencies()
 
 from app.core.config import settings
 from app.core.database import init_db, close_db
@@ -43,6 +93,7 @@ from app.middleware.rate_limiter import (
     limiter,
 )
 
+
 # Optional semantic imports - gracefully handle missing dependencies
 try:
     from app.semantic.worker import register_semantic_subscribers
@@ -54,6 +105,27 @@ except (ImportError, ModuleNotFoundError) as e:
 async def _startup_tasks() -> None:
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION}")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
+
+    # Release identity (Topic 10) — metric + structured deployment marker line.
+    # The log line (event=deployment) is the Loki-visible deployment marker.
+    from app.core.release import release_info, release_log_fields
+
+    try:
+        from app.metrics.release import register_release_metrics
+
+        register_release_metrics()
+    except Exception as release_metric_err:  # pragma: no cover - defensive
+        logger.warning(f"Release metrics registration skipped: {release_metric_err}")
+    _release = release_info()
+    logger.info(
+        "Deployment marker: release=%s commit=%s branch=%s built_at=%s environment=%s",
+        _release["version"],
+        _release["commit_short"],
+        _release["branch"],
+        _release["built_at"],
+        _release["environment"],
+        extra=release_log_fields(),
+    )
     if settings.ENVIRONMENT == "production":
         assert len(settings.SECRET_KEY) >= 32, "SECRET_KEY too short for production"
         assert "changeme" not in settings.SECRET_KEY.lower(), "SECRET_KEY is default value"
@@ -62,8 +134,20 @@ async def _startup_tasks() -> None:
     try:
         await init_db()
         logger.info("Database initialized successfully")
-        await rebuild_all_ancestors()
         app.state.db_ready = True
+        # Rebuild ancestor hierarchy as a non-blocking background task so
+        # startup is not delayed by potentially thousands of user documents.
+        # Leader-gated: with multiple API workers only ONE worker runs the
+        # full-collection rebuild instead of every worker scanning + saving
+        # the same documents.
+        try:
+            from app.core.leader import try_acquire_leader
+            if await try_acquire_leader("startup_rebuild_ancestors", ttl_seconds=60 * 60):
+                asyncio.create_task(_background_rebuild_ancestors())
+            else:
+                logger.info("Ancestor rebuild skipped — another worker owns the lease")
+        except Exception as anc_err:
+            logger.warning(f"Ancestor rebuild startup task skipped: {anc_err}")
     except Exception as db_err:
         logger.error(f"Database connection failed on startup: {db_err}")
         app.state.db_ready = False
@@ -88,7 +172,6 @@ async def _startup_tasks() -> None:
         app.state.db_ready = False if not app.state.db_ready else app.state.db_ready
         logger.warning(f"Redis startup check skipped or failed: {redis_err}")
 
-    import asyncio
     from app.core.deadline_checker import run_deadline_checker
     from app.services.hr_mail_sync import run_imap_recruitment_sync_loop
     from app.services.reminder_service import run_reminder_scheduler
@@ -114,14 +197,52 @@ async def _startup_tasks() -> None:
             logger.info("Scheduled jobs background task started")
         except Exception as scheduling_err:
             logger.warning(f"Scheduled jobs startup skipped: {scheduling_err}")
+        try:
+            from app.services.task_carry_forward_service import run_task_carry_forward_loop
+            asyncio.create_task(run_task_carry_forward_loop())
+            logger.info("Task carry forward background task started")
+        except Exception as carry_forward_err:
+            logger.warning(f"Task carry forward startup skipped: {carry_forward_err}")
+        try:
+            from app.services.hr_document_expiry import run_hr_document_expiry_loop
+            asyncio.create_task(run_hr_document_expiry_loop())
+            logger.info("HR document expiry background task started")
+        except Exception as hr_doc_err:
+            logger.warning(f"HR document expiry startup skipped: {hr_doc_err}")
+        try:
+            if settings.ETIMEOFFICE_ENABLED:
+                from app.services.etimeoffice_sync_service import run_etimeoffice_sync_loop
+                asyncio.create_task(run_etimeoffice_sync_loop())
+                logger.info("eTimeOffice attendance sync background task started")
+            else:
+                logger.info("eTimeOffice attendance sync disabled (ETIMEOFFICE_ENABLED=false)")
+        except Exception as eto_err:
+            logger.warning(f"eTimeOffice attendance sync startup skipped: {eto_err}")
+        try:
+            from app.services.time_tracking_service import recover_stale_stopping_timers
+            asyncio.create_task(recover_stale_stopping_timers())
+            logger.info("Timer recovery background task started")
+        except Exception as timer_err:
+            logger.warning(f"Timer recovery startup skipped: {timer_err}")
     else:
         logger.warning("Database background workers skipped because MongoDB/Beanie is not ready.")
 
 
 async def _shutdown_tasks() -> None:
     logger.info("Shutting down application")
+    # Flush buffered spans so the last traces reach Tempo before exit.
+    try:
+        shutdown_tracing()
+    except Exception:
+        pass
     await close_redis()
     await close_db()
+    # Close pooled AI HTTP connections (best-effort, never blocks shutdown)
+    try:
+        from app.ai.providers.http_client import close_shared_clients
+        await close_shared_clients()
+    except Exception:
+        pass
     logger.info("Database connections closed")
 
 
@@ -172,6 +293,18 @@ if hasattr(settings, 'ALLOWED_ORIGINS') and settings.ALLOWED_ORIGINS:
     for origin in settings.ALLOWED_ORIGINS:
         if origin not in cors_origins:
             cors_origins.append(origin)
+# Keep local development origins available even when ALLOWED_ORIGINS is
+# supplied by an environment variable that replaces the settings default.
+for origin in (
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://synzent.ai",
+    "https://www.synzent.ai",
+):
+    if origin not in cors_origins:
+        cors_origins.append(origin)
 
 app.add_middleware(
     CORSMiddleware,
@@ -209,41 +342,73 @@ if settings.ENVIRONMENT == "production":
         allowed_hosts=settings.ALLOWED_HOSTS
     )
 
-# Request timing middleware
+# Request timing middleware + Prometheus RED metrics
+app.add_middleware(PrometheusMiddleware)
+app.add_middleware(RequestIDMiddleware)
+
+
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
-    
-    # Log failed requests
-    if response.status_code >= 400:
-        logger.warning(f"{request.method} {request.url.path} - {response.status_code}")
-    
     return response
 
 
 @app.middleware("http")
 async def require_database_ready(request: Request, call_next):
+    if request.method == "OPTIONS":
+        origin = request.headers.get("origin")
+        if origin in cors_origins and request.url.path.startswith("/api/v1"):
+            return Response(
+                status_code=200,
+                headers={
+                    "Access-Control-Allow-Origin": origin,
+                    "Access-Control-Allow-Credentials": "true",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-Requested-With",
+                    "Access-Control-Max-Age": "600",
+                },
+            )
+        return await call_next(request)
     if request.url.path.startswith("/api/v1") and not getattr(request.app.state, "db_ready", False):
-        return JSONResponse(
+        response = JSONResponse(
             status_code=503,
             content={
                 "success": False,
                 "message": "Database unavailable. Check MongoDB connection and restart the backend.",
             },
         )
+        origin = request.headers.get("origin")
+        if origin in cors_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
     return await call_next(request)
 
 # Exception handlers
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin and origin in cors_origins:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
     return JSONResponse(
         status_code=500,
-        content={"success": False, "message": "Internal server error"}
+        content={"success": False, "message": "Internal server error"},
+        headers=headers,
     )
+
+
+async def _background_rebuild_ancestors():
+    """Run ancestor rebuild in the background so startup is not blocked."""
+    try:
+        await rebuild_all_ancestors()
+    except Exception as e:
+        logger.error(f"Background ancestor rebuild failed: {e}")
 
 
 async def rebuild_all_ancestors():
@@ -298,15 +463,25 @@ async def debug_backend():
     """Call this to confirm the backend returns user-provided project_id (no auto-generated ID as project_id)."""
     if settings.ENVIRONMENT == "production":
         return JSONResponse(status_code=404, content={"detail": "Not found"})
+    from app.core.release import release_info
+
     return {
         "status": "ok",
         "version": settings.VERSION,
+        "release": release_info(),
         "project_id": "user_provided",
         "message": "Create project returns your project_id (e.g. ak-001), not MongoDB _id. If you see this, the new backend is live."
     }
 
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
+
+# Health probes (livez / readyz) — registered directly on the app
+# so they are available at root level for Docker/K8s probes.
+app.include_router(health_router)
+
+# Prometheus metrics endpoint
+app.get("/metrics", tags=["Observability"])(metrics_endpoint)
 
 # CORS-enabled avatar endpoint
 from fastapi import APIRouter, Depends
@@ -358,6 +533,10 @@ async def serve_upload(file_path: str):
 
 app.include_router(uploads_router, include_in_schema=False)
 app.include_router(uploads_router, prefix="/api/v1", include_in_schema=False)
+
+# OpenTelemetry FastAPI instrumentation must run last so the server span wraps
+# every route and middleware added above. No-op when tracing is disabled.
+instrument_fastapi_app(app)
 
 # Root endpoint
 @app.get("/", tags=["Root"])

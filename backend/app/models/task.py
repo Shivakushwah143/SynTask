@@ -18,8 +18,11 @@ class TaskPriority(str, Enum):
 
 class TaskStatus(str, Enum):
     TODO = "todo"
+    ASSIGNED = "assigned"
     IN_PROGRESS = "in_progress"
     IN_REVIEW = "in_review"
+    REVISION_REQUIRED = "revision_required"
+    APPROVED = "approved"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
@@ -66,6 +69,7 @@ class Task(Document):
     created_by: str  # User ID
     assigned_to: Optional[str] = None  # User ID
     assigned_by: Optional[str] = None  # User ID
+    assigned_at: Optional[datetime] = None
     department_id: Optional[str] = None  # Department document ID
     department: Optional[str] = None  # Legacy department name fallback
     
@@ -73,6 +77,19 @@ class Task(Document):
     status: TaskStatus = TaskStatus.TODO
     priority: TaskPriority = TaskPriority.MEDIUM
     progress_percentage: float = 0.0
+    review_required: Optional[bool] = None
+    reviewer_id: Optional[str] = None
+    review_round: int = 0
+    submitted_for_review_at: Optional[datetime] = None
+    submitted_for_review_by: Optional[str] = None
+    revision_requested_at: Optional[datetime] = None
+    revision_requested_by: Optional[str] = None
+    latest_revision_reason: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    approved_by: Optional[str] = None
+    completed_by: Optional[str] = None
+    status_changed_at: Optional[datetime] = None
+    required_for_project_completion: bool = True
 
     # Production / Quantitative Tracking
     task_type: TaskType = TaskType.STANDARD
@@ -91,6 +108,16 @@ class Task(Document):
     health_status: TaskHealthStatus = TaskHealthStatus.HEALTHY
     health_updated_at: datetime = Field(default_factory=datetime.utcnow)
     extension_count: int = 0
+
+    # Automatic carry forward of a passed deadline. `due_date` is never
+    # rewritten: it stays the original commitment that task health, overdue
+    # reporting, and at-risk analysis read. Only the effective deadline a task
+    # is worked to moves, so lateness remains visible while the task always
+    # shows a live deadline. `carry_forward_days` accumulates every day moved.
+    carry_forward_due_date: Optional[datetime] = None
+    carry_forward_days: int = 0
+    carry_forward_count: int = 0
+    carry_forward_last_at: Optional[datetime] = None
     
     # Attachments
     attachments: List[str] = []  # File URLs
@@ -115,6 +142,15 @@ class Task(Document):
     checklist: List[Dict[str, Any]] = Field(default_factory=list)
     dependencies: List[str] = Field(default_factory=list)
     
+    # Generic relationship linkage (additive, nullable). Lets a task retain a
+    # link back to the source record that generated it (e.g. a Sales follow-up
+    # scheduled from a lead). Existing tasks are unaffected.
+    related_entity_type: Optional[str] = None  # e.g. "sales_lead"
+    related_entity_id: Optional[str] = None    # e.g. lead ObjectId string
+    related_entity_stage: Optional[str] = None # e.g. current lead stage at schedule time
+    related_entity_url: Optional[str] = None   # e.g. "/crm/leads/{lead_id}"
+    source_type: Optional[str] = None          # e.g. "sales_follow_up"
+
     # Workflow
     workflow_id: Optional[str] = None  # Custom workflow
     
@@ -143,6 +179,7 @@ class Task(Document):
             "company_id",
             "created_by",
             "assigned_to",
+            "reviewer_id",
             "status",
             "health_status",
             "priority",
@@ -155,6 +192,7 @@ class Task(Document):
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("health_status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("reviewer_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("project_object_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("due_date", ASCENDING)]),
@@ -169,6 +207,24 @@ class Task(Document):
             IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("parent_task_id", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("related_entity_type", ASCENDING), ("related_entity_id", ASCENDING)]),
+            # Partial unique index: enforce uniqueness only for generated
+            # template/recurring-work markers. Sales follow-ups may create
+            # multiple real tasks for the same lead over time.
+            IndexModel(
+                [
+                    ("company_id", ASCENDING),
+                    ("source_type", ASCENDING),
+                    ("related_entity_type", ASCENDING),
+                    ("related_entity_id", ASCENDING),
+                ],
+                unique=True,
+                name="tasks_template_and_schedule_source_marker",
+                partialFilterExpression={
+                    "source_type": {"$in": ["project_template", "scheduled_work"]},
+                    "related_entity_id": {"$type": "string"},
+                },
+            ),
             IndexModel([("title", TEXT), ("description", TEXT)]),
         ]
 

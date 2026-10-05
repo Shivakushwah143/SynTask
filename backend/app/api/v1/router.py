@@ -12,10 +12,18 @@ from app.api.v1.endpoints import (
     auth, users, companies, tasks, notifications, dashboard, files, reports, 
     activity, auth_2fa, projects, time_tracking, workflows, automation, backlog, webhooks,
     issue_types, components, versions, watchers, issue_links, changelog, tickets, chat, subscriptions, clients, invoices, msa, ledger, meetings, calendar, timesheet,
-    sales, search, departments, attendance, notification_emails, timeline, leaves, eod, admin_permissions, time
+    sales, search, departments, attendance, notification_emails, timeline, leaves, eod, admin_permissions, time,
+    employees, hr_documents, attendance_phase4, attendance_etimeoffice, salary,
+    payroll, ess, lifecycle, hr_dashboard, work_overview, work_requests,
+    project_templates, work_reports,
 )
 from app.api.v1.endpoints import ai
+from app.api.v1.endpoints import ai_evals
+from app.api.v1.endpoints import ai_operations
 from app.api.v1.endpoints import ai_assistant
+from app.api.v1.endpoints import ai_security
+from app.api.v1.endpoints import hr_agent
+from app.api.v1.endpoints import executive_agent
 from app.api.v1.endpoints import rag
 from app.api.v1.endpoints import agents
 from app.api.v1.endpoints import creative
@@ -25,12 +33,16 @@ from app.api.v1.endpoints import crm_companies
 from app.api.v1.endpoints import crm_contacts
 from app.api.v1.endpoints import crm_activities
 from app.api.v1.endpoints import crm_deals
+from app.api.v1.endpoints import crm_discovery_audit
 from app.api.v1.endpoints import crm_documents
+from app.api.v1.endpoints import crm_negotiation
 from app.api.v1.endpoints import crm_notes
 from app.api.v1.endpoints import crm_pipeline
 from app.api.v1.endpoints import content_calendar
+from app.api.v1.endpoints import content_production
+from app.api.v1.endpoints import content_templates
 from app.api.v1.endpoints import scheduled_jobs
-from app.api.v1.endpoints import sales_categories, sales_products, sales_contacts, sales_prospects, sales_masters, sales_reports
+from app.api.v1.endpoints import sales_categories, sales_products, sales_contacts, sales_prospects, sales_masters, sales_reports, sales_followups
 from app.api.v1.endpoints import superadmin_plans, superadmin_tenants, superadmin_usage, superadmin_billing, superadmin_features
 from app.api.dependencies import require_module
 from app.dependencies import rate_limit
@@ -86,13 +98,12 @@ async def health_check():
     }
 
     status["checks"] = checks
+    return status
 
 
 @api_router.get("/example", tags=["Demo"], dependencies=[Depends(rate_limit)])
 async def example_endpoint():
     return {"msg": "Rate limited example endpoint"}
-
-    return status
 
 
 # Include all endpoint routers
@@ -106,17 +117,21 @@ api_router.include_router(
     tasks.router,
     prefix="/tasks",
     tags=["Tasks"],
-    dependencies=[Depends(require_module("task"))]
+    dependencies=[Depends(require_module("tasks"))]
 )
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(notification_emails.router, prefix="/notifications", tags=["Notification Email"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+api_router.include_router(work_overview.router, prefix="/work", tags=["Work Overview"])
+api_router.include_router(work_requests.router, prefix="/work-requests", tags=["Work Requests"], dependencies=[Depends(require_module("tasks"))])
+api_router.include_router(project_templates.router, prefix="/project-templates", tags=["Project Templates"], dependencies=[Depends(require_module("projects"))])
+api_router.include_router(work_reports.router, prefix="/reports", tags=["Work Reports"], dependencies=[Depends(require_module("projects"))])
 api_router.include_router(files.router, prefix="/files", tags=["Files"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(activity.router, prefix="/activity", tags=["Activity"])
-api_router.include_router(projects.router, prefix="/projects", tags=["Projects"], dependencies=[Depends(require_module("task"))])
-api_router.include_router(time_tracking.router, prefix="/time-tracking", tags=["Time Tracking"], dependencies=[Depends(require_module("task"))])
-api_router.include_router(workflows.router, prefix="/workflows", tags=["Workflows"], dependencies=[Depends(require_module("task"))])
+api_router.include_router(projects.router, prefix="/projects", tags=["Projects"], dependencies=[Depends(require_module("projects"))])
+api_router.include_router(time_tracking.router, prefix="/time-tracking", tags=["Time Tracking"], dependencies=[Depends(require_module("time_tracking"))])
+api_router.include_router(workflows.router, prefix="/workflows", tags=["Workflows"], dependencies=[Depends(require_module("automation_rules"))])
 api_router.include_router(automation.router, prefix="/automation", tags=["Automation"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(backlog.router, prefix="/backlog", tags=["Backlog"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"], dependencies=[Depends(require_module("task"))])
@@ -140,17 +155,42 @@ api_router.include_router(ledger.router, prefix="/ledger", tags=["Ledger"], depe
 api_router.include_router(meetings.router, prefix="/meetings", tags=["Meetings"])
 api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar"])
 api_router.include_router(time.router, prefix="/time", tags=["Time"])
-api_router.include_router(content_calendar.router, prefix="/content-calendar", tags=["Content Calendar"], dependencies=[Depends(require_module("task"))])
-api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=["Scheduled Jobs"])
-api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("task"))])
+api_router.include_router(content_calendar.router, prefix="/content-calendar", tags=["Content Calendar"], dependencies=[Depends(require_module("content_calendar"))])
+# NOTE: /content/templates MUST be registered BEFORE /content so FastAPI matches
+# the static path first; otherwise `GET /content/templates` is captured by the
+# dynamic `GET /content/{item_id}` route and interpreted as an item id.
+api_router.include_router(content_templates.router, prefix="/content/templates", tags=["Content Templates"], dependencies=[Depends(require_module("content_calendar"))])
+api_router.include_router(content_production.router, prefix="/content", tags=["Content Production"], dependencies=[Depends(require_module("content_calendar"))])
+api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=["Scheduled Jobs"], dependencies=[Depends(require_module("scheduled_work"))])
+api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("time_tracking"))])
 api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])
+api_router.include_router(employees.router, prefix="/employees", tags=["Employees"])
+api_router.include_router(lifecycle.router, prefix="/employees", tags=["Employee Lifecycle"])
+api_router.include_router(lifecycle.self_router, prefix="/lifecycle", tags=["Employee Lifecycle Self-Service"])
+api_router.include_router(hr_documents.router, prefix="/hr", tags=["HR Documents"])
 # Expose attendance HTTP endpoints to authenticated users; gate specific admin/report endpoints inside the module where needed.
 api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
+api_router.include_router(attendance_phase4.router, prefix="/attendance", tags=["Attendance Phase 4"])
+# eTimeOffice biometric attendance integration (server-side provider sync)
+api_router.include_router(
+    attendance_etimeoffice.router,
+    prefix="/attendance/integrations/etimeoffice",
+    tags=["Attendance Integration"],
+)
 # WebSocket handler for attendance is mounted without module dependency so token-auth via query param works for WS clients
 api_router.include_router(attendance.ws_router, prefix="/attendance")
 api_router.include_router(timeline.router, prefix="/timeline", tags=["Timeline"])
 api_router.include_router(leaves.router, prefix="/leaves", tags=["Leaves"])
-api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"])
+api_router.include_router(salary.router, prefix="/salary", tags=["Salary Structure"])
+api_router.include_router(payroll.router, prefix="/payroll", tags=["Payroll"])
+# Employee Self-Service (Phase 8): My HR overview aggregate. The module self
+# endpoints live in their owning routers (/employees/me, /attendance/me/*,
+# /leaves/balances/me, /payroll/me/payslips, ...).
+api_router.include_router(ess.router, prefix="/hr/me", tags=["Employee Self-Service"])
+# Phase 10 — HR Dashboard & Reports: centralized dashboard + report endpoints
+# mounted under /hr so dashboard lives at /hr/dashboard and reports at /hr/reports/*
+api_router.include_router(hr_dashboard.router, prefix="/hr", tags=["HR Dashboard & Reports"])
+api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"], dependencies=[Depends(require_module("daily_updates"))])
 api_router.include_router(recruitment_router, prefix="/recruitment", tags=["Recruitment"], dependencies=[Depends(require_module("recruitment"))])
 api_router.include_router(careers_router, prefix="/careers", tags=["Careers"])
 api_router.include_router(public_router, prefix="/public", tags=["Public Recruitment"])
@@ -159,8 +199,14 @@ api_router.include_router(google_workspace_router, prefix="/google-workspace", t
 
 api_router.include_router(ai.router, prefix="/ai", tags=["AI"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(ai_assistant.router, prefix="/ai-assistant", tags=["Unified AI Assistant"], dependencies=[Depends(require_module("ai_agents"))])
+# AI Evaluation & Regression — admin/super-admin only (enforced inside the router).
+api_router.include_router(ai_evals.router, prefix="/ai-evals", tags=["AI Evaluations"], dependencies=[Depends(require_module("ai_agents"))])
+api_router.include_router(ai_operations.router, prefix="/ai-operations", tags=["AI Operations"], dependencies=[Depends(require_module("ai_agents"))])
+api_router.include_router(ai_security.router, prefix="/ai-security", tags=["AI Security & Governance"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 api_router.include_router(agents.router, prefix="/agents", tags=["Agent Platform"], dependencies=[Depends(require_module("ai_agents"))])
+api_router.include_router(hr_agent.router, prefix="/hr-agent", tags=["HR Operations Agent"], dependencies=[Depends(require_module("ai_agents"))])
+api_router.include_router(executive_agent.router, prefix="/executive-agent", tags=["Executive Operations Agent"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(creative.router, prefix="/creative", tags=["Creative Director"])
 # Global search must work for every authenticated user, not just users with the
 # task module enabled. The endpoint itself scopes results to the user's company,
@@ -178,7 +224,9 @@ api_router.include_router(crm_companies.router, prefix="/crm/companies", tags=["
 api_router.include_router(crm_contacts.router, prefix="/crm/contacts", tags=["CRM Contacts"])
 api_router.include_router(crm_activities.router, prefix="/crm/activities", tags=["CRM Activities"])
 api_router.include_router(crm_deals.router, prefix="/crm", tags=["CRM Deals"])
+api_router.include_router(crm_discovery_audit.router, prefix="/crm", tags=["CRM Discovery Audit"])
 api_router.include_router(crm_documents.router, prefix="/crm", tags=["CRM Documents"])
+api_router.include_router(crm_negotiation.router, prefix="/crm", tags=["CRM Negotiation"])
 api_router.include_router(crm_notes.router, prefix="/crm", tags=["CRM Notes"])
 api_router.include_router(crm_pipeline.router, prefix="/crm/pipeline", tags=["CRM Pipeline"])
 api_router.include_router(sales_categories.router, prefix="/sales/categories", tags=["Sales Categories"], dependencies=sales_module_dependency)
@@ -187,6 +235,9 @@ api_router.include_router(sales_contacts.router, prefix="/sales/contacts", tags=
 
 # Lead create/list powers CRM as well as Sales, so do not gate whole router by the Sales module.
 api_router.include_router(sales_prospects.router, prefix="/sales/prospects", tags=["Leads"])
+# Sales follow-ups live in the same route family and reuse the scheduled-task
+# system, so they follow the same non-gated registration as leads.
+api_router.include_router(sales_followups.router, prefix="/sales/prospects", tags=["Leads"])
 api_router.include_router(sales_masters.router, prefix="/sales/masters", tags=["Sales Masters"], dependencies=sales_module_dependency)
 api_router.include_router(sales_reports.router, prefix="/sales/reports", tags=["Sales Reports"], dependencies=sales_module_dependency)
 

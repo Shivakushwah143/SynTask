@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildPipelineBoard, filterPipelineLeads, moveLeadInBoard } from './utils'
+import { DEAL_VALUE_FIELDS, buildPipelineBoard, filterPipelineLeads, getLeadDealValue, getStageStatusOptions, moveLeadInBoard, ownerOptionsFromBoard } from './utils'
 
 const pipelineResponse = {
   meta: { currency: 'INR' },
@@ -54,6 +54,80 @@ describe('crm pipeline helpers', () => {
       stage: 'new',
     })
     expect(filtered).toHaveLength(1)
+  })
+
+  it('builds owner filter options from users and skips unassigned leads', () => {
+    const options = ownerOptionsFromBoard(
+      buildPipelineBoard({
+        stages: [
+          {
+            key: 'acquire',
+            name: 'Acquire',
+            leads: [
+              { id: 'lead-1', assigned_to: '', owner_name: '' },
+              { id: 'lead-2', assigned_to: 'user-2', owner_name: 'Stale Name' },
+            ],
+          },
+        ],
+      }),
+      [
+        { id: 'user-1', full_name: 'Asha Patel' },
+        { id: 'user-2', full_name: 'Nikhil Rao' },
+      ],
+    )
+
+    expect(options).toEqual([
+      { value: 'user-1', label: 'Asha Patel' },
+      { value: 'user-2', label: 'Nikhil Rao' },
+    ])
+    expect(options.some((option) => option.label === 'Unassigned')).toBe(false)
+  })
+
+  it('reflects the lead-detail Budget in the pipeline Value column', () => {
+    // The lead detail overview edits `budget`; the pipeline Value column must
+    // show the same number. Previously budget was not in DEAL_VALUE_FIELDS, so
+    // a Qualify-stage lead with only a budget set displayed as Rs 0.
+    expect(DEAL_VALUE_FIELDS).toContain('budget')
+    expect(getLeadDealValue({ budget: 500000 })).toBe(500000)
+    expect(getLeadDealValue({ budget: 500000, won_amount: null })).toBe(500000)
+  })
+
+  it('keeps won_amount authoritative for closed leads', () => {
+    expect(getLeadDealValue({ budget: 500000, won_amount: 450000 })).toBe(450000)
+  })
+
+  it('ignores a zero won_amount so it cannot shadow a real budget', () => {
+    // The lead-detail header edit writes won_amount ("Deal value"); saving an
+    // empty field stores 0. That 0 must never make the Value column show Rs 0
+    // when the overview already saved a real budget — the reported sync bug.
+    expect(getLeadDealValue({ budget: 500000, won_amount: 0 })).toBe(500000)
+    expect(getLeadDealValue({ budget: 500000, won_amount: '' })).toBe(500000)
+    expect(getLeadDealValue({ budget: 500000, won_amount: 0, deal_value: 0 })).toBe(500000)
+    // All zeros means the lead genuinely has no deal size recorded.
+    expect(getLeadDealValue({ budget: 0, won_amount: 0 })).toBe(0)
+  })
+
+  it('keeps a zero won_amount authoritative once a deal is Won', () => {
+    // A deal that closed at 0 (free pilot / promotional close) must report 0,
+    // not fall back to the pre-close Budget — the closed value is authoritative.
+    expect(getLeadDealValue({ current_stage: 'won', budget: 500000, won_amount: 0 })).toBe(0)
+    expect(getLeadDealValue({ current_stage: 'lost', budget: 500000, won_amount: 0 })).toBe(0)
+    // Open stages still ignore the stray zero.
+    expect(getLeadDealValue({ current_stage: 'qualify', budget: 500000, won_amount: 0 })).toBe(500000)
+  })
+
+  it('exposes Wrong Number / No Response in both Acquire and Qualify status options', () => {
+    // Reported feedback: Wrong Number / No Response should appear in the Acquire
+    // intake select AND stay available in Qualify.
+    const acquireValues = getStageStatusOptions('acquire').map((option) => option.value)
+    expect(acquireValues).toContain('not_contacted')
+    expect(acquireValues).toContain('contacted')
+    expect(acquireValues).toContain('wrong_number')
+    expect(acquireValues).toContain('no_response')
+
+    const qualifyValues = getStageStatusOptions('qualify').map((option) => option.value)
+    expect(qualifyValues).toContain('wrong_number')
+    expect(qualifyValues).toContain('no_response')
   })
 
   it('moves a lead into another stage and updates counts', () => {

@@ -7,10 +7,11 @@ import { useUIStore } from './store/uiStore';
 import { useAuthStore } from './store/authStore';
 import { useTheme } from './hooks/useTheme';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import ResponsiveTables from './components/ResponsiveTables';
 import ConfirmDialog from './components/ConfirmDialog';
 import UndoBar from './components/UndoBar';
 import { Agentation } from "agentation";
-import { hasCompanyAdminAccess, isManagerRole, isSuperAdminRole } from './utils/roles';
+import { hasCompanyAdminAccess, isAdminRole, isManagerRole, isSuperAdminRole } from './utils/roles';
 import { hasModuleAccess } from './utils/rbac';
 import { applySeoMeta, getSeoMeta } from './utils/seo';
 import DemoHome from './pages/DemoHome';
@@ -29,6 +30,10 @@ const Landing = lazy(() => import('./pages/Landing'))
 const NewLanding = lazy(() => import('./pages/NewLanding'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Tasks = lazy(() => import('./pages/Tasks'))
+const WorkOverview = lazy(() => import('./pages/WorkOverview'))
+const WorkRequests = lazy(() => import('./pages/WorkRequests'))
+const WorkReports = lazy(() => import('./pages/WorkReports'))
+const ProjectTemplates = lazy(() => import('./pages/ProjectTemplates'))
 const Users = lazy(() => import('./pages/Users'))
 const Departments = lazy(() => import('./pages/Departments'))
 const AdminPermissions = lazy(() => import('./pages/AdminPermissions'))
@@ -51,6 +56,7 @@ const Tickets = lazy(() => import('./pages/Tickets'))
 const Chat = lazy(() => import('./pages/Chat'))
 const Clients = lazy(() => import('./pages/Clients'))
 const ClientWorkspacePage = lazy(() => import('./pages/ClientWorkspace'))
+const PublicAssetUpload = lazy(() => import('./pages/PublicAssetUpload'))
 const Invoices = lazy(() => import('./pages/Invoices'))
 // MSA hidden by request. Keep implementation available for later restore.
 // const MSA = lazy(() => import('./pages/MSA'))
@@ -59,10 +65,17 @@ const Ledger = lazy(() => import('./pages/Ledger'))
 const Meetings = lazy(() => import('./pages/Meetings'))
 const WorkspaceCalendar = lazy(() => import('./pages/WorkspaceCalendar'))
 const ContentCalendar = lazy(() => import('./pages/ContentCalendar'))
+const ContentWorkspace = lazy(() => import('./pages/ContentWorkspace'))
+const ContentItemDetail = lazy(() => import('./pages/ContentItemDetail'))
+const ContentOverview = lazy(() => import('./pages/ContentOverview'))
+const ContentTemplates = lazy(() => import('./pages/ContentTemplates'))
 const Timesheet = lazy(() => import('./pages/Timesheet'))
 const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
+const ExecutiveAssistant = lazy(() => import('./pages/ExecutiveAssistant'))
 const AIHub = lazy(() => import('./pages/AIHub'))
+const AIEvaluations = lazy(() => import('./pages/AIEvaluations'))
+const AIOperations = lazy(() => import('./pages/AIOperations'))
 const CreativeDirector = lazy(() => import('./pages/CreativeDirector'))
 const MarketingChat = lazy(() => import('./pages/MarketingChat'))
 const MarketingCalendar = lazy(() => import('./pages/marketing/calendar/page'))
@@ -71,8 +84,17 @@ const ScheduledJobs = lazy(() => import('./pages/ScheduledJobs'))
 const Attendance = lazy(() => import('./pages/attendance/Attendance'))
 const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
 const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
+const AttendancePolicySettings = lazy(() => import('./pages/attendance/AttendancePolicySettings'))
+const HolidaysPage = lazy(() => import('./pages/attendance/HolidaysPage'))
+const CorrectionsPage = lazy(() => import('./pages/attendance/CorrectionsPage'))
+const SalaryComponentsPage = lazy(() => import('./pages/attendance/SalaryComponentsPage'))
+const PayrollPeriods = lazy(() => import('./pages/payroll/PayrollPeriods'))
+const PayrollPeriodDetail = lazy(() => import('./pages/payroll/PayrollPeriodDetail'))
+const PayrollRecordDetail = lazy(() => import('./pages/payroll/PayrollRecordDetail'))
+const SalaryStructuresPage = lazy(() => import('./pages/payroll/SalaryStructuresPage'))
 const GoogleWorkspace = lazy(() => import('./pages/GoogleWorkspace'))
 const SectionLanding = lazy(() => import('./pages/SectionLanding'))
+const SOPLibrary = lazy(() => import('./pages/SOPLibrary'))
 
 
 const SalesDashboard = lazy(() => import('./pages/sales/SalesDashboard'))
@@ -93,19 +115,39 @@ const CRMReportsPage = lazy(() => import('./pages/crm/reports/page'))
 const CRMSettingsPage = lazy(() => import('./pages/crm/settings/page'))
 const CRMMetaIntegrationPage = lazy(() => import('./pages/crm/settings/meta'))
 const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
+const CRMAllLeadsPage = lazy(() => import('./pages/crm/leads/all'))
+const SalesOverviewPage = lazy(() => import('./pages/sales/SalesOverview'))
 const PublicCrmDocument = lazy(() => import('./pages/crm/PublicCrmDocument'))
 const HRDepartment = lazy(() => import('./pages/hr/HRDepartment'))
+const HRDashboard = lazy(() => import('./pages/hr/HRDashboard'))
+const HRReports = lazy(() => import('./pages/hr/HRReports'))
+const MyHRLayout = lazy(() => import('./pages/hr/me/MyHRLayout'))
+const MyHROverview = lazy(() => import('./pages/hr/me/MyHROverview'))
+const MyProfile = lazy(() => import('./pages/hr/me/MyProfile'))
+const MyAttendance = lazy(() => import('./pages/hr/me/MyAttendance'))
+const MyLeave = lazy(() => import('./pages/hr/me/MyLeave'))
+const MyDocuments = lazy(() => import('./pages/hr/me/MyDocuments'))
+const MyPayslips = lazy(() => import('./pages/hr/me/MyPayslips'))
 const RecruitmentDashboard = lazy(() => import('./pages/hr/recruitment/RecruitmentDashboard'))
 const CandidateInterviewScreen = lazy(() => import('./pages/hr/recruitment/CandidateInterviewScreen'))
 const RecruitmentJobsPage = lazy(() => import('./modules/hr/recruitment/pages/JobsPage'))
+const RecruitmentJobDetailPage = lazy(() => import('./modules/hr/recruitment/pages/JobDetailPage'))
 const RecruitmentInboxPage = lazy(() => import('./modules/hr/recruitment/pages/InboxPage'))
 const RecruitmentCandidatesPage = lazy(() => import('./modules/hr/recruitment/pages/CandidatesPage'))
 const RecruitmentResumePoolPage = lazy(() => import('./modules/hr/recruitment/pages/ResumePoolPage'))
-const RecruitmentEmployeesPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeesPage'))
+// People/HR — Employee directory lives at /hr/employees (People section).
+// The component physically resides in modules/hr/recruitment/ due to shared
+// utilities; the file is documented as misplaced debt (see completion report).
+const HrEmployeesPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeesPage'))
+const EmployeeDetailPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeeDetailPage'))
+const HRDocumentsPage = lazy(() => import('./pages/hr/HRDocumentsPage'))
 const RecruitmentInterviewsPage = lazy(() => import('./modules/hr/recruitment/pages/InterviewsPage'))
 const RecruitmentOffersPage = lazy(() => import('./modules/hr/recruitment/pages/OffersPage'))
 const RecruitmentReportsPage = lazy(() => import('./modules/hr/recruitment/pages/ReportsPage'))
 const CandidateOfferPage = lazy(() => import('./modules/hr/recruitment/pages/CandidateOfferPage'))
+const DocumentTypesSettingsPage = lazy(() => import('./modules/hr/recruitment/pages/DocumentTypesSettingsPage'))
+const LeaveTypesSettingsPage = lazy(() => import('./modules/hr/recruitment/pages/LeaveTypesSettingsPage'))
+const LeaveAllocationsPage = lazy(() => import('./modules/hr/recruitment/pages/LeaveAllocationsPage'))
 const CareersLandingPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareersLandingPage })))
 const CareerJobDetailsPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareerJobDetailsPage })))
 const CareerTrackingPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareerTrackingPage })))
@@ -156,6 +198,14 @@ const CompanyAdminGuard = ({ children }) => {
   return children
 }
 
+// AI Evaluations & Regression — Admin / Super Admin only (raw evaluation
+// details must never be visible to managers or employees).
+const AIEvalGuard = ({ children }) => {
+  const { user } = useAuthStore()
+  if (isAdminRole(user?.role) || isSuperAdminRole(user?.role)) return children
+  return <Navigate to="/dashboard" replace />
+}
+
 // Only admins and managers can access CRM settings
 const CRMSettingsGuard = ({ children }) => {
   const { user } = useAuthStore()
@@ -176,6 +226,12 @@ const ModuleGuard = ({ module, children }) => {
 const LegacySalesLeadRedirect = () => {
   const { id } = useParams()
   return <Navigate to={`/crm/leads/${id}`} replace />
+}
+
+// Legacy HR routes → canonical HR routes (People → Employees is /hr/employees).
+const LegacyEmployeeDetailRedirect = () => {
+  const { employeeId } = useParams()
+  return <Navigate to={`/hr/employees/${employeeId}`} replace />
 }
 
 const DashboardRoute = () => {
@@ -203,25 +259,34 @@ function App() {
   // ── Live permission sync ────────────────────────────────────────────────────
   // Poll /auth/me every 60 s so module/role changes made by an admin are
   // reflected in the employee's UI without requiring a logout/login cycle.
+  // Polls are paused while the tab is hidden, and returning to a visible tab
+  // only refetches when the previous refresh is stale — so alt-tab back into
+  // the app no longer forces an immediate /auth/me round trip.
   useEffect(() => {
-    const { refreshUser, isAuthenticated } = useAuthStore.getState()
+    const { isAuthenticated } = useAuthStore.getState()
     if (!isAuthenticated) return
 
-    // Immediate refresh on mount
-    void refreshUser()
+    let lastRefreshAt = 0
+    const refreshIfStale = (force = false) => {
+      const now = Date.now()
+      if (!force && now - lastRefreshAt < 60_000) return
+      if (!useAuthStore.getState().isAuthenticated) return
+      lastRefreshAt = now
+      void useAuthStore.getState().refreshUser()
+    }
 
-    // Poll every 60 seconds
+    // Immediate refresh on mount
+    refreshIfStale(true)
+
+    // Poll every 60 seconds — never while the tab is hidden.
     const interval = setInterval(() => {
-      if (useAuthStore.getState().isAuthenticated) {
-        void useAuthStore.getState().refreshUser()
-      }
+      if (!document.hidden) refreshIfStale()
     }, 60_000)
 
-    // Also refresh when the tab becomes visible again (e.g. user switches back)
+    // Refresh when the tab becomes visible again ONLY if the last refresh is
+    // stale (a long-hidden tab), not on every tab switch.
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && useAuthStore.getState().isAuthenticated) {
-        void useAuthStore.getState().refreshUser()
-      }
+      if (document.visibilityState === 'visible') refreshIfStale()
     }
     document.addEventListener('visibilitychange', handleVisibility)
 
@@ -231,16 +296,14 @@ function App() {
     }
   }, [])
 
-  // Show global loader briefly on route change to indicate navigation
-  useEffect(() => {
-    if (!setLoading) return
-    setLoading(true)
-    const t = setTimeout(() => setLoading(false), 500)
-    return () => clearTimeout(t)
-  }, [location.pathname, setLoading])
+  // No artificial route-loading delay. The Suspense fallback already
+  // handles the loading state during lazy chunk loading.
 
   return (
     <Suspense fallback={<Loader force={true} />}>
+      {/* App-wide mobile progressive enhancement: gives every data table a
+          card representation below 768px without touching desktop markup. */}
+      <ResponsiveTables />
       <Routes>
         <Route path="/" element={<NewLandingRoute />} />
         <Route path="/old-landing" element={<LandingRoute />} />
@@ -248,7 +311,7 @@ function App() {
         <Route path="/demo/*" element={<DemoLayout />}>
           <Route index element={<DemoHome />} />
         </Route>
-        <Route path="/login" element={<PublicRoute><AuthLayout previewImage="/dashboard-preview.png"><Login /></AuthLayout></PublicRoute>} />
+        <Route path="/login" element={<PublicRoute><AuthLayout previewImage="/dashboard-preview.webp"><Login /></AuthLayout></PublicRoute>} />
         <Route path="/admin-request" element={<PublicRoute><AuthLayout maxWidth="max-w-5xl"><AdminRequest /></AuthLayout></PublicRoute>} />
         <Route path="/forgot-password" element={<PublicRoute><AuthLayout><ForgotPassword /></AuthLayout></PublicRoute>} />
         <Route path="/reset-password" element={<PublicRouteAllowAuth><AuthLayout><ResetPassword /></AuthLayout></PublicRouteAllowAuth>} />
@@ -256,51 +319,68 @@ function App() {
         <Route path="/msa/sign/:token" element={<PublicRouteAllowAuth><MSASign /></PublicRouteAllowAuth>} />
         */}
         <Route path="/careers" element={withBoundary(<CareersLandingPage />)} />
+        <Route path="/careers/:companySlug" element={withBoundary(<CareersLandingPage />)} />
+        <Route path="/careers/:companySlug/jobs/:slug" element={withBoundary(<CareerJobDetailsPage />)} />
         <Route path="/careers/jobs/:slug" element={withBoundary(<CareerJobDetailsPage />)} />
         <Route path="/careers/track" element={withBoundary(<CareerTrackingPage />)} />
         <Route path="/public/offers/:token" element={withBoundary(<CandidateOfferPage />)} />
         <Route path="/public/crm-documents/:token" element={withBoundary(<PublicCrmDocument />)} />
+        <Route path="/clients/asset-upload/:token" element={withBoundary(<PublicAssetUpload />)} />
 
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route path="dashboard" element={<DashboardRoute />} />
           <Route path="workflow" element={<Navigate to="/crm/pipeline" replace />} />
           <Route path="leads" element={<Navigate to="/crm/leads" replace />} />
-          <Route path="tasks" element={withBoundary(<Tasks />)} />
+          <Route path="work/overview" element={<ModuleGuard module="tasks">{withBoundary(<WorkOverview />)}</ModuleGuard>} />
+          <Route path="work/reports" element={<ModuleGuard module="projects">{withBoundary(<WorkReports />)}</ModuleGuard>} />
+          <Route path="project-templates" element={<ModuleGuard module="projects">{withBoundary(<ProjectTemplates />)}</ModuleGuard>} />
+          <Route path="work-requests" element={<ModuleGuard module="tasks">{withBoundary(<WorkRequests />)}</ModuleGuard>} />
+          <Route path="tasks" element={<ModuleGuard module="tasks">{withBoundary(<Tasks />)}</ModuleGuard>} />
           <Route path="tickets" element={withBoundary(<Tickets />)} />
           <Route path="chat" element={withBoundary(<Chat />)} />
-          <Route path="clients" element={withBoundary(<Clients />)} />
-          <Route path="clients/:clientId/workspace" element={withBoundary(<ClientWorkspacePage />)} />
-          <Route path="invoices" element={withBoundary(<Invoices />)} />
+          <Route path="clients" element={<ModuleGuard module="clients">{withBoundary(<Clients />)}</ModuleGuard>} />
+          <Route path="clients/:stageKey" element={<ModuleGuard module="clients">{withBoundary(<Clients />)}</ModuleGuard>} />
+          <Route path="clients/:clientId/workspace" element={<ModuleGuard module="clients">{withBoundary(<ClientWorkspacePage />)}</ModuleGuard>} />
+          <Route path="invoices" element={<ModuleGuard module="invoices">{withBoundary(<Invoices />)}</ModuleGuard>} />
           {/* MSA hidden by request. Keep route commented for later restore.
           <Route path="msa" element={withBoundary(<MSA />)} />
           */}
-          <Route path="ledger" element={withBoundary(<Ledger />)} />
-          <Route path="bulk-leads" element={<CompanyAdminGuard>{withBoundary(<BulkLeads />)}</CompanyAdminGuard>} />
-          <Route path="projects" element={withBoundary(<Projects />)} />
-          <Route path="projects/:projectId/board" element={withBoundary(<ProjectBoard />)} />
-          <Route path="projects/:projectId/tasks/:taskId" element={withBoundary(<TaskDetail />)} />
-          <Route path="tasks/:taskId" element={withBoundary(<TaskDetail />)} />
-          <Route path="workflows" element={<CompanyAdminGuard>{withBoundary(<WorkflowAdmin />)}</CompanyAdminGuard>} />
+          <Route path="ledger" element={<ModuleGuard module="transactions">{withBoundary(<Ledger />)}</ModuleGuard>} />
+          <Route path="bulk-leads" element={<ModuleGuard module="import_leads">{withBoundary(<BulkLeads />)}</ModuleGuard>} />
+          <Route path="projects" element={<ModuleGuard module="projects">{withBoundary(<Projects />)}</ModuleGuard>} />
+          <Route path="projects/:projectId/board" element={<ModuleGuard module="projects">{withBoundary(<ProjectBoard />)}</ModuleGuard>} />
+          <Route path="projects/:projectId/tasks/:taskId" element={<ModuleGuard module="tasks">{withBoundary(<TaskDetail />)}</ModuleGuard>} />
+          <Route path="tasks/:taskId" element={<ModuleGuard module="tasks">{withBoundary(<TaskDetail />)}</ModuleGuard>} />
+          <Route path="workflows" element={<CompanyAdminGuard><ModuleGuard module="automation_rules">{withBoundary(<WorkflowAdmin />)}</ModuleGuard></CompanyAdminGuard>} />
           <Route path="time-tracking" element={withBoundary(<TimeTracking />)} />
           <Route path="meetings" element={withBoundary(<Meetings />)} />
           <Route path="calendar" element={withBoundary(<WorkspaceCalendar />)} />
           <Route path="google-workspace" element={withBoundary(<GoogleWorkspace />)} />
-          <Route path="content-calendar" element={withBoundary(<ContentCalendar />)} />
+          <Route path="content-calendar" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentCalendar />)}</ModuleGuard>} />
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
-          <Route path="timesheet" element={withBoundary(<Timesheet />)} />
+          <Route path="content/overview" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentOverview />)}</ModuleGuard>} />
+          <Route path="content" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentWorkspace />)}</ModuleGuard>} />
+          <Route path="content/templates" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentTemplates />)}</ModuleGuard>} />
+          <Route path="content/:itemId" element={<ModuleGuard module="content_calendar">{withBoundary(<ContentItemDetail />)}</ModuleGuard>} />
+          <Route path="timesheet" element={<ModuleGuard module="time_tracking">{withBoundary(<Timesheet />)}</ModuleGuard>} />
           <Route path="attendance" element={withBoundary(<Attendance />)} />
           <Route path="attendance/live" element={<Navigate to="/live-monitor" replace />} />
           <Route path="attendance/reports" element={<Navigate to="/attendance-reports" replace />} />
-          <Route path="live-monitor" element={withBoundary(<LiveMonitor />)} />
-          <Route path="attendance-reports" element={withBoundary(<AttendanceReports />)} />
+          <Route path="attendance/corrections" element={withBoundary(<CorrectionsPage />)} />
+
+          <Route path="live-monitor" element={<ModuleGuard module="live_attendance">{withBoundary(<LiveMonitor />)}</ModuleGuard>} />
+          <Route path="attendance-reports" element={<ModuleGuard module="attendance_reports">{withBoundary(<AttendanceReports />)}</ModuleGuard>} />
 
         <Route path="reports" element={withBoundary(<Reports />)} />
         <Route path="notifications" element={withBoundary(<Notifications />)} />
-        <Route path="scheduled-jobs" element={withBoundary(<ScheduledJobs />)} />
+        <Route path="scheduled-jobs" element={<ModuleGuard module="scheduled_work">{withBoundary(<ScheduledJobs />)}</ModuleGuard>} />
         <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
-        <Route path="ai-hub" element={withBoundary(<AIHub />)} />
-        <Route path="creative-director" element={withBoundary(<CreativeDirector />)} />
-        <Route path="marketing-support" element={withBoundary(<MarketingChat />)} />
+        <Route path="executive-assistant" element={withBoundary(<ExecutiveAssistant />)} />
+        <Route path="ai-hub" element={<ModuleGuard module="ai_assistant">{withBoundary(<AIHub />)}</ModuleGuard>} />
+        <Route path="ai-evals" element={<ModuleGuard module="ai_assistant"><AIEvalGuard>{withBoundary(<AIEvaluations />)}</AIEvalGuard></ModuleGuard>} />
+        <Route path="ai-operations" element={<ModuleGuard module="ai_assistant"><AIEvalGuard>{withBoundary(<AIOperations />)}</AIEvalGuard></ModuleGuard>} />
+        <Route path="creative-director" element={<ModuleGuard module="ai_content_assistant">{withBoundary(<CreativeDirector />)}</ModuleGuard>} />
+        <Route path="marketing-support" element={<ModuleGuard module="ai_content_assistant">{withBoundary(<MarketingChat />)}</ModuleGuard>} />
         <Route path="marketing/calendar" element={withBoundary(<MarketingCalendar />)} />
         <Route path="ai-prioritization" element={withBoundary(<AIPrioritization />)} />
           <Route path="users" element={withBoundary(<Users />)} />
@@ -308,44 +388,89 @@ function App() {
           <Route path="admin-permissions" element={<CompanyAdminGuard>{withBoundary(<AdminPermissions />)}</CompanyAdminGuard>} />
           <Route path="companies" element={withBoundary(<Companies />)} />
           <Route path="subscriptions" element={withBoundary(<Subscriptions />)} />
-        <Route path="activity" element={withBoundary(<ActivityLog />)} />
+        <Route path="activity" element={<ModuleGuard module="activity_logs">{withBoundary(<ActivityLog />)}</ModuleGuard>} />
         <Route path="timeline" element={withBoundary(<Timeline />)} />
-        <Route path="leaves" element={withBoundary(<Leaves />)} />
-        <Route path="eod" element={withBoundary(<EODReports />)} />
+        <Route path="leaves" element={<ModuleGuard module="leave_management">{withBoundary(<Leaves />)}</ModuleGuard>} />
+        <Route path="eod" element={<ModuleGuard module="daily_updates">{withBoundary(<EODReports />)}</ModuleGuard>} />
         <Route path="my-team" element={withBoundary(<MyTeam />)} />
         <Route path="settings" element={withBoundary(<Settings />)} />
-        <Route path="sections/:sectionKey" element={withBoundary(<SectionLanding />)} />
+        <Route path="sop-library" element={withBoundary(<SOPLibrary />)} />
+        <Route path="sop-library/:moduleKey" element={withBoundary(<SOPLibrary />)} />
+        <Route path="sop-library/:moduleKey/:articleKey" element={withBoundary(<SOPLibrary />)} />
+          <Route path="sections/work" element={<Navigate to="/work/overview" replace />} />
+          <Route path="sections/content" element={<Navigate to="/content/overview" replace />} />
+          <Route path="sections/:sectionKey" element={withBoundary(<SectionLanding />)} />
+        {/* Sales workspace Overview — the first tab of the guided sales journey. */}
+        <Route path="sales-overview" element={<ModuleGuard module="sales_overview">{withBoundary(<SalesOverviewPage />)}</ModuleGuard>} />
           <Route path="hr">
-            <Route index element={withBoundary(<HRDepartment />)} />
+            <Route index element={<Navigate to="/hr/dashboard" replace />} />
+            <Route path="dashboard" element={withBoundary(<HRDashboard />)} />
+            <Route path="reports" element={withBoundary(<HRReports />)} />
+            <Route path="reports/:category/:report" element={withBoundary(<HRReports />)} />
+            {/* Phase 8 — Employee Self-Service (My HR): available to every
+                authenticated company employee (role-independent). The layout
+                guards for a linked Employee Profile. */}
+            <Route path="me" element={withBoundary(<MyHRLayout />)}>
+              <Route index element={withBoundary(<MyHROverview />)} />
+              <Route path="profile" element={withBoundary(<MyProfile />)} />
+              <Route path="attendance" element={withBoundary(<MyAttendance />)} />
+              <Route path="leave" element={withBoundary(<MyLeave />)} />
+              <Route path="documents" element={withBoundary(<MyDocuments />)} />
+              <Route path="payslips" element={withBoundary(<MyPayslips />)} />
+            </Route>
+            {/* Canonical HR-wide routes: Employee Profiles and HR Documents are
+                People/HR features, not Recruitment features. */}
+            <Route path="employees" element={withBoundary(<HrEmployeesPage />)} />
+            <Route path="employees/:employeeId" element={withBoundary(<EmployeeDetailPage />)} />
+            <Route path="documents" element={withBoundary(<HRDocumentsPage />)} />
+            <Route path="settings/document-types" element={withBoundary(<DocumentTypesSettingsPage />)} />
+            <Route path="settings/leave-types" element={withBoundary(<LeaveTypesSettingsPage />)} />
+            <Route path="settings/attendance-policy" element={withBoundary(<AttendancePolicySettings />)} />
+            <Route path="settings/holidays" element={withBoundary(<HolidaysPage />)} />
+            <Route path="settings/salary-components" element={<Navigate to="/hr/payroll/salary-components" replace />} />
+            <Route path="settings/salary-structures" element={<Navigate to="/hr/payroll/salary-structures" replace />} />
+            <Route path="leave-allocations" element={withBoundary(<LeaveAllocationsPage />)} />
+            <Route path="payroll" element={withBoundary(<PayrollPeriods />)} />
+            <Route path="payroll/salary-components" element={withBoundary(<SalaryComponentsPage />)} />
+            <Route path="payroll/salary-structures" element={withBoundary(<SalaryStructuresPage />)} />
+            <Route path="payroll/:periodId" element={withBoundary(<PayrollPeriodDetail />)} />
+            <Route path="payroll/:periodId/records/:recordId" element={withBoundary(<PayrollRecordDetail />)} />
             <Route path="recruitment">
               <Route index element={withBoundary(<RecruitmentDashboard />)} />
               <Route path="jobs" element={withBoundary(<RecruitmentJobsPage />)} />
+              <Route path="jobs/:jobId" element={withBoundary(<RecruitmentJobDetailPage />)} />
               <Route path="inbox" element={withBoundary(<RecruitmentInboxPage />)} />
               <Route path="candidates" element={withBoundary(<RecruitmentCandidatesPage />)} />
-              <Route path="employees" element={withBoundary(<RecruitmentEmployeesPage />)} />
+              <Route path="candidates/:candidateId" element={withBoundary(<RecruitmentCandidatesPage />)} />
               <Route path="resume-pool" element={withBoundary(<RecruitmentResumePoolPage />)} />
               <Route path="interviews" element={withBoundary(<RecruitmentInterviewsPage />)} />
               <Route path="offers" element={withBoundary(<RecruitmentOffersPage />)} />
               <Route path="reports" element={withBoundary(<RecruitmentReportsPage />)} />
               <Route path="interview-screen" element={withBoundary(<CandidateInterviewScreen />)} />
+              {/* Legacy aliases → canonical HR routes (backward compatible). */}
+              <Route path="employees" element={<Navigate to="/hr/employees" replace />} />
+              <Route path="employees/:employeeId" element={<LegacyEmployeeDetailRedirect />} />
+              <Route path="settings/document-types" element={<Navigate to="/hr/settings/document-types" replace />} />
             </Route>
           </Route>
           <Route path="crm" element={<ProtectedRoute><CRMLayout /></ProtectedRoute>}>
             <Route index element={<Navigate to="pipeline" replace />} />
             <Route path="dashboard" element={<Navigate to="/crm/pipeline" replace />} />
-            <Route path="pipeline" element={withBoundary(<CRMPipelinePage />)} />
-            <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
-            <Route path="leads/:leadId" element={withBoundary(<CRMLeadWorkspacePage />)} />
-            <Route path="companies" element={withBoundary(<CRMCompaniesPage />)} />
-            <Route path="companies/:companyId" element={withBoundary(<CRMCompanyWorkspacePage />)} />
-            <Route path="contacts" element={withBoundary(<CRMContactsPage />)} />
-            <Route path="inbox" element={withBoundary(<CRMMetaInboxPage />)} />
+            <Route path="pipeline" element={<ModuleGuard module="sales_pipeline">{withBoundary(<CRMPipelinePage />)}</ModuleGuard>} />
+            <Route path="pipeline/:stageKey" element={<ModuleGuard module="sales_pipeline">{withBoundary(<CRMPipelinePage />)}</ModuleGuard>} />
+            <Route path="leads" element={<ModuleGuard module="leads">{withBoundary(<CRMLeadsPage />)}</ModuleGuard>} />
+            <Route path="leads/all" element={<ModuleGuard module="leads">{withBoundary(<CRMAllLeadsPage />)}</ModuleGuard>} />
+            <Route path="leads/:leadId" element={<ModuleGuard module="leads">{withBoundary(<CRMLeadWorkspacePage />)}</ModuleGuard>} />
+            <Route path="companies" element={<ModuleGuard module="companies">{withBoundary(<CRMCompaniesPage />)}</ModuleGuard>} />
+            <Route path="companies/:companyId" element={<ModuleGuard module="companies">{withBoundary(<CRMCompanyWorkspacePage />)}</ModuleGuard>} />
+            <Route path="contacts" element={<ModuleGuard module="contacts">{withBoundary(<CRMContactsPage />)}</ModuleGuard>} />
+            <Route path="inbox" element={<ModuleGuard module="meta_messages">{withBoundary(<CRMMetaInboxPage />)}</ModuleGuard>} />
             <Route path="activities" element={withBoundary(<CRMActivitiesPage />)} />
-            <Route path="calendar" element={withBoundary(<CRMCalendarPage />)} />
-            <Route path="reports" element={withBoundary(<CRMReportsPage />)} />
+            <Route path="calendar" element={<ModuleGuard module="client_calendar">{withBoundary(<CRMCalendarPage />)}</ModuleGuard>} />
+            <Route path="reports" element={<ModuleGuard module="client_insights">{withBoundary(<CRMReportsPage />)}</ModuleGuard>} />
             <Route path="configuration" element={<Navigate to="/crm/settings" replace />} />
-            <Route path="settings/meta" element={<CRMSettingsGuard>{withBoundary(<CRMMetaIntegrationPage />)}</CRMSettingsGuard>} />
-            <Route path="settings" element={<CRMSettingsGuard>{withBoundary(<CRMSettingsPage />)}</CRMSettingsGuard>} />
+            <Route path="settings/meta" element={<CRMSettingsGuard><ModuleGuard module="meta_settings">{withBoundary(<CRMMetaIntegrationPage />)}</ModuleGuard></CRMSettingsGuard>} />
+            <Route path="settings" element={<CRMSettingsGuard><ModuleGuard module="meta_settings">{withBoundary(<CRMSettingsPage />)}</ModuleGuard></CRMSettingsGuard>} />
           </Route>
       </Route>
 
@@ -371,6 +496,7 @@ function App() {
           <Route path="billing" element={withBoundary(<BillingRevenue />)} />
           <Route path="feature-flags" element={withBoundary(<FeatureFlagsPage />)} />
           <Route path="companies" element={withBoundary(<Companies />)} />
+          <Route path="clients" element={withBoundary(<Clients />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="activity" element={withBoundary(<ActivityLog />)} />
           <Route path="settings" element={withBoundary(<Settings />)} />

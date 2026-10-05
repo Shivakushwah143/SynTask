@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useTasks } from '@/hooks/useTasks'
-import { timeService } from '@/services/timeService'
+import CarryForwardDueDate from './CarryForwardDueDate'
 
 export default function ListView() {
   const navigate = useNavigate()
@@ -39,9 +39,7 @@ export default function ListView() {
                 <td className="px-4 py-3 text-sm font-medium text-gray-800">{task.title}</td>
                 <td className="px-4 py-3 text-sm text-gray-600">{task.status}</td>
                 <td className="px-4 py-3 text-sm text-gray-600">{task.priority || '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-600">
-                  {task.due_date ? timeService.format(task.due_date, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                </td>
+                <td className="px-4 py-3 text-sm text-gray-600"><CarryForwardDueDate task={task} /></td>
               </tr>
             ))
           )}

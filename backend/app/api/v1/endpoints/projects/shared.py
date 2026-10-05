@@ -81,7 +81,11 @@ async def can_manage_project(project: Project, current_user: User) -> bool:
 
 
 async def can_create_project(current_user: User) -> bool:
-    return getattr(current_user, "role", UserRole.ADMIN) in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}
+    from app.services.authorization_service import permission_result
+    decision = await permission_result(current_user, "projects.create")
+    if decision.reason == "explicit_deny":
+        return False
+    return decision.allowed or getattr(current_user, "role", UserRole.ADMIN) in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}
 
 
 async def validate_project_assignees(
@@ -100,11 +104,9 @@ async def validate_project_assignees(
         assignee = await User.get(user_id)
         if not assignee or assignee.company_id != company_id:
             raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid project assignee")
-        if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}:
-            allowed_roles = {UserRole.MANAGER, UserRole.EMPLOYEE}
-            if assignee.role not in allowed_roles:
-                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Project lead must be a Manager or Employee")
-        else:
+        from app.services.authorization_service import authorize
+        decision = await authorize(current_user, "projects.assign_members", target_user=assignee)
+        if not decision.allowed:
             raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Cannot assign projects")
         users.append(assignee)
     return users
@@ -160,7 +162,10 @@ async def check_project_access(project: Project, current_user: User) -> bool:
 
         assigned_task = await Task.find_one({
             "company_id": project.company_id,
-            "project_id": {"$in": list(project_ids)},
+            "$or": [
+                {"project_id": {"$in": list(project_ids)}},
+                {"project_object_id": str(project.id)},
+            ],
             "assigned_to": user_id,
         })
 

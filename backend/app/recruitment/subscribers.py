@@ -11,6 +11,7 @@ async def persist_recruitment_timeline(event: DomainEvent) -> None:
     await CandidateTimeline(
         company_id=event.company_id,
         candidate_id=event.payload.get("candidate_id") if event.aggregate_type != "candidate" else event.aggregate_id,
+        application_id=event.payload.get("application_id"),
         job_id=event.payload.get("job_id") if event.aggregate_type != "job" else event.aggregate_id,
         event_type=event.event_name,
         payload={**event.payload, "event_id": event.event_id},

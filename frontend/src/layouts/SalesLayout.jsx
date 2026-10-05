@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import Header from '../components/Header'
+import { AttendanceStatusBootstrap } from '../components/attendance/AttendanceStatusBootstrap'
 import { AIAssistantDialog } from '../components/ai/AIAssistantDialog'
 import { SynzinHelpPrompt } from '../components/ai/SynzinHelpPrompt'
 
@@ -34,7 +35,9 @@ const SalesLayout = () => {
           setAssistantOpen(true)
         }}
         onDismiss={() => setSynzinPromptOpen(false)}
+        onOpen={() => setSynzinPromptOpen(true)}
       />
+      <AttendanceStatusBootstrap />
     </div>
   )
 }

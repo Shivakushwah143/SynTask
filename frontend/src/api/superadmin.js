@@ -5,7 +5,6 @@ export const superadminApi = {
   getTenant: (id) => api.get(`/superadmin/tenants/${id}`),
   getCompanyUsers: (companyId) => api.get(`/superadmin/tenants/${companyId}/users`),
   resetUserPassword: (companyId, userId) => api.post(`/superadmin/tenants/${companyId}/users/${userId}/reset-password`),
-  approveTenant: (id) => api.post(`/superadmin/tenants/${id}/approve`),
   suspendTenant: (id, data) => api.post(`/superadmin/tenants/${id}/suspend`, data),
   activateTenant: (id) => api.post(`/superadmin/tenants/${id}/activate`),
   assignPlan: (companyId, data) => api.post(`/superadmin/tenants/${companyId}/assign-plan`, data),

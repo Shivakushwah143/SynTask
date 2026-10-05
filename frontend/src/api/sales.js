@@ -117,6 +117,12 @@ export const salesApi = {
   createCategory: (data) => api.post('/sales/categories/', null, { params: { name: data.name } }),
   getProducts: () => api.get('/sales/products/'),
   createProduct: (data) => api.post('/sales/products/', Array.isArray(data) ? data : [data]),
+
+  // ── Sales Follow-up API ─────────────────────────────────────────────────
+  createLeadFollowUp: (leadId, payload) => api.post(`/sales/prospects/${leadId}/follow-ups`, payload),
+  getLeadFollowUps: (leadId, params) => api.get(`/sales/prospects/${leadId}/follow-ups`, { params }),
+  updateLeadFollowUp: (leadId, jobId, payload) => api.patch(`/sales/prospects/${leadId}/follow-ups/${jobId}`, payload),
+  cancelLeadFollowUp: (leadId, jobId) => api.post(`/sales/prospects/${leadId}/follow-ups/${jobId}/cancel`),
 }
 
 // Canonical Lead methods use legacy endpoints to preserve API behavior.

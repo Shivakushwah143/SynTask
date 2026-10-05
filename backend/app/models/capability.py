@@ -61,6 +61,13 @@ DEFAULT_CAPABILITIES: dict[Tuple[DepartmentType, UserRole], List[str]] = {
         "recruitment.interviews.manage", "recruitment.offers.manage",
         "recruitment.offers.approve", "recruitment.convert_employee",
         "recruitment.reports.view", "recruitment.inbox.manage",
+        "employee_management.view", "employee_management.manage",
+        "leave_management.view", "leave_management.manage",
+        "attendance_policy.view", "attendance_policy.manage",
+        "attendance_corrections.view", "attendance_corrections.manage",
+        "salary_management.view", "salary_management.manage",
+        "payroll.view", "payroll.manage", "payroll.approve",
+        "employee_lifecycle.view", "employee_lifecycle.manage", "employee_lifecycle.separation",
     ],
     (DepartmentType.HR, UserRole.MANAGER): [
         "hire", "attendance", "performance", "recruitment.view",
@@ -74,17 +81,30 @@ DEFAULT_CAPABILITIES: dict[Tuple[DepartmentType, UserRole], List[str]] = {
         "recruitment.interviews.manage", "recruitment.offers.manage",
         "recruitment.offers.approve", "recruitment.convert_employee",
         "recruitment.reports.view", "recruitment.inbox.manage",
+        "employee_management.view", "employee_management.manage",
+        "leave_management.view", "leave_management.manage",
+        "attendance_policy.view", "attendance_policy.manage",
+        "attendance_corrections.view", "attendance_corrections.manage",
+        "salary_management.view", "salary_management.manage",
+        "payroll.view", "payroll.manage",
+        "employee_lifecycle.view", "employee_lifecycle.manage",
     ],
     (DepartmentType.HR, UserRole.LEAD): [
         "recruitment.view", "recruitment.candidates.view",
         "recruitment.candidates.manage", "recruitment.resume_pool.view",
         "recruitment.candidates.assign", "recruitment.interviews.view",
         "recruitment.interviews.manage",
+        "employee_management.view",
+        "leave_management.view",
+        "employee_lifecycle.view",
     ],
     (DepartmentType.HR, UserRole.EMPLOYEE): [
         "recruitment.view", "recruitment.candidates.view",
         "recruitment.resume_pool.view", "recruitment.interviews.view",
         "recruitment.interviews.feedback",
+        "employee_management.view",
+        "leave_management.view",
+        "employee_lifecycle.view",
     ],
     (DepartmentType.FINANCE, UserRole.SUB_ADMIN): ["billing", "ledger", "reports"],
     (DepartmentType.FINANCE, UserRole.MANAGER): ["billing", "ledger", "reports"],
@@ -92,6 +112,36 @@ DEFAULT_CAPABILITIES: dict[Tuple[DepartmentType, UserRole], List[str]] = {
     (DepartmentType.SUPPORT, UserRole.MANAGER): ["manage_tickets", "team_support"],
     (DepartmentType.OPERATIONS, UserRole.SUB_ADMIN): ["own_client_account", "manage_delivery"],
     (DepartmentType.OPERATIONS, UserRole.MANAGER): ["own_client_account", "manage_delivery"],
+    # Content production (module gate "content_calendar" still applies on top).
+    # Creators get create/edit + comments; reviewers add internal review;
+    # account-facing roles add client review; publishing is a separate grant so
+    # a content creator can never execute publishing by accident.
+    (DepartmentType.MARKETING, UserRole.SUB_ADMIN): [
+        "content.view", "content.create", "content.edit", "content.delete",
+        "content.transition", "content.internal_review", "content.client_review",
+        "content.comment", "content.manage_templates",
+        "content.view_publishing", "content.update_publishing",
+    ],
+    (DepartmentType.MARKETING, UserRole.MANAGER): [
+        "content.view", "content.create", "content.edit", "content.delete",
+        "content.transition", "content.internal_review", "content.client_review",
+        "content.comment", "content.manage_templates",
+        "content.view_publishing", "content.update_publishing",
+    ],
+    (DepartmentType.MARKETING, UserRole.LEAD): [
+        "content.view", "content.create", "content.edit",
+        "content.transition", "content.internal_review",
+        "content.comment", "content.manage_templates", "content.view_publishing",
+    ],
+    (DepartmentType.MARKETING, UserRole.EMPLOYEE): [
+        "content.view", "content.create", "content.edit", "content.comment",
+    ],
+    (DepartmentType.OPERATIONS, UserRole.LEAD): [
+        "content.view", "content.client_review", "content.view_publishing",
+    ],
+    (DepartmentType.OPERATIONS, UserRole.EMPLOYEE): [
+        "content.view", "content.comment",
+    ],
 }
 
 
@@ -123,6 +173,12 @@ async def seed_default_capabilities() -> int:
             }
         )
         if existing:
+            # Merge newly added default capabilities into already-seeded rows so
+            # existing deployments pick up new capability keys on startup.
+            missing = [cap for cap in capabilities if cap not in (existing.capabilities or [])]
+            if missing:
+                existing.capabilities = list(dict.fromkeys([*(existing.capabilities or []), *missing]))
+                await existing.save()
             continue
         await RoleCapability(
             company_id=None,

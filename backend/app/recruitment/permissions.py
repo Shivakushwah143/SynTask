@@ -62,6 +62,12 @@ async def require_job_archive(current_user: User = Depends(require_recruitment_m
     return current_user
 
 
+async def require_job_approve(current_user: User = Depends(require_recruitment_manager)) -> User:
+    """Require permission to approve jobs."""
+    await _check_capability(current_user, "recruitment.jobs.approve")
+    return current_user
+
+
 async def require_candidate_view(current_user: User = Depends(require_recruitment_access)) -> User:
     await _check_capability(current_user, "recruitment.candidates.view")
     return current_user

@@ -8,7 +8,7 @@ from datetime import datetime
 from app.models.versions import Version, VersionStatus
 from app.models.project import Project
 from app.models.user import User
-from app.api.dependencies import get_current_user, get_current_company_admin_or_lead, check_company_access
+from app.api.dependencies import get_current_user, get_current_company_admin_or_lead, check_company_access, get_project_by_id
 from app.core.clock import utc_now
 
 router = APIRouter()
@@ -24,7 +24,7 @@ async def create_version(
     current_user: User = Depends(get_current_company_admin_or_lead),
 ):
     """Create a version for a project"""
-    project = await Project.get(project_id)
+    project, _ = await get_project_by_id(project_id, current_user.company_id)
     
     if not project:
         raise HTTPException(
@@ -74,7 +74,7 @@ async def list_versions(
     current_user: User = Depends(get_current_user),
 ):
     """List versions for a project"""
-    project = await Project.get(project_id)
+    project, _ = await get_project_by_id(project_id, current_user.company_id)
     
     if not project:
         raise HTTPException(

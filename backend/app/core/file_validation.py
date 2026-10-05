@@ -44,6 +44,24 @@ def detect_mime_type(file_content: bytes, filename: str = "") -> str:
     if header.startswith(b"PK\x03\x04"):
         return OFFICE_MIME_BY_EXTENSION.get(ext, "application/zip")
 
+    # Video signatures
+    if header.startswith(b"\x1a\x45\xdf\xa3"):  # EBML container (webm/mkv)
+        return "video/webm" if ext == ".webm" else "video/x-matroska"
+    if header[4:8] == b"ftyp":  # ISO BMFF container (mp4/mov/m4v)
+        return "video/quicktime" if ext == ".mov" else "video/mp4"
+    if header.startswith(b"RIFF") and header[8:12] == b"AVI ":
+        return "video/x-msvideo"
+    if header.startswith(b"OggS"):
+        return "video/ogg" if ext in (".ogv", ".ogg") else "audio/ogg"
+
+    # Audio signatures
+    if header.startswith(b"ID3") or header.startswith(b"\xff\xfb") or header.startswith(b"\xff\xf3"):
+        return "audio/mpeg"
+    if header.startswith(b"RIFF") and header[8:12] == b"WAVE":
+        return "audio/wav"
+    if header.startswith(b"fLaC"):
+        return "audio/flac"
+
     text_mime = _looks_like_text(header)
     if text_mime:
         return text_mime

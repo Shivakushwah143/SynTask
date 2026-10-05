@@ -69,6 +69,7 @@ Questions? Reply to this message.
 | Ledger / Transactions | Finance → Transactions | Was "Ledger" under Administration |
 | Subscriptions | Finance → Subscriptions | Was duplicated in Administration AND Finance Tools |
 | Leads | Sales → Leads | Was under CRM Tools |
+| All leads (full list) | Sales → All Leads | New full-list page at /crm/leads/all |
 | CRM Pipeline | Sales → Pipeline | Was under CRM Tools |
 | Import leads (bulk upload) | Sales → Import Leads | Was "Bulk Lead Import" under Administration |
 | Company / Client list | Clients → Companies | Was "CRM Companies" under CRM Tools |
@@ -87,7 +88,7 @@ Questions? Reply to this message.
 | All client conversations | Inbox → Meta Messages | Was "Meta Inbox" under CRM Tools |
 | Notifications | Inbox → Notifications | Was under Communication |
 | Activity feed | Inbox → Activity Feed | Was "Timeline" under Communication |
-| Daily updates (EOD) | Inbox → Daily Updates | Was "Daily EOD" under Communication |
+| Daily updates (EOD) | Work → Daily Updates | Was "Daily EOD" under Communication |
 | AI reply drafts | Inbox → AI Replies | Was "AI Reply Drafts" under Meta Omnichannel |
 | Human approval queue | Inbox → Approval Queue | Was "Human Approval Queue" under Meta Omnichannel |
 | AI tools / AI writer | AI Workspace → AI Assistant | Was "AI Command Center" under AI & Marketing |
@@ -99,12 +100,12 @@ Questions? Reply to this message.
 | Live attendance | People → Live Attendance | Was "Live Attendance" under People & Activity |
 | Attendance reports | People → Attendance Reports | Was "Attendance Reports" under People & Activity |
 | Company directory | People → Company Directory | Was "Company Directory" under Administration |
-| Recruitment / Hiring | People → Hiring Dashboard | Was under HR Department |
-| Job openings | People → Job Openings | Was "Jobs" under HR Department |
-| Applications | People → Applications | Was "Inbox" under HR Department |
-| Candidates / Interviews | People → Candidates / Interviews | Was under HR Department |
-| Resume pool | People → Talent Pool | Was "Resume Pool" under HR Department |
-| Hiring reports | People → Hiring Reports | Was "Reports" under HR Department |
+| Recruitment / Hiring | Recruitment → Hiring Dashboard | Was under HR Department |
+| Job openings | Recruitment → Job Openings | Was "Jobs" under HR Department |
+| Applications | Recruitment → Recruitment Inbox | Was "Inbox" under HR Department |
+| Candidates / Interviews | Recruitment → Candidates / Interviews | Was under HR Department |
+| Resume pool | Recruitment → Talent Pool | Was "Resume Pool" under HR Department |
+| Hiring reports | Recruitment → Hiring Reports | Was "Reports" under HR Department |
 | User permissions / Roles | Settings → Roles & Permissions | Was "Admin Permissions" under Administration |
 | Automation / Workflows | Settings → Automation Rules | Was "Workflows" under Administration |
 | Audit log | Settings → Activity Logs | Was "Audit Log" under Administration |

@@ -115,13 +115,17 @@ describe('sidebar route correctness (Phase 7, spec §11)', () => {
       '/crm/leads',
       '/crm/settings',
       '/crm/settings/meta',
+      '/crm/pipeline/:stageKey',
       '/hr/recruitment/jobs',
       '/hr/recruitment/interview-screen',
       '/sales/reports',
       '/super-admin/dashboard',
       '/clients/:clientId/workspace',
+      '/clients/:stageKey',
       '/projects/:projectId/board',
       '/sections/:sectionKey', // tab sub-nav landing pages (D1)
+      '/sop-library',
+      '/sop-library/:moduleKey/:articleKey',
     ]) {
       expect(ROUTE_PATTERNS).toContain(expected)
     }
@@ -150,16 +154,19 @@ describe('sidebar launch kit quick-reference card (Phase 8, spec §13)', () => {
   // Build the same "section → valid item names" map Sidebar.jsx renders: SECTIONS
   // items resolved by name, plus the People HR items (renamed, skipped removed).
   const navByName = new Map([...navigation, ...crmNavigation, ...metaNavigation].map((item) => [item.name, item]))
+  // Build the set of renamed HR nav item display names for recruitment section validation.
+  const hrDisplayNames = new Set(
+    HR_MODULES.flatMap((mod) =>
+      mod.navigation
+        .filter((item) => !HR_ITEM_SKIP.has(item.name))
+        .map((item) => HR_ITEM_RENAMES[item.name] || item.name)
+    ),
+  )
   const validItemsBySection = new Map(
     SECTIONS.map((section) => {
-      const names = new Set(section.items.filter((name) => navByName.has(name)))
-      if (section.key === 'people') {
-        for (const mod of HR_MODULES) {
-          for (const item of mod.navigation) {
-            if (HR_ITEM_SKIP.has(item.name)) continue
-            names.add(HR_ITEM_RENAMES[item.name] || item.name)
-          }
-        }
+      const names = new Set(section.items.filter((name) => navByName.has(name) || hrDisplayNames.has(name)))
+      if (section.key === 'recruitment') {
+        for (const name of hrDisplayNames) names.add(name)
       }
       return [section.label, names]
     }),
@@ -204,14 +211,24 @@ describe('sidebar config integrity (Phase 7)', () => {
   const itemPool = new Set([...navigation, ...crmNavigation, ...metaNavigation].map((item) => item.name))
 
   it('every SECTIONS item name resolves to a real nav item (no silent drops)', () => {
+    // Build the set of known HR display names for recruitment section items.
+    const hrNames = new Set(
+      HR_MODULES.flatMap((mod) =>
+        mod.navigation
+          .filter((item) => !HR_ITEM_SKIP.has(item.name))
+          .map((item) => HR_ITEM_RENAMES[item.name] || item.name)
+      ),
+    )
     const missing = SECTIONS.flatMap((section) =>
-      section.items.filter((name) => !itemPool.has(name)).map((name) => `${section.label} → ${name}`),
+      section.items
+        .filter((name) => !itemPool.has(name) && !hrNames.has(name))
+        .map((name) => `${section.label} → ${name}`),
     )
     expect(missing).toEqual([])
   })
 
-  it('defines exactly 12 sections with unique keys', () => {
-    expect(SECTIONS).toHaveLength(12)
+  it('defines exactly 15 sections with unique keys', () => {
+    expect(SECTIONS).toHaveLength(15)
     const keys = SECTIONS.map((section) => section.key)
     expect(new Set(keys).size).toBe(keys.length)
   })
@@ -236,5 +253,107 @@ describe('sidebar config integrity (Phase 7)', () => {
     expect(typeof navigationModule.getSectionItems).toBe('function')
     expect(typeof navigationModule.isNavItemActive).toBe('function')
     expect(typeof navigationModule.gateNavItem).toBe('function')
+    expect(typeof navigationModule.resolveHrSection).toBe('function')
+  })
+})
+
+// ── Centralized HR route ownership resolver tests ──────────────────────────
+describe('resolveHrSection (centralized HR route ownership)', () => {
+  it('returns null for non-HR paths', () => {
+    expect(navigationModule.resolveHrSection('/crm/leads')).toBeNull()
+    expect(navigationModule.resolveHrSection('/dashboard')).toBeNull()
+    expect(navigationModule.resolveHrSection(null)).toBeNull()
+    expect(navigationModule.resolveHrSection(undefined)).toBeNull()
+  })
+
+  it('returns null for /hr root (no tab bar)', () => {
+    expect(navigationModule.resolveHrSection('/hr')).toBeNull()
+  })
+
+  it('returns null for excluded paths', () => {
+    expect(navigationModule.resolveHrSection('/hr/recruitment/interview-screen')).toBeNull()
+  })
+
+  it('resolves HR Dashboard to people section', () => {
+    const result = navigationModule.resolveHrSection('/hr/dashboard')
+    expect(result).toEqual({ sectionKey: 'people', itemName: 'HR Dashboard', matchedExact: true })
+  })
+
+  it('resolves employee routes to people section', () => {
+    const exact = navigationModule.resolveHrSection('/hr/employees')
+    expect(exact).toEqual({ sectionKey: 'people', itemName: 'Employees', matchedExact: true })
+
+    const detail = navigationModule.resolveHrSection('/hr/employees/emp-123')
+    expect(detail).toEqual({ sectionKey: 'people', itemName: 'Employees', matchedExact: false })
+  })
+
+  it('resolves document routes to people section', () => {
+    const result = navigationModule.resolveHrSection('/hr/documents')
+    expect(result).toEqual({ sectionKey: 'people', itemName: 'HR Documents', matchedExact: true })
+  })
+
+  it('resolves payroll routes to people section', () => {
+    const result = navigationModule.resolveHrSection('/hr/payroll')
+    expect(result).toEqual({ sectionKey: 'people', itemName: 'Payroll', matchedExact: true })
+  })
+
+  it('resolves settings sub-routes to people section', () => {
+    const documentTypes = navigationModule.resolveHrSection('/hr/settings/document-types')
+    expect(documentTypes).toEqual({ sectionKey: 'people', itemName: 'Document Types', matchedExact: true })
+
+    const attendancePolicy = navigationModule.resolveHrSection('/hr/settings/attendance-policy')
+    expect(attendancePolicy).toEqual({ sectionKey: 'people', itemName: 'Attendance Policy', matchedExact: true })
+  })
+
+  it('resolves recruitment routes to recruitment section', () => {
+    const dashboard = navigationModule.resolveHrSection('/hr/recruitment')
+    expect(dashboard).toEqual({ sectionKey: 'recruitment', itemName: 'Hiring Dashboard', matchedExact: true })
+
+    const jobs = navigationModule.resolveHrSection('/hr/recruitment/jobs')
+    expect(jobs).toEqual({ sectionKey: 'recruitment', itemName: 'Job Openings', matchedExact: true })
+
+    const jobDetail = navigationModule.resolveHrSection('/hr/recruitment/jobs/job-123')
+    expect(jobDetail).toEqual({ sectionKey: 'recruitment', itemName: 'Job Openings', matchedExact: false })
+
+    const candidates = navigationModule.resolveHrSection('/hr/recruitment/candidates')
+    expect(candidates).toEqual({ sectionKey: 'recruitment', itemName: 'Candidates', matchedExact: true })
+
+    const candidateDetail = navigationModule.resolveHrSection('/hr/recruitment/candidates/cand-456')
+    expect(candidateDetail).toEqual({ sectionKey: 'recruitment', itemName: 'Candidates', matchedExact: false })
+
+    const inbox = navigationModule.resolveHrSection('/hr/recruitment/inbox')
+    expect(inbox).toEqual({ sectionKey: 'recruitment', itemName: 'Recruitment Inbox', matchedExact: true })
+
+    const reports = navigationModule.resolveHrSection('/hr/recruitment/reports')
+    expect(reports).toEqual({ sectionKey: 'recruitment', itemName: 'Hiring Reports', matchedExact: true })
+  })
+
+  it('never returns two different sectionKeys for the same path', () => {
+    const paths = [
+      '/hr/dashboard',
+      '/hr/employees',
+      '/hr/employees/emp-1',
+      '/hr/documents',
+      '/hr/payroll',
+      '/hr/settings/document-types',
+      '/hr/recruitment',
+      '/hr/recruitment/jobs',
+      '/hr/recruitment/jobs/job-1',
+      '/hr/recruitment/candidates',
+      '/hr/recruitment/inbox',
+      '/hr/recruitment/reports',
+    ]
+    for (const path of paths) {
+      const result = navigationModule.resolveHrSection(path)
+      expect(result).toBeTruthy()
+      expect(['people', 'recruitment']).toContain(result.sectionKey)
+    }
+  })
+
+  it('uses longest prefix match for nested routes', () => {
+    // /hr/recruitment/jobs/123 should match "Job Openings" (longest prefix),
+    // not "Hiring Dashboard" (which is /hr/recruitment).
+    const result = navigationModule.resolveHrSection('/hr/recruitment/jobs/123')
+    expect(result.itemName).toBe('Job Openings')
   })
 })

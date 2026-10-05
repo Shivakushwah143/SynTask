@@ -212,7 +212,7 @@ const CandidatePopup = ({ isOpen, onClose, onSave, initialData = null }) => {
           <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center hover:border-indigo-400 transition-colors">
             <input
               type="file"
-              accept=".pdf,.doc,.docx"
+              accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,image/jpeg,image/png"
               onChange={handleFileUpload}
               className="hidden"
               id="resume-upload"
@@ -220,7 +220,7 @@ const CandidatePopup = ({ isOpen, onClose, onSave, initialData = null }) => {
             <label htmlFor="resume-upload" className="cursor-pointer">
               <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                {formData.resume ? formData.resume.name : "Click to upload resume (PDF, DOC, DOCX)"}
+                {formData.resume ? formData.resume.name : "Click to upload resume (PDF, DOC, DOCX, TXT, JPG, PNG)"}
               </p>
             </label>
           </div>
@@ -645,7 +645,8 @@ export default function CandidateInterviewScreen() {
     queryClient.invalidateQueries(["recruitment", "candidates"]);
     queryClient.invalidateQueries(["recruitment", "jobs"]);
     queryClient.invalidateQueries(["recruitment", "dashboard"]);
-    queryClient.invalidateQueries(["recruitment", "employees"]);
+    // Employees list lives in People section — use canonical ['employees'] key.
+    queryClient.invalidateQueries(['employees']);
   };
 
   const candidates = candidatesData?.data?.items || candidatesData?.data || [];
@@ -657,9 +658,8 @@ export default function CandidateInterviewScreen() {
 
   const handleSelectCandidate = (candidate) => {
     setSelectedCandidate(candidate);
-    // Here you would typically navigate to or open the interview form
-    // For now, we'll just show a success message
-    console.log("Selected candidate for interview:", candidate);
+    // Navigate to the full interviews page with candidate pre-selected
+    window.location.href = `/hr/recruitment/interviews?candidate_id=${candidate.id || candidate._id}`;
   };
 
   const getSourceBadgeColor = (source) => {

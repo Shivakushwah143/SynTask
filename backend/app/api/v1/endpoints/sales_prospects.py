@@ -4,14 +4,14 @@ Sales Prospects API - CRUD, bulk upload, contact conversion
 import logging
 from typing import Optional, List
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Form, Body, status as http_status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Query, Form, Body, status as http_status
 import csv
 import io
 import re
 from pydantic import BaseModel
 
 from app.api.deps import Pagination50, PaginationParams
-from app.api.dependencies import get_current_company_admin_or_lead, get_current_user, require_module
+from app.api.dependencies import get_current_user, require_module
 from app.core.rbac_visibility import build_visibility_query, require_owned_record_access
 from app.models.user import User, UserRole, UserStatus
 from app.models.department import Department
@@ -23,6 +23,7 @@ from app.models.sales_product import SalesProduct
 from app.models.sales_masters import SalesStage
 from app.models.sales_import_job import SalesImportJob
 from app.crm.lead_engine import LeadEngine
+from app.crm.pipeline import normalize_stage_display, resolved_stage_status
 from app.core.clock import utc_now
 
 
@@ -119,15 +120,6 @@ def _normalize_lead_csv_header(header: str) -> str:
     if normalized in {"email_address", "email_id", "e_mail"}:
         return "email"
     return normalized
-
-
-def _ensure_create_permission(user: User):
-    # Allow all roles including EMPLOYEE to create prospects
-    if user.role not in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE, UserRole.SUPER_ADMIN]:
-        raise HTTPException(
-            status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to add prospects"
-        )
 
 
 def _parse_multi_value(value: str) -> List[str]:
@@ -340,10 +332,11 @@ async def list_prospects(
                 "email": p.email,
                 "assigned_to": p.assigned_to,
                 "assigned_by": p.assigned_by,
+                "referred_by": getattr(p, "referred_by", None),
                 "category_id": p.category_id,
                 "product_ids": p.product_ids,
                 "crm_company_id": p.crm_company_id,
-                "current_stage": p.current_stage,
+                "current_stage": normalize_stage_display(p.current_stage),
                 "status": p.status.value,
                 "interest_level": p.interest_level.value,
                 "estimated_close_date": p.estimated_close_date.isoformat() if p.estimated_close_date else None,
@@ -351,6 +344,11 @@ async def list_prospects(
                 "due_time": p.due_time,
                 "tag": p.tag or [],
                 "remark": p.remark,
+                "source": p.source,
+                "qualify_status": getattr(p, "qualify_status", None),
+                "next_action": getattr(p, "next_action", None),
+                "next_follow_up_at": getattr(p, "next_follow_up_at", None),
+                "current_stage_status": resolved_stage_status(p),
                 "created_at": p.created_at.isoformat() if p.created_at else None,
             }
             for p in prospects
@@ -484,6 +482,7 @@ async def get_prospect(
         "estimated_close_date": prospect.estimated_close_date.isoformat() if prospect.estimated_close_date else None,
         "assigned_to": prospect.assigned_to,
         "assigned_by": prospect.assigned_by,
+        "referred_by": getattr(prospect, "referred_by", None),
         "current_stage": prospect.current_stage,
         "due_date": prospect.due_date.isoformat() if prospect.due_date else None,
         "due_time": prospect.due_time,
@@ -505,6 +504,50 @@ async def get_prospect(
         "reason_for_lost": prospect.reason_for_lost,
         "won_amount": prospect.won_amount,
         "created_at": prospect.created_at,
+        # ── Sales journey fields ──
+        "source": prospect.source,
+        "first_contact_at": prospect.first_contact_at.isoformat() if getattr(prospect, "first_contact_at", None) else None,
+        "last_contacted_at": prospect.last_contacted_at.isoformat() if getattr(prospect, "last_contacted_at", None) else None,
+        "next_action": prospect.next_action,
+        "next_follow_up_at": prospect.next_follow_up_at.isoformat() if getattr(prospect, "next_follow_up_at", None) else None,
+        "qualify_status": prospect.qualify_status,
+        "industry": prospect.industry,
+        "requirement": prospect.requirement,
+        "budget": prospect.budget,
+        "timeline": prospect.timeline,
+        "decision_maker": prospect.decision_maker,
+        "location": prospect.location,
+        "pain_points": prospect.pain_points,
+        "current_agency": prospect.current_agency,
+        "num_employees": prospect.num_employees,
+        "discovery_outcome": prospect.discovery_outcome,
+        "discovery_notes": prospect.discovery_notes,
+        "proposal_status": prospect.proposal_status,
+        "negotiation_status": prospect.negotiation_status,
+        "negotiation_notes": prospect.negotiation_notes,
+        "accepted_quotation_reference": getattr(prospect, "accepted_quotation_reference", None),
+        "customer_counter_offer": getattr(prospect, "customer_counter_offer", None),
+        "final_agreed_amount": getattr(prospect, "won_amount", None),
+        "discount": getattr(prospect, "discount", None),
+        "final_scope": getattr(prospect, "final_scope", None),
+        "payment_terms": getattr(prospect, "payment_terms", None),
+        "delivery_timeline": getattr(prospect, "timeline", None),
+        "client_conditions": getattr(prospect, "client_conditions", None),
+        "agreement_status": prospect.agreement_status,
+        "agreement_expiry_date": prospect.agreement_expiry_date.isoformat() if getattr(prospect, "agreement_expiry_date", None) else None,
+        "agreement_signed_at": prospect.agreement_signed_at.isoformat() if getattr(prospect, "agreement_signed_at", None) else None,
+        "won_status": prospect.won_status,
+        "client_id": prospect.client_id,
+        "project_id": prospect.project_id,
+        "invoice_id": prospect.invoice_id,
+        "account_manager_id": prospect.account_manager_id,
+        "welcome_email_sent_at": prospect.welcome_email_sent_at.isoformat() if getattr(prospect, "welcome_email_sent_at", None) else None,
+        "ops_notified_at": prospect.ops_notified_at.isoformat() if getattr(prospect, "ops_notified_at", None) else None,
+        "converted_at": prospect.converted_at.isoformat() if getattr(prospect, "converted_at", None) else None,
+        "transferred_at": prospect.transferred_at.isoformat() if getattr(prospect, "transferred_at", None) else None,
+        "transferred_by": prospect.transferred_by,
+        "current_stage_status": resolved_stage_status(prospect),
+        "stage_status_history": list(getattr(prospect, "stage_status_history", None) or []),
     }
 
 
@@ -513,7 +556,7 @@ async def create_prospect(
     first_name: Optional[str] = Form(None),
     last_name: Optional[str] = Form(None),
     country_code: Optional[str] = Form("+91"),
-    phone: str = Form(...),
+    phone: Optional[str] = Form(None),  # Phone is optional - a lead may be captured with only a name
     category_id: Optional[str] = Form(None),
     product_ids: Optional[str] = Form(None),  # Comma-separated or pipe-separated
     interest_level: Optional[str] = Form(None),
@@ -534,13 +577,39 @@ async def create_prospect(
     language: Optional[str] = Form(None),  # Pipe-separated
     owner_name: Optional[str] = Form(None),
     owner_contact_no: Optional[str] = Form(None),
+    referred_by: Optional[str] = Form(None),  # User ID of the employee/manager who referred the lead
     tag: Optional[str] = Form(None),  # Pipe-separated
     greeting_preference: Optional[str] = Form(None),
     custom_fields: Optional[str] = Form(None),
+    source: Optional[str] = Form(None),
+    industry: Optional[str] = Form(None),
+    requirement: Optional[str] = Form(None),
+    budget: Optional[float] = Form(None),
+    timeline: Optional[str] = Form(None),
+    decision_maker: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),
+    pain_points: Optional[str] = Form(None),
+    current_agency: Optional[str] = Form(None),
+    num_employees: Optional[str] = Form(None),
+    qualify_status: Optional[str] = Form(None),
+    discovery_outcome: Optional[str] = Form(None),
+    discovery_notes: Optional[str] = Form(None),
+    proposal_status: Optional[str] = Form(None),
+    negotiation_status: Optional[str] = Form(None),
+    negotiation_notes: Optional[str] = Form(None),
+    agreement_status: Optional[str] = Form(None),
+    next_action: Optional[str] = Form(None),
+    first_contact_at: Optional[str] = Form(None),
+    last_contacted_at: Optional[str] = Form(None),
+    next_follow_up_at: Optional[str] = Form(None),
+    agreement_expiry_date: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user)
 ):
-    """Create a new prospect"""
-    _ensure_create_permission(current_user)
+    """Create a new prospect.
+
+    Open to every authenticated company user (any role) so leads can be added
+    by anyone, by any channel — no role-based creation gate.
+    """
     logger.info(
         "Create prospect request ownerId=%s companyId=%s actorId=%s phone=%s",
         assigned_to,
@@ -575,9 +644,32 @@ async def create_prospect(
             "language": _parse_multi_value(language) if language else [],
             "owner_name": owner_name,
             "owner_contact_no": owner_contact_no,
+            "referred_by": referred_by,
             "tag": _parse_multi_value(tag) if tag else [],
             "greeting_preference": greeting_preference,
             "custom_fields": _parse_custom_fields(custom_fields),
+            "source": source,
+            "industry": industry,
+            "requirement": requirement,
+            "budget": budget,
+            "timeline": timeline,
+            "decision_maker": decision_maker,
+            "location": location,
+            "pain_points": pain_points,
+            "current_agency": current_agency,
+            "num_employees": num_employees,
+            "qualify_status": qualify_status,
+            "discovery_outcome": discovery_outcome,
+            "discovery_notes": discovery_notes,
+            "proposal_status": proposal_status,
+            "negotiation_status": negotiation_status,
+            "negotiation_notes": negotiation_notes,
+            "agreement_status": agreement_status,
+            "next_action": next_action,
+            "first_contact_at": first_contact_at,
+            "last_contacted_at": last_contacted_at,
+            "next_follow_up_at": next_follow_up_at,
+            "agreement_expiry_date": agreement_expiry_date,
         },
     )
     return {"id": result["id"], "message": result["message"]}
@@ -586,9 +678,11 @@ async def create_prospect(
 @router.put("/{prospect_id}")
 async def update_prospect(
     prospect_id: str,
+    request: Request,
     prospect_name: Optional[str] = Form(None),
     company_name: Optional[str] = Form(None),
     email: Optional[str] = Form(None),
+    country_code: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     channel: Optional[str] = Form(None),
     remark: Optional[str] = Form(None),
@@ -601,8 +695,32 @@ async def update_prospect(
     estimated_close_date: Optional[str] = Form(None),
     reason_for_lost: Optional[str] = Form(None),
     won_amount: Optional[float] = Form(None),
+    referred_by: Optional[str] = Form(None),
     crm_company_id: Optional[str] = Form(None),
     custom_fields: Optional[str] = Form(None),
+    source: Optional[str] = Form(None),
+    industry: Optional[str] = Form(None),
+    requirement: Optional[str] = Form(None),
+    budget: Optional[float] = Form(None),
+    timeline: Optional[str] = Form(None),
+    decision_maker: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),
+    pain_points: Optional[str] = Form(None),
+    current_agency: Optional[str] = Form(None),
+    num_employees: Optional[str] = Form(None),
+    qualify_status: Optional[str] = Form(None),
+    discovery_outcome: Optional[str] = Form(None),
+    discovery_notes: Optional[str] = Form(None),
+    proposal_status: Optional[str] = Form(None),
+    negotiation_status: Optional[str] = Form(None),
+    negotiation_notes: Optional[str] = Form(None),
+    agreement_status: Optional[str] = Form(None),
+    next_action: Optional[str] = Form(None),
+    first_contact_at: Optional[str] = Form(None),
+    last_contacted_at: Optional[str] = Form(None),
+    next_follow_up_at: Optional[str] = Form(None),
+    agreement_expiry_date: Optional[str] = Form(None),
+    agreement_signed_at: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user)
 ):
     """Update prospect fields without mutating pipeline stage or status."""
@@ -613,28 +731,64 @@ async def update_prospect(
         getattr(current_user, "company_id", None),
         getattr(current_user, "id", None),
     )
+    # Only fields actually present in the request form are forwarded. FastAPI
+    # fills every Form(None) parameter with None when the client omits the key,
+    # and update_lead treats a present-but-None value as "clear this field".
+    # Without this filter, saving just decision_maker from the stage dialog
+    # silently wiped budget/won_amount/phone/... in the DB — the pipeline then
+    # showed Rs 0 and the Qualify -> Discovery gate re-asked for an already
+    # defined budget. The submitted keys are read from the raw form so an
+    # explicit empty value ("", sent to clear a field) is still forwarded while
+    # a genuinely omitted key is left untouched.
+    payload = {
+        "prospect_name": prospect_name,
+        "company_name": company_name,
+        "email": email,
+        "country_code": country_code,
+        "phone": phone,
+        "channel": channel,
+        "remark": remark,
+        "due_date": due_date,
+        "due_time": due_time,
+        "assigned_to": assigned_to,
+        "category_id": category_id,
+        "product_ids": _parse_multi_value(product_ids) if product_ids else None,
+        "interest_level": interest_level,
+        "estimated_close_date": estimated_close_date,
+        "reason_for_lost": reason_for_lost,
+        "won_amount": won_amount,
+        "referred_by": referred_by,
+        "crm_company_id": crm_company_id,
+        "custom_fields": _parse_custom_fields(custom_fields),
+        "source": source,
+        "industry": industry,
+        "requirement": requirement,
+        "budget": budget,
+        "timeline": timeline,
+        "decision_maker": decision_maker,
+        "location": location,
+        "pain_points": pain_points,
+        "current_agency": current_agency,
+        "num_employees": num_employees,
+        "qualify_status": qualify_status,
+        "discovery_outcome": discovery_outcome,
+        "discovery_notes": discovery_notes,
+        "proposal_status": proposal_status,
+        "negotiation_status": negotiation_status,
+        "negotiation_notes": negotiation_notes,
+        "agreement_status": agreement_status,
+        "next_action": next_action,
+        "first_contact_at": first_contact_at,
+        "last_contacted_at": last_contacted_at,
+        "next_follow_up_at": next_follow_up_at,
+        "agreement_expiry_date": agreement_expiry_date,
+        "agreement_signed_at": agreement_signed_at,
+    }
+    form_fields = await request.form()
     result = await LeadEngine.update_lead(
         current_user,
         prospect_id,
-        {
-            "prospect_name": prospect_name,
-            "company_name": company_name,
-            "email": email,
-            "phone": phone,
-            "channel": channel,
-            "remark": remark,
-            "due_date": due_date,
-            "due_time": due_time,
-            "assigned_to": assigned_to,
-            "category_id": category_id,
-            "product_ids": _parse_multi_value(product_ids) if product_ids else None,
-            "interest_level": interest_level,
-            "estimated_close_date": estimated_close_date,
-            "reason_for_lost": reason_for_lost,
-            "won_amount": won_amount,
-            "crm_company_id": crm_company_id,
-            "custom_fields": _parse_custom_fields(custom_fields),
-        },
+        {key: value for key, value in payload.items() if key in form_fields},
     )
     return {"message": result["message"]}
 
@@ -658,12 +812,14 @@ async def bulk_upload_prospects(
     target_user_id: Optional[str] = Form(None),
     target_department_id: Optional[str] = Form(None),
     allow_duplicates: bool = Form(False),
-    current_user: User = Depends(get_current_company_admin_or_lead)
+    current_user: User = Depends(get_current_user)
 ):
     """Bulk upload prospects from CSV with assignment strategies.
 
-    allow_duplicates=True imports every valid row even when the same phone
-    already exists in the company (or repeats within the file).
+    Open to every authenticated company user (any role) so leads can be
+    imported by anyone. allow_duplicates=True imports every valid row even
+    when the same phone already exists in the company (or repeats within the
+    file).
     """
     return await LeadEngine.import_leads(
         current_user,
@@ -681,7 +837,7 @@ async def preview_bulk_upload_prospects(
     file: UploadFile = File(...),
     target_user_id: Optional[str] = Form(None),
     target_department_id: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_company_admin_or_lead)
+    current_user: User = Depends(get_current_user)
 ):
     return await LeadEngine.preview_import(
         current_user,
@@ -693,5 +849,5 @@ async def preview_bulk_upload_prospects(
 
 
 @router.post("/imports/{job_id}/retry")
-async def retry_import_job(job_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
+async def retry_import_job(job_id: str, current_user: User = Depends(get_current_user)):
     return await LeadEngine.retry_import_job(current_user, job_id)

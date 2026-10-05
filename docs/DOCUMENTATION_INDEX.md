@@ -1,7 +1,7 @@
 # SynTask Documentation Index
 
 Status: living documentation
-Last reviewed: 2026-07-16
+Last reviewed: 2026-09-13 (OpenTelemetry + Tempo tracing and safe deployment added)
 
 This is the canonical entry point. **Observed** means supported by repository evidence. **Verified** means exercised in a named environment. **Target** is intended design and is not proof of deployment.
 
@@ -10,6 +10,7 @@ This is the canonical entry point. **Observed** means supported by repository ev
 | Document | Purpose | Owner | Review trigger |
 |---|---|---|---|
 | [Product requirements](product/PRD.md) | Canonical product scope, including proposed AI-enabled Phase 2 agents, notifications, Microsoft 365, user stories, acceptance criteria and measures | Product | Feature/priority change |
+| [SOP Library user flow](user-flows/sop-library.md) | Implemented in-app user manual flow, universal sidebar access, role-aware article visibility and tests | Product + Engineering | User-facing module or permission change |
 | [Detailed architecture](architecture/DETAILED_ARCHITECTURE.md) | Current and target design, boundaries, data and risks | Engineering | Component/dependency/data-flow change |
 | [Non-functional requirements](architecture/NON_FUNCTIONAL_REQUIREMENTS.md) | Security, availability, performance and recovery targets | Product + Engineering | Release/operational change |
 | [Production deployment guide](infrastructure/PRODUCTION_DEPLOYMENT_GUIDE.md) | Preparation, deployment, verification and rollback | Platform | Infrastructure/config change |
@@ -18,6 +19,12 @@ This is the canonical entry point. **Observed** means supported by repository ev
 
 ## Supporting documents
 
+- [SLIs and SLOs](observability/SLOS.md) — measured reliability targets, error budgets and the SLA distinction
+- [Distributed tracing](observability/TRACING.md) — OpenTelemetry instrumentation, Tempo, sampling and log↔trace correlation
+- [Deployment and rollback runbook](runbooks/DEPLOYMENT_ROLLBACK.md) — safe deploy, health gate, release identity and rollback
+- [Observability alerts runbook](runbooks/observability-alerts.md)
+- [Incident drill runbook](runbooks/INCIDENT_DRILL.md)
+- [Incident template](runbooks/INCIDENT_TEMPLATE.md)
 - [Security](infrastructure/SECURITY.md)
 - [CI/CD](infrastructure/CI_CD.md)
 - [Startup guide](infrastructure/STARTUP_GUIDE.md)
@@ -26,6 +33,13 @@ This is the canonical entry point. **Observed** means supported by repository ev
 - [Database schema](../backend/DATABASE_SCHEMA.md)
 - [PRD template](product/PRD_TEMPLATE.md)
 - [Architecture decisions](architecture/decisions/README.md)
+- [ADR: OpenTelemetry + Tempo tracing](architecture/decisions/2026-09-13-opentelemetry-tempo-tracing.md)
+- [ADR: Safe deployment, release identity and rollback](architecture/decisions/2026-09-13-safe-deployment-and-rollback.md)
+- [Phase 1 Work Foundation Report](../PHASE1_WORK_FOUNDATION_REPORT.md)
+- [Phase 2 Task Execution Report](../PHASE2_TASK_EXECUTION_REPORT.md)
+- [Phase 3 Work Experience Report](../PHASE3_WORK_EXPERIENCE_REPORT.md)
+- [Phase 4 Work Requests and Scheduled Work Report](../PHASE4_REQUESTS_SCHEDULED_WORK_REPORT.md)
+- [Phase 5 Time Project Control Report](../PHASE5_TIME_PROJECT_CONTROL_REPORT.md)
 - Repository maintenance rules: [`AGENTS.md`](../AGENTS.md)
 
 ## Ownership

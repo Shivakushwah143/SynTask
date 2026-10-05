@@ -21,6 +21,24 @@ class CreateTaskRequest(BaseModel):
     target_unit: Optional[str] = None
 
 
+class SelfTaskCreateRequest(BaseModel):
+    """Schema for employee self-assigned task creation.
+
+    Only user-editable fields are accepted. Server derives:
+    - created_by = current user
+    - assigned_to = current user
+    - company_id = current user's tenant
+    - assignment_source = SELF (via source_type)
+    """
+    title: str = Field(..., min_length=1, max_length=500)
+    description: Optional[str] = Field(None, max_length=10000)
+    project_id: Optional[str] = None
+    priority: str = "medium"
+    due_date: Optional[datetime] = None
+    estimated_hours: Optional[float] = Field(None, ge=0)
+    tags: List[str] = []
+
+
 class UpdateTaskRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=500)
     description: Optional[str] = None
@@ -61,9 +79,17 @@ class TaskResponse(BaseModel):
     remaining_quantity: Optional[int] = None
 
 
+class TaskProofEntryRequest(BaseModel):
+    category: str = Field("text", pattern="^(media_upload|link|text)$")
+    value: Optional[str] = Field(None, max_length=2048)
+
+
 class UpdateProductionProgressRequest(BaseModel):
     completed_quantity: int = Field(..., ge=0)
     notes: Optional[str] = Field(None, max_length=2000)
+    proof_name: Optional[str] = Field(None, max_length=120)
+    proof_value: Optional[str] = Field(None, max_length=2048)
+    proof_entries: list[TaskProofEntryRequest] = Field(default_factory=list, max_length=50)
 
 
 class ProductionEmployeeMetric(BaseModel):

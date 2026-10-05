@@ -2,6 +2,7 @@ import { render, screen, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Sidebar from './Sidebar'
+import { SECTIONS } from '../config/navigation'
 
 // Mutable mock so tests can exercise role-based visibility (Phase 4, spec §9).
 const { mockUser } = vi.hoisted(() => ({
@@ -34,9 +35,11 @@ const SECTION_LABELS = [
   'Inbox',
   'AI Workspace',
   'People',
+  'Recruitment',
   'Finance',
   'Insights',
   'Settings',
+  'SOP Library',
 ]
 
 const SECTION_KEYS = [
@@ -49,9 +52,11 @@ const SECTION_KEYS = [
   'inbox',
   'ai',
   'people',
+  'recruitment',
   'finance',
   'insights',
   'settings',
+  'sop',
 ]
 
 const renderSidebar = (path = '/dashboard') =>
@@ -68,14 +73,14 @@ beforeEach(() => {
 })
 
 describe('Sidebar tab sub-nav (Phase D): link-only sections', () => {
-  it('shows exactly 12 top-level sections as links', () => {
+  it('shows exactly 14 top-level sections as links', () => {
     renderSidebar()
     for (const label of SECTION_LABELS) {
       expect(screen.getByRole('link', { name: new RegExp(`^${label}$`, 'i') })).toBeTruthy()
     }
   })
 
-  it('renders the 12 sections in the exact spec order', () => {
+  it('renders the 14 sections in the exact spec order', () => {
     renderSidebar()
     const links = SECTION_LABELS.map((label) => screen.getByRole('link', { name: new RegExp(`^${label}$`, 'i') }))
     const orderMatches = links.every((link, index) => {
@@ -85,12 +90,44 @@ describe('Sidebar tab sub-nav (Phase D): link-only sections', () => {
     expect(orderMatches).toBe(true)
   })
 
-  it('links every section to its landing page (/sections/:key)', () => {
+  it('links every section to its landing page (dedicated default pages win)', () => {
     renderSidebar()
     SECTION_KEYS.forEach((key, index) => {
       const link = screen.getByRole('link', { name: new RegExp(`^${SECTION_LABELS[index]}$`, 'i') })
-      expect(link.getAttribute('href')).toBe(`/sections/${key}`)
+      const section = SECTIONS.find((candidate) => candidate.key === key)
+      const expected = section.overviewHref || `/sections/${key}`
+      expect(link.getAttribute('href')).toBe(expected)
     })
+  })
+
+  it('links the Sales section to the dedicated sales overview dashboard', () => {
+    renderSidebar()
+    expect(screen.getByRole('link', { name: /^sales$/i }).getAttribute('href')).toBe('/sales-overview')
+  })
+
+  it('links the Clients section to the All Clients page', () => {
+    renderSidebar()
+    expect(screen.getByRole('link', { name: /^clients$/i }).getAttribute('href')).toBe('/clients')
+  })
+
+  it('links the Home section straight to the dashboard', () => {
+    renderSidebar()
+    expect(screen.getByRole('link', { name: /^home$/i }).getAttribute('href')).toBe('/dashboard')
+  })
+
+  it('links the SOP Library section straight to the SOP Library page', () => {
+    renderSidebar()
+    expect(screen.getByRole('link', { name: /^sop library$/i }).getAttribute('href')).toBe('/sop-library')
+  })
+
+  it('highlights the Sales section on the dedicated sales overview page', () => {
+    renderSidebar('/sales-overview')
+    expect(screen.getByRole('link', { name: /^sales$/i }).getAttribute('aria-current')).toBe('page')
+  })
+
+  it('highlights the Clients section on the All Clients page', () => {
+    renderSidebar('/clients')
+    expect(screen.getByRole('link', { name: /^clients$/i }).getAttribute('aria-current')).toBe('page')
   })
 
   it('removed the sub-items: no WhatsApp link, no expand buttons for sections', () => {
@@ -123,37 +160,36 @@ describe('Sidebar tab sub-nav (Phase D): link-only sections', () => {
   it('keeps a non-empty sidebar for a non-standard role (hr_manager falls through to item gates)', () => {
     mockUser.role = 'hr_manager'
     renderSidebar()
-    // hr_manager is not in STANDARD_ROLES, so section gates must not blank the sidebar;
-    // item-level gates still decide what is visible (meta channel items carry no roles).
-    expect(screen.getByRole('link', { name: /^inbox$/i })).toBeTruthy()
+    // hr_manager is not in STANDARD_ROLES, so universal core sections must not be hidden.
+    expect(screen.getByRole('link', { name: /^sop library$/i })).toBeTruthy()
   })
 })
 
 describe('Sidebar role-based visibility (spec §9)', () => {
   it('shows every section an Employee is authorized for (backend-driven)', () => {
     mockUser.role = 'employee'
+    mockUser.modules = ['projects', 'tasks', 'content_calendar', 'meta_settings', 'attendance', 'leave_management', 'activity_logs']
     renderSidebar()
 
-    // Backend require_module auto-grants sales_crm/tickets to employees, and the
-    // /attendance, /leaves, /attendance-reports, /reports, /settings and
-    // /google-workspace routers have no module gate — so the sidebar now exposes
-    // exactly what the employee can actually use (Attendance, Leave, Requests, ...).
-    for (const label of ['Home', 'Sales', 'Work', 'Content', 'Inbox', 'People', 'Insights', 'Settings']) {
+    // Explicit member module lists are authoritative; this employee has Work
+    // access but no Sales/CRM module.
+    for (const label of ['Home', 'Work', 'Content', 'Inbox', 'People', 'Insights', 'Settings', 'SOP Library']) {
       expect(screen.getByRole('link', { name: new RegExp(`^${label}$`, 'i') })).toBeTruthy()
     }
     // Team/admin-only surfaces stay hidden: CRM clients, publishing, AI workspace
     // (requires the ai_agents module) and finance (invoicing_ledger + admin role).
-    const hidden = ['Clients', 'Publishing', 'AI Workspace', 'Finance']
+    const hidden = ['Sales', 'Clients', 'Publishing', 'AI Workspace', 'Finance']
     for (const label of hidden) {
       expect(screen.queryByRole('link', { name: new RegExp(`^${label}$`, 'i') })).toBeNull()
     }
   })
 
-  it('shows the Sales section for an Employee (backend auto-grants sales_crm)', () => {
+  it('shows the Sales section for a legacy Employee module list', () => {
     mockUser.role = 'employee'
+    mockUser.modules = ['task']
     renderSidebar()
 
-    // require_module("sales_crm") auto-grants Manager/Lead/Employee on the backend.
+    // Legacy pre-permission-system users keep the backend auto-grant.
     expect(screen.getByRole('link', { name: /^sales$/i })).toBeTruthy()
   })
 
@@ -164,13 +200,14 @@ describe('Sidebar role-based visibility (spec §9)', () => {
     // /settings is the user's own profile page (auth-only) and /google-workspace has
     // no backend gate; Client Settings is guarded by CRMSettingsGuard (admin+manager).
     expect(screen.getByRole('link', { name: /^settings$/i })).toBeTruthy()
-    expect(screen.getByRole('link', { name: /^sales$/i })).toBeTruthy()
     expect(screen.getByRole('link', { name: /^people$/i })).toBeTruthy()
     expect(screen.getByRole('link', { name: /^work$/i })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /^sales$/i })).toBeNull()
   })
 
-  it('shows Settings for a Team Lead (profile page is backend-open)', () => {
+  it('shows Sales for a Team Lead with Sales/CRM permission', () => {
     mockUser.role = 'lead'
+    mockUser.modules = ['task', 'sales_crm']
     renderSidebar()
 
     expect(screen.getByRole('link', { name: /^settings$/i })).toBeTruthy()
@@ -183,6 +220,14 @@ describe('Sidebar role-based visibility (spec §9)', () => {
     renderSidebar()
 
     expect(screen.getByRole('link', { name: /^settings$/i })).toBeTruthy()
+  })
+
+  it('shows SOP Library for users without normal module permissions', () => {
+    mockUser.role = 'employee'
+    mockUser.modules = []
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: /^sop library$/i }).getAttribute('href')).toBe('/sop-library')
   })
 })
 

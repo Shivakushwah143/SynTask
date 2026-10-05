@@ -7,6 +7,9 @@ import logging
 
 from app.core.config import settings
 from app.models.user import User, SuperAdmin, CompanyAdmin, Admin, Manager, Lead, Employee
+from app.models.employee_profile import EmployeeProfile
+from app.models.employee_detail_change_request import EmployeeDetailChangeRequest
+from app.models.hr_document import HRDocument, HRDocumentRequest, HRDocumentType, HRDocumentVersion
 from app.models.company import Company, Subscription
 from app.models.crm_company import CRMCompany
 from app.models.crm_activity import CRMActivity
@@ -23,8 +26,12 @@ from app.models.feature_flag import FeatureFlag
 from app.models.task import Task, TaskComment, TaskExtensionRequest
 from app.models.ticket import Ticket, TicketComment
 from app.models.notification import Notification
-from app.models.project import Project, Epic, Sprint
-from app.models.time_tracking import TimeLog, TimeTrackingSummary
+from app.models.project import Project, Epic, Sprint, ProjectTypeConfiguration
+from app.models.work_evidence import ProjectResource, TaskProof
+from app.models.scheduled_job import ScheduledJob, ScheduledJobOccurrence
+from app.models.work_request import WorkRequest
+from app.models.project_template import ProjectTemplate, TemplateTask, TemplateTaskChecklistItem
+from app.models.time_tracking import ActiveTimeSession, TimeLog, TimeTrackingSummary
 from app.models.workflow import Workflow, WorkflowStatus, WorkflowTransition
 from app.models.automation import AutomationRule, AutomationExecution
 from app.models.webhook import Webhook, WebhookDelivery
@@ -37,6 +44,10 @@ from app.models.changelog import ChangeLog
 from app.models.chat import Conversation, ChatMessage
 from app.models.page import Page
 from app.models.client import Client
+from app.models.client_saved_view import ClientSavedView
+from app.models.client_service import ClientService
+from app.models.client_deliverable import ClientDeliverable
+from app.models.client_onboarding import ClientOnboarding, ClientOnboardingItem
 from app.models.department import Department
 from app.models.capability import RoleCapability
 from app.models.ownership_transfer import OwnershipTransfer
@@ -46,6 +57,9 @@ from app.models.ai_user_state import AIUserState
 from app.models.ai_memory import ClientMemory, CompanyMemory, ProjectMemory, UserMemory
 from app.models.knowledge import KnowledgeRecord
 from app.models.agent import AgentDefinition, AgentRun, AgentRunEvent, ActionProposal, SpecialistDefinition
+from app.models.ai_evaluation import AIEvalCaseResult, AIEvalRun
+from app.models.ai_observability import AITrace, AISpan
+from app.ai.security.audit import AISecurityEvent
 from app.rag.models import (
     RAGCitation,
     RAGKnowledgeChunk,
@@ -66,13 +80,14 @@ from app.models.creative_review import (
 from app.models.invoice import Invoice
 from app.models.msa import MSA
 from app.models.meeting import Meeting
-from app.models.content_calendar import ContentCalendarItem
+from app.models.content_calendar import ContentCalendarItem, ContentTemplate, ContentComment, ContentPublishingRecordDoc
 from app.models.timesheet import TimesheetEntry, TimesheetSummary
 from app.models.sales_category import SalesCategory
 from app.models.sales_product import SalesProduct
 from app.models.sales_contact import SalesContact, ContactSharing
 from app.models.sales_lead_file import SalesLeadFile
 from app.models.sales_prospect import SalesProspect
+from app.models.sales_discovery_audit import SalesAudit, SalesDiscovery
 from app.models.sales_lead_note import SalesLeadNote
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.sales_import_job import SalesImportJob
@@ -82,12 +97,24 @@ from app.models.sales_masters import (
 )
 from app.models.attendance import (
     Attendance, AttendanceSession, BreakLog,
-    MonitoringSession, CameraSession, ScreenShareSession
+    MonitoringSession, CameraSession, ScreenShareSession,
+    AttendancePolicy, Holiday, AttendanceCorrectionRequest
+)
+from app.integrations.etimeoffice.models import (
+    ETimeOfficeEmployeeMapping,
+    ETimeOfficeSyncState,
 )
 from app.models.timeline import TimelineEvent
-from app.models.leave import LeaveRequest
+from app.models.leave import LeaveBalance, LeaveRequest, LeaveTypeConfig
+from app.models.salary import SalaryComponent, SalaryStructure
+from app.models.payroll import PayrollPeriod, PayrollRecord
+from app.models.payslip import Payslip
+from app.models.lifecycle import (
+    EmployeeLifecycleEvent,
+    EmployeeSeparationRequest,
+    EmployeeOffboarding,
+)
 from app.models.eod import EODReport
-from app.models.scheduled_job import ScheduledJob
 from app.models.capability import seed_default_capabilities
 from app.integrations.meta.models import (
     MetaIntegrationSettings,
@@ -113,7 +140,7 @@ from app.integrations.google_workspace.models import (
     GoogleWorkspaceCalendarEvent,
 )
 from app.recruitment.models import (
-    Application, Candidate, CandidateJobScore, CandidateNote, CandidateSkillExtraction,
+    Application, Candidate, CandidateJobScore, CandidateNote, CandidatePortalCredential, CandidateSkillExtraction,
     CandidateTimeline, Interview, InterviewFeedback, JobRequirementProfile,
     MicrosoftOAuthState, MicrosoftRecruitmentConnection, Offer, OfferAccessToken,
     OfferTemplate, RecruitmentAttachment, RecruitmentAudit, RecruitmentEmailDelivery,
@@ -127,6 +154,163 @@ logger = logging.getLogger(__name__)
 # Global MongoDB client
 client: AsyncIOMotorClient = None
 MONGODB_TIMEOUT_MS = 5000
+
+
+async def _migrate_employee_profile_candidate_index(database) -> None:
+    """
+    Migrate historical EmployeeProfile candidate indexes to the current
+    canonical unique partial-index definition before Beanie initializes models.
+    """
+    collection = database["employee_profiles"]
+    index_name = "company_id_1_candidate_id_1"
+    expected_keys = [("company_id", 1), ("candidate_id", 1)]
+    expected_partial_filter = {"candidate_id": {"$type": "string"}}
+
+    indexes = await collection.index_information()
+    existing = indexes.get(index_name)
+
+    if not existing:
+        logger.info(
+            "EmployeeProfile candidate index does not exist; "
+            "Beanie will create the canonical index."
+        )
+        return
+
+    current_keys = list(existing.get("key", []))
+    is_correct = (
+        current_keys == expected_keys
+        and existing.get("unique") is True
+        and existing.get("partialFilterExpression") == expected_partial_filter
+        and existing.get("sparse") is not True
+    )
+
+    if is_correct:
+        logger.info("EmployeeProfile candidate index is already canonical.")
+        return
+
+    if current_keys != expected_keys:
+        logger.warning(
+            "Index %s exists with unexpected keys %s; leaving it untouched.",
+            index_name,
+            current_keys,
+        )
+        return
+
+    logger.warning(
+        "Dropping legacy EmployeeProfile candidate index %s. Existing definition: %s",
+        index_name,
+        existing,
+    )
+    await collection.drop_index(index_name)
+    logger.info(
+        "Legacy EmployeeProfile candidate index removed. "
+        "Beanie will recreate the canonical index."
+    )
+
+
+async def _migrate_task_source_marker_index(database) -> None:
+    """
+    Migrate the tasks_template_and_schedule_source_marker index.
+
+    The old definition used ``sparse=True, unique=True`` which does NOT
+    exclude documents where the indexed fields are explicitly set to
+    ``null`` (sparse only skips documents where the field is *absent*).
+    Since Beanie sets all Optional[str] fields to null by default, every
+    normal task was indexed, causing E11000 duplicate-key errors.
+
+    The new definition uses a partial filter for generated project-template
+    and recurring scheduled-work markers only. Sales follow-ups can create
+    multiple tasks for the same lead over time and are intentionally excluded.
+    """
+    collection = database["tasks"]
+    old_index_name = "tasks_template_and_schedule_source_marker"
+
+    indexes = await collection.index_information()
+    existing = indexes.get(old_index_name)
+
+    if not existing:
+        logger.info(
+            "Task source-marker index does not exist; Beanie will create "
+            "the canonical partial index."
+        )
+        return
+
+    # Check if the existing index is already the new partial definition.
+    current_keys = list(existing.get("key", []))
+    expected_keys = [
+        ("company_id", 1),
+        ("source_type", 1),
+        ("related_entity_type", 1),
+        ("related_entity_id", 1),
+    ]
+    expected_partial_filter = {
+        "source_type": {"$in": ["project_template", "scheduled_work"]},
+        "related_entity_id": {"$type": "string"},
+    }
+    is_canonical = (
+        current_keys == expected_keys
+        and existing.get("unique") is True
+        and existing.get("partialFilterExpression") == expected_partial_filter
+        and existing.get("sparse") is not True
+    )
+
+    if is_canonical:
+        logger.info("Task source-marker partial index is already canonical.")
+        return
+
+    # Old sparse+unique index must be dropped so Beanie can create the
+    # new partial unique index without a conflict.
+    logger.warning(
+        "Dropping legacy task source-marker index %s (keys=%s, partial=%s). "
+        "Beanie will recreate the canonical partial unique index.",
+        old_index_name,
+        current_keys,
+        existing.get("partialFilterExpression"),
+    )
+    await collection.drop_index(old_index_name)
+    logger.info("Legacy task source-marker index removed.")
+
+
+async def _migrate_content_publishing_record_index(database) -> None:
+    """Replace the legacy non-unique publishing-record item index safely.
+
+    ``content_item_id`` used to be declared as a regular indexed field. The
+    canonical model now makes it unique, but MongoDB cannot replace an index
+    with the same generated name in place. Check for duplicate records before
+    removing the old index so a startup never silently discards an index and
+    then fails later with an opaque duplicate-key error.
+    """
+    collection = database["content_publishing_records"]
+    index_name = "content_item_id_1"
+    expected_keys = [("content_item_id", 1)]
+    indexes = await collection.index_information()
+    existing = indexes.get(index_name)
+
+    if not existing:
+        logger.info("Content publishing item index does not exist; Beanie will create the canonical index.")
+        return
+    if list(existing.get("key", [])) != expected_keys:
+        logger.warning("Publishing item index %s has unexpected keys; leaving it untouched.", index_name)
+        return
+    if existing.get("unique") is True:
+        logger.info("Content publishing item index is already canonical.")
+        return
+
+    duplicates = await collection.aggregate([
+        {"$match": {"content_item_id": {"$type": "string"}}},
+        {"$group": {"_id": "$content_item_id", "count": {"$sum": 1}}},
+        {"$match": {"count": {"$gt": 1}}},
+        {"$limit": 1},
+    ]).to_list(length=1)
+    if duplicates:
+        raise RuntimeError(
+            "Cannot migrate content_publishing_records.content_item_id_1 to unique: "
+            f"duplicate publishing records exist for content item {duplicates[0]['_id']}"
+        )
+
+    logger.warning("Dropping legacy non-unique content publishing index %s; Beanie will recreate it as unique.", index_name)
+    await collection.drop_index(index_name)
+    logger.info("Legacy content publishing index removed.")
 
 
 async def init_db():
@@ -165,7 +349,16 @@ async def init_db():
         
         # Get database
         database = client[settings.DATABASE_NAME]
-        
+
+        # ── Pre-flight: drop stale indexes whose spec changed ────────
+        # Beanie raises IndexKeySpecsConflict when the model declares a
+        # different spec (e.g. unique added) but the database already has
+        # an index with the same auto-generated name.  Drop stale indexes
+        # so Beanie can recreate them with the correct spec.
+        await _migrate_employee_profile_candidate_index(database)
+        await _migrate_task_source_marker_index(database)
+        await _migrate_content_publishing_record_index(database)
+
         # Initialize Beanie with document models
         await init_beanie(
             database=database,
@@ -177,6 +370,12 @@ async def init_db():
                 Manager,  # New Manager model
                 Lead,
                 Employee,
+                EmployeeProfile,
+                EmployeeDetailChangeRequest,
+                HRDocumentType,
+                HRDocument,
+                HRDocumentVersion,
+                HRDocumentRequest,
                 Company,
                 CRMCompany,
                 CRMActivity,
@@ -200,9 +399,16 @@ async def init_db():
                 TicketComment,
                 Notification,
                 Project,
+                ProjectTypeConfiguration,
+                ProjectResource,
+                TaskProof,
+                ScheduledJob,
+                ScheduledJobOccurrence,
+                WorkRequest,
                 Epic,
                 Sprint,
                 TimeLog,
+                ActiveTimeSession,
                 TimeTrackingSummary,
                 Workflow,
                 WorkflowStatus,
@@ -221,6 +427,11 @@ async def init_db():
                 ChatMessage,
                 Page,
                 Client,
+                ClientSavedView,
+                ClientService,
+                ClientDeliverable,
+                ClientOnboarding,
+                ClientOnboardingItem,
                 Department,
                 RoleCapability,
                 OwnershipTransfer,
@@ -237,6 +448,11 @@ async def init_db():
                 AgentRun,
                 AgentRunEvent,
                 ActionProposal,
+                AIEvalRun,
+                AIEvalCaseResult,
+                AITrace,
+                AISpan,
+                AISecurityEvent,
                 RAGKnowledgeSource,
                 RAGKnowledgeSourceVersion,
                 RAGKnowledgeChunk,
@@ -250,10 +466,16 @@ async def init_db():
                 CreativeSuggestion,
                 CreativeReviewHistory,
                 ReviewPolicy,
+                ProjectTemplate,
+                TemplateTask,
+                TemplateTaskChecklistItem,
                 Invoice,
                 MSA,
                 Meeting,
                 ContentCalendarItem,
+                ContentTemplate,
+                ContentComment,
+                ContentPublishingRecordDoc,
                 TimesheetEntry,
                 TimesheetSummary,
                 SalesCategory,
@@ -262,6 +484,8 @@ async def init_db():
                 ContactSharing,
                 SalesLeadFile,
                 SalesProspect,
+                SalesDiscovery,
+                SalesAudit,
                 SalesLeadNote,
                 SalesPipelineHistory,
                 SalesImportJob,
@@ -278,10 +502,27 @@ async def init_db():
                 MonitoringSession,
                 CameraSession,
                 ScreenShareSession,
+                AttendancePolicy,
+                Holiday,
+                AttendanceCorrectionRequest,
+                ETimeOfficeEmployeeMapping,
+                ETimeOfficeSyncState,
                 TimelineEvent,
                 LeaveRequest,
+                LeaveTypeConfig,
+                LeaveBalance,
+                SalaryComponent,
+                SalaryStructure,
+                PayrollPeriod,
+                PayrollRecord,
+                Payslip,
+                EmployeeLifecycleEvent,
+                EmployeeSeparationRequest,
+                EmployeeOffboarding,
                 EODReport,
                 ScheduledJob,
+                ScheduledJobOccurrence,
+                WorkRequest,
                 MetaIntegrationSettings,
                 MetaWebhookEvent,
                 MetaSyncRun,
@@ -299,6 +540,7 @@ async def init_db():
                 GoogleWorkspaceCalendarEvent,
                 RecruitmentJob,
                 Candidate,
+                CandidatePortalCredential,
                 Application,
                 Resume,
                 ResumeParsedProfile,
@@ -325,6 +567,9 @@ async def init_db():
         )
 
         await seed_default_capabilities()
+        from app.agents.registry import register_builtin_agent_definitions
+
+        await register_builtin_agent_definitions()
         
         logger.info("Beanie ODM initialized successfully")
         

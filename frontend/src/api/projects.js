@@ -5,6 +5,22 @@ export const projectsApi = {
   getProjects: (params = {}) => {
     return api.get('/projects/', { params })
   },
+
+  getProjectStatusSummary: () => {
+    return api.get('/projects/status-summary')
+  },
+
+  getProjectTypes: () => {
+    return api.get('/projects/types')
+  },
+
+  createProjectType: (label) => {
+    const formData = new FormData()
+    formData.append('label', label)
+    return api.post('/projects/types', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
   
   getProject: (id, params = {}) => {
     return api.get(`/projects/${id}`, { params })
@@ -33,10 +49,29 @@ export const projectsApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
+
+  getCompletionReadiness: (id) => api.get(`/projects/${id}/completion-readiness`),
+
+  completeProject: (id) => api.post(`/projects/${id}/complete`),
+
+  archiveProject: (id) => api.post(`/projects/${id}/archive`),
+
+  reopenProject: (id, reason) => {
+    const formData = new FormData()
+    formData.append('reason', reason)
+    return api.post(`/projects/${id}/reopen`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
   
   deleteProject: (id) => {
     return api.delete(`/projects/${id}`)
   },
+
+  getResources: (id) => api.get(`/projects/${id}/resources`),
+  createResource: (id, data) => api.post(`/projects/${id}/resources`, data),
+  updateResource: (id, resourceId, data) => api.put(`/projects/${id}/resources/${resourceId}`, data),
+  deleteResource: (id, resourceId) => api.delete(`/projects/${id}/resources/${resourceId}`),
   
   // Epics
   getEpics: (projectId) => {
@@ -185,5 +220,22 @@ export const projectsApi = {
   
   deleteBoardColumn: (projectId, columnId) => {
     return api.delete(`/projects/${projectId}/board-columns/${columnId}`)
+  },
+
+  // Template integration
+  applyTemplate: (projectId, data) => {
+    const formData = new FormData()
+    Object.keys(data).forEach(key => {
+      if (data[key] !== null && data[key] !== undefined) {
+        if (typeof data[key] === 'object' && !(data[key] instanceof File)) {
+          formData.append(key, JSON.stringify(data[key]))
+        } else {
+          formData.append(key, data[key])
+        }
+      }
+    })
+    return api.post(`/project-templates/apply/${projectId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
   },
 }

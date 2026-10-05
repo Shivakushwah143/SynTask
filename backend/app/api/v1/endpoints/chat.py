@@ -114,7 +114,28 @@ async def list_conversations(
         "company_id": current_user.company_id,
         "participants": str(current_user.id),
     }).sort("-last_message_at").to_list()
-    
+
+    # Batch-resolve every participant in ONE query instead of one User.get per
+    # conversation row (N+1 across the conversation list).
+    participant_ids = {pid for conv in conversations for pid in conv.participants}
+    participant_map = {}
+    valid_ids = [ObjectId(pid) for pid in participant_ids if ObjectId.is_valid(pid)]
+    if valid_ids:
+        participants = await User.find({"_id": {"$in": valid_ids}}).to_list()
+        participant_map = {str(u.id): u for u in participants}
+
+    def _participant_info(participant_id: str):
+        participant = participant_map.get(participant_id)
+        if not participant:
+            return None
+        return {
+            "id": str(participant.id),
+            "name": participant.full_name(),
+            "email": participant.email,
+            "role": participant.role.value,
+            "avatar": participant.avatar,
+        }
+
     result = []
     for conv in conversations:
         # Get other participant(s) info
@@ -124,27 +145,15 @@ async def list_conversations(
         if conv.is_group:
             # For groups, show all participants
             for participant_id in conv.participants:
-                participant = await User.get(participant_id)
-                if participant:
-                    participants_info.append({
-                        "id": str(participant.id),
-                        "name": participant.full_name(),
-                        "email": participant.email,
-                        "role": participant.role.value,
-                        "avatar": participant.avatar,
-                    })
+                info = _participant_info(participant_id)
+                if info:
+                    participants_info.append(info)
         else:
             # For 1-on-1 chats, show only other participant
             for participant_id in other_participants:
-                participant = await User.get(participant_id)
-                if participant:
-                    participants_info.append({
-                        "id": str(participant.id),
-                        "name": participant.full_name(),
-                        "email": participant.email,
-                        "role": participant.role.value,
-                        "avatar": participant.avatar,
-                    })
+                info = _participant_info(participant_id)
+                if info:
+                    participants_info.append(info)
         
         result.append({
             "id": str(conv.id),
@@ -192,13 +201,21 @@ async def get_messages(
         "is_deleted": False,
     }).sort("-created_at").skip(skip).limit(limit).to_list()
     
-    # Mark messages as read
+    # Mark messages as read — the in-memory append keeps the response payload
+    # identical, while ONE bulk update replaces the previous save-per-message.
     user_id_str = str(current_user.id)
+    unread_message_ids = []
+    read_at = utc_now()
     for message in messages:
         if user_id_str not in message.read_by and message.sender_id != user_id_str:
             message.read_by.append(user_id_str)
-            message.read_at[user_id_str] = utc_now()
-            await message.save()
+            message.read_at[user_id_str] = read_at
+            unread_message_ids.append(message.id)
+    if unread_message_ids:
+        await ChatMessage.get_pymongo_collection().update_many(
+            {"_id": {"$in": [ObjectId(str(mid)) for mid in unread_message_ids]}},
+            {"$addToSet": {"read_by": user_id_str}, "$set": {f"read_at.{user_id_str}": read_at}},
+        )
     
     # Update conversation unread count
     if user_id_str in conversation.unread_count:
@@ -319,30 +336,33 @@ async def send_message(
     conversation.last_message_by = str(current_user.id)
     conversation.updated_at = utc_now()
     
-    # Update unread counts for other participants and create notifications
+    # Update unread counts for other participants and create notifications.
+    # All recipient notifications are inserted with ONE bulk insert instead of
+    # a sequential insert per recipient (large groups previously serialized a
+    # write per participant before the message returned).
+    from app.models.notification import Notification, NotificationType
+
+    notifications = []
     for participant_id in conversation.participants:
         if participant_id != str(current_user.id):
             if participant_id not in conversation.unread_count:
                 conversation.unread_count[participant_id] = 0
             conversation.unread_count[participant_id] += 1
-            
-            # Create notification for the recipient
-            try:
-                from app.models.notification import Notification, NotificationType
-                notification = Notification(
-                    company_id=conversation.company_id,
-                    user_id=participant_id,
-                    type=NotificationType.MESSAGE,
-                    title="New Message",
-                    message=f"{current_user.full_name()} sent you a message: {content[:100] if content else '📎 File' if file_name else 'Message'}",
-                    related_id=str(message.id),
-                    related_type="chat_message",
-                    action_url=f"/chat?conversation={conversation_id}",
-                )
-                await notification.insert()
-                logger.info(f"Notification created for message from {current_user.email} to participant {participant_id}")
-            except Exception as e:
-                logger.error(f"Error creating notification for message: {str(e)}")
+            notifications.append(Notification(
+                company_id=conversation.company_id,
+                user_id=participant_id,
+                type=NotificationType.MESSAGE,
+                title="New Message",
+                message=f"{current_user.full_name()} sent you a message: {content[:100] if content else '📎 File' if file_name else 'Message'}",
+                related_id=str(message.id),
+                related_type="chat_message",
+                action_url=f"/chat?conversation={conversation_id}",
+            ))
+    if notifications:
+        try:
+            await Notification.insert_many(notifications)
+        except Exception as e:
+            logger.error(f"Error bulk-creating chat notifications: {str(e)}")
     
     await conversation.save()
     

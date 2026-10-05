@@ -13,15 +13,20 @@ from pymongo import ASCENDING, DESCENDING, IndexModel
 class TimelineEventType(str, Enum):
     TASK_ASSIGNED = "task_assigned"
     TASK_STARTED = "task_started"
+    TASK_SUBMITTED_FOR_REVIEW = "task_submitted_for_review"
+    TASK_REVISION_REQUESTED = "task_revision_requested"
+    TASK_APPROVED = "task_approved"
     TASK_COMPLETED = "task_completed"
     TASK_UPDATED = "task_updated"
     TASK_REOPENED = "task_reopened"
+    TASK_CANCELLED = "task_cancelled"
     TASK_DELETED = "task_deleted"
     TASK_DUE_TODAY = "task_due_today"
     TASK_OVERDUE = "task_overdue"
     TASK_EXTENSION_REQUESTED = "task_extension_requested"
     TASK_EXTENSION_APPROVED = "task_extension_approved"
     TASK_EXTENSION_REJECTED = "task_extension_rejected"
+    TASK_CARRIED_FORWARD = "task_carried_forward"
     ATTENDANCE_CHECK_IN = "attendance_check_in"
     ATTENDANCE_CHECK_OUT = "attendance_check_out"
     MEETING_CREATED = "meeting_created"
@@ -38,6 +43,20 @@ class TimelineEventType(str, Enum):
     WFH_ENDED = "wfh_ended"
     EOD_SUBMITTED = "eod_submitted"
     EOD_UPDATED = "eod_updated"
+    PAYSLIP_GENERATED = "payslip_generated"
+    PAYSLIP_REGENERATED = "payslip_regenerated"
+    LIFECYCLE_JOINED = "lifecycle_joined"
+    LIFECYCLE_CONFIRMED = "lifecycle_confirmed"
+    LIFECYCLE_PROMOTED = "lifecycle_promoted"
+    LIFECYCLE_TRANSFERRED = "lifecycle_transferred"
+    LIFECYCLE_MANAGER_CHANGED = "lifecycle_manager_changed"
+    LIFECYCLE_EMPLOYMENT_TYPE_CHANGED = "lifecycle_employment_type_changed"
+    LIFECYCLE_RESIGNATION_SUBMITTED = "lifecycle_resignation_submitted"
+    LIFECYCLE_RESIGNATION_WITHDRAWN = "lifecycle_resignation_withdrawn"
+    LIFECYCLE_RESIGNATION_ACCEPTED = "lifecycle_resignation_accepted"
+    LIFECYCLE_RESIGNATION_REJECTED = "lifecycle_resignation_rejected"
+    LIFECYCLE_TERMINATED = "lifecycle_terminated"
+    LIFECYCLE_EXITED = "lifecycle_exited"
 
 
 class TimelineModule(str, Enum):
@@ -46,6 +65,8 @@ class TimelineModule(str, Enum):
     ATTENDANCE = "attendance"
     LEAVE = "leave"
     EOD = "eod"
+    PAYROLL = "payroll"
+    LIFECYCLE = "lifecycle"
 
 
 class TimelineEvent(Document):

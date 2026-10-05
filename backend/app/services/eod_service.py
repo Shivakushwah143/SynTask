@@ -48,9 +48,9 @@ async def assert_eod_view_access(current_user: User, employee: User) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     if str(current_user.id) == str(employee.id):
         return
-    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER}:
         return
-    if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
+    if current_user.role == UserRole.LEAD:
         if str(current_user.id) in (employee.ancestors or []) or employee.reports_to == str(current_user.id):
             return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")

@@ -107,6 +107,27 @@ jobs:
         working-directory: backend
         run: python -m compileall app scripts
 
+      - name: Validate deployment scripts
+        run: |
+          set -euo pipefail
+          for script in scripts/deployment/*.sh scripts/observability/*.sh; do
+            bash -n "$script"
+          done
+          # The deployment path must never tear the stack down. Strip comments
+          # first so documentation mentioning the command is not flagged.
+          if grep -v '^[[:space:]]*#' scripts/deployment/deploy.sh \
+               | grep -nE 'docker[[:space:]]+compose[^|]*[[:space:]]down'; then
+            echo "ERROR: deploy.sh must not run 'docker compose down'." >&2
+            exit 1
+          fi
+
+      - name: Validate Docker Compose configuration
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.dev.yml config > /dev/null
+          GRAFANA_ADMIN_PASSWORD=ci-validation \
+            docker compose -f docker-compose.prod.yml config > /dev/null
+
       - name: Build frontend
         working-directory: frontend
         run: npm run build

@@ -1,7 +1,6 @@
-import { format } from 'date-fns'
 import { timeService } from '@/services/timeService'
 
-export const PIPELINE_FILTER_KEYS = ['q', 'owner', 'priority', 'tags', 'minValue', 'maxValue', 'createdFrom', 'createdTo', 'stage']
+export const PIPELINE_FILTER_KEYS = ['q', 'owner', 'priority', 'tags', 'minValue', 'maxValue', 'createdFrom', 'createdTo', 'stage', 'status']
 
 export const PIPELINE_FILTER_DEFAULTS = {
   q: '',
@@ -13,9 +12,14 @@ export const PIPELINE_FILTER_DEFAULTS = {
   createdFrom: '',
   createdTo: '',
   stage: '',
+  status: '',
 }
 
-export const DEAL_VALUE_FIELDS = ['deal_value', 'dealValue', 'value', 'won_amount', 'amount']
+// The pipeline Value column must match what the lead-detail page shows. For
+// open leads the Budget (edited in the lead overview) is the canonical value;
+// won_amount stays authoritative once a lead closes (the pipeline serializes
+// both fields, so the order between them is what decides the display).
+export const DEAL_VALUE_FIELDS = ['won_amount', 'budget', 'deal_value', 'dealValue', 'value', 'amount']
 export const OWNER_FIELDS = ['owner_name', 'ownerName', 'assigned_to_name', 'assignedToName', 'assigned_user_name', 'assignee_name', 'owner', 'assigned_user', 'assignee', 'assigned_to']
 export const OWNER_ID_FIELDS = ['owner_id', 'ownerId', 'assigned_to_id', 'assignedToId', 'assigned_to']
 export const CONTACT_FIELDS = ['primary_contact', 'primary_contact_name', 'contact_name', 'contact', 'prospect_name']
@@ -65,11 +69,26 @@ export const buildLeadSearchText = (lead) => {
   return values.filter(Boolean).map(normalizeText).join(' ')
 }
 
+const CLOSED_STAGE_KEYS = new Set(['won', 'lost'])
+
+// The lead-detail header edit writes won_amount ("Deal value"); an empty save
+// stores 0. That 0 is not a deal size and must never shadow a real value stored
+// in a sibling field (the overview writes budget) — a Qualify lead with budget
+// set must not display Rs 0 just because won_amount is 0. Once a deal closes,
+// however, won_amount is the authoritative closed value: a genuinely closed
+// lead must report its recorded won amount (even 0) rather than fall back to a
+// pre-close budget.
 export const getLeadDealValue = (lead) => {
+  const stageKey = getCanonicalPipelineStageKey(lead?.current_stage || lead?.stage)
+  const isClosed = CLOSED_STAGE_KEYS.has(stageKey)
   for (const field of DEAL_VALUE_FIELDS) {
-    if (lead?.[field] !== undefined && lead?.[field] !== null && lead?.[field] !== '') {
-      return normalizeNumber(lead[field])
-    }
+    const raw = lead?.[field]
+    if (raw === undefined || raw === null || raw === '') continue
+    const value = normalizeNumber(raw)
+    if (value !== 0) return value
+    // For closed leads a recorded zero won_amount is authoritative (deal closed
+    // at 0 / free pilot) — it must win over any leftover budget.
+    if (isClosed && field === 'won_amount') return 0
   }
   return 0
 }
@@ -115,10 +134,34 @@ export const getLeadOwnerValue = (lead) => {
   return normalizeText(getLeadOwnerLabel(lead))
 }
 
+const getUserOptionLabel = (user) => {
+  if (!user) return ''
+  const nameParts = [user.first_name || user.firstName, user.last_name || user.lastName].filter(Boolean)
+  const label = user.full_name || user.fullName || user.name || user.display_name || user.displayName || nameParts.join(' ')
+  return String(label || user.email || '').trim()
+}
+
+const getUserOptionValue = (user) => {
+  const value = user?.id || user?._id || user?.user_id || user?.userId
+  return value === undefined || value === null ? '' : String(value).trim()
+}
+
+// Single source of truth for the lead's person name: returns the first non-empty
+// contact field as-is (no fallback label), shared by the label helper and the
+// pipeline table so every view shows the same person.
+export const getLeadRawContactName = (lead) => {
+  const contact =
+    lead?.crm_contact_name ||
+    lead?.primary_contact_name ||
+    lead?.contact_name ||
+    lead?.prospect_name ||
+    lead?.primary_contact ||
+    lead?.contact
+  return getDisplayName(contact)
+}
+
 export const getLeadContactLabel = (lead) => {
-  const contact = lead?.crm_contact_name || lead?.primary_contact_name || lead?.contact_name || lead?.prospect_name || lead?.primary_contact || lead?.contact
-  const label = getDisplayName(contact)
-  return label || 'Unassigned contact'
+  return getLeadRawContactName(lead) || 'Unassigned contact'
 }
 
 export const getLeadStageKey = (lead) => normalizeText(lead?.current_stage || lead?.stage || lead?.stage_key)
@@ -127,15 +170,122 @@ export const getStageKey = (stage) => normalizeText(stage?.key || stage?.name ||
 
 export const getStageLabel = (stage) => stage?.name || stage?.label || stage?.title || stage?.key || stage?.id || 'Stage'
 
+// ── Stage inner-status configuration (mirrors backend STAGE_INNER_STATUSES) ──
+// The ONLY allowed statuses per stage, kept in sync with app/crm/pipeline.py.
+// Repeated labels (Draft / Sent / Accepted / ...) are always scoped by the stage.
+export const STAGE_INNER_STATUSES = {
+  acquire: [
+    { value: 'new', label: 'New' },
+    { value: 'imported', label: 'Imported' },
+    { value: 'assigned', label: 'Assigned' },
+    { value: 'not_contacted', label: 'Not Contacted' },
+    { value: 'contacted', label: 'Contacted' },
+    { value: 'wrong_number', label: 'Wrong Number' },
+    { value: 'no_response', label: 'No Response' },
+    { value: 'duplicate', label: 'Duplicate' },
+    { value: 'spam', label: 'Spam' },
+  ],
+  qualify: [
+    { value: 'not_contacted', label: 'Not Contacted' },
+    { value: 'contacted', label: 'Contacted' },
+    { value: 'busy', label: 'Busy' },
+    { value: 'call_back', label: 'Call Back' },
+    { value: 'wrong_number', label: 'Wrong Number' },
+    { value: 'no_response', label: 'No Response' },
+    { value: 'interested', label: 'Interested' },
+    { value: 'not_interested', label: 'Not Interested' },
+    { value: 'spam', label: 'Spam' },
+    { value: 'qualified', label: 'Qualified' },
+  ],
+  discovery: [
+    { value: 'need_proposal', label: 'Need Proposal' },
+    { value: 'need_audit', label: 'Need Audit' },
+    { value: 'need_second_meeting', label: 'Need Second Meeting' },
+    { value: 'follow_up_required', label: 'Follow-up Required' },
+    { value: 'not_interested', label: 'Not Interested' },
+    { value: 'lost', label: 'Lost' },
+    { value: 'qualified', label: 'Qualified' },
+  ],
+  proposal: [
+    { value: 'draft', label: 'Draft' },
+    { value: 'generated', label: 'Generated' },
+    { value: 'sent', label: 'Sent' },
+    { value: 'viewed', label: 'Viewed' },
+    { value: 'accepted', label: 'Accepted' },
+    { value: 'rejected', label: 'Rejected' },
+    { value: 'revision_requested', label: 'Revision Requested' },
+    { value: 'expired', label: 'Expired' },
+  ],
+  negotiation: [
+    { value: 'negotiation_started', label: 'Negotiation Started' },
+    { value: 'waiting_client', label: 'Waiting Client' },
+    { value: 'waiting_internal', label: 'Waiting Internal' },
+    { value: 'discount_approval', label: 'Discount Approval' },
+    { value: 'final_offer', label: 'Final Offer' },
+    { value: 'accepted', label: 'Accepted' },
+    { value: 'rejected', label: 'Rejected' },
+  ],
+  agreement: [
+    { value: 'draft', label: 'Draft' },
+    { value: 'sent', label: 'Sent' },
+    { value: 'viewed', label: 'Viewed' },
+    { value: 'signed', label: 'Signed' },
+    { value: 'rejected', label: 'Rejected' },
+    { value: 'expired', label: 'Expired' },
+  ],
+  won: [
+    { value: 'payment_pending', label: 'Payment Pending' },
+    { value: 'payment_received', label: 'Payment Received' },
+    { value: 'onboarding_started', label: 'Onboarding Started' },
+    { value: 'ready', label: 'Ready' },
+    { value: 'transferred', label: 'Transferred' },
+  ],
+}
+
+// Per-stage domain field that owns the canonical status on the lead record
+// (mirrors backend STAGE_STATUS_DOMAIN_FIELD) — used for backward-compatible reads.
+const STAGE_STATUS_DOMAIN_FIELD = {
+  acquire: null,
+  qualify: 'qualify_status',
+  discovery: 'discovery_outcome',
+  proposal: 'proposal_status',
+  negotiation: 'negotiation_status',
+  agreement: 'agreement_status',
+  won: 'won_status',
+}
+
+export const getStageStatusOptions = (stageKey) =>
+  STAGE_INNER_STATUSES[getCanonicalPipelineStageKey(stageKey)] || []
+
+export const getLeadStageStatus = (lead) => {
+  const snapshot = String(lead?.current_stage_status || '').toLowerCase().replace(/\s+/g, '_')
+  if (snapshot) return snapshot
+  const stageKey = getCanonicalPipelineStageKey(lead?.current_stage || '')
+  const domainField = STAGE_STATUS_DOMAIN_FIELD[stageKey]
+  const domainValue = domainField ? lead?.[domainField] : null
+  return domainValue ? String(domainValue).toLowerCase().replace(/\s+/g, '_') : ''
+}
+
+export const getStageStatusLabel = (stageKey, statusKey) => {
+  const status = normalizeText(statusKey)
+  if (!status) return ''
+  const option = getStageStatusOptions(stageKey).find((item) => item.value === status)
+  return option?.label || status
+}
+
+// Guided sales journey stages. Legacy values (new/contacted/qualified) map onto the
+// canonical Acquire/Qualify stages so existing leads keep their meaning.
 const PIPELINE_STAGE_ALIASES = {
-  lead: 'new',
-  new: 'new',
-  contacted: 'contacted',
-  'follow-up': 'contacted',
-  'follow up': 'contacted',
-  'follow up call': 'contacted',
-  qualified: 'qualified',
-  qualification: 'qualified',
+  acquire: 'acquire',
+  lead: 'acquire',
+  new: 'acquire',
+  qualify: 'qualify',
+  contacted: 'qualify',
+  'follow-up': 'qualify',
+  'follow up': 'qualify',
+  'follow up call': 'qualify',
+  qualified: 'qualify',
+  qualification: 'qualify',
   discovery: 'discovery',
   meeting: 'discovery',
   'discovery scheduled': 'discovery',
@@ -144,20 +294,21 @@ const PIPELINE_STAGE_ALIASES = {
   proposal: 'proposal',
   'proposal sent': 'proposal',
   negotiation: 'negotiation',
+  agreement: 'agreement',
   won: 'won',
   client: 'won',
   lost: 'lost',
 }
 
 export const PIPELINE_ALLOWED_TRANSITIONS = {
-  new: ['contacted', 'qualified', 'lost'],
-  contacted: ['qualified', 'lost'],
-  qualified: ['discovery', 'lost'],
+  acquire: ['qualify', 'lost'],
+  qualify: ['discovery', 'lost'],
   discovery: ['proposal', 'lost'],
   proposal: ['negotiation', 'lost'],
-  negotiation: ['won', 'lost'],
+  negotiation: ['agreement', 'lost'],
+  agreement: ['won', 'lost'],
   won: [],
-  lost: ['new'],
+  lost: ['acquire'],
 }
 
 export const getCanonicalPipelineStageKey = (value) => {
@@ -201,6 +352,7 @@ export const filterPipelineLeads = (leads = [], filters = PIPELINE_FILTER_DEFAUL
   const priority = normalizeText(filters.priority)
   const tags = normalizeText(filters.tags)
   const stage = normalizeText(filters.stage)
+  const status = normalizeText(filters.status)
   const minValue = filters.minValue !== '' ? normalizeNumber(filters.minValue) : null
   const maxValue = filters.maxValue !== '' ? normalizeNumber(filters.maxValue) : null
   const createdFrom = filters.createdFrom ? timeService.instant(filters.createdFrom) : null
@@ -225,6 +377,9 @@ export const filterPipelineLeads = (leads = [], filters = PIPELINE_FILTER_DEFAUL
       if (tokens.length && !tokens.some((tag) => tagLabels.includes(normalizeText(tag)))) return false
     }
     if (stage && leadStage !== stage) return false
+    // Inner status is always scoped by the current stage (repeated labels like
+    // Draft / Accepted / Sent appear in several stages).
+    if (status && getLeadStageStatus(lead) !== status) return false
     if (minValue !== null && dealValue < minValue) return false
     if (maxValue !== null && dealValue > maxValue) return false
     if (createdFrom && createdDate && createdDate < createdFrom) return false
@@ -344,14 +499,23 @@ export const stageOptionsFromBoard = (board) =>
     label: stage.name,
   }))
 
-export const ownerOptionsFromBoard = (board) => {
+export const ownerOptionsFromBoard = (board, users = []) => {
   const values = new Map()
+  users.forEach((user) => {
+    const value = getUserOptionValue(user)
+    const label = getUserOptionLabel(user)
+    if (value && label) values.set(value, label)
+  })
   ;(board?.stages || []).forEach((stage) => {
     stage.leads.forEach((lead) => {
-      const owner = normalizeText(getLeadOwnerLabel(lead))
+      const ownerLabel = getLeadOwnerLabel(lead)
+      if (ownerLabel === 'Unassigned') return
+      const owner = normalizeText(ownerLabel)
       const ownerValue = getLeadOwnerValue(lead) || owner
-      if (ownerValue) values.set(ownerValue, getLeadOwnerLabel(lead))
+      if (ownerValue && !values.has(ownerValue)) values.set(ownerValue, ownerLabel)
     })
   })
-  return Array.from(values.entries()).map(([value, label]) => ({ value, label }))
+  return Array.from(values.entries())
+    .map(([value, label]) => ({ value, label }))
+    .sort((left, right) => left.label.localeCompare(right.label))
 }

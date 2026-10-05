@@ -1,0 +1,17 @@
+# Grafana dashboard provisioning — auto-loads dashboards from /var/lib/grafana/dashboards.
+apiVersion: 1
+
+providers:
+  - name: SynTask
+    orgId: 1
+    folder: SynTask
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    # Dashboards are mounted read-only at /etc/grafana/provisioning/dashboards
+    # (see docker-compose.*.yml). Grafana's file provider reads only *.json
+    # files, so this dashboard.yml provider config is ignored by it.
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

@@ -4,7 +4,7 @@
 
 Implemented recruitment workflow foundations:
 
-- Resume upload, validation, text extraction for PDF/DOCX/TXT, parsed profile storage, skill normalization, and deterministic candidate scoring.
+- Resume upload, validation, text extraction for PDF/DOCX/TXT, legacy DOC storage, parsed profile storage, skill normalization, and deterministic candidate scoring. Duplicate resume uploads are linked back to the candidate workspace through the candidate's current resume reference so the Resume tab remains visible after deduplication.
 - Interview availability suggestions, stale-slot recheck, Teams-oriented interview metadata, and Microsoft connection status endpoints.
 - Offer draft, approval history, backend PDF generation, secure offer token, public view/accept/reject, and audit timeline.
 
@@ -24,6 +24,7 @@ AI ranking is decision support only. Scoring excludes protected attributes and s
 - `GET /api/v1/recruitment/jobs/{job_id}/candidate-rankings`
 - `GET /api/v1/recruitment/candidates/{candidate_id}/job-score/{job_id}`
 - `POST /api/v1/recruitment/jobs/{job_id}/shortlist`
+- `POST /api/v1/recruitment/jobs/{job_id}/status` — validated lifecycle transition (draft, pending_approval, approved, published, paused, closed, archived); re-selecting the current status is a no-op, invalid transitions return 400
 - `POST /api/v1/recruitment/interviews/availability`
 - `POST /api/v1/recruitment/interviews/propose-slots`
 - `POST /api/v1/recruitment/interviews/schedule`
@@ -53,6 +54,7 @@ AI ranking is decision support only. Scoring excludes protected attributes and s
 
 - `/hr/recruitment/candidates`: resume upload, parse status, extracted profile, normalized skills, reprocess.
 - `/hr/recruitment/jobs`: requirements extraction, candidate scoring, ranking table, shortlist.
+- `/hr/recruitment/jobs/:jobId`: dedicated job detail page with status dropdown, analytics counters, full details, and candidate ranking.
 - `/hr/recruitment/offers`: offer editor, approval actions, preview, PDF generation, send.
 - `/public/offers/:token`: candidate offer view, PDF download, accept/reject.
 

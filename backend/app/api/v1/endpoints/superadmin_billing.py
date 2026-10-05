@@ -19,6 +19,9 @@ from app.models.audit_log import log_audit
 from app.api.dependencies import get_current_super_admin
 from app.core.config import settings
 from app.core.clock import utc_now
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -51,7 +54,7 @@ try:
     )
 except ImportError:
     razorpay_client = None
-    print("Warning: razorpay package not installed. Install with: pip install razorpay")
+    logger.warning("razorpay package not installed. Install with: pip install razorpay")
 
 
 class InvoiceGenerateRequest(BaseModel):

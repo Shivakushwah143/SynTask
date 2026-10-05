@@ -26,15 +26,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
-          <Icon className="h-4 w-4" />
+    <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800" title={subtitle}>
+      <div className={`shrink-0 rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow`}>
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
+        <div className="flex items-baseline gap-1.5">
+          <p className="text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <span className="truncate text-[10px] font-medium text-gray-400 dark:text-gray-500">{subtitle}</span>}
         </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -251,55 +253,53 @@ export default function CRMCalendarPage() {
   return (
     <CRMPage>
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 p-6 text-white shadow-xl md:p-8 mb-6">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <CalendarDays className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-wider text-indigo-200">CRM</p>
-                <h1 className="text-2xl font-bold md:text-3xl">Calendar</h1>
-                <p className="mt-1 text-indigo-100">Meetings, tasks, and CRM activity in one read-only workspace.</p>
-              </div>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 px-4 py-3.5 text-white shadow-lg md:px-5 mb-5">
+        <div className="absolute right-0 top-0 -mr-10 -mt-10 h-40 w-40 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-10 -mb-10 h-32 w-32 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+              <CalendarDays className="h-5 w-5" />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex min-h-9 items-center rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm">
-                {cursorLabel}
-              </span>
-              <button
-                type="button"
-                onClick={() => setCursorDate(timeService.now())}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
-              >
-                Today
-              </button>
-              <button
-                type="button"
-                aria-label={`Previous ${view}`}
-                onClick={() => setCursorDate((date) => getCalendarCursorDate(date, view, -1))}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white/20 text-white backdrop-blur-sm transition hover:bg-white/30"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                aria-label={`Next ${view}`}
-                onClick={() => setCursorDate((date) => getCalendarCursorDate(date, view, 1))}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white/20 text-white backdrop-blur-sm transition hover:bg-white/30"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-200">CRM</p>
+              <h1 className="text-lg font-bold md:text-xl">Calendar</h1>
+              <p className="truncate text-xs text-indigo-100 md:text-sm">Meetings, tasks, and CRM activity in one read-only workspace.</p>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex min-h-8 items-center rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm">
+              {cursorLabel}
+            </span>
+            <button
+              type="button"
+              onClick={() => setCursorDate(timeService.now())}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              aria-label={`Previous ${view}`}
+              onClick={() => setCursorDate((date) => getCalendarCursorDate(date, view, -1))}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 text-white backdrop-blur-sm transition hover:bg-white/30"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              aria-label={`Next ${view}`}
+              onClick={() => setCursorDate((date) => getCalendarCursorDate(date, view, 1))}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 text-white backdrop-blur-sm transition hover:bg-white/30"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Total Events"
           value={totalEvents}
@@ -331,11 +331,11 @@ export default function CRMCalendarPage() {
       </div>
 
       {/* Filters Section */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 mb-6">
-        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 mb-5">
+        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white px-4 py-3 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-              <Filter className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+              <Filter className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
               <h2 className="font-bold text-gray-900 dark:text-white">Calendar Controls</h2>
@@ -344,14 +344,14 @@ export default function CRMCalendarPage() {
           </div>
         </div>
 
-        <div className="p-4">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_repeat(3,minmax(0,1fr))]">
+        <div className="p-3 sm:p-4">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_repeat(3,minmax(0,1fr))]">
             <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Search</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Search</span>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <input 
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
                   value={search} 
                   onChange={(event) => setSearch(event.target.value)} 
                   placeholder="Search meetings, tasks, activity..." 
@@ -360,9 +360,9 @@ export default function CRMCalendarPage() {
               </div>
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Activity Type</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Activity Type</span>
               <select 
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
                 value={activityType} 
                 onChange={(event) => setActivityType(event.target.value)} 
                 aria-label="Filter by activity type"
@@ -372,9 +372,9 @@ export default function CRMCalendarPage() {
               </select>
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Owner</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Owner</span>
               <select 
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
                 value={owner} 
                 onChange={(event) => setOwner(event.target.value)} 
                 aria-label="Filter by owner"
@@ -387,7 +387,7 @@ export default function CRMCalendarPage() {
               <button
                 type="button"
                 onClick={() => { setSearch(''); setOwner(''); setActivityType('') }}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
               >
                 Clear filters
               </button>

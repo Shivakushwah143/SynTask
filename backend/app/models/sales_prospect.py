@@ -5,7 +5,7 @@ Legacy storage and import names remain for API and database compatibility.
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from beanie import Document, Indexed
-from pydantic import EmailStr, Field
+from pydantic import Field
 from enum import Enum
 from pymongo import ASCENDING, DESCENDING, TEXT, IndexModel
 
@@ -32,7 +32,12 @@ class SalesProspect(Document):
     prospect_name: Optional[str] = None  # Auto-generated: First + Last, or set manually
     country_code: Optional[str] = None  # Defaults to +91 if not provided
     phone: Optional[Indexed(str)] = None  # Optional for bulk file import
-    email: Optional[EmailStr] = None
+    # Email is stored as a plain string (not EmailStr) on purpose: legacy and
+    # imported records can carry dirty values (e.g. 'vghygcvghgv') that would
+    # make strict EmailStr validation fail at READ time and take down the whole
+    # pipeline board. Invalid values are sanitized to None on write paths
+    # (LeadEngine._sanitize_email); the model stays tolerant so reads never 500.
+    email: Optional[str] = None
     contact_id: Optional[str] = None  # If converted from existing contact
 
     # Sales-Specific Fields
@@ -42,6 +47,7 @@ class SalesProspect(Document):
     estimated_close_date: Optional[datetime] = None
     assigned_to: str  # User ID
     assigned_by: Optional[str] = None  # User ID who assigned
+    referred_by: Optional[str] = None  # User ID of the employee/manager who referred this lead
     current_stage: str = "new"  # Stage name (from master)
     due_date: Optional[datetime] = None
     due_time: Optional[str] = None  # HH:MM AM/PM format
@@ -85,6 +91,68 @@ class SalesProspect(Document):
     stage_last_changed_at: Optional[datetime] = None
     days_in_stage: int = 0
 
+    # ── Sales journey: contact cadence ────────────────────────────────────────
+    first_contact_at: Optional[datetime] = None  # First contact attempt recorded
+    last_contacted_at: Optional[datetime] = None
+    next_action: Optional[str] = None  # Suggested / required next step
+    next_follow_up_at: Optional[datetime] = None
+
+    # ── Qualify stage data ────────────────────────────────────────────────────
+    qualify_status: Optional[str] = None  # not_contacted, contacted, busy, call_back, wrong_number, no_response, interested, not_interested, spam, qualified
+    industry: Optional[str] = None
+    requirement: Optional[str] = None
+    budget: Optional[float] = None
+    timeline: Optional[str] = None
+    decision_maker: Optional[str] = None
+    location: Optional[str] = None
+    pain_points: Optional[str] = None
+    current_agency: Optional[str] = None
+    num_employees: Optional[str] = None
+
+    # ── Discovery stage data ──────────────────────────────────────────────────
+    discovery_outcome: Optional[str] = None  # need_proposal, need_audit, need_second_meeting, follow_up_required, not_interested, lost
+    discovery_notes: Optional[str] = None
+
+    # ── Proposal stage (mirror of the authoritative CRMProposal status) ──────
+    proposal_status: Optional[str] = None  # draft, generated, sent, viewed, accepted, rejected, revision_requested, expired
+
+    # ── Negotiation stage data ────────────────────────────────────────────────
+    negotiation_status: Optional[str] = None  # negotiation_started, waiting_client, waiting_internal, discount_approval, final_offer, accepted, rejected
+    negotiation_notes: Optional[str] = None
+    customer_counter_offer: Optional[float] = None
+    discount: Optional[float] = None
+    final_scope: Optional[str] = None
+    payment_terms: Optional[str] = None
+    client_conditions: Optional[str] = None
+    accepted_quotation_reference: Optional[str] = None
+
+    # ── Agreement stage data ──────────────────────────────────────────────────
+    agreement_status: Optional[str] = None  # draft, sent, viewed, signed, rejected, expired
+    agreement_expiry_date: Optional[datetime] = None
+    agreement_signed_at: Optional[datetime] = None
+
+    # ── Won / conversion ──────────────────────────────────────────────────────
+    won_status: Optional[str] = None  # payment_pending, payment_received, onboarding_started, ready, transferred
+    client_id: Optional[str] = None  # Created Client ref (idempotent conversion)
+    project_id: Optional[str] = None  # Created Project ref
+    invoice_id: Optional[str] = None  # Created Invoice ref
+    account_manager_id: Optional[str] = None
+    welcome_email_sent_at: Optional[datetime] = None
+    ops_notified_at: Optional[datetime] = None
+    converted_at: Optional[datetime] = None
+    transferred_at: Optional[datetime] = None  # Set when transferred to the Clients module
+    transferred_by: Optional[str] = None
+
+    # ── Stage inner status (canonical snapshot) ────────────────────────────────
+    # The single display/query value for the lead's condition INSIDE its current
+    # stage. Allowed values come from STAGE_INNER_STATUSES for the current stage.
+    # The per-stage domain fields (qualify_status, discovery_outcome, ...) stay in
+    # sync with this snapshot through one write path (apply_stage_status_change).
+    current_stage_status: Optional[str] = None
+    # Embedded status history: [{stage, from_status, to_status, changed_by,
+    # changed_by_name, changed_at}] — distinct from SalesPipelineHistory (stages).
+    stage_status_history: List[Dict[str, Any]] = Field(default_factory=list)
+
     # Metadata
     company_id: Optional[str] = None
     created_by: Optional[str] = None
@@ -110,6 +178,8 @@ class SalesProspect(Document):
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("current_stage", ASCENDING), ("updated_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("status", ASCENDING), ("closed_date", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("assigned_to", ASCENDING), ("updated_at", DESCENDING)]),
+            # Dashboard follow-up query: filter by company_id + deleted + next_follow_up_at, sort by next_follow_up_at
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("next_follow_up_at", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("crm_company_id", ASCENDING), ("updated_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("country_code", ASCENDING), ("phone", ASCENDING)]),
             IndexModel(

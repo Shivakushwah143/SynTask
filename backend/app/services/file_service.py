@@ -10,8 +10,23 @@ from app.core.file_validation import detect_mime_type
 from app.services.cloudinary_storage import CloudinaryStorage
 
 
-def _validate_uploaded_file(filename: str, file_content: bytes) -> str:
+def _validate_uploaded_file(
+    filename: str,
+    file_content: bytes,
+    *,
+    allow_any_type: bool = False,
+) -> str:
+    """Validate an uploaded file.
+
+    When ``allow_any_type`` is True (used by the general-purpose upload endpoint
+    that backs task/project attachments), any extension and MIME type is accepted
+    so videos, spreadsheets, PDFs, and other files can be attached. The filename
+    is still sanitized and the file size is still capped by the caller.
+    """
     file_ext = Path(filename or "").suffix.lower()
+    if allow_any_type:
+        return file_ext
+
     if file_ext not in settings.ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -19,6 +34,9 @@ def _validate_uploaded_file(filename: str, file_content: bytes) -> str:
         )
 
     detected_mime = detect_mime_type(file_content, filename)
+    # Video/audio MIME entries are reserved for future extension additions to
+    # settings.ALLOWED_EXTENSIONS: today the extension check above gates first,
+    # so strict-mode endpoints (avatar, RAG sources, etc.) still reject videos.
     allowed_mime_types = {
         "image/jpeg",
         "image/png",
@@ -35,6 +53,15 @@ def _validate_uploaded_file(filename: str, file_content: bytes) -> str:
         "text/plain",
         "text/markdown",
         "application/zip",
+        "video/mp4",
+        "video/webm",
+        "video/quicktime",
+        "video/x-matroska",
+        "video/x-msvideo",
+        "audio/mpeg",
+        "audio/wav",
+        "audio/ogg",
+        "audio/flac",
     }
     if detected_mime not in allowed_mime_types:
         raise HTTPException(
@@ -67,17 +94,27 @@ class FileService:
         url_prefix: str,
         scope: str = "files",
         sensitive: bool = True,
+        allow_any_type: bool = False,
+        max_size: int | None = None,
     ) -> dict:
         file_content = await file.read()
         file_size = len(file_content)
 
-        if file_size > settings.MAX_UPLOAD_SIZE:
+        size_limit = max_size if max_size is not None else settings.MAX_UPLOAD_SIZE
+        if file_size > size_limit:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"File size exceeds maximum allowed size of {settings.MAX_UPLOAD_SIZE / 1024 / 1024}MB",
+                detail=(
+                    f"File is too large: {file_size / 1024 / 1024:.1f} MB exceeds the "
+                    f"maximum allowed size of {size_limit / 1024 / 1024:.0f} MB"
+                ),
             )
 
-        file_ext = _validate_uploaded_file(file.filename or "", file_content)
+        file_ext = _validate_uploaded_file(
+            file.filename or "",
+            file_content,
+            allow_any_type=allow_any_type,
+        )
         detected_mime = detect_mime_type(file_content, file.filename or "")
         if CloudinaryStorage.enabled():
             stored = CloudinaryStorage.upload(

@@ -32,6 +32,12 @@
   50% { opacity: 0.6; transform: scale(1.08); }
 }
 
+/* Executive Assistant streaming-dot indicator (subtle, non-blocking). */
+@keyframes exec-pulse {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
+}
+
 .animate-float-slow { animation: float-slow 4s ease-in-out infinite; }
 .animate-float-delayed { animation: float-delayed 4s ease-in-out infinite; }
 .animate-pulse-glow { animation: pulse-glow 3.5s ease-in-out infinite; }
@@ -54,18 +60,23 @@
   }
 
   :root {
-    --color-app-bg: #F3F0E9;
-    --color-app-bg-solid: #F3F0E9;
-    --color-app-surface: #FAF8F3;
-    --color-app-surface-muted: #F0EDE6;
-    --color-app-surface-subtle: #F7F4EE;
-    --color-app-header: #F8F6F1;
-    --color-app-input: #F7F4EE;
-    --color-app-row: #F7F4EE;
-    --color-app-border: #DED8CC;
+    /* Light theme — soft warm sand + cream palette, deliberately NOT bright
+       white. The page background is a calm sand tone, cards are warm off-white,
+       inputs stay white so fields read clearly against tinted surfaces, borders
+       are visible but subtle, and secondary/muted text keep a clear hierarchy
+       while staying WCAG AA readable. */
+    --color-app-bg: #EDE7DB;
+    --color-app-bg-solid: #EDE7DB;
+    --color-app-surface: #F8F4EC;
+    --color-app-surface-muted: #EDE6D8;
+    --color-app-surface-subtle: #F4EFE4;
+    --color-app-header: #F7F3EA;
+    --color-app-input: #FFFFFF;
+    --color-app-row: #F2EDE2;
+    --color-app-border: #D1C8B3;
     --color-app-text: #20242C;
-    --color-app-text-secondary: #667085;
-    --color-app-text-muted: #667085;
+    --color-app-text-secondary: #525B69;
+    --color-app-text-muted: #606C78;
     --radius-sm: 0.75rem;
     --radius-md: 1rem;
     --radius-lg: 1rem;
@@ -76,7 +87,7 @@
     --shadow-lg: 0 18px 36px -28px rgb(63 49 37 / 0.22);
     --focus-ring: 0 0 0 2px rgb(229 106 31 / 0.22);
     --select-accent: #e56a1f;
-    --select-option-bg: #F0EDE6;
+    --select-option-bg: #EDE6D8;
     --select-option-text: #20242C;
     --icon-scale-primary: 1.2;
   }
@@ -189,6 +200,14 @@
   }
 }
 
+/* Chart axis ticks/labels should follow the theme's muted text color instead of
+   the light gray fills recharts defaults to (near-invisible on light surfaces). */
+.recharts-cartesian-axis-tick text,
+.recharts-cartesian-axis-tick-value,
+.recharts-cartesian-axis-label {
+  fill: var(--color-app-text-muted);
+}
+
 /* Keep chart feedback consistent across mouse, pen, and touch interactions. */
 .recharts-bar-rectangle path,
 .recharts-line-dot,
@@ -237,6 +256,12 @@
   select.input {
     background-color: var(--color-app-input);
     color: var(--color-app-text);
+  }
+
+  /* Compact input variant: combine with `input` (className="input input-sm") to
+     shrink height/padding/radius for dense filter bars and toolbars. */
+  .input-sm {
+    @apply min-h-9 rounded-xl px-3 py-1.5 text-xs;
   }
   
   .card {
@@ -430,21 +455,15 @@
     background-color: var(--color-app-surface-muted);
   }
 
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50,
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50\/60,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50\/80,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50\/90,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-100\/80,
-  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-100\/90 {
-    background-color: color-mix(in srgb, var(--color-app-surface-muted) 96%, transparent);
-  }
-
-  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50,
-  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50\/60 {
-    background-color: var(--color-app-input);
-  }
-
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-100\/90,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-slate-50,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-slate-100 {
-    background-color: var(--color-app-input);
+    background-color: var(--color-app-surface-muted);
   }
 
   :where(html.dark, html[data-theme='dark']) .bg-gray-100,
@@ -685,6 +704,31 @@
     color: var(--color-app-text-muted);
   }
 
+  :where(html:not(.dark):not([data-theme='dark'])) .text-slate-700,
+  :where(html:not(.dark):not([data-theme='dark'])) .text-slate-600 {
+    color: var(--color-app-text-secondary);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .text-slate-500,
+  :where(html:not(.dark):not([data-theme='dark'])) .text-slate-400,
+  :where(html:not(.dark):not([data-theme='dark'])) .text-slate-300 {
+    color: var(--color-app-text-muted);
+  }
+
+  /* Placeholders must stay readable on light surfaces. */
+  :where(html:not(.dark):not([data-theme='dark'])) .placeholder\:text-gray-400::placeholder,
+  :where(html:not(.dark):not([data-theme='dark'])) .placeholder\:text-gray-500::placeholder,
+  :where(html:not(.dark):not([data-theme='dark'])) .placeholder\:text-slate-400::placeholder {
+    color: var(--color-app-text-muted) !important;
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+  :where(html:not(.dark):not([data-theme='dark'])) .divide-gray-200 > :not([hidden]) ~ :not([hidden]),
+  :where(html:not(.dark):not([data-theme='dark'])) .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+  :where(html:not(.dark):not([data-theme='dark'])) .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+    border-color: theme('colors.surface.border');
+  }
+
   :where(html.dark, html[data-theme='dark']) .text-blue-700,
   :where(html.dark, html[data-theme='dark']) .text-blue-800 {
     color: theme('colors.primary.200');
@@ -820,6 +864,153 @@
   :where(html.dark, html[data-theme='dark']) .dark\:hover\:bg-gray-800:hover,
   :where(html.dark, html[data-theme='dark']) .dark\:hover\:bg-gray-950:hover {
     background-color: var(--color-app-surface-subtle);
+  }
+
+  /* Always-dark surfaces (e.g. the app sidebar rail) keep their intended light
+     text in light mode — global light-mode gray overrides must not dim them. */
+  :where(html:not(.dark):not([data-theme='dark'])) .syntask-dark-rail :is(.text-gray-300, .text-gray-400, .text-gray-500):not(:hover):not(:focus) {
+    color: #d1d5db;
+  }
+}
+
+/* ==========================================================================
+   MOBILE PRODUCTION FOUNDATION
+   --------------------------------------------------------------------------
+   Mobile-first safety nets that apply app-wide. These only kick in below
+   tablet width, so desktop/tablet layout is untouched.
+   ========================================================================== */
+
+@layer utilities {
+  /* Long unbreakable values (ids, emails, urls, hashes) must wrap instead of
+     forcing horizontal overflow inside cards, tables and flex rows. */
+  .break-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .no-h-scroll {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  /* Respect device safe areas (notches / home indicator). */
+  .pb-safe {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 767px) {
+  /* Touch targets: interactive row actions must stay tappable. */
+  :where(.viewport-scroll-x, [data-syntask-cards]) :where(button, a[role='button']) {
+    min-height: 2.25rem;
+  }
+
+  /* Sticky/footer action bars must never cover the last form field. */
+  :where(.page-actions, .form-actions, [data-sticky-actions]) {
+    flex-wrap: wrap;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Responsive tables → mobile cards
+   --------------------------------------------------------------------------
+   `src/utils/responsiveTables.js` copies each column's header onto its cells
+   as [data-label] and marks the table with [data-syntask-cards]. Below 768px
+   the table renders as stacked cards, so no column is hidden on phones.
+   Desktop markup and behavior are unchanged.
+   -------------------------------------------------------------------------- */
+@media (max-width: 767px) {
+  table[data-syntask-cards] {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: separate;
+  }
+
+  table[data-syntask-cards] > thead {
+    /* The header labels now live on each cell via ::before. */
+    display: none !important;
+  }
+
+  table[data-syntask-cards] > tbody {
+    display: block !important;
+    background: transparent !important;
+  }
+
+  table[data-syntask-cards] > tbody > tr {
+    display: block !important;
+    margin: 0 0 0.75rem;
+    padding: 0.35rem 0.85rem;
+    border: 1px solid var(--color-app-border);
+    border-radius: 1rem;
+    background: var(--color-app-surface);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+
+  table[data-syntask-cards] > tbody > tr:last-child {
+    margin-bottom: 0;
+  }
+
+  table[data-syntask-cards] > tbody > tr > td {
+    display: block !important;
+    width: auto !important;
+    max-width: 100%;
+    min-width: 0;
+    padding: 0.55rem 0 !important;
+    border: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-app-border) 55%, transparent);
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    text-align: left;
+  }
+
+  table[data-syntask-cards] > tbody > tr > td:last-child {
+    border-bottom: 0;
+  }
+
+  table[data-syntask-cards] > tbody > tr > td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.2rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--color-app-text-muted);
+  }
+
+  /* Cells without a header (key-value pairs, action-only columns) show no label. */
+  table[data-syntask-cards] > tbody > tr > td:not([data-label])::before,
+  table[data-syntask-cards] > tbody > tr > td[data-label='']::before {
+    display: none;
+  }
+
+  /* Content inside a cell must be allowed to shrink and wrap. */
+  table[data-syntask-cards] > tbody > tr > td > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Empty-state / spanning rows stay full-width and centred. */
+  table[data-syntask-cards] > tbody > tr > td[colspan] {
+    border-bottom: 0;
+    text-align: center;
+  }
+
+  /* A card row should not inherit hover affordances that make no sense. */
+  table[data-syntask-cards] > tbody > tr:hover {
+    background: var(--color-app-surface);
+  }
+}
+
+/* Dark mode keeps the card surface on the themed tokens. */
+@media (max-width: 767px) {
+  :where(html.dark, html[data-theme='dark']) table[data-syntask-cards] > tbody > tr {
+    background: var(--color-app-surface);
+    border-color: var(--color-app-border);
   }
 }
 

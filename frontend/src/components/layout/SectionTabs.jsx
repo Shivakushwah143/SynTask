@@ -16,11 +16,20 @@ import {
   getNavContextForPath,
   getSectionItems,
   isNavItemActive,
+  resolveHrSection,
 } from "../../config/navigation";
-import { HR_MODULES } from "../../config/hrModules";
 
 const SECTION_LANDING_RE = /^\/sections\/([^/]+)/;
 const SCROLL_STEP_PX = 240;
+const TAB_EXCLUDED_PATHS = new Set(["/hr/recruitment/interview-screen"]);
+
+// Sections whose dedicated dashboard page should resolve to the section context.
+const SECTION_OVERVIEW_HREFS = [
+  ...SECTIONS.filter((section) => section.overviewHref && !section.hideOverviewTab).map((section) => ({
+    href: section.overviewHref,
+    sectionKey: section.key,
+  })),
+];
 
 // Inbox item name → unread-count key from useInboxUnreadCounts().
 const INBOX_COUNT_KEYS = {
@@ -30,6 +39,15 @@ const INBOX_COUNT_KEYS = {
   "Meta Messages": "metaTotal",
   Notifications: "notifications",
 };
+
+// Items kept in the shared navigation config (sidebar favorites, section landing cards)
+// but intentionally hidden from this in-page tab bar.
+const TAB_HIDDEN_ITEM_NAMES = new Set(["Import Leads", "Leads", "All Leads", "Pipeline"]);
+
+// Legacy Sales routes resolved to one of the hidden items above (e.g. the full board
+// at /crm/pipeline or the browsing page at /crm/leads/all). No journey stage tab
+// applies to them, so they count as Sales landings — the Overview tab stays active.
+const SECTION_LEGACY_LANDING_ITEMS = new Set(["Leads", "All Leads", "Pipeline"]);
 
 // Exact pathname + query match (no prefix / match-based activation), used so only ONE tab is
 // ever active — prefix matches would otherwise light up several tabs on detail/HR pages.
@@ -50,26 +68,28 @@ const isExactNavMatch = (item, location) => {
 // (chat, meetings, auth, ...). Section landing pages resolve via their URL param.
 // `itemName` is the resolved active item so the tab bar can highlight exactly one tab.
 const resolveSectionContext = (location) => {
+  if (TAB_EXCLUDED_PATHS.has(location.pathname)) return null;
+
   const landing = location.pathname.match(SECTION_LANDING_RE);
   if (landing) return { sectionKey: landing[1], isLanding: true };
 
-  const ctx = getNavContextForPath(location.pathname, location.search);
-  if (ctx) return { sectionKey: ctx.sectionKey, isLanding: false, itemName: ctx.itemName };
+  // Dedicated overview dashboards (e.g. /sales-overview) count as the section landing.
+  const overviewMatch = SECTION_OVERVIEW_HREFS.find((entry) => location.pathname === entry.href);
+  if (overviewMatch) return { sectionKey: overviewMatch.sectionKey, isLanding: true };
 
-  // HR recruitment screens belong to the People section (they were moved out of the
-  // sidebar config, but their tabs live under People). Exact-match only: the interview
-  // screen and /hr landing deliberately show no tab bar.
-  const hrItems = HR_MODULES.flatMap((mod) =>
-    mod.navigation
-      .filter((item) => !HR_ITEM_SKIP.has(item.name))
-      .map((item) => ({
-        name: HR_ITEM_RENAMES[item.name] || item.name,
-        href: item.href,
-        match: item.href === mod.basePath ? mod.basePath : undefined,
-      })),
-  );
-  const hrExact = hrItems.find((item) => isExactNavMatch(item, location));
-  if (hrExact) return { sectionKey: "people", isLanding: false, itemName: hrExact.name };
+  const ctx = getNavContextForPath(location.pathname, location.search);
+  if (ctx) {
+    const isLegacyLanding =
+      ctx.sectionKey === "sales" && SECTION_LEGACY_LANDING_ITEMS.has(ctx.itemName);
+    return { sectionKey: ctx.sectionKey, isLanding: isLegacyLanding, itemName: ctx.itemName };
+  }
+
+  // HR screens: use the centralized route ownership resolver (navigation.js).
+  // Returns null for /hr (no tab bar) and /hr/recruitment/interview-screen (excluded).
+  const hrCtx = resolveHrSection(location.pathname);
+  if (hrCtx) {
+    return { sectionKey: hrCtx.sectionKey, isLanding: false, itemName: hrCtx.itemName };
+  }
 
   return null;
 };
@@ -101,16 +121,19 @@ function SectionTabsInner({ location, context }) {
   // ── All hooks above; early returns only after every hook has run. ──────────
   const tabs = useMemo(() => {
     if (!section) return [];
-    let list = items;
+    // TAB_HIDDEN_ITEM_NAMES removes sidebar items by name; departmentItem filters
+    // the dynamic "Your Departments" quick links so internal company departments
+    // never appear as tabs in the in-page bar (they stay in the sidebar).
+    let list = items.filter((item) => !TAB_HIDDEN_ITEM_NAMES.has(item.name) && !item.departmentItem);
     // Phase 6: per-channel unread counts on the Inbox tabs.
     if (section.key === "inbox") {
-      list = items.map((item) => {
+      list = list.map((item) => {
         const countKey = INBOX_COUNT_KEYS[item.name];
         return countKey ? { ...item, unreadCount: inboxCounts[countKey] || 0 } : item;
       });
     }
-    return [{ name: "Overview", href: `/sections/${section.key}`, icon: null, overview: true }, ...list];
-  }, [items, section, inboxCounts, context.isLanding]);
+    return list;
+  }, [items, section, inboxCounts]);
 
   useEffect(() => {
     const updateCanScroll = () => {
@@ -135,11 +158,9 @@ function SectionTabsInner({ location, context }) {
   // D5: hide the bar for sections with a single tab (or an unknown section key).
   if (!section || items.length < 2) return null;
 
-  // Active tab: the Overview pseudo-tab on landing pages, otherwise the exact item the
-  // context resolver chose (detail pages keep their parent tab). The per-tab scan is only
-  // a safety net when no resolved item name is available.
+  // The context resolver chooses the exact item (detail pages keep their parent tab).
+  // The per-tab scan is only a safety net when no resolved item name is available.
   const isTabActive = (tab) => {
-    if (tab.overview) return context.isLanding;
     if (context.itemName) return tab.name === context.itemName;
     return isNavItemActive(tab, location);
   };

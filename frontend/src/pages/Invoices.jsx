@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { 
   CreditCard, 
   Download, 
@@ -48,6 +48,7 @@ import {
 } from 'lucide-react'
 import { invoicesAPI } from '../api/invoices'
 import { clientsAPI } from '../api/clients'
+import { downloadBlob, getDownloadFilename, safeDownloadFilename, decodeBlobErrorMessage } from '../utils/download'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
@@ -72,15 +73,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
+    <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+      <div className="flex items-center gap-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-r ${colors[color]} text-white shadow-sm`}>
           <Icon className="h-4 w-4" />
         </div>
+        <div className="min-w-0">
+          <span className="truncate text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">{label}</span>
+          <p className="mt-0.5 truncate text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="truncate text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
+        </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -89,15 +92,15 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
 // SECTION HEADER COMPONENT
 // ============================================================
 const SectionHeader = ({ icon: Icon, title, description, action }) => (
-  <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+  <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-3 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
     <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-          <Icon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+      <div className="flex items-center gap-2.5">
+        <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+          <Icon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
         </div>
         <div>
           <h2 className="font-bold text-gray-900 dark:text-white">{title}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{description}</p>
         </div>
       </div>
       {action}
@@ -179,6 +182,8 @@ const Invoices = () => {
   const [clientDetails, setClientDetails] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [recordingPayment, setRecordingPayment] = useState(false)
+  const [downloadingPdfId, setDownloadingPdfId] = useState(null)
+  const downloadingPdfRef = useRef(false)
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isLead = isLeadRole(user?.role)
@@ -377,21 +382,26 @@ const Invoices = () => {
   }
 
   const handleDownloadInvoice = async (invoice) => {
+    if (downloadingPdfRef.current) return
+    downloadingPdfRef.current = true
+    setDownloadingPdfId(invoice.id)
     try {
       const response = await invoicesAPI.downloadInvoicePdf(invoice.id)
       const blob = new Blob([response.data], { type: 'application/pdf' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${invoice.invoice_number || 'invoice'}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
+      const filename = getDownloadFilename(
+        response.headers?.['content-disposition'],
+        safeDownloadFilename(`${invoice.invoice_number || 'invoice'}.pdf`)
+      )
+      downloadBlob(blob, filename)
       toast.success('Invoice PDF downloaded! 📥')
     } catch (error) {
       console.error('Error downloading invoice PDF:', error)
-      toast.error(error.response?.data?.detail || 'Failed to download invoice PDF')
+      // Backend errors arrive as JSON inside a Blob; surface the real message.
+      const message = await decodeBlobErrorMessage(error, 'Failed to download invoice PDF')
+      toast.error(message)
+    } finally {
+      downloadingPdfRef.current = false
+      setDownloadingPdfId(null)
     }
   }
 
@@ -481,26 +491,67 @@ const Invoices = () => {
 
   if (loading && !invoices.length) {
     return (
-      <div className="space-y-6 p-4 md:p-6">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 p-6 text-white shadow-xl md:p-8">
-          <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-          <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+      <div className="space-y-4 p-4 md:p-5">
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 px-4 py-3 text-white shadow-sm">
           <div className="relative z-10">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <LayoutDashboard className="h-6 w-6" />
+              <div className="rounded-lg bg-white/15 p-2 backdrop-blur-sm">
+                <LayoutDashboard className="h-5 w-5" />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Invoices</h1>
-                <p className="mt-1 text-indigo-100">Loading invoices...</p>
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-bold md:text-xl">Invoices</h1>
+                <p className="mt-0.5 truncate text-xs text-cyan-100">Loading invoices...</p>
               </div>
             </div>
           </div>
         </div>
-        <div className="flex items-center justify-center py-12">
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading invoices...</p>
+
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, index) => (
+            <div key={index} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 shrink-0 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="h-2.5 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                  <div className="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                  <div className="h-2 w-14 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="border-b border-gray-200 p-3 dark:border-gray-700">
+            <div className="flex items-center gap-2.5">
+              <div className="h-7 w-7 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+              <div className="space-y-1">
+                <div className="h-3 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                <div className="h-2 w-48 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-3 p-3 md:grid-cols-4">
+            {[...Array(4)].map((_, index) => (
+              <div key={index} className="space-y-1">
+                <div className="h-3 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                <div className="h-9 w-full animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="border-b border-gray-200 p-3 dark:border-gray-700">
+            <div className="flex items-center gap-2.5">
+              <div className="h-7 w-7 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+              <div className="h-3 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+            </div>
+          </div>
+          <div className="space-y-3 p-4">
+            {[...Array(5)].map((_, index) => (
+              <div key={index} className="h-11 animate-pulse rounded-lg bg-gray-100 dark:bg-gray-800"></div>
+            ))}
           </div>
         </div>
       </div>
@@ -508,30 +559,27 @@ const Invoices = () => {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-5">
       {/* ============================================================ */}
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white shadow-xl md:p-8">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        
-        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="rounded-xl bg-white/20 p-3 backdrop-blur-md shadow-lg border border-white/20">
-              <FileText className="h-7 w-7 text-white" />
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-4 py-3 text-white shadow-sm">
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="rounded-lg border border-white/15 bg-white/15 p-2 backdrop-blur-md">
+              <FileText className="h-5 w-5 text-white" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold md:text-3xl text-white tracking-tight">Invoices & Financials</h1>
-              <p className="mt-1 text-indigo-100 text-sm">Generate tax invoices, proforma estimates & track client billing status</p>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-bold text-white md:text-xl">Invoices & Financials</h1>
+              <p className="mt-0.5 truncate text-xs text-indigo-100">Generate tax invoices, proforma estimates & track client billing status</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
+          <div className="flex flex-wrap items-center gap-2">
             {(isCompanyAdmin || isLead) && (
               <>
                 <button
                   type="button"
                   onClick={() => setComposerOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 border border-white/10 shadow-md"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/10 px-3 text-xs font-semibold text-white backdrop-blur-md transition hover:bg-white/20"
                 >
                   <Mail className="h-4 w-4" />
                   <span>Send Email</span>
@@ -542,7 +590,7 @@ const Invoices = () => {
                     resetForm()
                     setShowCreateModal(true)
                   }}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/20 bg-white/20 px-3 text-xs font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40"
                 >
                   <Plus className="h-4 w-4" />
                   <span>Create Invoice</span>
@@ -556,7 +604,7 @@ const Invoices = () => {
       {/* ============================================================ */}
       {/* STAT CARDS - 4 Cards with Gradients */}
       {/* ============================================================ */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard 
           label="Total Invoices" 
           value={stats.total} 
@@ -609,8 +657,8 @@ const Invoices = () => {
             </button>
           }
         />
-        <div className="p-4">
-          <div className="grid gap-4 md:grid-cols-4">
+        <div className="p-3">
+          <div className="grid gap-3 md:grid-cols-4">
             <div className="space-y-1">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Search</label>
               <div className="relative">
@@ -763,10 +811,16 @@ const Invoices = () => {
                           </button>
                           <button
                             onClick={() => handleDownloadInvoice(invoice)}
-                            className="rounded-lg p-1.5 text-gray-500 transition hover:bg-blue-100 hover:text-blue-600 dark:text-gray-400 dark:hover:bg-blue-900/30 dark:hover:text-blue-400"
-                            title="Download PDF"
+                            disabled={downloadingPdfId === invoice.id}
+                            className="rounded-lg p-1.5 text-gray-500 transition hover:bg-blue-100 hover:text-blue-600 dark:text-gray-400 dark:hover:bg-blue-900/30 dark:hover:text-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={downloadingPdfId === invoice.id ? 'Downloading...' : 'Download PDF'}
+                            data-testid={`download-pdf-${invoice.id}`}
                           >
-                            <Download className="h-4 w-4" />
+                            {downloadingPdfId === invoice.id ? (
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                            ) : (
+                              <Download className="h-4 w-4" />
+                            )}
                           </button>
                           {!invoice.email_sent && invoice.status === 'draft' && (
                             <button
@@ -958,7 +1012,9 @@ const Invoices = () => {
                 
                 <div className="space-y-3">
                   {formData.items.map((item, index) => (
-                    <div key={index} className="grid grid-cols-12 gap-2 items-end">
+                    // Phones stack each line-item field full width; tablet/desktop
+                    // keep the original 12-column layout (col-spans clamp to 1 here).
+                    <div key={index} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-12">
                       <div className="col-span-5 space-y-1">
                         <label className="text-xs text-gray-500 dark:text-gray-400">Description</label>
                         <input
@@ -1252,10 +1308,21 @@ const Invoices = () => {
               <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
                 <button
                   onClick={() => handleDownloadInvoice(selectedInvoice)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                  disabled={downloadingPdfId === selectedInvoice.id}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  data-testid="download-pdf-detail"
                 >
-                  <Download className="h-4 w-4" />
-                  Download PDF
+                  {downloadingPdfId === selectedInvoice.id ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent"></div>
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4" />
+                      Download PDF
+                    </>
+                  )}
                 </button>
                 {(isCompanyAdmin || isLead) && Number(selectedInvoice.outstanding_amount ?? selectedInvoice.total_amount ?? 0) > 0 && (
                   <button

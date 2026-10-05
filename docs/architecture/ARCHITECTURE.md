@@ -19,7 +19,15 @@ flowchart LR
     Meta[Meta Cloud] --> MetaBoundary[Meta Integration - disabled by default]
     MetaBoundary --> Mongo
     MetaBoundary --> Redis
-    Redis --> Celery[Future Celery Workers]
+    Redis --> Celery[Celery Workers]
+    API -- OTLP --> Tempo[(Grafana Tempo)]
+    Celery -- OTLP --> Tempo
+    API -- JSON logs --> Loki[(Loki)]
+    Celery -- JSON logs --> Loki
+    Tempo --> Grafana[Grafana]
+    Loki --> Grafana
+    API -- /metrics --> Prometheus[(Prometheus)]
+    Prometheus --> Grafana
 ```
 
 See the standalone diagram in [docs/diagrams/architecture.md](docs/diagrams/architecture.md).
@@ -53,6 +61,8 @@ Project/task delivery access is company-scoped before role rules apply. Company 
 
 Ticket creation and assignment are company-scoped. Only Employees and Leads create tickets. An Employee may assign a ticket only to a Lead, Sub Admin, or Admin; Leads, Sub Admins, and Admins may assign to any same-company user. Sub Admins can view and update all company tickets, so they are valid ticket assignees alongside Admins. Cross-company assignment is rejected (tenant isolation).
 
+EOD reports and time tracking are company-scoped. Super Admin, Admin, and Sub Admin can view all active employees' EOD reports and team timesheets in their company; Managers and Leads view their own reports plus their subordinates' (hierarchy-scoped). Employees see only their own EOD and time-tracking entries. Cross-company access is rejected (tenant isolation). The Timesheet page renders a Team Time Tracking bar section for Admin, Sub Admin, Manager, and Lead users.
+
 ## Authentication Flow
 ```mermaid
 sequenceDiagram
@@ -78,6 +88,12 @@ Access tokens expire according to `ACCESS_TOKEN_EXPIRE_MINUTES`; refresh tokens 
 ## Module Access Control
 Users have a `modules: List[str]` field. Canonical module IDs are `tasks_projects`, `tickets`, `chat`, `meetings_calendar`, `invoicing_ledger`, `sales_crm`, `attendance_leaves`, `recruitment`, `reports`, and `ai_agents`. Backend `require_module(...)` dependencies gate protected route groups; the legacy `task` ID remains compatible with `tasks_projects`, and legacy `sales` remains compatible with `sales_crm`. Super Admin, Admin, and Sub Admin bypass per-module and department capability checks while remaining bound by tenant/company scope unless the route is explicitly platform-scoped. Manager, Lead, and Employee roles retain sales/sales_crm access for sales lookup routes even when their module list has not been migrated yet; endpoint logic still enforces same-company tenant scope and role-specific create/delete permissions. Chat route groups accept `chat`, `task`, or `tasks_projects` module access because chat is global workspace communication; endpoint logic still enforces same-company participants and group membership.
 
+Managers receive the `clients` module by default and as a role grant for
+existing accounts, and share the Company Admin Client lifecycle experience only
+within their `company_id`. Client list, detail, workspace, transition, and
+deletion paths validate the tenant key on every request; no Manager role
+bypasses cross-company checks.
+
 The local `admin@demo.com` fixture receives every canonical module when `backend/create_demo_admin.py` creates or updates it. This is development-only fixture access and does not bypass role, tenant, hierarchy, ownership, or resource authorization. Existing sessions must sign in again after the fixture is updated so client auth state reflects the new module list.
 
 ## Key Design Patterns
@@ -90,6 +106,15 @@ FastAPI endpoints, Motor, Beanie, Redis, and background helpers are async-first.
 ### Dependency Injection
 Authentication, role gates, module gates, and company access checks are implemented as FastAPI dependencies.
 
+### Sales Commercial Workflow
+Sales lead identity and shared qualification fields live on `SalesProspect`. Larger pre-conversion Discovery and Audit workspaces are tenant+lead-scoped documents (`SalesDiscovery`, `SalesAudit`) with unique `(company_id, lead_id)` indexes so repeated opens or saves do not create duplicate workspace records. APIs load the existing lead first and enforce the same ownership fields used by the rest of CRM: `assigned_to`, `assigned_by`, and `created_by`.
+
+Client accounts are tenant-scoped `Client` documents that preserve legacy display fields such as `company_name`, `assigned_to`, and existing project links while adding canonical relationship fields. `Client.crm_company_id` points to the originating `CRMCompany` when known; `source_lead_id`, `account_owner_id`, and `sales_owner_id` preserve the won-lead handoff context. `CRMCompany` remains the source of truth for company-level CRM identity and contacts, so Client workspaces resolve contacts through existing `SalesContact.crm_company_id` rather than creating a separate Client contact system. Backfill and conversion lookups stay inside `company_id`; ambiguous text/domain/phone matches are reported rather than linked.
+
+Discovery/Audit quotation generation reuses `CRMDocument` rather than creating a second quotation system. The generated quotation is always `draft` and its `content_snapshot` includes the captured Discovery/Audit source snapshot plus product-mapped line items. Unmapped recommendations are carried as pricing-required quotation lines and cannot be sent/shared until commercial values are supplied. Contracts continue to be created from the selected accepted quotation document snapshot, so later Discovery/Audit edits cannot alter sent, accepted, or contracted commercial terms.
+
+Proposal and Agreement stage statuses are domain-synchronized from document evidence. Quotation lifecycle changes update `SalesProspect.proposal_status` server-side (`draft`, `sent`, `viewed`, `revision_requested`, `rejected`, `expired`, `accepted`). Contract lifecycle changes update `SalesProspect.agreement_status` server-side (`draft`, `sent`, `viewed`, `rejected`, `expired`, `signed`). Manual status APIs reject authoritative Proposal/Agreement outcomes; users must use the quotation or contract workflow. Tenant isolation remains enforced by loading the lead first, checking ownership/company access, and then scoping `CRMDocument` by the same `company_id` and `lead_id`.
+
 ### Meta Integration Foundation
 Meta support lives under `backend/app/integrations/meta` rather than CRM controllers. Phase 1 adds tenant-scoped settings, durable webhook inbox, sync-run, and marketing-insight documents. Deployment-wide Meta credentials come from environment variables; tenant tokens are encrypted with the existing Fernet helper before database storage. `META_INTEGRATION_ENABLED` defaults to `False`, and tenant settings default disabled, so deploying the foundation changes no CRM behavior.
 
@@ -100,9 +125,66 @@ Tenant mapping is anchored by unique `company_id` and Page/Form indexes. Super-a
 
 Phase 2 messaging extends the same module with `MetaChannelConnection`, `MetaConversation`, and `MetaMessage` documents. The unified CRM Meta Inbox reads those records through `/api/v1/integrations/meta/inbox/*`, always filters by `company_id`, and shows provider traceability without exposing send controls. Outbound WhatsApp, Instagram, and Messenger replies remain disabled until the later human-approved send workflow.
 
+### Work Requests
+Work Requests live in `backend/app/models/work_request.py` and are served through `/api/v1/work-requests`. They are company-scoped operational request records for new work, changes, approvals, deadline extensions, resource needs, blockers, leave/availability, client requests, and related coordination. The service validates project/task/client/reviewer context inside the caller's tenant, records changelog/timeline history, sends same-tenant notifications, and converts approved or under-review requests into Tasks or Projects through existing services. Support Tickets remain separate.
+
+### Work monitoring projection
+
+`work_monitoring_service.py` is a read aggregation boundary behind `/api/v1/work/overview/monitoring*`. It first resolves a company-scoped monitoring scope from role and the existing User `ancestors` hierarchy, then bulk-loads existing operational sources and normalizes compact department/employee snapshots. Detail and timeline routes reapply the same scope check before querying one employee. The projection owns no persisted model: Attendance owns attendance interpretation, Tasks owns lifecycle, Time Tracking owns timers/logs, EOD owns submissions, and Live Monitor owns streams. This keeps tenant isolation at every query while avoiding N+1 per-employee source calls. Task-to-project references resolve by logical `project_id` code (for example `ECP-001`) as well as MongoDB `_id`; identifier lists are filtered with an ObjectId validity check before they reach an `_id` lookup, so a code-style reference can never invalidate the monitoring query. One selected period — a single day or an inclusive `start_date`/`end_date` range — scopes every part of the projection, so attendance, tracked time, EOD, task counts, and task evidence all describe the same window; task membership is due-inside-the-window or open-and-already-late, with lateness anchored to today so a future window cannot misreport work as overdue.
+
+### Time Tracking and Project Control
+Live timers use `ActiveTimeSession` and finalized recorded effort uses `TimeLog`. Timer start/pause/resume/stop are server-authoritative; frontend displays elapsed time from backend timestamps but does not decide duration. Stopping a timer creates a canonical `TimeLog` with `source=timer`; manual entries create `source=manual`. Reporting aggregates finalized logs server-side by employee, task, project, client, and source.
+
+Project completion control lives in `project_completion_service.py` and is called from `project_workflow.py`, so legacy project status updates and semantic completion routes share the same readiness gate. Readiness checks required task completion, pending review states, dependency blockers, open blocker Work Requests, active timers, lifecycle eligibility, and project-owner/manager authority. Archived projects remain readable history and are blocked from new work creation through task and timer validation.
+
+### Task Due-Date Carry Forward
+`task_carry_forward_service.py` moves passed deadlines for open tasks without erasing lateness. `Task.due_date` stays the original commitment read by task health, the Overdue attention filters, overdue summaries, reminders, at-risk project analysis, and monitoring period windows; carry forward writes only the effective deadline (`carry_forward_due_date`) plus accumulated `carry_forward_days` / `carry_forward_count`, so `carry_forward_days` grows by one for every further day an open task remains past its original deadline. Closed tasks, tasks with a future deadline, and tasks already carried that day are untouched, and each adjustment records a per-day `task_carried_forward` timeline event. Two entry points share one idempotent per-task-per-day check: a leader-gated daily background loop, and a lazy catch-up on task list and detail reads bounded to the returned page. The Work Overview monitoring projection reads these fields and never applies them, so monitoring stays write-free and keeps windowing tasks by their original due date.
+
 ### Background Tasks
-Startup launches the deadline checker from `app.core.deadline_checker`, the centralized reminder scheduler from `app.services.reminder_service`, and the one-minute scheduled-job runner from `app.services.scheduling_service`. The reminder scheduler runs hourly in-process, scans incomplete assigned tasks and unpublished assigned content with due dates up to three days ahead plus overdue records, and writes company-scoped notifications with duplicate keys in notification metadata. The scheduled-job runner locks due `scheduled_jobs` records atomically before invoking the existing project/task creation services, then records notifications and timeline events. Celery and Redis dependencies are present, but Celery workers are not yet wired as the primary background execution path.
-Startup launches the deadline checker from `app.core.deadline_checker`, the centralized reminder scheduler from `app.services.reminder_service`, and the one-minute scheduled-job runner from `app.services.scheduling_service`. The reminder scheduler runs hourly in-process, scans incomplete assigned tasks and unpublished assigned content with due dates up to three days ahead plus overdue records, and writes company-scoped notifications with duplicate keys in notification metadata. The scheduled-job runner locks due `scheduled_jobs` records atomically before invoking the existing project/task creation services, then records notifications and timeline events. Celery and Redis dependencies are present, but Celery workers are not yet wired as the primary background execution path.
+Startup launches the deadline checker from `app.core.deadline_checker`, the task due-date carry-forward loop from `app.services.task_carry_forward_service`, the centralized reminder scheduler from `app.services.reminder_service`, and the one-minute scheduled-job runner from `app.services.scheduling_service`. All long-running loops acquire a Redis leader lease (`app.core.leader`) so multiple API workers do not duplicate work, and fall back to running locally when Redis is unavailable. The reminder scheduler runs hourly in-process, scans incomplete assigned tasks and unpublished assigned content with due dates up to three days ahead plus overdue records, and writes company-scoped notifications with duplicate keys in notification metadata. The scheduled-job runner locks due `scheduled_jobs` records atomically before invoking the existing project/task creation services, records one-time or recurring occurrence history in `scheduled_job_occurrences`, calculates the next recurring run from recurrence and timezone settings, and records notifications and timeline events. Paused recurring jobs are skipped; resumed recurring jobs advance missed times to the next future occurrence. Celery and Redis dependencies are present, but Celery workers are not yet wired as the primary background execution path.
+
+## Observability and Deployment
+
+The backend and Celery worker ship structured JSON logs with `request_id` and,
+when tracing is enabled, `trace_id`. Logs are collected by Grafana Alloy into
+Loki; trace spans are exported over OTLP to Grafana Tempo; Prometheus scrapes
+RED metrics, host/container metrics and the Tempo pipeline. Grafana, Prometheus
+and Alertmanager bind to loopback in production, while Loki, Alloy and Tempo are
+internal-only on the `syntask` Docker network.
+
+Each deployment carries a bounded release identity (`SYNTASK_RELEASE_*`) shown
+in logs (`event=deployment`), the `syntask_build_info` metric, `/readyz` and OTLP
+resource attributes. Deployments run through `scripts/deployment/deploy.sh`
+(no `docker compose down`), pass a readiness health gate, and roll back to the
+previous recorded release on failure. See
+[docs/observability/TRACING.md](../observability/TRACING.md) and the
+[deployment and rollback runbook](../runbooks/DEPLOYMENT_ROLLBACK.md).
+
+## AI Security & Governance
+
+Every AI-originated business-data access passes through a deterministic authorization boundary. The core rule: **LLM decides WHAT → Backend determines WHETHER → Existing application logic determines HOW → Database**. The LLM is treated as an untrusted reasoning component.
+
+```mermaid
+flowchart LR
+    LLM[LLM Reasoning] -->|tool call + args| GOV[Governance Gate]
+    GOV -->|ALLOW| DISPATCH[Tool Dispatcher]
+    GOV -->|DENY| BLOCK[DENY Response]
+    DISPATCH -->|execute| APP[Existing App Logic]
+    APP -->|query| DB[(MongoDB)]
+    DB -->|result| PROJ[Result Projection]
+    PROJ -->|filtered data| LLM
+```
+
+Key components:
+- **AISecurityContext** — trusted, immutable context built from the authenticated user's JWT and RBAC (never from LLM-supplied arguments).
+- **CapabilityPolicyRegistry** — single source of truth for tool governance metadata (required capabilities, modules, risk levels, sensitive data classes).
+- **Governance engine** — 7-check sequence: context exists → policy exists → agent authorized → modules → capabilities → writes → approval.
+- **Schema filter** — authorization-filtered schemas are sent to the LLM (unauthorized tools are invisible).
+- **Result projection** — independent capability-based filtering of composite results (e.g., employee_360 hides payroll from non-payroll users).
+- **Injection detection** — regex-based prompt injection signal analysis before tool execution.
+- **Audit trail** — `AISecurityEvent` records all ALLOW/DENY decisions with safe metadata.
+
+Three AI execution paths are governed: HR Agent (Groq LLM), Executive Agent (Groq LLM + FAST_FACT deterministic handlers), and Capability Selector (schema filtering).
 
 ## Current Architecture Limitations
 - Phase 3 introduced a service layer for users, projects, tasks, sprints, epics, files, notifications, email, and automation. Some legacy endpoint modules still contain business logic and should continue moving behind services incrementally.

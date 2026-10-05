@@ -15,6 +15,7 @@ from app.models.task import Task, TaskStatus
 from app.models.user import User
 from app.services.task_service import TaskService
 from app.core.clock import utc_now
+from app.services.work_overview_service import shared_work_metrics
 
 
 def _user_label(user: User) -> str:
@@ -31,10 +32,11 @@ async def build_manager_dashboard_metrics(current_user: User) -> Dict[str, Any]:
     prospects = await SalesProspect.find({"company_id": current_user.company_id, "deleted": False}).to_list()
 
     workload = TaskService.workload_snapshot(tasks)
+    shared_metrics = await shared_work_metrics(tasks, timezone_name=getattr(current_user, "timezone", None))
     overdue_tasks = [
         task
         for task in tasks
-        if task.due_date and task.status != TaskStatus.COMPLETED and task.due_date < utc_now()
+        if task.due_date and task.status not in {TaskStatus.COMPLETED, TaskStatus.CANCELLED} and task.due_date < utc_now()
     ]
 
     team_workload = []
@@ -135,7 +137,10 @@ async def build_manager_dashboard_metrics(current_user: User) -> Dict[str, Any]:
             for task in overdue_tasks
         ],
         "total_tasks": workload["total"],
-        "active_tasks": workload["by_status"].get(TaskStatus.TODO.value, 0) + workload["by_status"].get(TaskStatus.IN_PROGRESS.value, 0),
+        "active_tasks": shared_metrics["active"],
+        "overdue_count": shared_metrics["overdue"],
+        "blocked_count": shared_metrics["blocked"],
+        "awaiting_review_count": shared_metrics["awaiting_review"],
         "completed_tasks": workload["by_status"].get(TaskStatus.COMPLETED.value, 0),
         "total_subordinates": len(subordinates),
     }

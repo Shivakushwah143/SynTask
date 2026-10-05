@@ -15,6 +15,9 @@ from app.api.dependencies import get_current_super_admin
 from app.core.config import settings
 from app.core.clock import utc_now
 from app.models.audit_log import log_audit
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Razorpay client
 try:
@@ -281,6 +284,15 @@ async def approve_tenant(
     request: TenantApproveRequest,
     current_user: User = Depends(get_current_super_admin)
 ):
+    """Deprecated. Use /companies/{company_id}/approve so first admin provisioning is atomic."""
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail={
+            "detail": "Use /api/v1/companies/{company_id}/approve for first-time approval and admin provisioning",
+            "code": "tenant_approval_deprecated",
+        },
+    )
+
     """Approve and activate tenant company"""
     company = await Company.get(company_id)
     if not company:
@@ -373,7 +385,7 @@ async def approve_tenant(
                 
             except Exception as e:
                 # Log error but continue with subscription creation
-                print(f"Razorpay subscription creation failed: {str(e)}")
+                logger.warning("Razorpay subscription creation failed: %s", e)
                 # Continue without Razorpay subscription
         
         subscription = CompanySubscription(
@@ -421,6 +433,16 @@ async def suspend_tenant(
     company = await Company.get(company_id)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
+    if company.status != CompanyStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "detail": "Only active companies can be suspended",
+                "code": "invalid_company_status_transition",
+                "from": company.status.value if hasattr(company.status, "value") else company.status,
+                "to": CompanyStatus.SUSPENDED.value,
+            },
+        )
     
     company.status = CompanyStatus.SUSPENDED
     company.notes = request.notes or company.notes
@@ -468,6 +490,16 @@ async def activate_tenant(
     company = await Company.get(company_id)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
+    if company.status != CompanyStatus.SUSPENDED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "detail": "Only suspended companies can be reactivated",
+                "code": "invalid_company_status_transition",
+                "from": company.status.value if hasattr(company.status, "value") else company.status,
+                "to": CompanyStatus.ACTIVE.value,
+            },
+        )
     
     company.status = CompanyStatus.ACTIVE
     company.updated_at = utc_now()

@@ -288,21 +288,27 @@ applied_at, updated_at, deleted_at
 
 ## 9. Candidates Workspace — All Tabs on Live Data (new)
 
-The main Candidates page (`/hr/recruitment/candidates`) was previously showing placeholder "data will render here" for most tabs. It is now fully wired to the backend **workspace** endpoint (`GET /recruitment/candidates/{id}`), which returns `{candidate, applications, resumes, timeline, notes, attachments}`.
+The Candidates workspace is fully wired to the backend **workspace** endpoint (`GET /recruitment/candidates/{id}`), which returns `{candidate, applications, resumes, timeline, notes, attachments}`. The list remains at `/hr/recruitment/candidates`; selecting a candidate opens the dedicated detail page `/hr/recruitment/candidates/:candidateId` instead of a narrow drawer, while preserving the same tabs and actions.
 
 ### 9.1 What was fixed / enabled
 
 - **Corrected candidate extraction** — the workspace payload is `{ candidate: {...}, ... }`, but the page read it as the candidate itself. Now `const candidate = detail.data?.candidate || selected`, so Overview/header details render correctly.
-- **Resume tab** — lists `resumes` (filename, mime type, size, upload date, parsed text) with an **Open** link to the stored file.
-- **Applications tab** — lists `applications` (job, source, tracking code, applied date, status badge).
+- **Resume tab** — lists `resumes` (filename, mime type, size, upload date, parsed text) with an **Open** link to the stored file. Candidate detail also includes the candidate's linked current resume when storage deduplication returns an existing resume document.
+- **Applications tab** — lists `applications` (job, source, tracking code, applied date, status badge). The Overview tab also surfaces the candidate temporary ID/tracking code with a copy action for HR visibility.
 - **Interviews tab** — new query `getInterviews({ candidate_id })` shows scheduled interviews (round, type, mode, time, status, **Join** meeting link).
 - **Notes tab** — now renders existing notes from `notes` (body + author + timestamp) below the add-note form.
 - **Attachments tab** — lists `attachments` (filename, mime, size, date) with an **Open** link.
 - **Assignment tab** — shows the assigned recruiter ID + an **Assign Recruiter** button.
 - **Quick Actions**
   - **Add Attachment** — now opens a real file picker and uploads via `POST /candidates/{id}/attachment` (FormData), then invalidates the candidate cache.
-  - **Share Profile** — copies a formatted candidate profile (name, email, phone, location, skills, link) to the clipboard.
+- **Share Profile** — copies a formatted candidate profile (name, email, phone, location, skills, link) to the clipboard.
+
+### 10. Job Detail Visual Refinement
+
+- **Compact job overview** — Job Detail now uses quieter section headers, compact metric tiles, non-nested metadata rows, and tighter description/skills spacing so HR can scan job information without the page feeling crowded.
 - **Assign Recruiter dialog** — upgraded from a raw recruiter-ID text box to a dropdown populated from `GET /users/assignable` (shows name + role, falls back gracefully when empty).
+- **Lifecycle-aware candidate actions** — Applied Candidates action buttons now mirror backend transition validation and disable invalid next-stage, reject, withdraw, joined, and archive actions before submit.
+- **Interview and offer workflow details** — Job Detail Applied Candidates now supports multiple interview rounds with schedule/platform/mode details, interviewer selection, interview result capture, and offer preparation/sending through the existing interview and offer workflow APIs. Offer preparation can generate a letter from fields or upload an already prepared PDF/JPG/PNG letter before sending. Public tracking shows public-safe interview and offer summaries.
 
 ### 9.2 Files changed
 
@@ -313,7 +319,7 @@ The main Candidates page (`/hr/recruitment/candidates`) was previously showing p
 
 ## 12. Assign Job → Convert to Employee + Employees Page (new)
 
-When a job is assigned to a candidate, they are now **moved out of the candidates list** and shown on a new **Recruitment → Employees** page. This makes "assign a job" a full hire workflow in just a few clicks.
+When a job is assigned to a candidate, they are now **moved out of the candidates list** and shown on the **People → Employees** page (`/hr/employees`). This makes "assign a job" a full hire workflow in just a few clicks.
 
 ### 12.1 How it works
 
@@ -329,8 +335,8 @@ When a job is assigned to a candidate, they are now **moved out of the candidate
 
 - **Interview Screen "Assign Job" modal** — new "Move to Employees (Hire)" checkbox (enabled by default). On success the toast says the person was hired and moved to Employees.
 - **Candidates drawer** — the **Assignment** tab now has an **Assign Job & Hire** button, and the sidebar has an **Assign Job & Hire** quick action that opens the new `AssignJobDialog`.
-- **New Employees page** (`/hr/recruitment/employees`) — stat cards (total/active/pending), search by name/email/phone, employee cards with initials avatar, designation, department, job, email, status badge, skills, hire date, and pagination.
-- **Navigation** — "Employees" added to the Recruitment module sidebar (`hrModules.js`) and a **View Employees** button on the Candidates hero.
+- **Employees page** (`/hr/employees`) — stat cards (total/active/pending), search by name/email/phone, employee cards with initials avatar, designation, department, job, email, status badge, skills, hire date, and pagination. (Note: as of the People vs Recruitment separation, this page lives under the People section, not Recruitment.)
+- **Navigation** — "Employees" is a People section item. Legacy `/hr/recruitment/employees` redirects to `/hr/employees`.
 
 ### 12.3 Files changed
 
@@ -355,7 +361,7 @@ When a job is assigned to a candidate, they are now **moved out of the candidate
 5. Click a candidate name to open the workspace drawer — every tab shows live data from the workspace endpoint.
 6. Use **Assign Recruiter** (dropdown), **Add Attachment** (file picker), **Share Profile** (clipboard), and **Archive** from the sidebar or table actions.
 7. To hire a candidate: open the candidate drawer → **Assignment** tab (or sidebar) → **Assign Job & Hire** → pick a job → submit. The candidate leaves the candidates list.
-8. See all hired people under **HR → Recruitment → Employees** (or `http://localhost:3000/hr/recruitment/employees`).
+8. See all hired people under **People → Employees** (or `http://localhost:3000/hr/employees`). Legacy URL `/hr/recruitment/employees` redirects automatically.
 
 ---
 
@@ -365,3 +371,8 @@ When a job is assigned to a candidate, they are now **moved out of the candidate
 - Store uploaded resumes via the existing attachment/resume upload path.
 - Add bulk import from the resume inbox directly into this screen.
 - Surface the candidate timeline/status on selection for a full candidate-centric workflow.
+
+## 12. Latest Job Detail Update
+
+- The interview result popup now includes the next-round scheduling action, so HR can save or review the current interview result and then open the existing scheduler for Interview 2, Interview 3, or later rounds from the same flow.
+- Candidate tracking now renders sent offer letters with view/download actions plus inline accept/reject controls; responses use the existing public offer endpoints so recruiter-side offer status updates without employee login.

@@ -4,17 +4,29 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
-  Coffee,
   History,
   PauseCircle,
   Play,
   RefreshCw,
   Square,
+  FileWarning,
+  CalendarDays,
+  ShieldCheck,
+  Zap,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { attendanceAPI } from '../../api/attendance'
 import { Button, Modal, PageHeader, Skeleton } from '../../components/ui'
 import { timeService } from '@/services/timeService'
+import { useAttendanceStore } from '../../store/attendanceStore'
+import {
+  attendanceStatusMeta,
+  formatDayDuration,
+  getHistoryDayMeta,
+  isBiometricSource,
+  sourcePillClassName,
+} from '../../features/attendance/attendanceStatus'
+import CorrectionRequestModal from './CorrectionRequestModal'
 
 const formatDuration = (totalSeconds) => {
   const s = Math.max(0, Math.floor(totalSeconds || 0))
@@ -50,41 +62,6 @@ const getDisplay = (record, nowMs) => {
   return { work, breakTotal: Math.floor(record.total_break_seconds || 0), currentBreak: 0, main: work }
 }
 
-const statusMeta = {
-  not_checked_in: {
-    label: 'Not Checked In',
-    icon: Clock,
-    badge: 'border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200',
-    timerLabel: 'Net working time',
-    help: 'Start tracking your working time for today.',
-    title: 'Attendance | SynTask',
-  },
-  working: {
-    label: 'Working',
-    icon: Play,
-    badge: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300',
-    timerLabel: 'Net working time',
-    title: 'Working | SynTask',
-  },
-  on_break: {
-    label: 'On Break',
-    icon: Coffee,
-    badge: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
-    timerLabel: 'Current break',
-    title: 'On Break | SynTask',
-  },
-  checked_out: {
-    label: 'Day Completed',
-    icon: CheckCircle2,
-    badge: 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300',
-    timerLabel: 'Total working time',
-    help: 'Your attendance has been saved for today.',
-    title: 'Completed | SynTask',
-  },
-}
-
-const attachSyncTime = (record) => ({ ...(record || {}), received_at: Date.now() })
-
 const AttendanceSkeleton = () => (
   <div className="space-y-5 p-4 md:p-6">
     <PageHeader title="Attendance" description="Check in, manage breaks, and track today's working time." />
@@ -105,39 +82,59 @@ const AttendanceSkeleton = () => (
 )
 
 const Attendance = () => {
-  const [record, setRecord] = useState(null)
+  const record = useAttendanceStore((s) => s.record)
+  const loading = useAttendanceStore((s) => s.loading)
+  const refreshing = useAttendanceStore((s) => s.refreshing)
+  const error = useAttendanceStore((s) => s.error)
+  const pendingAction = useAttendanceStore((s) => s.pendingAction)
+  const initialize = useAttendanceStore((s) => s.initialize)
+  const refresh = useAttendanceStore((s) => s.refresh)
+  const checkIn = useAttendanceStore((s) => s.checkIn)
+  const startBreak = useAttendanceStore((s) => s.startBreak)
+  const resumeWork = useAttendanceStore((s) => s.resumeWork)
+  const checkOut = useAttendanceStore((s) => s.checkOut)
+
   const [history, setHistory] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(false)
-  const [syncing, setSyncing] = useState(false)
-  const [pendingAction, setPendingAction] = useState(null)
+  const [historyLoading, setHistoryLoading] = useState(true)
   const [confirmCheckout, setConfirmCheckout] = useState(false)
+  const [retrying, setRetrying] = useState(false)
   const [tick, setTick] = useState(Date.now())
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false)
+  const [enhancedData, setEnhancedData] = useState(null)
   const intervalRef = useRef(null)
 
-  const loadAttendance = useCallback(async ({ showLoading = false } = {}) => {
+  // The store is initialized globally (MainLayout bootstrap) once per session;
+  // this is a defensive no-op when it already holds this user's record.
+  useEffect(() => {
+    initialize()
+  }, [initialize])
+
+  const loadHistory = useCallback(async () => {
     try {
-      if (showLoading) setLoading(true)
-      setSyncing(true)
-      setLoadError(false)
-      const [today, recent] = await Promise.all([
-        attendanceAPI.getTodayAttendance(),
-        attendanceAPI.getMyAttendanceHistory(),
-      ])
-      setRecord(attachSyncTime(today.data))
+      setHistoryLoading(true)
+      const recent = await attendanceAPI.getMyAttendanceHistory()
       setHistory(recent.data || [])
     } catch {
-      setLoadError(true)
-      toast.error('Attendance could not be refreshed.')
+      setHistory([])
     } finally {
-      setLoading(false)
-      setSyncing(false)
+      setHistoryLoading(false)
+    }
+  }, [])
+
+  // Load enhanced policy-aware today data
+  const loadEnhanced = useCallback(async () => {
+    try {
+      const res = await attendanceAPI.getTodayEnhanced()
+      setEnhancedData(res.data)
+    } catch {
+      // Silently fail — enhanced data is supplementary
     }
   }, [])
 
   useEffect(() => {
-    loadAttendance({ showLoading: true })
-  }, [loadAttendance])
+    loadHistory()
+    loadEnhanced()
+  }, [loadHistory, loadEnhanced])
 
   useEffect(() => {
     intervalRef.current = setInterval(() => setTick(Date.now()), 1000)
@@ -145,9 +142,10 @@ const Attendance = () => {
   }, [])
 
   const display = useMemo(() => getDisplay(record, tick), [record, tick])
-  const meta = statusMeta[record?.status] || statusMeta.not_checked_in
+  const meta = attendanceStatusMeta[record?.status] || attendanceStatusMeta.not_checked_in
   const StatusIcon = meta.icon
   const mainTime = formatDuration(display.main)
+  const loadError = Boolean(error) && !record
 
   useEffect(() => {
     const previousTitle = document.title
@@ -164,27 +162,61 @@ const Attendance = () => {
     document.title = `${mainTime} - ${meta.title}`
   }, [mainTime, meta.title, record])
 
-  const mutate = async (key, action, success, failure) => {
-    if (pendingAction) return
+  const retryLoad = async () => {
+    setRetrying(true)
     try {
-      setPendingAction(key)
-      const res = await action()
-      setRecord(attachSyncTime(res.data))
-      toast.success(success)
-      setConfirmCheckout(false)
-      const recent = await attendanceAPI.getMyAttendanceHistory()
-      setHistory(recent.data || [])
-    } catch {
-      toast.error(failure)
+      await refresh()
     } finally {
-      setPendingAction(null)
+      setRetrying(false)
     }
   }
 
-  const handleCheckIn = () => mutate('check_in', attendanceAPI.checkIn, 'Checked in successfully', "We couldn't check you in. Please try again.")
-  const handleStartBreak = () => mutate('start_break', attendanceAPI.startBreak, 'Break started', "We couldn't start your break. Your attendance is still active.")
-  const handleResume = () => mutate('resume', attendanceAPI.endBreak, 'Work resumed', "We couldn't resume your work session. Please try again.")
-  const handleCheckout = () => mutate('checkout', attendanceAPI.checkOut, 'Checked out successfully', "We couldn't check you out. Your attendance is still active.")
+  // The store performs the mutation and applies the authoritative server
+  // response; this page owns the user-facing success/failure toasts.
+  const handleCheckIn = async () => {
+    try {
+      const applied = await checkIn()
+      if (!applied) return // another action is already in flight
+      toast.success('Checked in successfully')
+      loadHistory()
+    } catch {
+      toast.error("We couldn't check you in. Please try again.")
+    }
+  }
+
+  const handleStartBreak = async () => {
+    try {
+      const applied = await startBreak()
+      if (!applied) return
+      toast.success('Break started')
+      loadHistory()
+    } catch {
+      toast.error("We couldn't start your break. Your attendance is still active.")
+    }
+  }
+
+  const handleResume = async () => {
+    try {
+      const applied = await resumeWork()
+      if (!applied) return
+      toast.success('Work resumed')
+      loadHistory()
+    } catch {
+      toast.error("We couldn't resume your work session. Please try again.")
+    }
+  }
+
+  const handleCheckout = async () => {
+    try {
+      const applied = await checkOut()
+      if (!applied) return
+      toast.success('Checked out successfully')
+      setConfirmCheckout(false)
+      loadHistory()
+    } catch {
+      toast.error("We couldn't check you out. Your attendance is still active.")
+    }
+  }
 
   const todayActivity = useMemo(() => {
     const entries = []
@@ -198,9 +230,9 @@ const Attendance = () => {
 
   const rows = history.slice(0, 7)
 
-  if (loading) return <AttendanceSkeleton />
+  if (loading && !record) return <AttendanceSkeleton />
 
-  if (loadError && !record) {
+  if (loadError) {
     return (
       <div className="space-y-5 p-4 md:p-6">
         <PageHeader title="Attendance" description="Check in, manage breaks, and track today's working time." />
@@ -210,7 +242,7 @@ const Attendance = () => {
             <div>
               <h2 className="font-semibold text-gray-900 dark:text-white">Attendance could not be loaded.</h2>
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Your active attendance has not been changed.</p>
-              <Button className="mt-4" variant="secondary" onClick={() => loadAttendance({ showLoading: true })}>
+              <Button className="mt-4" variant="secondary" loading={retrying} onClick={retryLoad}>
                 <RefreshCw className="h-4 w-4" /> Try Again
               </Button>
             </div>
@@ -226,15 +258,18 @@ const Attendance = () => {
 
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold ${meta.badge}`}>
-            <StatusIcon className="h-4 w-4" aria-hidden="true" />
-            {meta.label}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold ${meta.badge}`}>
+              <StatusIcon className="h-4 w-4" aria-hidden="true" />
+              {meta.label}
+            </div>
+            {isBiometricSource(record) && <span className={sourcePillClassName}>Biometric</span>}
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            {syncing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : loadError ? <AlertCircle className="h-3.5 w-3.5 text-red-500" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
-            {syncing ? 'Syncing...' : loadError ? 'Connection interrupted' : 'Synced just now'}
-            {loadError && (
-              <button className="ml-1 font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-300" onClick={() => loadAttendance()}>
+            {refreshing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : error ? <AlertCircle className="h-3.5 w-3.5 text-red-500" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
+            {refreshing ? 'Syncing...' : error ? 'Connection interrupted' : 'Synced just now'}
+            {error && (
+              <button className="ml-1 font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-300" onClick={retryLoad}>
                 Try Again
               </button>
             )}
@@ -259,7 +294,9 @@ const Attendance = () => {
           </div>
           <div>
             <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Checked out at</div>
-            <div className="mt-1 font-medium text-gray-900 dark:text-white">{formatClock(record?.check_out_at)}</div>
+            <div className="mt-1 font-medium text-gray-900 dark:text-white">
+              {record?.check_out_at ? formatClock(record.check_out_at) : record && record.status !== 'not_checked_in' ? '—' : '-'}
+            </div>
           </div>
           <div>
             <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Total break time</div>
@@ -274,37 +311,46 @@ const Attendance = () => {
         )}
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          {record?.status === 'not_checked_in' && (
-            <Button size="lg" loading={pendingAction === 'check_in'} loadingText="Checking in..." onClick={handleCheckIn} className="w-full sm:w-auto">
-              <Play className="h-4 w-4" /> Check In
-            </Button>
-          )}
-          {record?.status === 'working' && (
+          {isBiometricSource(record) ? (
+            <p className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-indigo-500" aria-hidden="true" />
+              {record?.check_out_at ? 'Attendance recorded via biometric device.' : 'Checked in via biometric — no manual check-in needed.'}
+            </p>
+          ) : (
             <>
-              <Button loading={pendingAction === 'start_break'} loadingText="Starting break..." onClick={handleStartBreak} className="w-full sm:w-auto">
-                <PauseCircle className="h-4 w-4" /> Start Break
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => setConfirmCheckout(true)}
-                className="w-full border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30 sm:w-auto"
-              >
-                <Square className="h-4 w-4" /> Check Out
-              </Button>
-            </>
-          )}
-          {record?.status === 'on_break' && (
-            <>
-              <Button loading={pendingAction === 'resume'} loadingText="Resuming..." onClick={handleResume} className="w-full sm:w-auto">
-                <Play className="h-4 w-4" /> Resume Work
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => setConfirmCheckout(true)}
-                className="w-full border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30 sm:w-auto"
-              >
-                <Square className="h-4 w-4" /> Check Out
-              </Button>
+              {record?.status === 'not_checked_in' && (
+                <Button size="lg" loading={pendingAction === 'check_in'} loadingText="Checking in..." onClick={handleCheckIn} className="w-full sm:w-auto">
+                  <Play className="h-4 w-4" /> Check In
+                </Button>
+              )}
+              {record?.status === 'working' && (
+                <>
+                  <Button loading={pendingAction === 'start_break'} loadingText="Starting break..." onClick={handleStartBreak} className="w-full sm:w-auto">
+                    <PauseCircle className="h-4 w-4" /> Start Break
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setConfirmCheckout(true)}
+                    className="w-full border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30 sm:w-auto"
+                  >
+                    <Square className="h-4 w-4" /> Check Out
+                  </Button>
+                </>
+              )}
+              {record?.status === 'on_break' && (
+                <>
+                  <Button loading={pendingAction === 'resume'} loadingText="Resuming..." onClick={handleResume} className="w-full sm:w-auto">
+                    <Play className="h-4 w-4" /> Resume Work
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setConfirmCheckout(true)}
+                    className="w-full border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30 sm:w-auto"
+                  >
+                    <Square className="h-4 w-4" /> Check Out
+                  </Button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -319,12 +365,18 @@ const Attendance = () => {
           {todayActivity.length ? (
             <div className="space-y-3">
               {todayActivity.map((entry) => (
-                <div key={`${entry.time}-${entry.label}`} className="grid grid-cols-[5.5rem_1fr] gap-3 text-sm">
+                <div key={`${entry.time}-${entry.label}`} className="grid grid-cols-[5.5rem_1fr_auto] items-center gap-3 text-sm">
                   <span className="font-mono text-gray-500 dark:text-gray-400">{formatClock(entry.time)}</span>
                   <span className="text-gray-800 dark:text-gray-200">{entry.label}</span>
+                  {isBiometricSource(record) && <span className={sourcePillClassName}>Biometric</span>}
                 </div>
               ))}
-              {record?.status === 'working' && <div className="text-sm text-gray-500 dark:text-gray-400">Current session: Working</div>}
+              {record?.status === 'working' && (
+                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                  <span>Current session: Working</span>
+                  {isBiometricSource(record) && <span className={sourcePillClassName}>Biometric</span>}
+                </div>
+              )}
               {record?.status === 'on_break' && <div className="text-sm text-gray-500 dark:text-gray-400">Current session: On break</div>}
             </div>
           ) : (
@@ -332,6 +384,65 @@ const Attendance = () => {
           )}
         </div>
       </section>
+
+      {/* Phase 4: Enhanced Policy Info */}
+      {enhancedData && (
+        <section className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-gray-500" />
+              <h2 className="font-semibold text-gray-900 dark:text-white">Today's Policy</h2>
+            </div>
+            {(enhancedData.is_holiday || enhancedData.is_week_off || enhancedData.leave) && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+                {enhancedData.is_holiday && <><CalendarDays className="h-3 w-3" /> Holiday: {enhancedData.holiday_name}</>}
+                {enhancedData.is_week_off && <>Week Off</>}
+                {enhancedData.leave && <>On Leave</>}
+              </span>
+            )}
+          </div>
+          <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <div className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Expected Hours</div>
+              <div className="mt-1 font-medium text-gray-900 dark:text-white">{formatDuration((enhancedData.expected_work_minutes || 480) * 60)}</div>
+            </div>
+            <div>
+              <div className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Schedule</div>
+              <div className="mt-1 font-medium text-gray-900 dark:text-white">
+                {enhancedData.expected_start_time || '09:00'} - {enhancedData.expected_end_time || '18:00'}
+              </div>
+            </div>
+            {enhancedData.is_late && (
+              <div>
+                <div className="text-xs font-medium uppercase text-red-500">Late By</div>
+                <div className="mt-1 font-medium text-red-600 dark:text-red-400">{Math.round(enhancedData.late_minutes || 0)} min</div>
+              </div>
+            )}
+            {enhancedData.overtime_seconds > 0 && (
+              <div>
+                <div className="text-xs font-medium uppercase text-emerald-500">Overtime</div>
+                <div className="mt-1 font-medium text-emerald-600 dark:text-emerald-400">{formatDuration(enhancedData.overtime_seconds)}</div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Correction Request Button */}
+      {record && record.status !== 'not_checked_in' && (
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={() => setShowCorrectionModal(true)} className="text-sm">
+            <FileWarning className="h-4 w-4" /> Request Correction
+          </Button>
+        </div>
+      )}
+
+      <CorrectionRequestModal
+        isOpen={showCorrectionModal}
+        onClose={() => setShowCorrectionModal(false)}
+        attendanceRecord={record}
+        onSuccess={loadHistory}
+      />
 
       <section className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
         <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
@@ -341,30 +452,51 @@ const Attendance = () => {
           </div>
           <a href="/attendance/reports" className="text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-300">View attendance history</a>
         </div>
-        {rows.length ? (
+        {historyLoading ? (
+          <div className="space-y-2 p-4">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : rows.length ? (
           <div className="overflow-hidden">
-            <div className="hidden grid-cols-6 gap-3 border-b border-gray-100 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-gray-700 md:grid">
+            <div className="hidden grid-cols-7 gap-3 border-b border-gray-100 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-gray-700 md:grid">
               <div>Date</div>
               <div>Check In</div>
               <div>Check Out</div>
-              <div>Break</div>
               <div>Work Time</div>
+              <div>Break</div>
               <div>Status</div>
+              <div>Source</div>
             </div>
             <div className="divide-y divide-gray-100 dark:divide-gray-700">
-              {rows.map((item) => (
-                <div key={item.id} className="grid gap-2 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 md:grid-cols-6">
-                  <div className="flex items-center gap-2 font-medium text-gray-900 dark:text-white">
-                    <Calendar className="h-4 w-4 text-gray-400 md:hidden" />
-                    {timeService.formatDateOnly(item.date || item.attendance_date)}
+              {rows.map((item) => {
+                const dayMeta = getHistoryDayMeta(item)
+                const DayIcon = dayMeta.icon
+                const rowOpen = item.status === 'working' || item.status === 'Working'
+                const showLate = Boolean(item.is_late) && Boolean(item.check_out_at || item.logout_time)
+                return (
+                  <div key={item.id} className="grid gap-2 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 md:grid-cols-7">
+                    <div className="flex items-center gap-2 font-medium text-gray-900 dark:text-white">
+                      <Calendar className="h-4 w-4 text-gray-400 md:hidden" />
+                      {timeService.formatDateOnly(item.date || item.attendance_date)}
+                    </div>
+                    <div><span className="md:hidden">Check In: </span>{formatClock(item.check_in_at || item.login_time)}</div>
+                    <div><span className="md:hidden">Check Out: </span>{rowOpen ? '—' : formatClock(item.check_out_at || item.logout_time)}</div>
+                    <div><span className="font-sans md:hidden">Work: </span><span className="font-mono">{formatDayDuration(item.total_work_seconds ?? item.total_working_hours)}</span></div>
+                    <div><span className="font-sans md:hidden">Break: </span><span className="font-mono">{formatDayDuration(item.total_break_seconds ?? item.break_duration)}</span></div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${dayMeta.badge}`}>
+                        <DayIcon className="h-3 w-3" aria-hidden="true" /> {dayMeta.label}
+                      </span>
+                      {showLate && <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600 dark:bg-red-950/40 dark:text-red-300">Late</span>}
+                    </div>
+                    <div className="flex items-center">
+                      {isBiometricSource(item) ? <span className={sourcePillClassName}>Biometric</span> : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                    </div>
                   </div>
-                  <div><span className="md:hidden">Check In: </span>{formatClock(item.check_in_at || item.login_time)}</div>
-                  <div><span className="md:hidden">Check Out: </span>{formatClock(item.check_out_at || item.logout_time)}</div>
-                  <div className="font-mono"><span className="font-sans md:hidden">Break: </span>{formatDuration(item.total_break_seconds ?? item.break_duration)}</div>
-                  <div className="font-mono"><span className="font-sans md:hidden">Work: </span>{formatDuration(item.total_work_seconds ?? item.total_working_hours)}</div>
-                  <div>{statusMeta[item.status]?.label || (item.check_out_at || item.logout_time ? 'Day Completed' : 'Working')}</div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         ) : (
@@ -394,11 +526,11 @@ const Attendance = () => {
         )}
       >
         <div className="space-y-3 text-sm">
-          <div className="flex justify-between gap-4">
+          <div className="flex justify-between gap-3">
             <span className="text-gray-500 dark:text-gray-400">Net working time</span>
             <span className="font-mono font-semibold text-gray-900 dark:text-white">{formatDuration(display.work)}</span>
           </div>
-          <div className="flex justify-between gap-4">
+          <div className="flex justify-between gap-3">
             <span className="text-gray-500 dark:text-gray-400">Total break time</span>
             <span className="font-mono font-semibold text-gray-900 dark:text-white">{formatDuration(display.breakTotal)}</span>
           </div>

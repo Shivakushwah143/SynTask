@@ -110,15 +110,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
+    <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+      <div className="flex items-center gap-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-r ${colors[color]} text-white shadow-sm`}>
           <Icon className="h-4 w-4" />
         </div>
+        <div className="min-w-0">
+          <span className="truncate text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">{label}</span>
+          <p className="mt-0.5 truncate text-lg font-bold leading-tight text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="truncate text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
+        </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -358,24 +360,52 @@ export default function Subscriptions() {
 
   if (loading) {
     return (
-      <div className="space-y-6 p-4 md:p-6">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
-          <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-          <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+      <div className="space-y-4 p-4 md:p-5">
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 px-4 py-3 text-white shadow-sm">
           <div className="relative z-10">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <LayoutDashboard className="h-6 w-6" />
+              <div className="rounded-lg bg-white/15 p-2 backdrop-blur-sm">
+                <LayoutDashboard className="h-5 w-5" />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Subscription & Billing</h1>
-                <p className="mt-1 text-indigo-100">Loading subscription workspace...</p>
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-bold md:text-xl">Subscription & Billing</h1>
+                <p className="mt-0.5 truncate text-xs text-fuchsia-100">Loading subscription workspace...</p>
               </div>
             </div>
           </div>
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
-          {[1, 2, 3].map((item) => <SkeletonCard key={item} lines={4} />)}
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1.5">
+              <div className="h-3 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+              <div className="h-5 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+              <div className="h-2.5 w-56 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="h-14 w-32 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-3 space-y-1.5">
+            <div className="h-4 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+            <div className="h-2.5 w-72 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {[...Array(4)].map((_, index) => (
+              <div key={index} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <div className="space-y-2">
+                  <div className="h-3 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                  <div className="h-5 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                  <div className="h-8 w-full animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     )
@@ -383,37 +413,33 @@ export default function Subscriptions() {
 
   if (isSuperAdmin) {
     return (
-      <div className="space-y-6 p-4 md:p-6">
+      <div className="space-y-4 p-4 md:p-5">
         {/* ============================================================ */}
         {/* HERO SECTION - Super Admin */}
         {/* ============================================================ */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
-          <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-          <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
-          
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 px-4 py-3 text-white shadow-sm">
           <div className="relative z-10">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                  <LayoutDashboard className="h-6 w-6" />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="rounded-lg bg-white/15 p-2 backdrop-blur-sm">
+                  <LayoutDashboard className="h-5 w-5" />
                 </div>
-                <div>
-                  <h1 className="text-2xl font-bold md:text-3xl">Platform Subscriptions</h1>
-                  <p className="mt-1 text-indigo-100">Owner view for renting SynTask access to tenant companies.</p>
+                <div className="min-w-0">
+                  <h1 className="truncate text-lg font-bold md:text-xl">Platform Subscriptions</h1>
+                  <p className="mt-0.5 truncate text-xs text-fuchsia-100">Owner view for renting SynTask access to tenant companies.</p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button 
                   onClick={() => navigate('/super-admin/tenants')}
-                  className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-white/15 px-3 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/25"
                 >
                   <Building2 className="h-4 w-4" />
                   Tenant Companies
                 </button>
                 <button 
                   onClick={() => navigate('/super-admin/plans')}
-                  className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-white/15 px-3 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/25"
                 >
                   <Package className="h-4 w-4" />
                   Manage Plans
@@ -424,7 +450,7 @@ export default function Subscriptions() {
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard 
             label="Tenant Companies" 
             value={tenants.length} 
@@ -524,31 +550,27 @@ export default function Subscriptions() {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+      <div className="space-y-4 p-4 md:p-5">
       {/* ============================================================ */}
       {/* HERO SECTION */}
       {/* ============================================================ */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
-        
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 px-4 py-3 text-white shadow-sm">
         <div className="relative z-10">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <CreditCard className="h-6 w-6" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="rounded-lg bg-white/15 p-2 backdrop-blur-sm">
+                <CreditCard className="h-5 w-5" />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Subscription & Billing</h1>
-                <p className="mt-1 text-indigo-100">
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-bold md:text-xl">Subscription & Billing</h1>
+                <p className="mt-0.5 truncate text-xs text-fuchsia-100">
                   View your current company plan and upgrade when your team needs more capacity.
                 </p>
               </div>
             </div>
             <button 
               onClick={loadData}
-              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-white/15 px-3 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-white/25"
             >
               <RefreshCw className="h-4 w-4" />
               Refresh
@@ -560,8 +582,8 @@ export default function Subscriptions() {
       {/* ============================================================ */}
       {/* CURRENT PLAN BANNER */}
       {/* ============================================================ */}
-      <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/70 to-white p-6 shadow-sm dark:border-indigo-900/50 dark:from-indigo-950/20 dark:to-gray-800">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/70 to-white p-4 shadow-sm dark:border-indigo-900/50 dark:from-indigo-950/20 dark:to-gray-800">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/40">
@@ -569,12 +591,12 @@ export default function Subscriptions() {
               </div>
               <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">Current Company Plan</p>
             </div>
-            <h2 className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">{currentPlanName}</h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            <h2 className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{currentPlanName}</h2>
+            <p className="mt-0.5 text-sm text-gray-600 dark:text-gray-400">
               This is the active plan for {company?.name || 'your company'}.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-3">
             <PlanFact label="Status" value={currentSubscription?.status || company?.status || 'Active'} />
             <PlanFact label="Billing" value={currentSubscription?.billing_cycle || 'Monthly'} />
             <PlanFact label="Next Billing" value={formatDate(currentSubscription?.next_billing_date)} />
@@ -593,7 +615,7 @@ export default function Subscriptions() {
           </p>
         </div>
         {plans.length ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {plans.map((plan) => {
               const planName = getPlanName(plan)
               const isCurrent = normalizePlanKey(planName) === normalizePlanKey(getPlanName(currentPlan))

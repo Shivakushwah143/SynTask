@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { useAuthStore } from '../store/authStore'
 import { getAccessToken, getRefreshToken, updateAccessToken } from '../utils/storage'
+import { decodeBlobErrorMessage } from '../utils/download'
 import toast from 'react-hot-toast'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
@@ -8,9 +9,11 @@ const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 const axiosInstance = axios.create({
   baseURL: API_URL,
   withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  // NOTE: no global Content-Type default. Axios sets application/json
+  // automatically when a request carries a JSON body, so GET/HEAD requests send
+  // no Content-Type — that keeps requests CORS-simple (no preflight) whenever
+  // VITE_API_URL points at a cross-origin dev backend. Previously the static
+  // header forced a preflight round-trip on every API call.
 })
 
 // Singleton promise for concurrent refresh deduplication
@@ -78,7 +81,7 @@ const withDataCompatibility = (payload) => {
   return payload
 }
 
-const extractErrorMessage = (value) => {
+export const extractErrorMessage = (value) => {
   if (!value) return 'An error occurred'
   if (typeof value === 'string' && /<html[\s>]/i.test(value)) {
     return 'Server temporarily unavailable. Please try again.'
@@ -203,13 +206,21 @@ axiosInstance.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    // Handle other errors - suppress toasts for 401/403 and unauthenticated requests
-    if (![401, 403].includes(error.response?.status) && !originalRequest?._unauthenticated) {
-      const errorMessage = extractErrorMessage(
-        error.response?.data?.detail ||
-        error.response?.data?.message ||
-        error.response?.data
-      )
+    // Handle other errors - suppress toasts for 401/403, unauthenticated
+    // requests, and requests that opt out via `suppressGlobalToast` (their
+    // caller shows a local notification instead, e.g. the invoice PDF download).
+    if (![401, 403].includes(error.response?.status) && !originalRequest?._unauthenticated && !originalRequest?.suppressGlobalToast) {
+      let errorMessage
+      if (originalRequest?.responseType === 'blob') {
+        // Blob responses hide the backend's JSON error; decode it for the toast.
+        errorMessage = await decodeBlobErrorMessage(error, 'Request failed')
+      } else {
+        errorMessage = extractErrorMessage(
+          error.response?.data?.detail ||
+          error.response?.data?.message ||
+          error.response?.data
+        )
+      }
       toast.error(errorMessage)
     }
 

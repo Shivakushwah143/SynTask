@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { X, Trash2, Paperclip, Send, User, Plus, List, Edit, Save, Eye, Link2, History } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
-import { filesAPI } from '../api/files'
+import { filesAPI, MAX_UPLOAD_SIZE, formatFileSize, getUploadErrorMessage } from '../api/files'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { usersAPI } from '../api/users'
 import { watchersApi } from '../api/watchers'
@@ -15,6 +15,7 @@ import { hasCompanyAdminAccess, isLeadRole, getRoleLabel } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { timeService } from '@/services/timeService'
+import CarryForwardDueDate from './tasks/CarryForwardDueDate'
 
 const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh }) => {
   const { user } = useAuthStore()
@@ -268,15 +269,35 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
     const file = e.target.files[0]
     if (!file) return
 
+    // Client-side size pre-check for a clear, immediate message
+    if (file.size > MAX_UPLOAD_SIZE) {
+      toast.error(
+        `File is too large (${formatFileSize(file.size)}). Maximum allowed size is ${formatFileSize(MAX_UPLOAD_SIZE)}.`
+      )
+      e.target.value = ''
+      return
+    }
+
     try {
       setUploading(true)
       const result = await filesAPI.uploadFile(file)
-      const newAttachments = [...attachments, result.file_url]
+      // Convert relative path to a full URL (same logic as TaskDetail.jsx)
+      const API_BASE = import.meta.env.VITE_API_URL || '/api/v1'
+      const BASE_URL = API_BASE.replace('/api/v1', '') || ''
+      let fullFileUrl = result.file_url
+      if (fullFileUrl.startsWith('/api/v1/files/')) {
+        fullFileUrl = `${BASE_URL}${fullFileUrl}`
+      } else if (fullFileUrl.startsWith('/files/')) {
+        fullFileUrl = `${BASE_URL}/api/v1${fullFileUrl}`
+      } else if (!fullFileUrl.startsWith('http')) {
+        fullFileUrl = `${BASE_URL}/api/v1/files/${fullFileUrl}`
+      }
+      const newAttachments = [...attachments, fullFileUrl]
       setAttachments(newAttachments)
       toast.success('File uploaded successfully')
       onRefresh?.()
     } catch (error) {
-      toast.error('Failed to upload file')
+      toast.error(getUploadErrorMessage(error))
     } finally {
       setUploading(false)
     }
@@ -578,12 +599,10 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                 })()}
               </div>
 
-              {task.due_date && (
+              {(task.due_date || task.carry_forward_due_date) && (
                 <div>
                   <label className="text-sm font-medium text-gray-700">Due Date</label>
-                  <p className="text-gray-900 mt-1">
-                    {timeService.formatPattern(task.due_date, 'PPpp')}
-                  </p>
+                  <p className="text-gray-900 mt-1"><CarryForwardDueDate task={task} /></p>
                 </div>
               )}
 

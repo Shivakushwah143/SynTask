@@ -47,3 +47,6 @@ Thumbs.db
 .superpowers/
 .worktrees/
 
+# Deployment marker/state files (release identity + history written at deploy time)
+.deploy-state/
+

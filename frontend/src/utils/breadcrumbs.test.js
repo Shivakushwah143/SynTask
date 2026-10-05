@@ -45,15 +45,41 @@ describe('buildBreadcrumbTrail (Phase 5, spec §10.5)', () => {
     expect(buildBreadcrumbTrail('/crm/settings')).toEqual(['Home', 'Settings', 'Client Settings'])
   })
 
-  it('shows sidebar names for renamed items (Requests, Scheduled Work, Employees)', () => {
+  it('shows sidebar names for renamed items (Requests, Scheduled Work, User Accounts)', () => {
     expect(buildBreadcrumbTrail('/tickets')).toEqual(['Home', 'Work', 'Requests'])
     expect(buildBreadcrumbTrail('/scheduled-jobs')).toEqual(['Home', 'Work', 'Scheduled Work'])
-    expect(buildBreadcrumbTrail('/users')).toEqual(['Home', 'People', 'Employees'])
+    // People → Employees is the HR employee-profile surface; /users is now User Accounts.
+    expect(buildBreadcrumbTrail('/users')).toEqual(['Home', 'People', 'User Accounts'])
   })
 
-  it('maps HR recruitment routes under People with renamed labels', () => {
-    expect(buildBreadcrumbTrail('/hr/recruitment/jobs')).toEqual(['Home', 'People', 'Recruitment', 'Job Openings'])
-    expect(buildBreadcrumbTrail('/hr/recruitment/reports')).toEqual(['Home', 'People', 'Recruitment', 'Hiring Reports'])
+  it('maps HR recruitment routes under Recruitment with renamed labels', () => {
+    expect(buildBreadcrumbTrail('/hr/recruitment/jobs')).toEqual(['Home', 'Recruitment', 'Job Openings'])
+    expect(buildBreadcrumbTrail('/hr/recruitment/jobs/6a85bad39652eaa89a110d2b')).toEqual(['Home', 'Recruitment', 'Job Openings', 'Job Detail'])
+    expect(buildBreadcrumbTrail('/hr/recruitment/candidates/6a85bad39652eaa89a110d2b')).toEqual(['Home', 'Recruitment', 'Candidates', 'Candidate Detail'])
+    expect(buildBreadcrumbTrail('/hr/recruitment/reports')).toEqual(['Home', 'Recruitment', 'Hiring Reports'])
+    expect(buildBreadcrumbTrail('/hr/recruitment/inbox')).toEqual(['Home', 'Recruitment', 'Recruitment Inbox'])
+  })
+
+  it('maps canonical HR employee/documents routes under People', () => {
+    expect(buildBreadcrumbTrail('/hr/employees')).toEqual(['Home', 'People', 'Employees'])
+    expect(buildBreadcrumbTrail('/hr/employees/emp-1')).toEqual(['Home', 'People', 'Employees', 'Employee Profile'])
+    expect(buildBreadcrumbTrail('/hr/documents')).toEqual(['Home', 'People', 'HR Documents'])
+    expect(buildBreadcrumbTrail('/hr/settings/document-types')).toEqual(['Home', 'People', 'Document Types'])
+  })
+
+  it('maps HR payroll and settings sub-routes under People', () => {
+    expect(buildBreadcrumbTrail('/hr/payroll')).toEqual(['Home', 'People', 'Payroll'])
+    expect(buildBreadcrumbTrail('/hr/settings/attendance-policy')).toEqual(['Home', 'People', 'Attendance Policy'])
+    expect(buildBreadcrumbTrail('/hr/settings/leave-types')).toEqual(['Home', 'People', 'Leave Types'])
+  })
+
+  it('excludes /hr root and interview-screen from breadcrumbs', () => {
+    // /hr root returns no context → falls through to segment labels
+    const hrRoot = buildBreadcrumbTrail('/hr')
+    expect(hrRoot[0]).toBe('Home')
+    // /hr/recruitment/interview-screen is excluded from resolver
+    const interviewScreen = buildBreadcrumbTrail('/hr/recruitment/interview-screen')
+    expect(interviewScreen[0]).toBe('Home')
   })
 
   it('maps finance, insights, content and AI pages to their sections', () => {

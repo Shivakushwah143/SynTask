@@ -37,6 +37,15 @@ def test_sub_admin_can_create_sales_products_and_categories():
     sales_categories._ensure_create_permission(sub_admin)
 
 
+def test_employee_can_create_sales_products_and_categories():
+    # Employees can add categories/products from the shared lead form
+    # ("+ New category" / "+ New product" are open to everyone).
+    employee = SimpleNamespace(role=UserRole.EMPLOYEE)
+
+    sales_products._ensure_create_permission(employee)
+    sales_categories._ensure_create_permission(employee)
+
+
 def test_manager_can_delete_sales_products_and_categories():
     manager = SimpleNamespace(role=UserRole.MANAGER)
 

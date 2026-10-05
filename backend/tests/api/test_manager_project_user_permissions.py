@@ -9,7 +9,7 @@ from app.core.hierarchy import get_creatable_roles
 from app.models.user import Manager, User, UserRole
 
 
-def user(user_id, role, *, company_id="company-1"):
+def user(user_id, role, *, company_id="company-1", department_id=None):
     async def get_all_subordinates():
         return []
 
@@ -17,6 +17,9 @@ def user(user_id, role, *, company_id="company-1"):
         id=user_id,
         role=role,
         company_id=company_id,
+        department_id=department_id,
+        capability_grants=[],
+        permission_overrides=[],
         get_all_subordinates=get_all_subordinates,
     )
 
@@ -87,14 +90,21 @@ async def test_manager_can_create_only_leads_and_employees():
 
 
 @pytest.mark.asyncio
-async def test_manager_can_assign_tasks_to_any_company_lead_or_employee():
-    manager = user("manager-1", UserRole.MANAGER)
-    admin_created_lead = user("lead-1", UserRole.LEAD)
-    admin_created_employee = user("employee-1", UserRole.EMPLOYEE)
-    other_manager = user("manager-2", UserRole.MANAGER)
+async def test_manager_can_assign_tasks_to_any_company_lead_or_employee(monkeypatch):
+    from app.services import authorization_service as authz
 
-    await task_endpoints._assert_can_assign_task(manager, admin_created_lead)
-    await task_endpoints._assert_can_assign_task(manager, admin_created_employee)
+    async def _no_department(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(authz.Department, "get", _no_department)
+
+    manager = user("manager-1", UserRole.MANAGER, department_id="dept-1")
+    lead_from_another_department = user("lead-1", UserRole.LEAD, department_id="dept-2")
+    employee_from_another_department = user("employee-1", UserRole.EMPLOYEE, department_id="dept-2")
+    other_manager = user("manager-2", UserRole.MANAGER, department_id="dept-1")
+
+    await task_endpoints._assert_can_assign_task(manager, lead_from_another_department)
+    await task_endpoints._assert_can_assign_task(manager, employee_from_another_department)
 
     with pytest.raises(HTTPException):
         await task_endpoints._assert_can_assign_task(manager, other_manager)
@@ -126,3 +136,47 @@ async def test_project_lead_member_can_view_task_comments(monkeypatch):
     monkeypatch.setattr("app.api.dependencies.get_project_by_id", fake_get_project_by_id)
 
     await task_endpoints._assert_task_view(lead, task(assigned_to="employee-1"))
+
+
+@pytest.mark.asyncio
+async def test_employee_with_task_in_project_can_view_colleague_task(monkeypatch):
+    # Employee involved only via task assignment can open a colleague's task,
+    # matching the project board visibility rule (board cards must be clickable).
+    employee = user("employee-2", UserRole.EMPLOYEE)
+    team_project = project(team_member_ids=["employee-3"])
+    colleague_task = task(assigned_to="employee-3")
+
+    async def fake_get_project_by_id(project_id, company_id):
+        return team_project, project_id
+
+    class FakeInvolvementTask:
+        async def find_one(self, *_args, **_kwargs):
+            return SimpleNamespace(id="involved-task")
+
+    monkeypatch.setattr(task_endpoints, "check_company_access", lambda *args, **kwargs: None)
+    monkeypatch.setattr("app.api.dependencies.get_project_by_id", fake_get_project_by_id)
+    monkeypatch.setattr(task_endpoints, "Task", FakeInvolvementTask())
+
+    await task_endpoints._assert_task_view(employee, colleague_task)
+
+
+@pytest.mark.asyncio
+async def test_employee_without_project_involvement_cannot_view_colleague_task(monkeypatch):
+    employee = user("employee-2", UserRole.EMPLOYEE)
+    team_project = project(team_member_ids=["employee-3"])
+    colleague_task = task(assigned_to="employee-3")
+
+    async def fake_get_project_by_id(project_id, company_id):
+        return team_project, project_id
+
+    class FakeNoTask:
+        async def find_one(self, *_args, **_kwargs):
+            return None
+
+    monkeypatch.setattr(task_endpoints, "check_company_access", lambda *args, **kwargs: None)
+    monkeypatch.setattr("app.api.dependencies.get_project_by_id", fake_get_project_by_id)
+    monkeypatch.setattr(task_endpoints, "Task", FakeNoTask())
+
+    with pytest.raises(HTTPException) as exc:
+        await task_endpoints._assert_task_view(employee, colleague_task)
+    assert exc.value.status_code == 403

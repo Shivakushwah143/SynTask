@@ -15,4 +15,4 @@ export function FormField({ label, error, helperText, children, htmlFor, require
 }
 
 export const inputClassName =
-  'min-h-11 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 shadow-sm transition placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 dark:border-gray-700 dark:bg-gray-800/80 dark:text-white dark:placeholder:text-gray-400'
+  'min-h-11 w-full rounded-2xl border border-surface-border bg-[var(--color-app-input)] px-4 py-3 text-sm font-medium text-text-primary shadow-sm transition placeholder:text-text-muted focus:border-primary-500 focus:outline-none focus:ring-4 focus:ring-primary-500/10 dark:border-gray-700 dark:bg-gray-800/80 dark:text-white dark:placeholder:text-gray-400'

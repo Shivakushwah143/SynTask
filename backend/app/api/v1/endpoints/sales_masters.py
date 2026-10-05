@@ -15,13 +15,13 @@ from app.api.deps import Pagination50, PaginationParams
 router = APIRouter(dependencies=[Depends(require_module("sales"))])
 
 APPROVED_STAGE_METADATA = {
-    "new": {"name": "New", "key": "new", "order": 0, "category": "intake", "description": "Fresh lead awaiting outreach.", "is_terminal": False},
-    "contacted": {"name": "Contacted", "key": "contacted", "order": 1, "category": "qualification", "description": "Initial contact has been made.", "is_terminal": False},
-    "qualified": {"name": "Qualified", "key": "qualified", "order": 2, "category": "qualification", "description": "Lead fits the target criteria.", "is_terminal": False},
-    "discovery": {"name": "Discovery", "key": "discovery", "order": 3, "category": "evaluation", "description": "Needs analysis or discovery is underway.", "is_terminal": False},
-    "proposal": {"name": "Proposal", "key": "proposal", "order": 4, "category": "proposal", "description": "Proposal or quote has been delivered.", "is_terminal": False},
-    "negotiation": {"name": "Negotiation", "key": "negotiation", "order": 5, "category": "proposal", "description": "Commercial terms are under discussion.", "is_terminal": False},
-    "won": {"name": "Won", "key": "won", "order": 6, "category": "closed", "description": "Opportunity closed successfully.", "is_terminal": True},
+    "acquire": {"name": "Acquire", "key": "acquire", "order": 0, "category": "intake", "description": "Collect new leads from all sources and verify them.", "is_terminal": False},
+    "qualify": {"name": "Qualify", "key": "qualify", "order": 1, "category": "qualification", "description": "Determine whether the lead is worth pursuing.", "is_terminal": False},
+    "discovery": {"name": "Discovery", "key": "discovery", "order": 2, "category": "evaluation", "description": "Business discussion and requirements capture.", "is_terminal": False},
+    "proposal": {"name": "Proposal", "key": "proposal", "order": 3, "category": "proposal", "description": "Solution presentation including pricing details.", "is_terminal": False},
+    "negotiation": {"name": "Negotiation", "key": "negotiation", "order": 4, "category": "proposal", "description": "Commercial discussions on price, scope, and terms.", "is_terminal": False},
+    "agreement": {"name": "Agreement", "key": "agreement", "order": 5, "category": "contract", "description": "Legal and contractual formalities (MSA, NDA, SOW).", "is_terminal": False},
+    "won": {"name": "Won", "key": "won", "order": 6, "category": "closed", "description": "Deal closed; preparing onboarding and transfer to Clients.", "is_terminal": True},
     "lost": {"name": "Lost", "key": "lost", "order": 7, "category": "closed", "description": "Opportunity closed without conversion.", "is_terminal": True},
 }
 

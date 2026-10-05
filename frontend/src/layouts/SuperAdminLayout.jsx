@@ -60,10 +60,21 @@ const SuperAdminLayout = () => {
       icon: Package
     },
     {
-      name: 'Clients',
+      name: 'Companies',
+      // href: '/super-admin/companies',
       href: '/super-admin/tenants',
       icon: Building2
     },
+    // {
+    //   name: 'Tenants',
+    //   href: '/super-admin/tenants',
+    //   icon: BarChart3
+    // },
+    // {
+    //   name: 'Clients',
+    //   href: '/super-admin/clients',
+    //   icon: Building2
+    // },
     {
       name: 'Billing & Revenue',
       href: '/super-admin/billing',
@@ -127,7 +138,7 @@ const SuperAdminLayout = () => {
         {/* Navigation */}
         <nav className="p-4 space-y-1">
           {navigation.map((item) => {
-            const isActive = location.pathname === item.href
+            const isActive = location.pathname === item.href || location.pathname.startsWith(`${item.href}/`)
             const Icon = item.icon
             return (
               <Link
@@ -227,6 +238,7 @@ const SuperAdminLayout = () => {
           setAssistantOpen(true)
         }}
         onDismiss={() => setSynzinPromptOpen(false)}
+        onOpen={() => setSynzinPromptOpen(true)}
       />
     </div>
   )

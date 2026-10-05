@@ -6,7 +6,9 @@ from typing import Any, Dict, List, Optional
 from app.timeline.publisher import publish_crm_timeline_event
 from app.models.capability import get_capabilities_for_role
 from app.models.department import Department
-from app.crm.models import Client, ClientStatus
+from app.crm.client_identity import ensure_crm_company_for_won_lead
+from app.crm.client_services import ensure_sales_handoff_service
+from app.crm.models import Client, ClientStatus, ClientType
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.crm_deal import CRMDeal
 from app.models.meeting import Meeting, MeetingStatus
@@ -99,6 +101,23 @@ def _display_name(user: Optional[User], fallback: str = "System") -> str:
 def _safe_text(value: Optional[str], fallback: str) -> str:
     text = (value or "").strip()
     return text or fallback
+
+
+def _lead_client_budget(lead: SalesProspect, deal: Optional[CRMDeal] = None) -> Optional[float]:
+    for value in (
+        getattr(lead, "won_amount", None),
+        getattr(lead, "budget", None),
+        getattr(deal, "value", None) if deal else None,
+    ):
+        if value in (None, ""):
+            continue
+        try:
+            amount = float(value)
+        except (TypeError, ValueError):
+            continue
+        if amount > 0:
+            return amount
+    return None
 
 
 def _project_folders(template: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -232,26 +251,56 @@ async def _record_ownership_transfer(
 
 
 async def _resolve_client(current_user: User, lead: SalesProspect, deal: Optional[CRMDeal]) -> Client:
+    crm_resolution = await ensure_crm_company_for_won_lead(lead, str(getattr(current_user, "id", "") or "") or None)
+    crm_company = crm_resolution.crm_company
+    crm_company_id = str(crm_company.id) if crm_company else None
     company_name = _safe_text(getattr(lead, "company_name", None), "Client")
     company_id = str(getattr(lead, "company_id", "") or "")
+    matchers: list[dict[str, Any]] = []
+    if crm_company_id:
+        matchers.append({"crm_company_id": crm_company_id})
+    if getattr(lead, "client_id", None):
+        matchers.append({"_id": str(getattr(lead, "client_id"))})
+    matchers.extend(
+        [
+            {"source_lead_id": str(lead.id)},
+            {"company_name": company_name},
+            {"name": company_name},
+            {"name": getattr(lead, "prospect_name", None)},
+        ]
+    )
+    matchers = [matcher for matcher in matchers if all(value not in (None, "") for value in matcher.values())]
     existing_client = await Client.find_one(
         {
             "company_id": company_id,
-            "deleted": False,
-            "$or": [
-                {"company_name": company_name},
-                {"name": company_name},
-                {"name": getattr(lead, "prospect_name", None)},
-            ],
+            "deleted": {"$ne": True},
+            "$or": matchers,
         }
     )
+    lead_budget = _lead_client_budget(lead, deal)
     if existing_client:
+        if crm_company_id and getattr(existing_client, "crm_company_id", None) != crm_company_id:
+            existing_client.crm_company_id = crm_company_id
+        if crm_company_id and getattr(lead, "crm_company_id", None) != crm_company_id:
+            lead.crm_company_id = crm_company_id
+            lead.updated_at = utc_now()
+            await lead.save()
+        if not getattr(existing_client, "source_lead_id", None):
+            existing_client.source_lead_id = str(lead.id)
+        if getattr(lead, "assigned_to", None) and not getattr(existing_client, "sales_owner_id", None):
+            existing_client.sales_owner_id = str(getattr(lead, "assigned_to", ""))
         if getattr(lead, "contact_id", None) and not getattr(existing_client, "contact", None):
             existing_client.contact = getattr(lead, "phone", None) or existing_client.contact
         if getattr(existing_client, "company_name", None) != company_name:
             existing_client.company_name = company_name
         if getattr(lead, "assigned_to", None) and not existing_client.assigned_to:
             existing_client.assigned_to = str(getattr(lead, "assigned_to", ""))
+        if getattr(existing_client, "assigned_to", None) and not getattr(existing_client, "account_owner_id", None):
+            existing_client.account_owner_id = existing_client.assigned_to
+        if lead_budget is not None and not getattr(existing_client, "budget", None):
+            existing_client.budget = lead_budget
+        if not getattr(existing_client, "client_type", None):
+            existing_client.client_type = ClientType.ONE_TIME
         existing_client.updated_at = utc_now()
         await existing_client.save()
         return existing_client
@@ -263,8 +312,15 @@ async def _resolve_client(current_user: User, lead: SalesProspect, deal: Optiona
         company_name=company_name,
         email=getattr(lead, "email", None),
         contact=getattr(lead, "phone", None),
-        status=ClientStatus.ACTIVE,
+        status=ClientStatus.NEW,
+        crm_company_id=crm_company_id,
+        source_lead_id=str(lead.id),
+        account_owner_id=str(getattr(lead, "assigned_to", "") or getattr(current_user, "id", "")) or None,
+        sales_owner_id=str(getattr(lead, "assigned_to", "") or getattr(current_user, "id", "")) or None,
         assigned_to=str(getattr(lead, "assigned_to", "") or getattr(current_user, "id", "")) or None,
+        client_type=ClientType.ONE_TIME,
+        budget=lead_budget,
+        start_date=now,
         notes=getattr(lead, "remark", None),
         tags=list(getattr(lead, "tag", []) or []),
         created_by=str(getattr(current_user, "id", "")),
@@ -272,6 +328,10 @@ async def _resolve_client(current_user: User, lead: SalesProspect, deal: Optiona
         updated_at=now,
     )
     await client.insert()
+    if crm_company_id and getattr(lead, "crm_company_id", None) != crm_company_id:
+        lead.crm_company_id = crm_company_id
+        lead.updated_at = utc_now()
+        await lead.save()
     return client
 
 
@@ -289,11 +349,18 @@ async def _resolve_owner(current_user: User, lead: SalesProspect) -> Optional[st
 async def _resolve_project(current_user: User, lead: SalesProspect, client: Client, deal: Optional[CRMDeal]) -> Project:
     template = _template_for_lead(lead)
     owner_id = await _resolve_owner(current_user, lead)
+    base_name = template["name"]
+    project_key = f"{base_name[:3].upper()}-{str(lead.id)[-4:].upper()}"
+    generated_project_id = f"ONB-{str(lead.id)[:8].upper()}"
     existing = await Project.find_one(
         {
             "company_id": str(lead.company_id),
             "deleted": {"$ne": True},
-            "lead_id": str(lead.id),
+            "$or": [
+                {"lead_id": str(lead.id)},
+                {"project_id": generated_project_id},
+                {"key": project_key},
+            ],
         }
     )
     if existing:
@@ -310,26 +377,26 @@ async def _resolve_project(current_user: User, lead: SalesProspect, client: Clie
             existing.team_member_ids = list(existing.team_member_ids or []) + [owner_id]
         if owner_id and not existing.assigned_to:
             existing.assigned_to = owner_id
-        if owner_id and not existing.lead_id:
-            existing.lead_id = owner_id
+        if not existing.lead_id:
+            existing.lead_id = str(lead.id)
         existing.updated_at = utc_now()
         await existing.save()
         return existing
 
     now = utc_now()
-    base_name = template["name"]
     project_name = f"{client.name} - {base_name}"
-    project_key = f"{base_name[:3].upper()}-{str(lead.id)[-4:].upper()}"
 
     project = Project(
         name=project_name,
         key=project_key,
-        project_id=f"ONB-{str(lead.id)[:8].upper()}",
+        project_id=generated_project_id,
         description=f"Onboarding project generated from won deal for {client.name}.",
         company_id=str(lead.company_id),
         type=ProjectType.OPERATIONS,
-        status=ProjectStatus.ACTIVE,
-        lead_id=str(getattr(lead, "assigned_to", None) or owner_id) or None,
+        # Auto-created Projects begin in Created and appear under the Created
+        # lifecycle tab (and Needs Setup until execution Tasks exist).
+        status=ProjectStatus.CREATED,
+        lead_id=str(lead.id),
         assigned_to=owner_id,
         assigned_by=str(getattr(current_user, "id", "")),
         assigned_at=now,
@@ -406,7 +473,6 @@ async def _create_kickoff_meeting(current_user: User, lead: SalesProspect, clien
         {
             "company_id": str(lead.company_id),
             "title": f"Kickoff - {client.name}",
-            "deleted": {"$ne": True},
         }
     )
     if existing_meeting:
@@ -463,7 +529,36 @@ async def handle_won_deal_automation(current_user: User, lead: SalesProspect, de
                 transferred_by=str(getattr(current_user, "id", "system")),
                 notes=f"Transferred on win to {account_manager.full_name()}",
             )
+        client.account_owner_id = str(account_manager.id)
+        client.updated_at = now
+        await client.save()
     project = await _resolve_project(current_user, lead, client, deal)
+    lead_changed = False
+    if getattr(lead, "client_id", None) != str(client.id):
+        lead.client_id = str(client.id)
+        lead_changed = True
+    if getattr(lead, "project_id", None) != str(project.id):
+        lead.project_id = str(project.id)
+        lead_changed = True
+    if not getattr(lead, "converted_at", None):
+        lead.converted_at = now
+        lead_changed = True
+    if lead_changed:
+        lead.updated_at = now
+        await lead.save()
+    if str(project.id) not in [str(item) for item in (client.project_ids or [])]:
+        client.project_ids = list(client.project_ids or []) + [str(project.id)]
+        client.updated_at = now
+        await client.save()
+    if project.client_id != str(client.id):
+        project.client_id = str(client.id)
+        project.updated_at = now
+        await project.save()
+    service = await ensure_sales_handoff_service(client, current_user)
+    if service and str(project.id) not in (service.linked_project_ids or []):
+        service.linked_project_ids = list(service.linked_project_ids or []) + [str(project.id)]
+        service.updated_at = utc_now()
+        await service.save()
 
     existing_activity = await CRMActivity.find_one(
         {
@@ -496,10 +591,6 @@ async def handle_won_deal_automation(current_user: User, lead: SalesProspect, de
     _step("client_lookup", "completed", client_id=str(client.id))
     if account_manager:
         _step("account_manager_assignment", "completed", user_id=str(account_manager.id))
-    if str(project.id) not in [str(item) for item in (client.project_ids or [])]:
-        client.project_ids = list(client.project_ids or []) + [str(project.id)]
-        client.updated_at = now
-        await client.save()
     _step("client_link", "completed", project_id=str(project.id), client_id=str(client.id))
     structure = _template_for_lead(lead)
     project = await _resolve_project(current_user, lead, client, deal)
@@ -562,6 +653,7 @@ async def handle_won_deal_automation(current_user: User, lead: SalesProspect, de
         current_user=current_user,
         payload={
             "client_id": str(client.id),
+            "crm_company_id": getattr(client, "crm_company_id", None),
             "company_name": client.company_name,
             "lead_id": str(lead.id),
             "status": "completed",

@@ -22,6 +22,8 @@ const WIDTH_KEY = "syntask-sidebar-width";
 const WIDTH_OPTIONS = [240, 280, 320];
 
 // Tab sub-nav plan (D1): clicking a section opens its landing page at /sections/:key.
+// Sections with a dedicated default page (section.overviewHref, e.g. Sales -> /sales-overview,
+// Clients -> /clients) link straight there instead of the generic /sections/:key landing.
 const SECTION_LANDING_PREFIX = "/sections/";
 
 const Sidebar = ({ isOpen, onClose }) => {
@@ -81,12 +83,15 @@ const Sidebar = ({ isOpen, onClose }) => {
   const sectionLinks = SECTIONS.map((section) => ({
     ...section,
     icon: SECTION_ICONS[section.key],
-    href: `${SECTION_LANDING_PREFIX}${section.key}`,
+    // Sections with a dedicated default page open there (Sales -> /sales-overview,
+    // Clients -> /clients); the rest keep the generic /sections/:key landing.
+    href: section.overviewHref || `${SECTION_LANDING_PREFIX}${section.key}`,
     items: getSectionItems(section.key, user, orgDepartments),
   })).filter((section) => section.items.length);
 
   const isSectionLinkActive = (section) =>
     location.pathname === section.href ||
+    location.pathname === `${SECTION_LANDING_PREFIX}${section.key}` ||
     section.items.some((item) => isNavItemActive(item, location));
 
   // Favorites pool: every gated config/HR item across sections (dynamic department tabs excluded).
@@ -121,7 +126,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         `}
         style={{ '--sidebar-width': `${collapsed ? 76 : sidebarWidth}px` }}
       >
-        <div className="relative flex h-full flex-col overflow-visible border-r border-[#1a1a1a] bg-gradient-to-b from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a] text-white shadow-2xl">
+        <div className="syntask-dark-rail relative flex h-full flex-col overflow-visible border-r border-[#1a1a1a] bg-gradient-to-b from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a] text-white shadow-2xl">
 
           {/* Animated gradient border top - Rainbow effect */}
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 via-cyan-400 via-emerald-400 via-yellow-400 via-rose-400 to-purple-500 animate-gradient-x"></div>

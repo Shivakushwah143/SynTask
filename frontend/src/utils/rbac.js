@@ -14,6 +14,46 @@ import {
   normalizeRole,
   isSuperAdminRole,
 } from "./roles";
+import { isLegacyModules } from "../config/modulePermissions";
+
+const WORK_MODULES = new Set([
+  "projects",
+  "tasks",
+  "scheduled_work",
+  "time_tracking",
+  "daily_updates",
+  "content_calendar",
+  "automation_rules",
+]);
+
+const CRM_MODULES = new Set([
+  "sales_overview",
+  "leads",
+  "sales_pipeline",
+  "import_leads",
+  "sales_reports",
+  "clients",
+  "companies",
+  "contacts",
+  "client_calendar",
+  "client_insights",
+  "meta_messages",
+  "meta_settings",
+  "publishing_centre",
+  "social_accounts",
+  "publishing_analytics",
+  "integrations",
+]);
+
+const WORKFORCE_MODULES = new Set([
+  "attendance",
+  "live_attendance",
+  "attendance_reports",
+  "leave_management",
+]);
+
+const FINANCE_MODULES = new Set(["invoices", "transactions"]);
+const AI_MODULES = new Set(["ai_assistant", "ai_content_assistant"]);
 
 const STANDARD_ROLE_VALUES = [
   ROLE.SUPER_ADMIN,
@@ -39,8 +79,10 @@ export const effectiveRole = (role) => {
  * Backend-equivalent of `require_module(module_name)` + `_module_access_allowed`.
  *
  * - Super Admin, Admin and Sub Admin have full access to every module.
- * - Manager / Lead / Employee are auto-granted `sales`, `sales_crm`,
- *   `tickets` and `recruitment` (matches backend `require_module`).
+ * - Manager / Lead / Employee with a LEGACY module list (pre-permission-system
+ *   defaults) are auto-granted `sales`, `sales_crm`, `tickets` and
+ *   `recruitment` (matches backend `require_module`). Members with an explicit
+ *   module list are governed strictly by that list.
  * - Everyone else must have the module in `user.modules`; legacy aliases
  *   (task <-> tasks_projects, sales <-> sales_crm, chat via task) are honoured.
  */
@@ -59,10 +101,20 @@ export const hasModuleAccess = (role, modules, moduleName) => {
     return true;
   }
 
-  // Backend auto-grants Manager / Lead / Employee access to sales modules,
-  // tickets and recruitment regardless of their module list.
+  // Managers always receive the company-scoped Client workspace. This mirrors
+  // the backend role grant and supports existing accounts with older module
+  // selections that predate the Client lifecycle access rule.
+  if (moduleName === "clients" && normalized === ROLE.MANAGER) {
+    return true;
+  }
+
+  // Backend role auto-grant applies ONLY to legacy (pre-permission-system)
+  // module lists. Explicit lists are authoritative. The set mirrors the
+  // backend require_module auto-grant exactly (incl. task/tasks_projects).
+  const legacyConfig = isLegacyModules(modules);
   if (
-    ["sales", "sales_crm", "tickets", "recruitment"].includes(moduleName) &&
+    legacyConfig &&
+    ["task", "tasks_projects", "sales", "sales_crm", "tickets", "recruitment", "hr", ...WORK_MODULES, ...CRM_MODULES, ...WORKFORCE_MODULES].includes(moduleName) &&
     [ROLE.MANAGER, ROLE.LEAD, ROLE.EMPLOYEE].includes(normalized)
   ) {
     return true;
@@ -72,6 +124,9 @@ export const hasModuleAccess = (role, modules, moduleName) => {
   if (moduleName === "task" || moduleName === "tasks_projects") {
     return userModules.has("task") || userModules.has("tasks_projects");
   }
+  if (WORK_MODULES.has(moduleName)) {
+    return userModules.has(moduleName) || userModules.has("task") || userModules.has("tasks_projects");
+  }
   if (moduleName === "chat") {
     return (
       userModules.has("chat") ||
@@ -80,10 +135,37 @@ export const hasModuleAccess = (role, modules, moduleName) => {
     );
   }
   if (moduleName === "sales_crm") {
-    return userModules.has("sales_crm") || userModules.has("sales");
+    return userModules.has("sales_crm") || userModules.has("sales") || [...CRM_MODULES].some((id) => userModules.has(id));
   }
   if (moduleName === "sales") {
     return userModules.has("sales") || userModules.has("sales_crm");
+  }
+  if (CRM_MODULES.has(moduleName)) {
+    return userModules.has(moduleName) || userModules.has("sales_crm") || userModules.has("sales");
+  }
+  if (moduleName === "attendance_leaves") {
+    return userModules.has("attendance_leaves") || [...WORKFORCE_MODULES].some((id) => userModules.has(id));
+  }
+  if (moduleName === "hr") {
+    // People/HR domain: accessible when the user has "hr" in their modules,
+    // or via the legacy "attendance_leaves" alias that covers workforce modules,
+    // or by having any individual workforce module (attendance, leave_management, etc.).
+    return userModules.has("hr") || userModules.has("attendance_leaves") || [...WORKFORCE_MODULES].some((id) => userModules.has(id));
+  }
+  if (WORKFORCE_MODULES.has(moduleName)) {
+    return userModules.has(moduleName) || userModules.has("attendance_leaves") || userModules.has("hr");
+  }
+  if (moduleName === "invoicing_ledger") {
+    return userModules.has("invoicing_ledger") || [...FINANCE_MODULES].some((id) => userModules.has(id));
+  }
+  if (FINANCE_MODULES.has(moduleName)) {
+    return userModules.has(moduleName) || userModules.has("invoicing_ledger");
+  }
+  if (moduleName === "ai_agents") {
+    return userModules.has("ai_agents") || [...AI_MODULES].some((id) => userModules.has(id));
+  }
+  if (AI_MODULES.has(moduleName)) {
+    return userModules.has(moduleName) || userModules.has("ai_agents");
   }
   return userModules.has(moduleName);
 };

@@ -280,12 +280,13 @@ const NotificationBell = () => {
       lastFetchTimeRef.current = null
     }
     
-    // Poll for new notifications every 10 seconds (only if user is logged in)
+    // Poll for new notifications every 10 seconds (only if user is logged in).
+    // Paused while the tab is hidden so background tabs stop hammering the API.
     let interval = null
     if (user && isMountedRef.current) {
       interval = setInterval(() => {
         // Only fetch if component is still mounted and user is logged in
-        if (isMountedRef.current && user) {
+        if (isMountedRef.current && user && !document.hidden) {
           fetchNotifications(false, false)
         }
       }, 10000)
